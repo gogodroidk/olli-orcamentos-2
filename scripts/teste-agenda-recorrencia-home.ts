@@ -183,7 +183,9 @@ caso("agenda.ts: dia e Próxima parada saem da agenda expandida", () => {
 caso("ritualDiario: aviso de saída e Bom dia usam a Próxima saída", () => {
 	const ritual = readFileSync(new URL("../src/services/ritualDiario.ts", import.meta.url), "utf8");
 	assert.doesNotMatch(ritual, /getProximoAgendamento\(/);
-	assert.equal((ritual.match(/getProximaSaida\(\)/g) ?? []).length, 2);
+	// Sempre com o escopo do papel (técnico = só a dele; ver teste-escopo-agenda-servicos.ts).
+	assert.equal((ritual.match(/getProximaSaida\(escopo\)/g) ?? []).length, 2);
+	assert.doesNotMatch(ritual, /getProximaSaida\(\)/);
 });
 
 caso("HojeScreen: Pulso grava a nota, dia local, 1 toque priorizado, toque abre a visita", () => {

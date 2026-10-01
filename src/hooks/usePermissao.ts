@@ -108,6 +108,21 @@ const PERMISSOES_PESSOAL: ReadonlySet<Acao> = new Set<Acao>([
   'gerenciar_faturamento',
 ]);
 
+/**
+ * A mesma decisão do `pode` do hook, sem React: para serviços que rodam fora de
+ * componente (ex.: `services/escopoAgendaAtual.ts`, usado pelo ritual diário).
+ * Papel INDETERMINADO nega tudo (ver o comentário dentro do hook).
+ */
+export function podeComPapel(
+  acao: Acao,
+  conta: { tipo: 'pessoal' | 'empresa'; org: { papel: Papel } | null; resolvido: boolean },
+): boolean {
+  if (!conta.resolvido) return false;
+  const papel = conta.tipo === 'empresa' && conta.org ? conta.org.papel : null;
+  if (!papel) return PERMISSOES_PESSOAL.has(acao);
+  return PERMISSOES[papel]?.has(acao) ?? false;
+}
+
 export interface UsePermissao {
   /** Papel do usuário na org, ou null quando conta pessoal. `null` também enquanto indeterminado — cheque `carregando`. */
   papel: Papel | null;
@@ -128,17 +143,14 @@ export function usePermissao(): UsePermissao {
   const papel = tipo === 'empresa' && org ? org.papel : null;
 
   const pode = useCallback(
-    (acao: Acao): boolean => {
+    (acao: Acao): boolean =>
       // Papel INDETERMINADO nega tudo. Sem isto, `papel === null` cairia na matriz
       // PESSOAL — que é a MAIS permissiva (relatórios, valores agregados,
       // faturamento) — e um técnico com a leitura da org ainda em voo, ou offline,
       // seria promovido a dono. "Não sei" nunca pode valer mais que "sou técnico".
-      if (!resolvido) return false;
-      // Conta pessoal: usa a matriz do solo (dono de si).
-      if (!papel) return PERMISSOES_PESSOAL.has(acao);
-      return PERMISSOES[papel]?.has(acao) ?? false;
-    },
-    [papel, resolvido],
+      // Conta pessoal usa a matriz do solo (dono de si). Regra em `podeComPapel`.
+      podeComPapel(acao, { tipo, org, resolvido }),
+    [tipo, org, resolvido],
   );
 
   return {

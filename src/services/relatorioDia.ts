@@ -3,9 +3,15 @@ import {
   getOrcamentos, getRecibos, getClientes, saveRelatorioDia, getRelatorioDia as getRelatorioDiaRow,
 } from '../database/database';
 import { getAgendamentosDoDia } from './agenda';
-import { formatCurrency } from '../utils/currency';
+import { escopoAgendaAtual } from './escopoAgendaAtual';
 import { todayISO } from '../utils/date';
-import { StatusAgendamento } from '../types';
+import {
+  agendaIndisponivel, notaComoTexto, relatorioParaTexto, resumirAgendaDoDia, type RelatorioDia,
+} from '../utils/relatorioDiaTexto';
+
+// Tipo e narrativa moram no util puro (testável em node); a tela e o ritual
+// continuam importando daqui.
+export { notaComoTexto, relatorioParaTexto, type RelatorioDia };
 
 /** true se o ISO/timestamp cai no dia local `dataChave` ('YYYY-MM-DD'). */
 function ehDoDia(iso: string | undefined | null, dataChave: string): boolean {
@@ -18,44 +24,6 @@ function ehDoDia(iso: string | undefined | null, dataChave: string): boolean {
   return `${ano}-${mes}-${dia}` === dataChave;
 }
 
-export interface RelatorioDia {
-  /** 'YYYY-MM-DD' — dia a que este relatório se refere. */
-  data: string;
-  orcamentos: {
-    criados: number;
-    criadosValor: number;
-    enviados: number;
-    enviadosValor: number;
-    aprovados: number;
-    aprovadosValor: number;
-  };
-  recibos: {
-    emitidos: number;
-    totalRecebido: number;
-  };
-  agendamentos: {
-    total: number;
-    porStatus: Record<StatusAgendamento, number>;
-  };
-  clientesNovos: number;
-  /** true quando não houve NENHUM movimento no dia (para a narrativa honesta). */
-  semMovimentos: boolean;
-  /**
-   * Nota manual do dono ("como foi o dia / problemas"). Fica DENTRO do snapshot
-   * (blob `dados`), então sincroniza junto pelo mesmo caminho — sem coluna nova.
-   * A regeração automática do dia preserva a nota já escrita.
-   */
-  nota?: string;
-  /**
-   * Carimbo AUTORAL da nota (ISO de quando foi escrita/apagada). É o LWW PRÓPRIO
-   * da nota, separado do `criado_em` do snapshot: o snapshot é cache derivado e
-   * recomputado por aparelho, mas a nota é autorada. Sem isto, uma simples
-   * visualização (criado_em novo, sem nota) apagava a nota escrita em outro
-   * aparelho. O merge por campo em cloudSync usa este carimbo.
-   */
-  notaEm?: string;
-}
-
 /**
  * Compila o relatório do dia a partir do banco local. Sem parâmetro, usa hoje.
  * Ao gerar o relatório do DIA CORRENTE (hoje), salva automaticamente o snapshot
@@ -65,13 +33,17 @@ export async function gerarRelatorioDia(data?: string): Promise<RelatorioDia> {
   const hoje = todayISO();
   const dataChave = data ?? hoje;
 
-  const [orcamentos, recibos, clientes, agendamentosDoDia] = await Promise.all([
+  const [orcamentos, recibos, clientes, agendaDaEquipe, escopo] = await Promise.all([
     getOrcamentos(),
     getRecibos(),
     getClientes(),
     // Só sabemos buscar agenda por Date; se for outro dia, reconstrói a partir da chave.
     getAgendamentosDoDia(dataChave === hoje ? new Date() : new Date(`${dataChave}T00:00:00`)),
+    // A leitura acima é da EQUIPE inteira. O técnico conta só as visitas dele
+    // (mesma regra da Agenda/Hoje); papel desconhecido = agenda fora do resumo.
+    escopoAgendaAtual(),
   ]);
+  const agendamentos = resumirAgendaDoDia(agendaDaEquipe, escopo);
 
   const orcamentosDoDia = orcamentos.filter(o => ehDoDia(o.criadoEm, dataChave));
   const criados = orcamentosDoDia;
@@ -82,9 +54,6 @@ export async function gerarRelatorioDia(data?: string): Promise<RelatorioDia> {
 
   const recibosDoDia = recibos.filter(r => ehDoDia(r.dataRecebimento, dataChave) || ehDoDia(r.criadoEm, dataChave));
   const clientesNovosDoDia = clientes.filter(c => ehDoDia(c.criadoEm, dataChave));
-
-  const porStatus: Record<StatusAgendamento, number> = { agendado: 0, concluido: 0, cancelado: 0 };
-  for (const a of agendamentosDoDia) porStatus[a.status] = (porStatus[a.status] ?? 0) + 1;
 
   const relatorio: RelatorioDia = {
     data: dataChave,
@@ -100,14 +69,12 @@ export async function gerarRelatorioDia(data?: string): Promise<RelatorioDia> {
       emitidos: recibosDoDia.length,
       totalRecebido: recibosDoDia.reduce((s, r) => s + r.valorRecebido, 0),
     },
-    agendamentos: {
-      total: agendamentosDoDia.length,
-      porStatus,
-    },
+    agendamentos,
     clientesNovos: clientesNovosDoDia.length,
+    // Agenda ilegível no escopo certo não é "sem agenda": o dia não vira vazio.
     semMovimentos:
       criados.length === 0 && recibosDoDia.length === 0 &&
-      agendamentosDoDia.length === 0 && clientesNovosDoDia.length === 0,
+      agendamentos.total === 0 && !agendaIndisponivel({ agendamentos }) && clientesNovosDoDia.length === 0,
   };
 
   // Snapshot automático só do dia CORRENTE — histórico de dias passados não se
@@ -124,7 +91,9 @@ export async function gerarRelatorioDia(data?: string): Promise<RelatorioDia> {
       // PRESERVA o criado_em anterior: uma simples VISUALIZAÇÃO não pode gerar um
       // carimbo mais novo que a nota autorada em outro aparelho (senão o LWW do
       // sync a apagaria). Só a autoria (salvarNotaDia) avança o carimbo.
-      await saveRelatorioDia(dataChave, relatorio, anterior?.criadoEm);
+      // Sem o escopo da agenda, não regrava: um retrato bom de mais cedo vale
+      // mais que um com a agenda de fora (a próxima abertura com papel salva).
+      if (!agendaIndisponivel(relatorio)) await saveRelatorioDia(dataChave, relatorio, anterior?.criadoEm);
     } catch {
       // salvar o snapshot é best-effort: nunca deve quebrar a geração/leitura do relatório
     }
@@ -147,74 +116,10 @@ export async function salvarNotaDia(data: string, nota: string): Promise<void> {
   await saveRelatorioDia(data, { ...base, nota: limpa || undefined, notaEm: new Date().toISOString() });
 }
 
-/** Nota manual formatada como parágrafo pra colar no fim do texto falado/compartilhado. */
-export function notaComoTexto(r: RelatorioDia): string {
-  const n = r.nota?.trim();
-  return n ? `\n\nMinha nota do dia: ${n}` : '';
-}
-
 /** Lê o snapshot salvo de um dia anterior (histórico), ou null se nunca foi gerado/salvo. */
 export async function getRelatorioDiaSalvo(data: string): Promise<RelatorioDia | null> {
   const row = await getRelatorioDiaRow(data);
   return row ? (row.dados as RelatorioDia) : null;
-}
-
-function pluralizar(n: number, singular: string, plural: string): string {
-  return n === 1 ? singular : plural;
-}
-
-/**
- * Monta a narrativa em PT-BR natural do relatório — para falar (TTS) e para
- * compartilhar (texto). Honesto: dia sem nenhum movimento não inventa nada.
- */
-export function relatorioParaTexto(r: RelatorioDia): string {
-  if (r.semMovimentos) {
-    return 'Hoje foi um dia sem movimentos registrados no app. Nenhum orçamento, recibo, agendamento ou cliente novo. Bora colocar o dia de amanhã pra render!';
-  }
-
-  const partes: string[] = [];
-  const { orcamentos, recibos, agendamentos, clientesNovos } = r;
-
-  if (orcamentos.criados > 0) {
-    partes.push(
-      `Hoje você criou ${orcamentos.criados} ${pluralizar(orcamentos.criados, 'orçamento', 'orçamentos')}, somando ${formatCurrency(orcamentos.criadosValor)}`
-    );
-  }
-
-  if (orcamentos.aprovados > 0) {
-    partes.push(
-      `Fechou ${orcamentos.aprovados} ${pluralizar(orcamentos.aprovados, 'orçamento aprovado', 'orçamentos aprovados')}, no valor de ${formatCurrency(orcamentos.aprovadosValor)}`
-    );
-  } else if (orcamentos.enviados > 0) {
-    partes.push(
-      `Tem ${orcamentos.enviados} ${pluralizar(orcamentos.enviados, 'orçamento enviado', 'orçamentos enviados')} aguardando resposta do cliente`
-    );
-  }
-
-  if (recibos.emitidos > 0) {
-    partes.push(
-      `Emitiu ${recibos.emitidos} ${pluralizar(recibos.emitidos, 'recibo', 'recibos')} e recebeu ${formatCurrency(recibos.totalRecebido)}`
-    );
-  }
-
-  if (agendamentos.total > 0) {
-    const concluidos = agendamentos.porStatus.concluido;
-    const detalhesAgenda: string[] = [];
-    if (concluidos > 0) detalhesAgenda.push(`${concluidos} ${pluralizar(concluidos, 'concluído', 'concluídos')}`);
-    if (agendamentos.porStatus.agendado > 0) detalhesAgenda.push(`${agendamentos.porStatus.agendado} ainda ${pluralizar(agendamentos.porStatus.agendado, 'agendado', 'agendados')}`);
-    const sufixo = detalhesAgenda.length > 0 ? ` (${detalhesAgenda.join(', ')})` : '';
-    partes.push(
-      `Teve ${agendamentos.total} ${pluralizar(agendamentos.total, 'compromisso na agenda', 'compromissos na agenda')}${sufixo}`
-    );
-  }
-
-  if (clientesNovos > 0) {
-    partes.push(
-      `Cadastrou ${clientesNovos} cliente${clientesNovos > 1 ? 's' : ''} novo${clientesNovos > 1 ? 's' : ''}`
-    );
-  }
-
-  return partes.join('. ') + '. Foi um dia de trabalho pra você — continue assim!';
 }
 
 /**

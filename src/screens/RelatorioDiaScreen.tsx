@@ -22,6 +22,7 @@ import {
 import { getRelatoriosDias, RelatorioDiaRow } from '../database/database';
 import { onSyncAplicado } from '../services/cloudSync';
 import { formatDateBR, todayISO } from '../utils/date';
+import { agendaIndisponivel } from '../utils/relatorioDiaTexto';
 import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -89,7 +90,7 @@ function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number 
           <View style={{ flex: 1 }}>
             <Text style={styles.histData}>{diaDaSemana(row.data)}, {formatDateBR(row.data)}</Text>
             <Text style={styles.histResumo} numberOfLines={aberto ? undefined : 1}>
-              {r.semMovimentos ? 'Sem movimentos' : `${r.orcamentos.criados} orçamento${r.orcamentos.criados === 1 ? '' : 's'} · ${r.agendamentos.total} na agenda`}
+              {r.semMovimentos ? 'Sem movimentos' : `${r.orcamentos.criados} orçamento${r.orcamentos.criados === 1 ? '' : 's'} · ${agendaIndisponivel(r) ? 'agenda fora do resumo' : `${r.agendamentos.total} na agenda`}`}
             </Text>
           </View>
           <MaterialCommunityIcons name={aberto ? 'chevron-up' : 'chevron-down'} size={22} color={cores.onSurfaceMuted} />
@@ -346,9 +347,20 @@ function RelatorioDiaConteudo() {
               <AnimatedEntrance index={3} style={styles.kpiFlex}>
                 <OlliCard variant="metric" style={styles.kpiCard}>
                   <MaterialCommunityIcons name="calendar-check-outline" size={20} color={cores.avatarLilac} />
-                  <CountUp value={relatorio.agendamentos.total} format="int" style={styles.kpiValue} />
-                  <Text style={styles.kpiLabel}>na agenda</Text>
-                  <Text style={styles.kpiSub}>{relatorio.agendamentos.porStatus.concluido} concluído{relatorio.agendamentos.porStatus.concluido === 1 ? '' : 's'}</Text>
+                  {agendaIndisponivel(relatorio) ? (
+                    <>
+                      {/* Papel desconhecido: não mostro 0 (seria "sem visita") nem a agenda da equipe. */}
+                      <Text style={styles.kpiValue}>—</Text>
+                      <Text style={styles.kpiLabel}>na agenda</Text>
+                      <Text style={styles.kpiSub}>Não confirmei quais são suas</Text>
+                    </>
+                  ) : (
+                    <>
+                      <CountUp value={relatorio.agendamentos.total} format="int" style={styles.kpiValue} />
+                      <Text style={styles.kpiLabel}>na agenda</Text>
+                      <Text style={styles.kpiSub}>{relatorio.agendamentos.porStatus.concluido} concluído{relatorio.agendamentos.porStatus.concluido === 1 ? '' : 's'}</Text>
+                    </>
+                  )}
                 </OlliCard>
               </AnimatedEntrance>
             </View>

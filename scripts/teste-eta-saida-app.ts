@@ -503,11 +503,11 @@ checar('área de toque de 44px no botão', /minHeight: 44/.test(cardSrc), true);
 checar('usa token de duração, não número mágico', /Motion\.dur\./.test(cardSrc), true);
 
 console.log('\n16) O RITUAL — reusa o mecanismo, não cria um novo');
-checar('o aviso roda no reagendamento do ritual que já existe', /reagendarAvisoSaidaDoDia\(\)/.test(ritualSrc), true);
+checar('o aviso roda no reagendamento do ritual que já existe', /reagendarAvisoSaidaDoDia\(false, escopo\)/.test(ritualSrc), true);
 // Ele SUBSTITUI o lembrete de agenda, não é um terceiro canal de engajamento:
 // por isso não obedece aos toggles de "Bom dia"/"Fechar o dia".
-checarOrdem('roda ANTES do return dos toggles do ritual', ritualSrc, 'reagendarAvisoSaidaDoDia()', 'if (!bomDiaAtivo && !fecharDiaAtivo) return');
-checarOrdem('e antes do gate de permissão (a Home mostra mesmo sem notificação)', ritualSrc, 'reagendarAvisoSaidaDoDia()', 'await temPermissaoNotificacao()');
+checarOrdem('roda ANTES do return dos toggles do ritual', ritualSrc, 'reagendarAvisoSaidaDoDia(false, escopo)', 'if (!bomDiaAtivo && !fecharDiaAtivo) return');
+checarOrdem('e antes do gate de permissão (a Home mostra mesmo sem notificação)', ritualSrc, 'reagendarAvisoSaidaDoDia(false, escopo)', 'await temPermissaoNotificacao()');
 checar('o Bom dia não ganha notificação nova, só uma linha a mais', ritualSrc.split('scheduleNotificationAsync').length - 1, 2); // bomDia + fecharDia, como antes
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'} — ${passes} asserções ok, ${falhas} falhas`);
