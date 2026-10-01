@@ -4,7 +4,7 @@ import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOr
 // codigos_erro.json (~365 KB) é carregado SOB DEMANDA em seedCodigosErro (lazy
 // require), não como import estático — assim o boot não paga o parse quando o
 // seed já rodou (achado da re-auditoria: "APK não incha" / peso do boot).
-import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem, garantirContextoEquipe } from '../services/cloudSync';
+import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem, garantirContextoEquipe, esquecerDownloadInicial } from '../services/cloudSync';
 import { restaurePodeTocarNaNuvem } from '../services/contextoEquipe';
 import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
@@ -3089,6 +3089,9 @@ export async function clearAllLocalData(): Promise<void> {
   } catch {
     // não bloqueia o logout
   }
+  // 4) Carimbo "download inicial concluído" (chave por usuário, fora da allow-list):
+  // com o SQLite zerado ele mentiria "já baixei" no próximo login. NUNCA lança.
+  await esquecerDownloadInicial();
 }
 
 // ─── STATS ─────────────────────────────────────────────

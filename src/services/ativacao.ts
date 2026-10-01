@@ -30,6 +30,7 @@
 import type { StatusOrcamento } from '../types';
 import { SEGMENTO_PARA_VERTICAL } from './verticalSegmento.ts';
 import type { VerticalId } from './verticais';
+import { normalizarChavePix } from '../utils/pixBrCode.ts';
 import { TRIAL_PRO_DIAS, type EstadoOfertaComercial, type ReservaEnvioOrcamento } from './limitesComerciais.ts';
 
 // ─── 1. Orçamento de exemplo por ofício ───────────────────────────────────────
@@ -210,9 +211,14 @@ export function verticalDoExemplo(
  * O cartão "primeiro orçamento" aparece SÓ quando a leitura CONFIRMOU zero
  * orçamentos. `null` (carregando/erro) não mostra: o convite "crie o primeiro"
  * na tela de quem já tem 40 é o erro virando vazio.
+ *
+ * `downloadConfirmado` é para quem lê um banco LOCAL (o app): enquanto o primeiro
+ * download da nuvem não terminou (`useSyncInicial` ≠ 'pronto'), o zero do SQLite
+ * é "ainda não baixei", não "a conta não tem". O painel lê direto do servidor e
+ * não passa nada (o padrão `true` vale para ele).
  */
-export function mostrarCartaoPrimeiroOrcamento(totalOrcamentos: number | null): boolean {
-  return totalOrcamentos === 0;
+export function mostrarCartaoPrimeiroOrcamento(totalOrcamentos: number | null, downloadConfirmado = true): boolean {
+  return downloadConfirmado && totalOrcamentos === 0;
 }
 
 // ─── 2. Checklist de ativação ─────────────────────────────────────────────────
@@ -251,8 +257,14 @@ export interface FatosAtivacao {
   empresaComLogo: boolean | null;
   /** Pelo menos 1 orçamento já saiu para um cliente. */
   primeiroOrcamentoEnviado: boolean | null;
-  /** Chave Pix cadastrada (o cliente paga sem pedir "me passa o Pix"). */
+  /** Chave Pix cadastrada E reconhecida (`normalizarChavePix`) — o cliente paga sem pedir "me passa o Pix". */
   chavePix: boolean | null;
+  /**
+   * Há algo no campo da chave, mas não é uma chave Pix que reconhecemos (CNPJ com
+   * dígito errado, celular sem DDD…). O passo vira "Corrigir chave Pix" em vez de
+   * "cadastrar". Opcional: quem não informa vê o texto de cadastro.
+   */
+  chavePixInvalida?: boolean | null;
   /** Pelo menos 1 recibo emitido. */
   primeiroRecibo: boolean | null;
 }
@@ -260,6 +272,8 @@ export interface FatosAtivacao {
 export type ChecklistAtivacao =
   | { estado: 'indisponivel' }
   | { estado: 'concluido'; total: number }
+  /** Conta que já trabalha (ver `contaMadura`): o checklist é ruído, some. */
+  | { estado: 'madura' }
   | { estado: 'pendente'; passos: PassoAtivacao[]; feitos: number; total: number; proximo: PassoAtivacao };
 
 const PASSOS: readonly { id: PassoAtivacaoId; fato: keyof FatosAtivacao; titulo: string; descricao: string }[] = [
@@ -289,19 +303,46 @@ const PASSOS: readonly { id: PassoAtivacaoId; fato: keyof FatosAtivacao; titulo:
   },
 ];
 
+/** O passo do Pix quando há uma chave no cadastro que não reconhecemos. */
+const PASSO_PIX_CORRIGIR = {
+  titulo: 'Corrigir chave Pix',
+  descricao: 'A chave cadastrada não foi reconhecida. Até corrigir, as cobranças vão sem Pix.',
+} as const;
+
+/** A partir de quantos orçamentos (com 1 recibo) a conta já trabalha de verdade. */
+export const ORCAMENTOS_CONTA_MADURA = 3;
+
+/**
+ * Conta que já trabalha: 3 ou mais orçamentos E pelo menos 1 recibo. Para ela, o
+ * "Deixe o OLLI pronto para trabalhar" no topo do Início é ruído (a GR Tech, com
+ * 12 orçamentos e 8 recibos, via o checklist só por causa do logo). Só decide com
+ * leitura CONFIRMADA: `null` (não sei) nunca conta como madura nem como nova.
+ */
+export function contaMadura(totalOrcamentos: number | null | undefined, temRecibo: boolean | null | undefined): boolean {
+  return typeof totalOrcamentos === 'number' && totalOrcamentos >= ORCAMENTOS_CONTA_MADURA && temRecibo === true;
+}
+
 /**
  * O checklist curto de ativação. Some sozinho quando tudo está feito
- * (`concluido`) e NÃO aparece quando algum fato não foi confirmado
- * (`indisponivel`) — ver regra dos 3 estados no topo do arquivo.
+ * (`concluido`), some para a conta que já trabalha (`madura`, quando quem chama
+ * informa o total de orçamentos) e NÃO aparece quando algum fato não foi
+ * confirmado (`indisponivel`) — ver regra dos 3 estados no topo do arquivo.
  */
-export function calcularChecklistAtivacao(fatos: FatosAtivacao): ChecklistAtivacao {
+export function calcularChecklistAtivacao(
+  fatos: FatosAtivacao,
+  maturidade?: { totalOrcamentos: number | null },
+): ChecklistAtivacao {
+  if (maturidade && contaMadura(maturidade.totalOrcamentos, fatos.primeiroRecibo)) return { estado: 'madura' };
   if (PASSOS.some((p) => fatos[p.fato] === null || fatos[p.fato] === undefined)) return { estado: 'indisponivel' };
-  const passos = PASSOS.map((p): PassoAtivacao => ({
-    id: p.id,
-    titulo: p.titulo,
-    descricao: p.descricao,
-    feito: fatos[p.fato] === true,
-  }));
+  const passos = PASSOS.map((p): PassoAtivacao => {
+    const corrigirPix = p.id === 'pix' && fatos.chavePix !== true && fatos.chavePixInvalida === true;
+    return {
+      id: p.id,
+      titulo: corrigirPix ? PASSO_PIX_CORRIGIR.titulo : p.titulo,
+      descricao: corrigirPix ? PASSO_PIX_CORRIGIR.descricao : p.descricao,
+      feito: fatos[p.fato] === true,
+    };
+  });
   const feitos = passos.filter((p) => p.feito).length;
   const proximo = passos.find((p) => !p.feito);
   if (!proximo) return { estado: 'concluido', total: passos.length };
@@ -317,14 +358,22 @@ function preenchido(valor: unknown): boolean {
  * Os fatos que vêm do cadastro da empresa. `undefined` = leitura não confirmada
  * (carregando/erro) → fatos `null`. `null` = leitura OK e a conta não tem empresa
  * cadastrada → fatos `false` (é verdade: não tem).
+ *
+ * A chave Pix só conta como cadastrada quando `normalizarChavePix` a reconhece —
+ * a MESMA régua das cobranças (que saem SEM Pix com chave duvidosa). Riscar
+ * "Chave Pix cadastrada" com um CNPJ de dígito errado era dizer "pronto" para
+ * uma cobrança que vai sair sem Pix.
  */
 export function fatosDaEmpresa(
   empresa: { nome?: string | null; logoUri?: string | null; chavePix?: string | null } | null | undefined,
-): Pick<FatosAtivacao, 'empresaComLogo' | 'chavePix'> {
-  if (empresa === undefined) return { empresaComLogo: null, chavePix: null };
+): Pick<FatosAtivacao, 'empresaComLogo' | 'chavePix' | 'chavePixInvalida'> {
+  if (empresa === undefined) return { empresaComLogo: null, chavePix: null, chavePixInvalida: null };
+  const temAlgo = !!empresa && preenchido(empresa.chavePix);
+  const reconhecida = temAlgo && normalizarChavePix(empresa?.chavePix) !== null;
   return {
     empresaComLogo: !!empresa && preenchido(empresa.nome) && preenchido(empresa.logoUri),
-    chavePix: !!empresa && preenchido(empresa.chavePix),
+    chavePix: reconhecida,
+    chavePixInvalida: temAlgo && !reconhecida,
   };
 }
 

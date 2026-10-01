@@ -13,6 +13,7 @@ import {
   TITULO_PRIMEIRO_ORCAMENTO,
   avisoTrialAutomatico,
   calcularChecklistAtivacao,
+  contaMadura,
   dataCurtaBr,
   exemploOrcamentoPara,
   fatosDaEmpresa,
@@ -116,14 +117,62 @@ for (const fato of Object.keys(nada) as (keyof typeof nada)[]) {
 }
 
 // Fatos do cadastro: undefined = não sei; null = sei que não tem.
-assert.deepEqual(fatosDaEmpresa(undefined), { empresaComLogo: null, chavePix: null });
-assert.deepEqual(fatosDaEmpresa(null), { empresaComLogo: false, chavePix: false });
+assert.deepEqual(fatosDaEmpresa(undefined), { empresaComLogo: null, chavePix: null, chavePixInvalida: null });
+assert.deepEqual(fatosDaEmpresa(null), { empresaComLogo: false, chavePix: false, chavePixInvalida: false });
 assert.deepEqual(fatosDaEmpresa({ nome: 'Clima Bom', logoUri: 'data:image/png;base64,AAA', chavePix: 'a@b.com' }), {
   empresaComLogo: true,
   chavePix: true,
+  chavePixInvalida: false,
 });
-assert.deepEqual(fatosDaEmpresa({ nome: 'Clima Bom', logoUri: '', chavePix: '   ' }), { empresaComLogo: false, chavePix: false });
-assert.deepEqual(fatosDaEmpresa({ nome: '  ', logoUri: 'file://logo.png' }), { empresaComLogo: false, chavePix: false });
+assert.deepEqual(fatosDaEmpresa({ nome: 'Clima Bom', logoUri: '', chavePix: '   ' }), { empresaComLogo: false, chavePix: false, chavePixInvalida: false });
+assert.deepEqual(fatosDaEmpresa({ nome: '  ', logoUri: 'file://logo.png' }), { empresaComLogo: false, chavePix: false, chavePixInvalida: false });
+
+// Chave Pix: só conta a que `normalizarChavePix` reconhece (a mesma régua da cobrança).
+// O CNPJ da demo GR Tech tem dígito verificador errado: antes riscava "Chave Pix cadastrada".
+const cnpjInvalido = fatosDaEmpresa({ nome: 'GR Tech', logoUri: 'x', chavePix: '41.882.109/0001-55' });
+assert.deepEqual(cnpjInvalido, { empresaComLogo: true, chavePix: false, chavePixInvalida: true }, 'chave que não reconhecemos não conta');
+assert.equal(fatosDaEmpresa({ nome: 'A', logoUri: 'x', chavePix: '11.222.333/0001-81' }).chavePix, true, 'CNPJ válido conta');
+assert.equal(fatosDaEmpresa({ nome: 'A', logoUri: 'x', chavePix: '123e4567-e89b-12d3-a456-426614174000' }).chavePix, true, 'chave aleatória conta');
+const comPixInvalido = calcularChecklistAtivacao({ empresaComLogo: true, primeiroOrcamentoEnviado: true, primeiroRecibo: false, ...cnpjInvalido });
+assert.equal(comPixInvalido.estado, 'pendente');
+if (comPixInvalido.estado === 'pendente') {
+  const pix = comPixInvalido.passos.find((p) => p.id === 'pix');
+  assert.equal(pix?.feito, false);
+  assert.equal(pix?.titulo, 'Corrigir chave Pix', 'chave inválida vira "Corrigir", não "cadastrar"');
+  assert.match(pix?.descricao ?? '', /sem Pix/);
+  assert.equal(comPixInvalido.proximo.id, 'pix');
+}
+if (inicial.estado === 'pendente') {
+  assert.equal(inicial.passos.find((p) => p.id === 'pix')?.titulo, 'Chave Pix cadastrada', 'sem chave: o texto de cadastro continua');
+}
+
+// Conta madura (3+ orçamentos e 1 recibo): o checklist some — só com leitura confirmada.
+assert.equal(contaMadura(3, true), true);
+assert.equal(contaMadura(12, true), true);
+assert.equal(contaMadura(2, true), false);
+assert.equal(contaMadura(3, false), false, 'sem recibo ainda não é madura');
+assert.equal(contaMadura(null, true), false, 'total desconhecido nunca decide');
+assert.equal(contaMadura(5, null), false, 'recibo desconhecido nunca decide');
+assert.deepEqual(
+  calcularChecklistAtivacao({ ...nada, primeiroOrcamentoEnviado: true, primeiroRecibo: true }, { totalOrcamentos: 12 }),
+  { estado: 'madura' },
+  'GR Tech (12 orçamentos, 8 recibos, sem logo): o checklist não ocupa mais o topo',
+);
+assert.equal(
+  calcularChecklistAtivacao({ ...nada, primeiroOrcamentoEnviado: true, primeiroRecibo: true }, { totalOrcamentos: 2 }).estado,
+  'pendente',
+  'abaixo de 3 orçamentos o checklist continua',
+);
+assert.equal(
+  calcularChecklistAtivacao({ ...nada, primeiroRecibo: true }).estado,
+  'pendente',
+  'sem informar a maturidade (painel), a regra antiga vale',
+);
+
+// Cartão "primeiro orçamento": no app, o zero do SQLite só vale depois do 1º download.
+assert.equal(mostrarCartaoPrimeiroOrcamento(0, false), false, 'SQLite vazio antes do download não é conta nova');
+assert.equal(mostrarCartaoPrimeiroOrcamento(0, true), true);
+assert.equal(mostrarCartaoPrimeiroOrcamento(5, true), false);
 
 // ─── 3. Aviso do teste do Pro liberado no 1º envio ───────────────────────────
 const agora = Date.parse('2026-09-30T15:00:00.000Z');
@@ -169,6 +218,9 @@ assert.match(componenteApp, /from '\.\.\/services\/ativacao'/, 'app usa a regra 
 assert.match(componenteApp, /pode\('gerenciar_faturamento'\)/, 'só o dono vê a ativação no app');
 assert.match(componenteApp, /leitura\.estado !== 'pronto'\) return null/, 'app não desenha enquanto lê ou com erro');
 assert.match(componenteApp, /onSyncAplicado\(/, 'app relê a ativação quando o pull da nuvem grava (SQLite vazio no 1º login não é conta vazia)');
+assert.match(componenteApp, /useSyncInicial\(\)/, 'app espera o 1º download antes de afirmar "conta nova"');
+assert.match(componenteApp, /Baixando seus dados da nuvem/, 'enquanto baixa, esqueleto honesto no lugar do convite');
+assert.match(componenteApp, /totalOrcamentos: total \}/, 'app informa o total para a regra de conta madura');
 assert.doesNotMatch(componenteApp, /navigate\('Planos'|navigate\('Assinatura'/, 'regra das lojas: a ativação não leva a compra');
 assert.match(ler('../src/screens/HomeScreen.tsx'), /<AtivacaoInicio\b/, 'Início do celular mostra a ativação');
 assert.match(ler('../src/screens/desktop/InicioDesktopScreen.tsx'), /<AtivacaoInicio\b/, 'Início do desktop mostra a ativação');
