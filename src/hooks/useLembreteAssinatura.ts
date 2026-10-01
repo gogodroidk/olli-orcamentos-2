@@ -60,7 +60,9 @@ function assinaturaParaRegra(r: ResumoAssinatura) {
   return {
     planoEfetivo: r.planoEfetivo,
     planoContratado: r.planoContratado,
-    origem: r.origem,
+    // O TESTE do Pro a regra lê da oferta (trialEstado), não da assinatura: aqui
+    // ele não é "pagamento" nem "admin", e não pode disparar lembrete de Pix.
+    origem: r.origem === 'trial' ? undefined : r.origem,
     renovaSozinho: r.renovaSozinho,
     proximaCobranca: r.proximaCobranca,
   };

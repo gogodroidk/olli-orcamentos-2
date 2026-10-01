@@ -32,9 +32,15 @@ assert.match(link, /\$\{ok \? blocoPagamento\(row, d, total, numero, nomePrestad
 assert.match(link, /Condições comerciais/);
 
 // Um documento já enviado vira revisão ligada ao original, em vez de ser sobrescrito.
-assert.match(visualizar, /revisaoDeId: orc\.revisaoDeId \?\? orc\.id/);
+// A ligação com o original mora na base única (src/utils/novoDocumento.ts), usada
+// pelo detalhe e pela lista.
+const novoDocumento = ler('../src/utils/novoDocumento.ts');
+assert.match(novoDocumento, /revisaoDeId: revisao \? \(origem\.revisaoDeId \?\? origem\.id\) : undefined/);
+assert.match(visualizar, /criarDocumentoNovo\('revisao'\)/);
+assert.match(visualizar, /baseParaNovoDocumento\(/);
 assert.match(visualizar, /label="Criar revisão"/);
-assert.match(lista, /revisaoDeId: o\.revisaoDeId \?\? o\.id/);
+assert.match(lista, /criarDocumentoNovo\(o, 'revisao'\)/);
+assert.match(lista, /baseParaNovoDocumento\(/);
 assert.match(webForm, /revisaoDeId: o\.revisaoDeId \?\? o\.id/);
 assert.match(webForm, /Criar revisão/);
 assert.match(database, /throw new OrcamentoProtegidoError\(anterior\.status\)/);

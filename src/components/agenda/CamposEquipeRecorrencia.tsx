@@ -12,6 +12,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliInput } from '../OlliInput';
+import { FieldLabel } from '../FieldLabel';
 import { useEquipeResponsaveis, type EstadoEquipe } from '../../hooks/useEquipeResponsaveis';
 import { RECORRENCIAS_AGENDAMENTO, type RecorrenciaAgendamento } from '../../types';
 
@@ -26,17 +27,34 @@ interface SeletorProps {
   rotulo?: string;
 }
 
-export function SeletorResponsavel({ responsavelId, responsavelNome, onChange, equipe, rotulo = 'Responsável' }: SeletorProps) {
+/**
+ * Quem chama e JÁ tem a equipe (a Agenda carrega para os chips de filtro) passa
+ * `equipe`, e o seletor não lê de novo. Sem `equipe`, ele lê sozinho. São dois
+ * componentes para o hook só rodar quando precisa (antes a Agenda lia a equipe
+ * duas vezes: uma para os chips, outra aqui dentro).
+ */
+export function SeletorResponsavel(props: SeletorProps) {
+  if (props.equipe) return <SeletorResponsavelConteudo {...props} equipe={props.equipe} />;
+  return <SeletorResponsavelComEquipePropria {...props} />;
+}
+
+function SeletorResponsavelComEquipePropria(props: SeletorProps) {
+  const proprio = useEquipeResponsaveis();
+  return <SeletorResponsavelConteudo {...props} equipe={proprio} />;
+}
+
+function SeletorResponsavelConteudo({
+  responsavelId, responsavelNome, onChange, equipe, rotulo = 'Responsável',
+}: SeletorProps & { equipe: NonNullable<SeletorProps['equipe']> }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const proprio = useEquipeResponsaveis();
-  const { estado, recarregar } = equipe ?? proprio;
+  const { estado, recarregar } = equipe;
 
   if (estado.status === 'ok' && estado.semEquipe && !responsavelId) return null;
 
   return (
     <View style={{ marginTop: Spacing.base }}>
-      <Text style={styles.label}>{rotulo}</Text>
+      <FieldLabel>{rotulo}</FieldLabel>
       {estado.status === 'carregando' ? (
         <Text style={styles.ajuda}>Carregando equipe…</Text>
       ) : estado.status === 'erro' ? (
@@ -81,7 +99,7 @@ export function CamposRecorrencia({ recorrencia, recorrenciaAteBR, onChange }: R
   const styles = useEstilos(criarEstilos);
   return (
     <View style={{ marginTop: Spacing.base }}>
-      <Text style={styles.label}>Repetir</Text>
+      <FieldLabel>Repetir</FieldLabel>
       <View style={styles.chips}>
         <Chip ativo={!recorrencia} rotulo="Não repete" onPress={() => onChange({ recorrencia: undefined, recorrenciaAteBR: '' })} />
         {RECORRENCIAS_AGENDAMENTO.map((r) => (
@@ -123,7 +141,6 @@ function Chip({ ativo, rotulo, onPress }: { ativo: boolean; rotulo: string; onPr
 
 const criarEstilos = (c: Cores) =>
   StyleSheet.create({
-    label: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
     ajuda: { fontSize: 13, color: c.onSurfaceMuted },
     erroLinha: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     link: { fontSize: 13, fontWeight: '700', color: c.accentLight },

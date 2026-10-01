@@ -26,6 +26,7 @@ import {
 	valorRecibo,
 } from "@radar-dinheiro";
 import { brParaYmd } from "@/olli/datas";
+import { numeroWhatsAppBR } from "../../../../../src/utils/telefoneWhatsapp";
 import type { AgendamentoRow, OrcamentoRow, ReciboRow } from "./helpers";
 import { valorOrcamento } from "./helpers";
 
@@ -234,17 +235,13 @@ export const WHATSAPP_TEXTO = "#0A2547";
 
 /**
  * Telefone BR → número do wa.me (55 + DDD + número), ou `null` quando o telefone
- * não dá para um celular brasileiro plausível. Devolver `null` é obrigatório: um
+ * não dá para um telefone brasileiro plausível. Devolver `null` é obrigatório: um
  * link montado com número torto abre uma conversa com um DESCONHECIDO.
+ *
+ * É a regra ÚNICA do app (`src/utils/telefoneWhatsapp.ts`), reexportada com o nome
+ * que o painel já usa — painel e celular mandam para o MESMO número.
  */
-export function numeroWhatsapp(telefone: string): string | null {
-	let d = (telefone ?? "").replace(/\D/g, "");
-	if (!d) return null;
-	if (d.startsWith("0")) d = d.replace(/^0+/, ""); // "0 11 9..." (operadora)
-	if (d.startsWith("55") && (d.length === 12 || d.length === 13)) return d; // já veio com país
-	if (d.length === 10 || d.length === 11) return `55${d}`; // DDD + fixo/celular
-	return null;
-}
+export const numeroWhatsapp: (telefone: unknown) => string | null = numeroWhatsAppBR;
 
 /** Texto de cobrança EDUCADA — quem manda é o dono, com um toque, sem constranger. */
 export function textoCobranca(p: Parado, empresa?: string): string {

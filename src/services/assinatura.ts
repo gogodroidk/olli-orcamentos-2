@@ -1,8 +1,10 @@
 import { Linking } from 'react-native';
-import { supabase } from './supabase';
+import { supabase, getCurrentUser } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
-import type { PlanoId } from './planos';
+import { getPlanoCacheado, type PlanoId } from './planos';
 import { derivarPlanoEfetivo } from './planoEfetivo';
+import { obterEstadoOfertaComercial } from './cotaEnvios';
+import type { OrigemAcesso } from './assinaturaTextos';
 
 /**
  * Serviço de ASSINATURA (Frente 2) — tudo que a AssinaturaScreen precisa para
@@ -22,8 +24,9 @@ import { derivarPlanoEfetivo } from './planoEfetivo';
  * JWT do Supabase; o worker resolve o customer a partir do id do JWT validado,
  * então um usuário nunca vê dados de outro.
  *
- * Nada aqui lança para a UI: em falha, cada função devolve um default seguro
- * (lista vazia / null / { ok:false }).
+ * Nada aqui lança para a UI. O resumo do plano tem o erro EXPLÍCITO
+ * (`lerResumoAssinatura` → `{ estado: 'erro' }`); faturas e método devolvem um
+ * default (lista vazia / null) que a tela só usa como complemento.
  */
 
 /** Uma fatura do histórico da Stripe (valores em centavos). */
@@ -63,8 +66,11 @@ export interface ResumoAssinatura {
   proximaCobranca?: string;
   /** true se a assinatura está paga e vigente agora. */
   ativo: boolean;
-  /** Origem do acesso efetivo, sem misturar concessão manual com pagamento. */
-  origem?: 'gratis' | 'pagamento' | 'admin';
+  /** Origem do acesso efetivo, sem misturar concessão manual, teste e pagamento. */
+  origem?: OrigemAcesso;
+  /** Fim do acesso efetivo (ISO): período pago, fim do teste grátis ou fim da
+   *  concessão do admin (`admin_override_ate`; ausente = concessão sem prazo). */
+  validoAte?: string;
   /** true = assinatura recorrente que cobra sozinha: no cartão (Stripe) ou pela
    *  Google Play. Pix (e o 12x avulso) NÃO renovam: quem pagou assim precisa pagar
    *  de novo no vencimento. `undefined` = não deu para saber — NÃO é "Pix". */
@@ -73,6 +79,8 @@ export interface ResumoAssinatura {
   renovaPelaPlay?: boolean;
   /** Já comprou no cartão alguma vez (há cliente na Stripe → portal com recibos). */
   temClienteStripe?: boolean;
+  /** Piso do cache local do aparelho: só o PLANO é conhecido (sem status/validade). */
+  parcial?: true;
 }
 
 function mapearPlano(v: unknown): PlanoId {
@@ -95,19 +103,57 @@ async function getToken(): Promise<string | null> {
 // AFIRMA não haver assinatura faz isso). Chaveado por userId para não vazar entre contas.
 let cacheResumo: { userId: string; resumo: ResumoAssinatura } | null = null;
 
+const GRATIS: ResumoAssinatura = { planoEfetivo: 'gratis', planoContratado: 'gratis', ativo: false, origem: 'gratis' };
+
 /**
- * Lê a linha de assinatura do usuário e deriva o estado exibível. 3 ESTADOS: em ERRO de
- * rede/indisponibilidade, reaproveita o último resumo bom DESTE usuário (não rebaixa para
- * grátis); só uma resposta afirmando "sem assinatura" (`!data`) devolve grátis. Nunca lança.
+ * Resultado da leitura da assinatura, com o ERRO explícito (3 estados: a tela
+ * carrega enquanto não há resultado; `ok` é resposta do servidor; `erro` é "não
+ * sei"). Antes um erro de rede devolvia o resumo GRÁTIS, e a tela oferecia o Pro a
+ * quem paga o Empresa.
+ *
+ * `ultimoBom` é o melhor piso disponível no erro: o último resumo lido desta conta
+ * nesta sessão; sem ele, o plano do cache local do aparelho (`getPlanoCacheado`,
+ * o mesmo que segura o usePlano offline) — marcado `parcial`, porque só o PLANO é
+ * conhecido, sem status, validade nem forma de pagamento.
  */
-export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
-  const gratis: ResumoAssinatura = { planoEfetivo: 'gratis', planoContratado: 'gratis', ativo: false };
-  if (!supabase) return gratis;
+export type LeituraAssinatura =
+  | { estado: 'ok'; resumo: ResumoAssinatura }
+  | { estado: 'erro'; ultimoBom?: ResumoAssinatura };
+
+async function pisoDoErro(userId: string | undefined): Promise<LeituraAssinatura> {
+  if (userId && cacheResumo && cacheResumo.userId === userId) return { estado: 'erro', ultimoBom: cacheResumo.resumo };
+  try {
+    const plano = await getPlanoCacheado();
+    if (plano) {
+      return {
+        estado: 'erro',
+        ultimoBom: { planoEfetivo: plano, planoContratado: plano, ativo: plano !== 'gratis', parcial: true },
+      };
+    }
+  } catch {
+    // sem piso: fica só o erro
+  }
+  return { estado: 'erro' };
+}
+
+/**
+ * Lê a linha de assinatura do usuário e deriva o estado exibível. Nunca lança.
+ *
+ * Quem é o usuário vem da SESSÃO LOCAL (`getCurrentUser`), não de `getUser()`: este
+ * último faz GET /auth/v1/user e, offline, devolvia `null` — que virava "grátis".
+ * Sem sessão nenhuma é resposta definitiva (grátis); falha de leitura é `erro`.
+ *
+ * Linha grátis (ou ausente) ainda pode estar no TESTE do Pro, que mora fora da
+ * tabela de assinaturas (RPC `meu_estado_oferta_comercial`, a mesma que o usePlano
+ * consulta). Se essa RPC falhar, também é `erro`: dizer "você está no Grátis" a
+ * quem está testando o Pro é o mesmo upsell mentiroso.
+ */
+export async function lerResumoAssinatura(): Promise<LeituraAssinatura> {
+  if (!supabase) return { estado: 'ok', resumo: GRATIS };
   let userId: string | undefined;
   try {
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
-    if (!user) return gratis;
+    const user = await getCurrentUser();
+    if (!user) return { estado: 'ok', resumo: GRATIS };
     userId = user.id;
 
     const { data, error } = await supabase
@@ -115,24 +161,42 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
       .select('plano, status, current_period_end, stripe_subscription_id, stripe_customer_id, admin_plano_override, admin_override_ativo, admin_override_ate')
       .eq('user_id', user.id)
       .maybeSingle();
-    // ERRO (rede/RLS/5xx) ≠ "não tem assinatura": preserva o último bom deste usuário.
-    if (error) return cacheResumo && cacheResumo.userId === userId ? cacheResumo.resumo : gratis;
-    // Resposta afirmativa SEM linha: genuinamente grátis (e memoriza como bom).
-    if (!data) { cacheResumo = { userId, resumo: gratis }; return gratis; }
+    // ERRO (rede/RLS/5xx) ≠ "não tem assinatura".
+    if (error) return await pisoDoErro(userId);
 
-    const status = typeof data.status === 'string' ? data.status : undefined;
-    const proximaCobranca = typeof data.current_period_end === 'string' ? data.current_period_end : undefined;
-    const efetivo = derivarPlanoEfetivo(data);
-    const planoContratado = mapearPlano(data.plano);
+    const efetivo = data ? derivarPlanoEfetivo(data) : null;
+    const planoContratado = data ? mapearPlano(data.plano) : 'gratis';
+    const status = typeof data?.status === 'string' ? data.status : undefined;
+    const proximaCobranca = typeof data?.current_period_end === 'string' ? data.current_period_end : undefined;
+    const temClienteStripe = typeof data?.stripe_customer_id === 'string' && data.stripe_customer_id.length > 0;
+
+    if (!efetivo || efetivo.planoEfetivo === 'gratis') {
+      const oferta = await obterEstadoOfertaComercial();
+      if (!oferta) return await pisoDoErro(userId);
+      const resumo: ResumoAssinatura =
+        oferta.trialEstado === 'active' && oferta.planoEfetivo === 'pro' && oferta.trialTerminaEm
+          ? {
+              planoEfetivo: 'pro',
+              planoContratado,
+              ativo: true,
+              origem: 'trial',
+              validoAte: oferta.trialTerminaEm,
+              renovaSozinho: false,
+              temClienteStripe,
+            }
+          : { ...GRATIS, planoContratado, status, proximaCobranca, temClienteStripe };
+      cacheResumo = { userId, resumo };
+      return { estado: 'ok', resumo };
+    }
 
     // Renova sozinho? Stripe responde nesta mesma linha. Sem Stripe, um plano PAGO
     // pode ser Pix (não renova) ou Google Play (renova pela loja) — e confundir os
     // dois ofereceria "Renovar com Pix" a quem já é cobrado pela Play. Na dúvida
     // (leitura falhou), `undefined`: a tela não oferece pagar de novo.
-    const temStripe = typeof data.stripe_subscription_id === 'string' && data.stripe_subscription_id.length > 0;
+    const temStripe = typeof data?.stripe_subscription_id === 'string' && data.stripe_subscription_id.length > 0;
     let renovaSozinho: boolean | undefined = temStripe;
     let renovaPelaPlay = false;
-    if (!temStripe && efetivo.origem === 'pagamento' && efetivo.planoEfetivo !== 'gratis') {
+    if (!temStripe && efetivo.origem === 'pagamento') {
       const play = await lerProdutoPlay(user.id);
       if (play.estado === 'indisponivel') renovaSozinho = undefined;
       else if (play.produto) { renovaSozinho = true; renovaPelaPlay = true; }
@@ -143,17 +207,28 @@ export async function getResumoAssinatura(): Promise<ResumoAssinatura> {
       planoContratado,
       status,
       proximaCobranca,
-      ativo: efetivo.planoEfetivo !== 'gratis',
+      ativo: true,
       origem: efetivo.origem,
+      validoAte: efetivo.validoAte,
       renovaSozinho,
       renovaPelaPlay,
-      temClienteStripe: typeof data.stripe_customer_id === 'string' && data.stripe_customer_id.length > 0,
+      temClienteStripe,
     };
     cacheResumo = { userId, resumo };
-    return resumo;
+    return { estado: 'ok', resumo };
   } catch {
-    return userId && cacheResumo && cacheResumo.userId === userId ? cacheResumo.resumo : gratis;
+    return await pisoDoErro(userId);
   }
+}
+
+/**
+ * Atalho para quem só quer o resumo (faixa de lembrete): o do servidor, senão o
+ * último bom completo, senão `null` = "não sei" — nunca o Grátis inventado por um erro.
+ */
+export async function getResumoAssinatura(): Promise<ResumoAssinatura | null> {
+  const leitura = await lerResumoAssinatura();
+  if (leitura.estado === 'ok') return leitura.resumo;
+  return leitura.ultimoBom && !leitura.ultimoBom.parcial ? leitura.ultimoBom : null;
 }
 
 /** De onde vem a assinatura na Google Play, com o estado de carga explícito. */
@@ -173,8 +248,8 @@ export type AssinaturaNaPlay =
 export async function getAssinaturaNaPlay(): Promise<AssinaturaNaPlay> {
   if (!supabase) return { estado: 'indisponivel' };
   try {
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
+    // Sessão LOCAL (sem rede): offline, getUser() voltava null e virava "não é da Play".
+    const user = await getCurrentUser();
     if (!user) return { estado: 'ok', produto: null };
     return await lerProdutoPlay(user.id);
   } catch {
