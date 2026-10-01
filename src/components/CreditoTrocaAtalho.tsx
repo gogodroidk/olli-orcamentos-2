@@ -21,8 +21,9 @@ import { resumoPedidoTroca, type EstadoPedidoTroca } from '../services/creditoTr
  *
  * Encaixe: hoje em PlanosScreen. Para Conta/Home (bloqueadas nesta leva):
  *   import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
- *   <CreditoTrocaAtalho />                  // convite + estado do pedido
- *   <CreditoTrocaAtalho ocultarSemPedido /> // Home: só aparece quando há pedido (aviso de aprovado/recusado)
+ *   - Conta: <CreditoTrocaAtalho /> (convite + estado do pedido);
+ *   - Home: <CreditoTrocaAtalho ocultarSemPedido /> (só aparece quando há pedido:
+ *     aviso de aprovado/recusado).
  */
 export function CreditoTrocaAtalho({ ocultarSemPedido = false }: { ocultarSemPedido?: boolean }) {
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
