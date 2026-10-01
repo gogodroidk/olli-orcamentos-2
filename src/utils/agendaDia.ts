@@ -157,3 +157,44 @@ export function rotuloQuandoVisita(a: ComHorario, agora: Date = new Date()): str
   if (mesmoDia(d, amanha)) return `Amanhã · ${hh}`;
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} · ${hh}`;
 }
+
+/**
+ * Em que pé está cada visita da ROTA DE HOJE (Painel da Rua, item 2.6):
+ *  - `feita`     → concluída;
+ *  - `agora`     → em atendimento (já começou, ainda não terminou);
+ *  - `sem_baixa` → o horário já passou e ninguém deu baixa;
+ *  - `proxima`   → a primeira que ainda não começou;
+ *  - `depois`    → as seguintes.
+ */
+export type EstadoParadaDia = 'feita' | 'agora' | 'sem_baixa' | 'proxima' | 'depois';
+
+export interface ParadaDoDia<T> {
+  visita: T;
+  estado: EstadoParadaDia;
+}
+
+/**
+ * A rota de hoje em sequência: as visitas do dia, em ordem de horário, cada uma
+ * com o seu estado. Cancelada e excluída ficam de fora (não são parada); a
+ * concluída fica, marcada como `feita` — o prestador vê o dia inteiro, não só o
+ * que falta. Linha com `inicio` ilegível sai (não dá para pôr na sequência).
+ */
+export function montarRotaDoDia<T extends Agendamento>(itens: readonly T[], agora: Date = new Date()): ParadaDoDia<T>[] {
+  const t = agora.getTime();
+  const validas = itens
+    .filter((a) => !a.excluidoEm && a.status !== 'cancelado' && Number.isFinite(new Date(a.inicio).getTime()))
+    .slice()
+    .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
+  let proximaMarcada = false;
+  return validas.map((visita): ParadaDoDia<T> => {
+    if (visita.status === 'concluido') return { visita, estado: 'feita' };
+    if (emAndamento(visita, agora)) return { visita, estado: 'agora' };
+    const fim = fimEfetivoMs(visita);
+    if (fim !== null && fim <= t) return { visita, estado: 'sem_baixa' };
+    if (!proximaMarcada) {
+      proximaMarcada = true;
+      return { visita, estado: 'proxima' };
+    }
+    return { visita, estado: 'depois' };
+  });
+}

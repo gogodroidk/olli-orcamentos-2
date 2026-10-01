@@ -118,3 +118,13 @@ export function formatDateBR(iso: string): string {
   if (!isRealDate(Number(d), Number(m), Number(y))) return '';
   return `${d}/${m}/${y}`;
 }
+
+/**
+ * Há quanto tempo, em português de gente: 0 → "desde hoje" (nunca "há 0 dias"),
+ * 1 → "há 1 dia", N → "há N dias". Relógio adiantado (negativo) conta como hoje.
+ */
+export function haQuantosDias(n: number): string {
+  const d = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  if (d === 0) return 'desde hoje';
+  return `há ${d} ${d === 1 ? 'dia' : 'dias'}`;
+}

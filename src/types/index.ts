@@ -1,3 +1,4 @@
+import type { GeoPrecisao } from '../utils/geoCliente.ts';
 import type { VerticalId, FerramentaId } from '../services/verticais';
 
 /**
@@ -217,6 +218,19 @@ export interface Cliente {
    * item excluído). Ver migration 20260714_atualizado_em.sql.
    */
   atualizadoEm?: string;
+  /**
+   * GEO (Onda I1, migration 20261002100000). Ponto do cliente em graus decimais:
+   * `lat`, `lon` e `geoPrecisao` andam JUNTOS (os três ou nenhum). Ausente = ainda
+   * não sabemos — nunca 0. Quem preenche é a geocodificação ao salvar
+   * (`database.ts` → POST /geo do worker) ou o backfill do cron. Regras em
+   * `src/utils/geoCliente.ts`.
+   */
+  lat?: number;
+  lon?: number;
+  /** Código IBGE do município (7 dígitos) — chave dos alertas oficiais. Independe do ponto. */
+  ibge?: string;
+  /** De onde veio o ponto: 'numero' | 'rua' | 'cep' | 'bairro' | 'cidade'. */
+  geoPrecisao?: GeoPrecisao;
 }
 
 export interface ServicoItem {
@@ -610,6 +624,13 @@ export interface Agendamento {
    * ligam à OS pelo id determinístico (`ag_cv_…` ↔ `os_cv_…`), mesmo sem este campo.
    */
   ordemServicoId?: string;
+  /**
+   * Serviço ao ar livre ou em altura (condensadora, telhado, fachada, jardim,
+   * piscina…) — é o que liga a sugestão de remarcar por chuva. AUSENTE = não
+   * informado, e isso NÃO é "interna": quem lê nunca trata ausência como `false`.
+   * O app sugere pelo ofício (`verticais.ts` → `sugerirVisitaExterna`).
+   */
+  externa?: boolean;
 }
 
 /**

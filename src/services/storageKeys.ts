@@ -187,6 +187,47 @@ export const PULL_INICIAL_OK_PREFIX = 'olli.sync.pull_inicial_ok_';
  * quais tabelas a nuvem NÃO entregou. Diagnóstico de conta — entra na allow-list.
  */
 export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
+/**
+ * Última visão da Agenda (Dia/Semana/Mês). Preferência do APARELHO (como o
+ * onboarding): fica fora da allow-list de limpeza; perder é inofensivo (volta "Dia").
+ */
+export const AGENDA_VISAO_KEY = 'olli.agenda.visao';
+
+/**
+ * Coordenada da CIDADE do cadastro (`{ chave, lat, lon }`), usada só como
+ * reserva do clima do Início quando o aparelho não tem localização (services/
+ * climaReserva). Guardada para localizar a cidade UMA vez por aparelho (CEP ou
+ * OpenStreetMap, grátis), não a cada abertura. Guarda também a fonte, para o
+ * crédito do OSM. Diz onde a empresa fica → dado de conta, sai no logout.
+ */
+export const CLIMA_COORD_CIDADE_KEY = 'olli.clima.coordCidade.v1';
+
+/**
+ * Marcador "estou fotografando para a OS X" (services/capturaFotoOS). Gravado
+ * ANTES de abrir a câmera; se o Android matar o app no meio, o boot o encontra e
+ * reabre a OS com a foto. Dado de conta (id de OS) → entra na allow-list.
+ */
+export const CAPTURA_OS_KEY = 'olli.os.capturaEmAndamento';
+
+/**
+ * Prefixo dos rascunhos por campo (`olli.rascunho.campo.<escopo>.<campo>`,
+ * services/rascunhoCampo). Texto digitado pela pessoa (nome de cliente, título
+ * de OS): é dado de conta, então some no logout — mas a chave é dinâmica e não
+ * cabe na allow-list; `clearAllLocalData` apaga por prefixo.
+ */
+export const RASCUNHO_CAMPO_PREFIX = 'olli.rascunho.campo.';
+
+/**
+ * Prefixo da fila de envio de fotos da OS, UMA POR USUÁRIO
+ * (`olli.sync.fotos.v1.<userId>`, services/filaFotosNativa).
+ *
+ * ⚠️ **NÃO** entra na allow-list e NÃO é apagada no logout, de propósito: ela é
+ * a única lembrança de que uma foto tirada sem sinal ainda não subiu. Apagá-la
+ * no "sair" faria a foto ficar para sempre só no aparelho, sem selo e sem
+ * alerta. Por ser por usuário, outra conta no mesmo aparelho nunca a lê nem a
+ * envia (o envio confere que a sessão é do dono da fila).
+ */
+export const FILA_FOTOS_PREFIX = 'olli.sync.fotos.v1.';
 
 /**
  * Orçamentos que já tiveram a celebração de "aprovado"/"pago" no detalhe
@@ -229,5 +270,7 @@ export const APP_DATA_STORAGE_KEYS = [
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
   CELEBRACOES_KEY,
+  CAPTURA_OS_KEY,
+  CLIMA_COORD_CIDADE_KEY,
   ULTIMO_PULL_KEY,
 ];

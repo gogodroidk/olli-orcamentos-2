@@ -59,6 +59,9 @@ import type {
 } from '../types';
 import { dataBrParaIsoSeguro } from '../utils/date';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
+import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisual';
+import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCliente';
+import { externaParaSqlite, lerExterna } from './verticais';
 import {
   erroEhColisaoNumero,
   numeroDocumentoAposColisao,
@@ -144,7 +147,31 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
     // Relógio de sync. NUNCA null: a coluna na nuvem é NOT NULL, e um objeto vindo
     // de snapshot antigo (backup pré-v3) não tem o campo — caímos em criadoEm.
     atualizado_em: c.atualizadoEm ?? c.criadoEm,
+    ...geoParaRow(c),
   };
+}
+
+/**
+ * GEO do cliente (migration 20261002100000). Vai SÓ o que este aparelho SABE: um
+ * campo vazio aqui é "não sei", e mandar `null` apagaria o ponto que o backfill do
+ * worker já gravou na nuvem. Endereço trocado não depende disto: o trigger da
+ * nuvem zera o ponto velho quando o UPDATE muda o endereço sem trazer ponto novo.
+ * Servidor sem a migration: o push cai para sem as colunas (COLUNAS_CLIENTE_GEO).
+ */
+const COLUNAS_CLIENTE_GEO = ['lat', 'lon', 'ibge', 'geo_precisao'] as const;
+let clientesSemColunasGeo = false;
+
+function geoParaRow(c: Cliente): Record<string, unknown> {
+  if (clientesSemColunasGeo) return {};
+  const g = geoParaColunas(c);
+  const row: Record<string, unknown> = {};
+  if (g.lat !== null && g.lon !== null && g.geo_precisao !== null) {
+    row.lat = g.lat;
+    row.lon = g.lon;
+    row.geo_precisao = g.geo_precisao;
+  }
+  if (g.ibge !== null) row.ibge = g.ibge;
+  return row;
 }
 
 function servicoToRow(s: ServicoItem): Record<string, unknown> {
@@ -270,6 +297,14 @@ let agendaSemColunasEquipe = false;
 const COLUNAS_AGENDA_EXCECOES = ['excecoes', 'ordem_servico_id'] as const;
 let agendaSemColunasExcecoes = false;
 
+/**
+ * Visita externa (migration 20261002100000). Degrau MAIS NOVO da escada: servidor
+ * sem a migration recusa só esta coluna, então ela cai primeiro. Com o flag ligado
+ * (ou pull sem a coluna), o pull preserva o valor local em vez de apagar.
+ */
+const COLUNA_AGENDA_EXTERNA = 'externa' as const;
+let agendaSemColunaExterna = false;
+
 function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): boolean {
   return error?.code === '42703' || error?.code === 'PGRST204';
 }
@@ -303,6 +338,10 @@ function agendamentoToRow(a: Agendamento): Record<string, unknown> {
     // Objeto (vira jsonb). Sem recorrência não há exceção: manda {} (o default da coluna).
     row.excecoes = a.recorrencia && a.excecoes ? a.excecoes : {};
     row.ordem_servico_id = a.ordemServicoId ?? null;
+  }
+  if (!agendaSemColunaExterna) {
+    // null = "não informado" (a coluna é nullable de propósito; nunca vira false).
+    row[COLUNA_AGENDA_EXTERNA] = lerExterna(a.externa) ?? null;
   }
   return row;
 }
@@ -380,7 +419,14 @@ function rowToCliente(row: any): Cliente {
     // Relógio remoto: é o que o localUpsert compara com o local para decidir se
     // esta linha da nuvem pode ou não sobrescrever a versão deste aparelho.
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined,
+    ...lerGeoDaLinhaNuvem(row),
   };
+}
+
+/** `select('*')` sem a coluna = servidor sem a migration de geo: liga o modo "preservar o local". */
+function lerGeoDaLinhaNuvem(row: any) {
+  if (row && typeof row === 'object' && !('lat' in row)) clientesSemColunasGeo = true;
+  return lerGeoDaLinha(row);
 }
 
 function rowToServico(row: any): ServicoItem {
@@ -459,6 +505,7 @@ function rowToAgendamento(row: any): Agendamento {
   // `select('*')` sem a coluna = servidor ainda sem a migration 20261001120000: o
   // upsert local passa a preservar exceções/OS deste aparelho (ver localUpsertAgendamento).
   if (row && typeof row === 'object' && !('excecoes' in row)) agendaSemColunasExcecoes = true;
+  if (row && typeof row === 'object' && !(COLUNA_AGENDA_EXTERNA in row)) agendaSemColunaExterna = true;
   return {
     id: row.id,
     clienteId: row.cliente_id ?? undefined,
@@ -482,6 +529,7 @@ function rowToAgendamento(row: any): Agendamento {
     contratoId: row.contrato_id ?? undefined,
     excecoes: lerExcecoes(row.excecoes),
     ordemServicoId: row.ordem_servico_id ?? undefined,
+    externa: lerExterna(row.externa),
   };
 }
 
@@ -1012,6 +1060,18 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
     let { error } = await supabase
       .from(remoteNome(table))
       .upsert(row, { onConflict: ON_CONFLICT[table] });
+    if (error && table === 'clientes' && !clientesSemColunasGeo && erroDeColunaDesconhecida(error)) {
+      // Servidor sem a migration de geo: reenvia sem as colunas (ver COLUNAS_CLIENTE_GEO).
+      clientesSemColunasGeo = true;
+      for (const c of COLUNAS_CLIENTE_GEO) delete (row as Record<string, unknown>)[c];
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
+    if (error && table === 'agendamentos' && !agendaSemColunaExterna && erroDeColunaDesconhecida(error)) {
+      // Servidor sem a migration da visita externa: reenvia sem ela (ver COLUNA_AGENDA_EXTERNA).
+      agendaSemColunaExterna = true;
+      delete (row as Record<string, unknown>)[COLUNA_AGENDA_EXTERNA];
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
     if (error && table === 'agendamentos' && !agendaSemColunasExcecoes && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration de exceções: reenvia sem elas (ver COLUNAS_AGENDA_EXCECOES).
       agendaSemColunasExcecoes = true;
@@ -1319,15 +1379,34 @@ async function localUpsertCliente(c: Cliente): Promise<void> {
   // Guard de conflito: se este aparelho escreveu depois, a linha remota não entra.
   if (await localMaisNovoColuna('clientes', c.id, c.atualizadoEm)) return;
   const db = await getDb();
+  // GEO: a nuvem sem ponto é "não sei", não "apagou" (inclusive a nuvem sem a
+  // migration, que nem tem as colunas). Se o endereço é o MESMO e este aparelho já
+  // tem ponto/IBGE (geocodificou ao salvar e o espelho ainda não subiu), mantém o
+  // local. Endereço diferente = o ponto local é de outro lugar e cai.
+  let geo = geoParaColunas(c);
+  const local = await db.getFirstAsync<any>(
+    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao FROM clientes WHERE id = ?', [c.id],
+  );
+  if (local) {
+    const geoLocal = geoParaColunas(lerGeoDaLinha(local));
+    const mudou = mudancaDeEndereco(local, c);
+    if (!mudou.coordenada && geo.lat === null && geoLocal.lat !== null) {
+      geo = { ...geo, lat: geoLocal.lat, lon: geoLocal.lon, geo_precisao: geoLocal.geo_precisao };
+    }
+    if (!mudou.municipio && geo.ibge === null && geoLocal.ibge !== null) {
+      geo = { ...geo, ibge: geoLocal.ibge };
+    }
+  }
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
-       (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em,
+        lat, lon, ibge, geo_precisao)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [c.id, c.nome, c.telefone ?? null, c.cpf ?? null, c.cnpj ?? null,
      c.endereco ?? null, c.complemento ?? null, c.estado ?? null,
      c.cidade ?? null, c.cep ?? null, c.criadoEm, c.excluidoEm ?? null,
-     c.atualizadoEm ?? c.criadoEm],
+     c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao],
   );
 }
 
@@ -1410,6 +1489,12 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   if (await localMaisNovoAgendamento(a.id, a.atualizadoEm)) return;
   let excecoes = a.recorrencia ? excecoesParaTexto(a.excecoes) : null;
   let ordemServicoId = a.ordemServicoId ?? null;
+  let externa = externaParaSqlite(a.externa);
+  if (agendaSemColunaExterna) {
+    // Nuvem sem a coluna: o vazio que veio é "não sei". Mantém o que este aparelho tem.
+    const local = await db.getFirstAsync<{ externa: number | null }>('SELECT externa FROM agendamentos WHERE id = ?', [a.id]);
+    if (local) externa = externaParaSqlite(lerExterna(local.externa));
+  }
   if (agendaSemColunasExcecoes) {
     // A nuvem não tem as colunas: o que veio vazio é "não sei", não "apagou".
     // Mantém o que este aparelho tem (lerExcecoes valida; ilegível lança e o pull
@@ -1426,13 +1511,13 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO agendamentos
        (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em,
-        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id, externa)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
      a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
      a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null,
      a.responsavelId ?? null, a.responsavelNome ?? null, a.recorrencia ?? null,
-     a.recorrenciaAte ?? null, a.contratoId ?? null, excecoes, ordemServicoId],
+     a.recorrenciaAte ?? null, a.contratoId ?? null, excecoes, ordemServicoId, externa],
   );
 }
 
@@ -2424,6 +2509,8 @@ function rowToClienteLocal(r: any): Cliente {
     excluidoEm: r.excluido_em ?? undefined,
     // Idem para o relógio: sem ele o push mandaria atualizado_em=null (coluna NOT NULL).
     atualizadoEm: r.atualizado_em ?? r.criado_em,
+    // Geo local sobe junto (o que o aparelho geocodificou e ainda não espelhou).
+    ...lerGeoDaLinha(r),
   };
 }
 function rowToServicoLocal(r: any): ServicoItem {
@@ -2474,6 +2561,8 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     // Idem: sem estes, o push apagaria na nuvem as exceções da série e a OS ligada.
     excecoes: lerExcecoes(r.excecoes),
     ordemServicoId: r.ordem_servico_id ?? undefined,
+    // E a visita externa (0/1/NULL no SQLite → boolean | undefined).
+    externa: lerExterna(r.externa),
   };
 }
 
@@ -2855,6 +2944,20 @@ function syncAbortado(geracao: number | undefined): boolean {
 }
 
 /**
+ * Botão [Tentar agora] do SeloSync (I0). Força o envio das fotos paradas —
+ * ignorando a espera crescente e incluindo as que a nuvem recusou — e dispara um
+ * sync completo em seguida, em segundo plano. Devolve o resultado das fotos (null
+ * = envio desligado ou não deu para ler a fila). Nunca lança.
+ */
+export async function tentarSincronizarAgora(): Promise<{ enviadas: number; falhas: number; erroLeitura: boolean } | null> {
+  const resultado = await import('./filaFotosNativa')
+    .then(m => m.enviarFotosPendentes({ forcar: true }))
+    .catch(() => null);
+  void syncOnLogin();
+  return resultado;
+}
+
+/**
  * No login (ordem importa):
  *  1) pullAll()           — aplica exclusões da nuvem, traz o estado da nuvem e
  *                           funde contadores. Vem ANTES para o aparelho recém-
@@ -2879,6 +2982,43 @@ function syncAbortado(geracao: number | undefined): boolean {
  * Cancelável por `abortarSyncEmAndamento` (checagem de geração antes de gravar).
  */
 export async function syncOnLogin(): Promise<void> {
+  if (syncing) return;
+  const p = executarSyncOnLogin();
+  syncEmVoo = p;
+  void p.finally(() => {
+    if (syncEmVoo === p) syncEmVoo = null;
+  });
+  return p;
+}
+
+/** O sync que está rodando agora (para "puxar para atualizar" esperar por ele), ou null. */
+let syncEmVoo: Promise<void> | null = null;
+
+/**
+ * PUXAR PARA ATUALIZAR — busca da nuvem AGORA. Antes as telas chamavam
+ * `syncOnLogin` direto: se o sync do boot ainda estava rodando (push longo), a
+ * trava de reentrância devolvia na hora, a tela relia só o SQLite e a visita
+ * recém-atribuída só aparecia reabrindo o app. Aqui: espera o sync em voo e roda
+ * um NOVO pull. Responde 'ok' (veio da nuvem), 'falhou' (o que está na tela é o
+ * do aparelho) ou 'demorou' (passou do teto; segue em segundo plano e a tela
+ * recarrega sozinha pelo `onSyncAplicado`). Nunca lança.
+ */
+export async function sincronizarAgora(tetoMs = 20_000): Promise<ResultadoAtualizacao> {
+  try {
+    return await atualizarDaNuvem({
+      emVoo: () => syncEmVoo,
+      sincronizar: () => syncOnLogin(),
+      ultimoPull: () => ultimoPull,
+      tetoMs,
+      agora: () => Date.now(),
+      esperar: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    });
+  } catch {
+    return 'falhou';
+  }
+}
+
+async function executarSyncOnLogin(): Promise<void> {
   if (syncing) return;
   syncing = true;
   const geracao = syncGeneration;
@@ -2947,6 +3087,16 @@ export async function syncOnLogin(): Promise<void> {
       .then(m => m.espelharVersoesPendentes())
       .catch(() => 0);
     if (syncAbortado(geracao)) return;
+    // Fotos da OS (I0 · selo "no aparelho/enviada"): o arquivo já está salvo no
+    // aparelho desde o clique; aqui só sobe a cópia para o bucket privado. Vem
+    // DEPOIS das linhas (a OS existe na nuvem antes da foto) e respeita a espera
+    // crescente de cada foto. Fila própria e por usuário (filaFotosNativa).
+    // SEM await: subir dezenas de fotos em 3G leva minutos, e enquanto o
+    // syncOnLogin não termina (`syncing`) nenhum outro sync roda — o orçamento
+    // editado ficaria preso atrás das fotos. A fila se serializa sozinha.
+    void import('./filaFotosNativa')
+      .then(m => m.enviarFotosPendentes())
+      .catch(() => null);
     await podarTombstonesAntigos();
     if (syncAbortado(geracao)) return;
     // Extras chave-valor (checklist do Hoje, snooze do radar, relatórios diários)
