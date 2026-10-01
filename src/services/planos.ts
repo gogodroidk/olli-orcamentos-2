@@ -106,7 +106,13 @@ export async function getPlanoAtual(): Promise<PlanoAtual> {
     let resultado: DadosPlanoCache = data ? derivarPlano(data) : { plano: 'gratis' as PlanoId, origem: 'gratis' };
     if (resultado.plano === 'gratis') {
       const oferta = await obterEstadoOfertaComercial();
-      if (oferta?.trialEstado === 'active' && oferta.planoEfetivo === 'pro' && oferta.trialTerminaEm) {
+      // A oferta é quem diz se há TESTE do Pro ativo ou se a EMPRESA (tenant) paga.
+      // Se a leitura dela falhou, "grátis" seria um palpite: com ele os serviços em
+      // segundo plano CANCELARIAM o follow-up de quem está no teste e o técnico de
+      // uma empresa paga perderia a hora de sair. Falha aqui = falha da leitura
+      // (cai no cache da mesma conta ou em `indisponivel`), nunca "grátis confirmado".
+      if (oferta === null) throw new Error('oferta_comercial_indisponivel');
+      if (oferta.trialEstado === 'active' && oferta.planoEfetivo === 'pro' && oferta.trialTerminaEm) {
         resultado = {
           plano: 'pro',
           status: 'trialing',

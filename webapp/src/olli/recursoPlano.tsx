@@ -24,6 +24,7 @@ import { Skeleton } from "@/ui/skeleton";
 import {
 	estadoAcessoRecurso,
 	planoMinimoDoRecurso,
+	RECURSOS_DO_TENANT,
 	type EstadoAcessoRecurso,
 	type Recurso,
 } from "../../../src/services/entitlements";
@@ -46,7 +47,13 @@ export function useRecursoPlanoPainel(recurso: Recurso): EstadoRecursoPainel {
 			plano: assinatura.data?.planoEfetivo ?? "gratis",
 			planoTenant,
 			carregando: assinatura.isLoading || oferta.isLoading,
-			confirmado: !assinatura.isError && !!assinatura.data,
+			// Recurso do TENANT (o técnico/gestor usa o plano da empresa): sem a oferta lida,
+			// "não tem" seria palpite — rebaixaria o membro de uma empresa paga por erro de
+			// leitura. `obterEstadoOfertaComercial` devolve `null` na falha (não lança).
+			confirmado:
+				!assinatura.isError &&
+				!!assinatura.data &&
+				(!RECURSOS_DO_TENANT.has(recurso) || (!oferta.isError && oferta.data != null)),
 		},
 		recurso,
 	);

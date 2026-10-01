@@ -97,7 +97,28 @@ begin
     );
   end if;
 
-  -- Sem teto: todo envio do Grátis é registrado e permitido.
+  -- Sem teto para o PRESTADOR: todo envio do Grátis é permitido. O REGISTRO, porém,
+  -- tem um teto técnico por tenant/mês (2000 linhas): sem ele, qualquer conta
+  -- grátis com sessão chamaria esta RPC em loop com ids inventados e encheria a
+  -- tabela sem limite (antes a cota de 5 fazia esse papel por acaso). Passado o
+  -- teto, o envio SEGUE permitido, só não é registrado de novo — o registro existe
+  -- para o 1º envio (teste do Pro) e para o funil, e nenhum dos dois precisa da
+  -- linha 2001. `requer_confirmacao: false` + token nulo é o mesmo formato que o
+  -- Pro já devolve, aceito pelo APK antigo e pelo novo.
+  select count(*) into v_usados
+  from public.orcamento_envios_gratis e
+  where e.tenant_id = v_contexto.tenant_id and e.periodo = v_periodo;
+  if v_usados >= 2000 then
+    select estado into v_trial_estado from public.trials_comerciais where tenant_id = v_contexto.tenant_id;
+    return jsonb_build_object(
+      'permitido', true, 'plano_efetivo', 'gratis', 'usados', v_usados,
+      'restantes', null, 'contabilizado_agora', false,
+      'requer_confirmacao', false, 'reserva_token', null,
+      'trial_elegivel', v_trial_estado = 'eligible', 'motivo', 'dentro_da_cota'
+    );
+  end if;
+
+  -- Abaixo do teto técnico: o envio é registrado (e permitido).
   insert into public.orcamento_envios_gratis (
     tenant_id, owner_user_id, periodo, orcamento_id, primeiro_canal, criado_por
   ) values (

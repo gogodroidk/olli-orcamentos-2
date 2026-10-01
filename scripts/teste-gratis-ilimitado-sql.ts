@@ -199,6 +199,38 @@ function apkAntigoPermite(v: Record<string, unknown>): boolean {
   caso('plano pago: responde plano_pago, sem registro');
 }
 
+// ─── 3b. Teto TÉCNICO do registro: nunca barra, só para de gravar ─────────────
+// Sem cota, a RPC é chamável em loop com ids inventados; o registro tem um teto de
+// 2000 linhas por tenant/mês para a tabela não crescer sem limite. O envio segue.
+{
+  const dono = await novoUsuario();
+  await db.query(
+    `insert into public.trials_comerciais
+       (tenant_id, owner_user_id, estado, gatilho, iniciado_em, termina_em, encerrado_em, criado_por)
+     values ($1, $1, 'ended', 'pro_attempt', now() - interval '40 days', now() - interval '26 days', now() - interval '26 days', $1)`,
+    [dono],
+  );
+  await db.query(
+    `insert into public.orcamento_envios_gratis (tenant_id, owner_user_id, periodo, orcamento_id, primeiro_canal, criado_por, estado, confirmado_em)
+     select $1, $1, date_trunc('month', timezone('UTC', now()))::date, 'spam-' || g, 'pdf', $1, 'confirmado', now()
+     from generate_series(1, 2000) g`,
+    [dono],
+  );
+  const r = await reservar(dono, 'depois-do-teto');
+  assert.equal(r.permitido, true, 'passado o teto técnico o envio continua permitido');
+  assert.equal(r.motivo, 'dentro_da_cota');
+  assert.equal(r.requer_confirmacao, false);
+  assert.equal(r.reserva_token, null);
+  assert.equal(apkAntigoPermite(r), true, 'o APK antigo também envia');
+  assert.equal(interpretarReservaEnvio(r).permitido, true);
+  const n = await db.query<{ n: number }>(
+    'select count(*)::int as n from public.orcamento_envios_gratis where tenant_id = $1',
+    [dono],
+  );
+  assert.equal(n.rows[0].n, 2000, 'nenhuma linha nova depois do teto');
+  caso('teto técnico do registro (2000/mês): envio permitido, tabela não cresce');
+}
+
 // ─── 4. Seção 3 (lembretes por e-mail) compila ────────────────────────────────
 // A função é uma cópia longa de 20260929200000; criar num Postgres de verdade pega
 // erro de sintaxe do PL/pgSQL e do SQL embutido antes do gate de produção.
