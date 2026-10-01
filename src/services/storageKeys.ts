@@ -76,6 +76,12 @@ export const RITUAL_FECHAR_DIA_TOGGLE_KEY = 'olli.ritual.fecharDia.ativo';
  * quando ausente (domingo mudo por padrão — docs/ENXAME/COMUNICACAO_VISAO.md).
  */
 export const RITUAL_DOMINGO_TOGGLE_KEY = 'olli.ritual.domingo.ativo';
+/**
+ * Ids de orçamento cuja resposta do cliente (aprovou/recusou no link público) já
+ * virou notificação local "Cliente aprovou"/"Cliente recusou" (services/
+ * followUpLembretes). Guarda o userId junto: outra conta no aparelho começa do zero.
+ */
+export const RESPOSTAS_AVISADAS_KEY = 'olli.followup.respostasAvisadas';
 
 /**
  * Carimbos ISO da ÚLTIMA escrita LOCAL de cada "extra" sincronizado
@@ -204,6 +210,7 @@ export const APP_DATA_STORAGE_KEYS = [
   RITUAL_BOM_DIA_TOGGLE_KEY,
   RITUAL_FECHAR_DIA_TOGGLE_KEY,
   RITUAL_DOMINGO_TOGGLE_KEY,
+  RESPOSTAS_AVISADAS_KEY,
   PULSO_ULTIMO_KEY,
   FORMAS_PAGAMENTO_PADRAO_KEY,
   SAIDA_CACHE_KEY,

@@ -36,6 +36,7 @@ import { Empresa, SEGMENTOS } from '../types';
 import { getEmpresa, clearAllLocalData } from '../database/database';
 import { cancelarTodosLembretes, temPermissaoNotificacao, pedirPermissaoNotificacao, estadoPermissaoNotificacao } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
+import { cancelarFollowUpLembretes } from '../services/followUpLembretes';
 import {
   cancelarRitualDiario, reagendarRitualDiario, getPreferenciasRitual, setPreferenciaRitual,
 } from '../services/ritualDiario';
@@ -556,6 +557,7 @@ export default function ContaScreen() {
               await cancelarTodosLembretes().catch(() => {});
               await cancelarTodosLembretesPmoc().catch(() => {});
               await cancelarRitualDiario().catch(() => {});
+              await cancelarFollowUpLembretes().catch(() => {});
               // O que este botão promete manter são os DADOS — e eles vivem na
               // partição SQLite desta conta, que ninguém mais abre. O AsyncStorage
               // NÃO é particionado: a conversa com a OLLI, o checklist do dia, o

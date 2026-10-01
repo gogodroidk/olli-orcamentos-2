@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
@@ -101,6 +102,8 @@ export default function NovoOrcamentoScreen() {
   // Params de pré-carga (CRM): cliente pré-selecionado e/ou 1 item vindo de um
   // diagnóstico / código de erro. Lidos só na criação (não no modo edição).
   const prefillClienteId = (route.params as any)?.clienteId as string | undefined;
+  // Autopilot: nome do cliente sem cadastro (ou fallback se o id não for achado).
+  const prefillClienteNome = (route.params as any)?.clienteNome as string | undefined;
   const prefillItem = (route.params as any)?.prefillItem as
     | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number; unidade?: string; precoSugerido?: number }
     | undefined;
@@ -250,15 +253,21 @@ export default function NovoOrcamentoScreen() {
       let base = emptyOrcamento('', emp);
 
       // Pré-seleciona o cliente (mesmos campos que o Step1Cliente preenche).
+      let clienteLigado = false;
       if (prefillClienteId) {
         const cliente = (await getClientes()).find(c => c.id === prefillClienteId);
-        if (cliente) base = { ...base, ...clienteParaOrc(cliente) };
+        if (cliente) { base = { ...base, ...clienteParaOrc(cliente) }; clienteLigado = true; }
       }
+      // Sem cadastro (ou id não achado): entra só o nome; o passo 1 mostra o
+      // cliente escolhido e o usuário pode trocar/ligar ao cadastro.
+      const nomeAvulso = typeof prefillClienteNome === 'string' ? prefillClienteNome.trim().slice(0, 160) : '';
+      if (!clienteLigado && nomeAvulso) base = { ...base, clienteNome: nomeAvulso };
 
       // Pré-carrega itens de diagnóstico/Autopilot para o usuário só ajustar
       // preço e quantidade. Preço não é inventado aqui: a origem pode trazer
-      // somente descrição e o editor continua sendo a autoridade. Só o exemplo
-      // da ativação manda `precoSugerido` — e aí a tela diz que é referência.
+      // somente descrição e o editor continua sendo a autoridade. `precoSugerido`
+      // vem do exemplo da ativação (a tela diz que é referência) ou do preço que
+      // o Autopilot leu da fonte — o usuário revisa no passo de itens.
       const itensPrefill = [
         ...(prefillItem ? [prefillItem] : []),
         ...(Array.isArray(prefillItems) ? prefillItems : []),
@@ -286,7 +295,7 @@ export default function NovoOrcamentoScreen() {
         mensagem: 'Os dados do aparelho não carregaram agora. Nada foi perdido — toque em “Tentar de novo”.',
       });
     }
-  }, [isEdit, orcamentoId, prefillClienteId, prefillItem, prefillItems, nav]);
+  }, [isEdit, orcamentoId, prefillClienteId, prefillClienteNome, prefillItem, prefillItems, nav]);
 
   // Carga automática UMA vez só. `carregar` muda de identidade se `nav` ou os
   // params mudarem (setParams, navigate para a mesma rota) — recarregar aí
@@ -543,7 +552,7 @@ export default function NovoOrcamentoScreen() {
     >
       <GradientHeader
         title={isEdit ? 'Editar orçamento' : 'Novo orçamento'}
-        subtitle={`${orc.numero ? `Nº ${orc.numero}` : 'Nº a definir'} · Passo ${step + 1} de 4`}
+        subtitle={`${orc.numero ? `Nº ${formatarNumeroExibicao(orc.numero)}` : 'Nº a definir'} · Passo ${step + 1} de 4`}
         onBack={handleBack}
         compact
         right={
@@ -567,7 +576,7 @@ export default function NovoOrcamentoScreen() {
           <View style={styles.revisionBanner} accessible accessibilityRole="summary">
             <MaterialCommunityIcons name="file-document-edit-outline" size={17} color="#fff" />
             <Text style={styles.revisionBannerText}>
-              Revisão do nº {orc.revisaoDeNumero}: o original está preservado. Salve e envie este novo orçamento.
+              Revisão do nº {formatarNumeroExibicao(orc.revisaoDeNumero)}: o original está preservado. Salve e envie este novo orçamento.
             </Text>
           </View>
         ) : null}

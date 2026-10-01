@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, Share, Linking, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -232,7 +233,7 @@ export default function PrepararNotaScreen() {
     else setMensagem({ tipo: 'erro', texto: 'Não consegui registrar seu interesse agora. Tente de novo.' });
   }
 
-  const subtitulo = entrada ? `Recibo ${entrada.recibo.numero} · ${entrada.recibo.clienteNome}` : 'Dados para o Emissor Nacional';
+  const subtitulo = entrada ? `Recibo ${formatarNumeroExibicao(entrada.recibo.numero)} · ${entrada.recibo.clienteNome}` : 'Dados para o Emissor Nacional';
 
   return (
     <View style={styles.tela}>

@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet, type GestureResponderEvent } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -124,6 +125,7 @@ export default function RecibosDesktopScreen() {
       r = r.filter((x) =>
         normalizarBusca(x.clienteNome).includes(q) ||
         x.numero.toLowerCase().includes(q) ||
+        formatarNumeroExibicao(x.numero).toLowerCase().includes(q) ||
         (x.orcamentoNumero ?? '').toLowerCase().includes(q) ||
         (qDigits.length > 0 && x.clienteTelefone.replace(/\D/g, '').includes(qDigits))
       );
@@ -162,7 +164,7 @@ export default function RecibosDesktopScreen() {
     setProcessandoId(r.id);
     try {
       const html = await buildHtml(r);
-      await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+      await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${formatarNumeroExibicao(r.numero)}` });
       if (primeiraEmissao) {
         await marcarReciboComoPdfEmitido(r);
         await carregar();
@@ -214,7 +216,7 @@ export default function RecibosDesktopScreen() {
       valorOrdenacao: (r) => r.numero,
       render: (r) => (
         <View style={styles.numeroWrap}>
-          <Text style={styles.celulaForte}>{r.numero}</Text>
+          <Text style={styles.celulaForte}>{formatarNumeroExibicao(r.numero)}</Text>
           {r.pdfEmitido === false && (
             <View style={styles.pillPendente}>
               <Text style={styles.pillPendenteTexto}>PDF não emitido</Text>

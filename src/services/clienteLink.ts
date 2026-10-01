@@ -16,6 +16,7 @@ import { totalRecebidoDoOrcamento } from './pagamentos';
 import { nowISO } from '../utils/date';
 import { normalizarChavePix } from '../utils/pixBrCode';
 import { chavePixDoOrcamento, cobrancaDoLink, type CobrancaDoLink } from '../utils/cobrancaCliente';
+import type { RespostaDoLink } from './followUpLembretesRegra';
 
 const TABLE = 'orcamentos_publicos';
 const TABLE_VERSOES = 'orcamento_versoes';
@@ -363,9 +364,15 @@ function normalizarLinkRow(data: any): LinkRow {
  * avançar, sem NUNCA reverter uma decisão manual do dono (ver `statusLocalAlvo`).
  * O motivo da recusa NÃO é gravado no orçamento: fica na trilha (ver `trilhaDoLink`).
  *
+ * Também dispara a notificação local "Cliente aprovou"/"Cliente recusou" UMA vez
+ * por orçamento (`followUpLembretes.avisarRespostasDoCliente`, dedupe persistido)
+ * — qualquer chamador (pull do cloudSync, foco da lista, detalhe) leva ao mesmo
+ * aviso, e o segundo a ver a mesma resposta não avisa de novo.
+ *
  * Retorna QUANTOS orçamentos mudaram de status. NUNCA lança: offline, deslogado,
  * sem nuvem ou qualquer erro de rede/backend resultam em 0 (no-op silencioso),
  * para poder ser chamada em background (ex.: ao focar a lista de orçamentos).
+ * Leitura que FALHOU não chama o aviso (não é "nenhum link respondido").
  */
 export async function sincronizarStatusLinks(): Promise<number> {
   try {
@@ -376,10 +383,11 @@ export async function sincronizarStatusLinks(): Promise<number> {
     // Traz TODOS os links do dono (não só os respondidos) para também captar a
     // VISUALIZAÇÃO (mestre 13). Schema-resiliente: tenta com `visualizado_em`; se a
     // coluna ainda não existe (migration não aplicada), refaz sem ela.
-    const rows = await lerLinksDoDono(user.id);
-    if (!rows.length) return 0;
+    const rows = await lerLinksDoDonoOuNull(user.id);
+    if (rows === null) return 0; // leitura falhou: nada a aplicar nem a avisar
 
     let mudaram = 0;
+    const respostas: RespostaDoLink[] = [];
     for (const row of rows) {
       try {
         if (!row.orcamentoId) continue;
@@ -388,6 +396,14 @@ export async function sincronizarStatusLinks(): Promise<number> {
         if (row.status === 'enviado' && !row.visualizadoEm) continue;
 
         const orc = await getOrcamento(row.orcamentoId);
+        if (row.status === 'aprovado' || row.status === 'recusado') {
+          respostas.push({
+            orcamentoId: row.orcamentoId,
+            status: row.status,
+            respondidoEm: row.respondidoEm,
+            orcamento: orc ?? null,
+          });
+        }
         if (!orc) continue; // orçamento pode ter sido excluído localmente
 
         const alvo = statusLocalAlvo(orc.status, row);
@@ -397,12 +413,24 @@ export async function sincronizarStatusLinks(): Promise<number> {
         // para a nuvem/painel). Bump em atualizadoEm como no fluxo manual. Mudar
         // SÓ o status (mesmo conteúdo comercial) NÃO gera versão — a regra de ouro
         // do saveOrcamento compara a impressão comercial, imune à troca de status.
-        await saveOrcamento({ ...orc, status: alvo, atualizadoEm: nowISO() });
+        // A decisão do cliente tem hora: `respondido_em` do link. Informada aqui, o
+        // `carimbarDecisao` do save a respeita (sem ela, valeria a hora deste sync).
+        const decididoEm =
+          (alvo === 'aprovado' || alvo === 'recusado') && row.respondidoEm && Number.isFinite(new Date(row.respondidoEm).getTime())
+            ? new Date(row.respondidoEm).toISOString()
+            : undefined;
+        await saveOrcamento({ ...orc, status: alvo, atualizadoEm: nowISO(), ...(decididoEm ? { decididoEm } : {}) });
         mudaram++;
       } catch {
         // pula linha problemática, segue o resto
       }
     }
+    // Aviso "Cliente aprovou/recusou", uma vez por orçamento. Import tardio: este
+    // módulo também roda no painel web e não deve carregar expo-notifications à toa.
+    const idsComLink = rows.map((r) => r.orcamentoId).filter((id): id is string => !!id);
+    await import('./followUpLembretes')
+      .then((m) => m.avisarRespostasDoCliente(user.id, respostas, idsComLink))
+      .catch(() => 0);
     return mudaram;
   } catch {
     // nunca lança: qualquer falha vira 0 (offline/erro)
@@ -426,7 +454,7 @@ export async function pagamentosInformadosPeloCliente(): Promise<Map<string, str
     if (!supabase) return mapa;
     const user = await getCurrentUser();
     if (!user) return mapa;
-    for (const row of await lerLinksDoDono(user.id)) {
+    for (const row of (await lerLinksDoDonoOuNull(user.id)) ?? []) {
       if (row.orcamentoId && row.pagamentoInformadoEm) mapa.set(row.orcamentoId, row.pagamentoInformadoEm);
     }
   } catch {
@@ -443,10 +471,11 @@ interface LinkDonoRow extends LinkRow {
 /**
  * Lê em LOTE todos os links do dono com resiliência de schema (com/sem
  * `visualizado_em`). RLS já restringe ao dono; o `.eq('user_id')` é defensivo.
- * NUNCA lança: devolve [] em qualquer falha.
+ * NUNCA lança. Falha de leitura = `null` (NÃO `[]`): "não consegui ler" é
+ * diferente de "não há links" — o aviso de resposta depende dessa diferença.
  */
-async function lerLinksDoDono(userId: string): Promise<LinkDonoRow[]> {
-  if (!supabase) return [];
+async function lerLinksDoDonoOuNull(userId: string): Promise<LinkDonoRow[] | null> {
+  if (!supabase) return null;
   const mapear = (arr: any[]): LinkDonoRow[] =>
     arr.map((r) => ({ orcamentoId: r?.orcamento_id ?? undefined, ...normalizarLinkRow(r) }));
   // 0ª tentativa: com pagamento_informado_em (migration 20260930120300); sem a
@@ -457,7 +486,7 @@ async function lerLinksDoDono(userId: string): Promise<LinkDonoRow[]> {
       .select('orcamento_id, status, respondido_em, resposta_cliente, visualizado_em, pagamento_informado_em')
       .eq('user_id', userId);
     if (!error && Array.isArray(data)) return mapear(data);
-    if (error && (error as any)?.code && (error as any).code !== '42703') return [];
+    if (error && (error as any)?.code && (error as any).code !== '42703') return null;
   } catch {
     // cai para a escada antiga
   }
@@ -468,7 +497,7 @@ async function lerLinksDoDono(userId: string): Promise<LinkDonoRow[]> {
       .select('orcamento_id, status, respondido_em, resposta_cliente, visualizado_em')
       .eq('user_id', userId);
     if (!error && Array.isArray(data)) return mapear(data);
-    if (error && (error as any)?.code && (error as any).code !== '42703') return [];
+    if (error && (error as any)?.code && (error as any).code !== '42703') return null;
   } catch {
     // cai para o fallback
   }
@@ -478,10 +507,10 @@ async function lerLinksDoDono(userId: string): Promise<LinkDonoRow[]> {
       .from(TABLE)
       .select('orcamento_id, status, respondido_em, resposta_cliente')
       .eq('user_id', userId);
-    if (error || !Array.isArray(data)) return [];
+    if (error || !Array.isArray(data)) return null;
     return mapear(data);
   } catch {
-    return [];
+    return null;
   }
 }
 

@@ -67,6 +67,7 @@ import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
+import { handleClima } from './clima.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
   aiConfigurada,
@@ -1118,6 +1119,13 @@ const handler = {
     // Corpus Christi são ponto FACULTATIVO, não feriado nacional.
     if (url.pathname.startsWith('/feriados/') && request.method === 'GET') {
       return handleFeriados(request, env, url.pathname.slice('/feriados/'.length));
+    }
+
+    // Clima do dia — GET /clima?lat=&lon= (Open-Meteo, sem chave). PÚBLICO e
+    // limitado por IP (CLIMA_RL): o dado é público e o upstream é grátis. Cache
+    // de 30 min por geohash de ~5 km na Cache API. Ver o docblock de clima.js.
+    if (url.pathname === '/clima' && request.method === 'GET') {
+      return handleClima(request, env, url);
     }
 
     if (url.pathname === '/eta' && request.method === 'POST') {

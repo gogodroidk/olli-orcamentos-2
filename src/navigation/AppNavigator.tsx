@@ -26,6 +26,7 @@ import ModelosDocumentoScreen from '../screens/ModelosDocumentoScreen';
 import CentralDocumentosScreen from '../screens/CentralDocumentosScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
 import ClientesScreen from '../screens/ClientesScreen';
+import ClienteDetalheScreen from '../screens/ClienteDetalheScreen';
 import ServicosScreen from '../screens/ServicosScreen';
 import ProdutosScreen from '../screens/ProdutosScreen';
 import EmitirReciboScreen from '../screens/EmitirReciboScreen';
@@ -103,7 +104,7 @@ export type PrefillItem = {
   /** Unidade do item (`UNIDADES`). Default 'un'. */
   unidade?: string;
   /**
-   * Valor de REFERÊNCIA (só o orçamento de exemplo da ativação manda). O editor
+   * Valor de REFERÊNCIA (exemplo da ativação e preço sugerido do Autopilot). O editor
    * continua sendo a autoridade: o prestador troca pelo preço dele.
    */
   precoSugerido?: number;
@@ -120,12 +121,14 @@ export type RootStackParamList = {
   // (origem: diagnóstico / código de erro). Tudo opcional — sem isto cai no fluxo normal.
   // `exemploVertical` marca o orçamento de exemplo da ativação (services/ativacao.ts):
   // o editor mostra o aviso "é um exemplo, troque pelos seus valores".
-  NovoOrcamento: { modeloId?: string; clienteId?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[]; exemploVertical?: VerticalId };
+  // `clienteNome` (Autopilot): cliente ainda sem cadastro — entra só o nome; o usuário liga ao cadastro no passo 1.
+  NovoOrcamento: { modeloId?: string; clienteId?: string; clienteNome?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[]; exemploVertical?: VerticalId };
   EditarOrcamento: { orcamentoId: string };
   VisualizarOrcamento: { orcamentoId: string };
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
   Orcamentos: { clienteId?: string; clienteNome?: string } | undefined;
   Clientes: undefined;
+  ClienteDetalhe: { clienteId: string };
   Servicos: undefined;
   Produtos: undefined;
   EmitirRecibo: { orcamentoId?: string };
@@ -249,6 +252,7 @@ const VisualizarOrcamentoCentro = comCentroDesktop(VisualizarOrcamentoScreen);
 const OrcamentosCentro = comCentroDesktop(OrcamentosScreen);
 const DiagnosticoCentro = comCentroDesktop(DiagnosticoScreen);
 const ClientesCentro = comCentroDesktop(ClientesScreen);
+const ClienteDetalheCentro = comCentroDesktop(ClienteDetalheScreen);
 const ServicosCentro = comCentroDesktop(ServicosScreen);
 const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
@@ -700,6 +704,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Diagnóstico (OLLI Técnica) — chegável pela Home e pela Conta → Ferramentas. */}
       <Stack.Screen name="Diagnostico" component={DiagnosticoCentro} />
       <Stack.Screen name="Clientes" component={ClientesCentro} />
+      <Stack.Screen name="ClienteDetalhe" component={ClienteDetalheCentro} />
       <Stack.Screen name="Servicos" component={ServicosCentro} />
       <Stack.Screen name="Produtos" component={ProdutosCentro} />
       <Stack.Screen name="EmitirRecibo" component={EmitirReciboCentro} />
