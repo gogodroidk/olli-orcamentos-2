@@ -68,6 +68,7 @@ import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { handleClima } from './clima.js';
+import { fonteDoCron, handleAlertas, processarAlertas } from './alertas.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
   aiConfigurada,
@@ -923,6 +924,16 @@ async function handleChat(bodyText, env, user) {
 
 const handler = {
   scheduled(controller, env, ctx) {
+    // Alertas oficiais (INMET / Defesa Civil): cada fonte tem cron PRÓPRIO e,
+    // portanto, invocação própria — o parse do feed do IDAP (~11 MB) não divide
+    // a CPU do plano Free com a outbox. Esta invocação faz SÓ isso e sai: os
+    // jobs abaixo pertencem ao cron de minuto e não podem rodar em dobro.
+    const fonteAlertas = fonteDoCron(controller?.cron);
+    if (fonteAlertas) {
+      const quando = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
+      ctx.waitUntil(processarAlertas(env, { fonte: fonteAlertas, now: () => quando }));
+      return;
+    }
     // Dispatch da outbox (boas-vindas + lembretes): fail-closed pelo
     // WELCOME_DISPATCH_MODE; em simulator o consumer só aceita o endereço de
     // teste oficial. A Promise fica registrada no ciclo de vida do evento.
@@ -1126,6 +1137,13 @@ const handler = {
     // de 30 min por geohash de ~5 km na Cache API. Ver o docblock de clima.js.
     if (url.pathname === '/clima' && request.method === 'GET') {
       return handleClima(request, env, url);
+    }
+
+    // Alertas oficiais — GET /alertas?ibge=<7 dígitos>[&lat=&lon=] (INMET + Defesa
+    // Civil/IDAP). PÚBLICO, limitado por IP (ALERTAS_RL). Lê só o KV que o cron
+    // preenche; feed fora = 'indisponivel', nunca "sem alertas". Ver alertas.js.
+    if (url.pathname === '/alertas' && request.method === 'GET') {
+      return handleAlertas(request, env, url);
     }
 
     if (url.pathname === '/eta' && request.method === 'POST') {

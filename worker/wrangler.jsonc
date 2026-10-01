@@ -32,7 +32,12 @@
   // Cron de minuto: consumer da outbox (boas-vindas + lembretes + resumo) a cada
   // minuto; a seleção de lembretes só age na hora cheia, 8h–20h de Brasília, e a
   // do resumo diário de 10 em 10 min entre 7h00 e 7h50 (seg–sáb).
-  "triggers": { "crons": ["* * * * *"] },
+  // Os dois crons de 20 em 20 min são dos ALERTAS OFICIAIS (worker/src/alertas.js):
+  // um por fonte, para cada um ser uma invocação SEPARADA — o feed da Defesa
+  // Civil tem ~11 MB e não pode dividir os 10 ms de CPU do plano Free com a
+  // outbox. O scheduled() roteia por `controller.cron`; mudar uma expressão aqui
+  // exige mudar ALERTAS_CRONS em alertas.js (o teste teste-alertas.js confere).
+  "triggers": { "crons": ["* * * * *", "7,27,47 * * * *", "8,28,48 * * * *"] },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put OPENROUTER_API_KEY
   //   npx wrangler secret put STRIPE_SECRET_KEY       (sk_live_...)
@@ -117,7 +122,11 @@
     "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
     "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
     "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn",
-    "MP_WEBHOOK_REQUIRE_SIGNATURE": "true"
+    "MP_WEBHOOK_REQUIRE_SIGNATURE": "true",
+    // Alertas oficiais INMET + Defesa Civil (cron 20/20 min → KV CACHE → GET /alertas).
+    // Fontes públicas e grátis. "off" desliga a coleta E a rota (que passa a
+    // responder "alertas_desligados" — nunca "sem alertas").
+    "ALERTAS_MODE": "production"
   },
   // Staging is a separate Worker with no production custom domains. It inherits
   // the bindings/rate-limit shape above but overrides all environment identity
@@ -160,7 +169,9 @@
         "STRIPE_PRICE_PRO_12X": "price_1TqkxK4zjAI9pGd7OMdgMrIE",
         "STRIPE_PRICE_EMPRESA": "price_1TqUOB4zjAI9pGd7Lj4ETRM6",
         "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn",
-        "MP_WEBHOOK_REQUIRE_SIGNATURE": "true"
+        "MP_WEBHOOK_REQUIRE_SIGNATURE": "true",
+        // Staging não tem o KV CACHE: alertas ficam desligados (e dizem isso).
+        "ALERTAS_MODE": "off"
       },
       "ai": { "binding": "AI" },
       "ratelimits": [
@@ -178,13 +189,18 @@
         { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } },
         { "name": "RCHOOK_RL", "namespace_id": "2014", "simple": { "limit": 60, "period": 60 } },
         { "name": "AUTH_EMAIL_RL", "namespace_id": "2021", "simple": { "limit": 5, "period": 60 } },
-        { "name": "CLIMA_RL", "namespace_id": "2030", "simple": { "limit": 30, "period": 60 } }
+        { "name": "CLIMA_RL", "namespace_id": "2030", "simple": { "limit": 30, "period": 60 } },
+        { "name": "ALERTAS_RL", "namespace_id": "2040", "simple": { "limit": 30, "period": 60 } }
       ]
     }
   },
   // O áudio fica na Cloudflare; somente a transcrição textual segue ao
   // OpenRouter quando o modo solicitado é orçamento.
   "ai": { "binding": "AI" },
+  // KV `olli-diagnostico-cache` — o namespace JÁ EXISTE na conta (criado antes,
+  // nunca ligado). Hoje guarda os alertas oficiais (chaves `alertas:v1:*`, TTL
+  // de 6 h). Free: 1.000 escritas/dia; os alertas usam ≤ 288.
+  "kv_namespaces": [{ "binding": "CACHE", "id": "193f53aa847447598e3f5b6b716ebdad" }],
   // Rate limiting nativo da Cloudflare. Protege a cota paga da IA (por usuário) e
   // o link público contra abuso/brute-force (por IP). period: 10 ou 60 (segundos).
   "ratelimits": [
@@ -254,6 +270,11 @@
     // por geohash de ~5 km) não consome balde. Id 1030 de propósito: fora da
     // sequência 1022+ que outras rotas da Onda 2 podem estar pegando em paralelo
     // — dois bindings com o mesmo namespace_id DIVIDIRIAM o mesmo contador.
-    { "name": "CLIMA_RL", "namespace_id": "1030", "simple": { "limit": 30, "period": 60 } }
+    { "name": "CLIMA_RL", "namespace_id": "1030", "simple": { "limit": 30, "period": 60 } },
+    // /alertas por IP (rota pública). Não protege upstream (a rota só lê o KV que
+    // o cron grava) e sim a cota de LEITURAS do KV no plano Free (100 mil/dia):
+    // acerto da memória do isolate (60 s) nem chega aqui. Id 1040 de propósito,
+    // longe da faixa 103x que outras rotas da Onda I podem estar pegando.
+    { "name": "ALERTAS_RL", "namespace_id": "1040", "simple": { "limit": 30, "period": 60 } }
   ]
 }
