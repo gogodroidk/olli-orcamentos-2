@@ -193,6 +193,13 @@ export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
  */
+/**
+ * Orçamentos que já tiveram a celebração de "aprovado"/"pago" no detalhe
+ * (services/celebracoes). Lista `orcamentoId:motivo` — a festa sai UMA vez por
+ * orçamento. Dado de CONTA → sai no logout (APP_DATA_STORAGE_KEYS).
+ */
+export const CELEBRACOES_KEY = 'olli.orcamento.celebracoes';
+
 export const APP_DATA_STORAGE_KEYS = [
   CHECKLIST_KEY,
   CHAT_KEY,
@@ -221,4 +228,5 @@ export const APP_DATA_STORAGE_KEYS = [
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
   ULTIMO_PULL_KEY,
+  CELEBRACOES_KEY,
 ];
