@@ -230,10 +230,18 @@ export const RASCUNHO_CAMPO_PREFIX = 'olli.rascunho.campo.';
 export const FILA_FOTOS_PREFIX = 'olli.sync.fotos.v1.';
 
 /**
+ * Orçamentos que já tiveram a celebração de "aprovado"/"pago" no detalhe
+ * (services/celebracoes). Lista `orcamentoId:motivo` — a festa sai UMA vez por
+ * orçamento. Dado de CONTA → sai no logout (APP_DATA_STORAGE_KEYS).
+ */
+export const CELEBRACOES_KEY = 'olli.orcamento.celebracoes';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
  */
+
 export const APP_DATA_STORAGE_KEYS = [
   CHECKLIST_KEY,
   CHAT_KEY,
@@ -261,6 +269,7 @@ export const APP_DATA_STORAGE_KEYS = [
   COBRANCAS_ENVIADAS_STAMP_KEY,
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
+  CELEBRACOES_KEY,
   CAPTURA_OS_KEY,
   CLIMA_COORD_CIDADE_KEY,
   ULTIMO_PULL_KEY,
