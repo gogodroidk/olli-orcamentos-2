@@ -4,8 +4,10 @@
  * Fluxo: o prestador escolhe o print → a imagem é reduzida no aparelho (JPEG,
  * lado maior 1600 px) → sobe para o bucket PRIVADO `olli-documentos` na pasta
  * dele (StorageProvider existente) → a RPC `solicitar_credito_troca` grava o
- * pedido. Se a RPC recusar, o arquivo enviado é apagado (best-effort) para não
- * deixar documento pessoal órfão no storage.
+ * pedido. Se a RPC recusar, tenta apagar o arquivo enviado (best-effort). Hoje o
+ * bucket `olli-documentos` não tem policy de DELETE para o cliente, então a remoção
+ * pode não surtir efeito; por isso a tela só mostra o formulário quando o estado
+ * lido do servidor permite pedir (recusa da RPC vira caso raro, não o caminho comum).
  *
  * Regras puras e textos: `creditoTrocaRegras.ts`.
  */

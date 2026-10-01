@@ -38,6 +38,7 @@ const ERROS_RPC = {
   meses_invalidos: 400,
   motivo_invalido: 400,
   papel_sem_permissao: 403,
+  autoaprovacao_proibida: 403,
   request_id_invalido: 400,
 };
 
@@ -185,12 +186,18 @@ export function montarEmailAprovado({ plano, ate, appAnterior }) {
   const periodo = ateTxt ? `até ${ateTxt}` : 'sem data para acabar';
   const app = String(appAnterior || 'outro app').replace(/[\r\n]+/g, ' ').trim().slice(0, 60);
   const assunto = `Crédito de troca aprovado: OLLI ${nome} liberado`;
+  // Só fala em "fim do período" quando há data: concessão sem data final (um plano
+  // manual maior que já existia e foi preservado) não "acaba" sozinha. E não promete
+  // "volta para o Grátis": quem tiver assinatura paga continua no plano pago.
+  const fim = ate
+    ? 'Quando o período acabar, o acesso liberado termina sozinho, sem cobrança, e todos os seus dados continuam na conta.'
+    : null;
   const texto = [
     'Seu crédito de troca foi aprovado.',
     '',
     `Conferimos o comprovante do ${app} e liberamos o OLLI ${nome} ${periodo}.`,
     'Não é uma assinatura: não há cobrança, nem renovação automática.',
-    'Quando o período acabar, sua conta volta para o Grátis com todos os seus dados.',
+    ...(fim ? [fim] : []),
     '',
     'É só abrir o app: o acesso já está liberado.',
   ].join('\n');
@@ -204,8 +211,7 @@ export function montarEmailAprovado({ plano, ate, appAnterior }) {
         Conferimos o comprovante do <strong>${escaparHtml(app)}</strong> e o seu acesso já está valendo. É só abrir o app.
       </p>
       <p style="margin:0;font-size:14px;line-height:1.6;color:#4A5568">
-        Não é uma assinatura: não há cobrança nem renovação automática. Quando o período acabar,
-        sua conta volta para o Grátis com todos os seus dados.
+        Não é uma assinatura: não há cobrança nem renovação automática.${fim ? ` ${escaparHtml(fim)}` : ''}
       </p>
     </div>
   </div>

@@ -321,6 +321,22 @@ await caso('pedido já decidido não decide de novo', async () => {
   await falha(decidir(admin, 'financeiro', pedidoAna, false, null, 'mudei de ideia'), 'pedido_ja_decidido');
 });
 
+await caso('admin não decide o próprio pedido (autoaprovação proibida)', async () => {
+  const eva = await novoUsuario();
+  await superusuario();
+  await db.query(`insert into public.admin_memberships (user_id, papel, ativo) values ($1, 'financeiro', true)`, [eva]);
+  const p = await pedir(eva, undefined, { app: 'Orçafácil' });
+  await falha(decidir(eva, 'financeiro', p.id, true, 3, 'conferido por mim'), 'autoaprovacao_proibida');
+  await falha(decidir(eva, 'financeiro', p.id, false, null, 'recuso o meu'), 'autoaprovacao_proibida');
+  await superusuario();
+  const linha = (await db.query<{ status: string }>('select status from public.creditos_troca where id = $1', [p.id])).rows[0];
+  assert.equal(linha.status, 'pendente', 'pedido segue pendente');
+  assert.equal((await db.query('select 1 from public.assinaturas where user_id = $1', [eva])).rows.length, 0, 'nada concedido');
+  // Outro administrador decide normalmente.
+  const r = await decidir(admin, 'financeiro', p.id, true, 1, 'conferido por outro admin');
+  assert.equal((r.pedido as { status: string }).status, 'aprovado');
+});
+
 await caso('1 vez por conta: depois de aprovado, novo pedido = credito_ja_usado', async () => {
   await falha(pedir(ana), 'credito_ja_usado');
 });

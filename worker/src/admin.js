@@ -1304,7 +1304,7 @@ async function carregarFunil(){
 // ─── crédito de troca (conferência manual; concessão de acesso, não venda) ───
 let TROCA=[],TROCA_FILTRO='pendente',TROCA_MAX=${CREDITO_TROCA_MESES_MAX};
 const ERRO_TROCA={credito_troca_sem_migration:'a migration do crédito de troca ainda não foi aplicada.',credito_troca_indisponivel:'não consegui ler os pedidos.',sem_permissao:'seu papel não permite ver pedidos.',mfa_necessario:'confirme o MFA em Segurança.'};
-const ERRO_DECISAO={pedido_ja_decidido:'Este pedido já foi decidido. Atualize a lista.',meses_invalidos:'Escolha um período válido.',motivo_invalido:'Motivo entre 3 e 500 caracteres.',pedido_inexistente:'Pedido não encontrado.'};
+const ERRO_DECISAO={pedido_ja_decidido:'Este pedido já foi decidido. Atualize a lista.',meses_invalidos:'Escolha um período válido.',motivo_invalido:'Motivo entre 3 e 500 caracteres.',pedido_inexistente:'Pedido não encontrado.',autoaprovacao_proibida:'Você não pode decidir o seu próprio pedido. Peça a outro administrador.'};
 const ST_TROCA={pendente:'em análise',aprovado:'aprovado',recusado:'recusado'};
 function dataSimples(d){return d?fmtDate(String(d).slice(0,10)+'T12:00:00'):'—';}
 function renderTrocaFiltros(){const box=$('tfilters');box.innerHTML='';[['pendente','Em análise'],['','Todos']].forEach(f=>box.append(el('button',{className:'btn sm '+(TROCA_FILTRO===f[0]?'':'ghost'),onclick:()=>{TROCA_FILTRO=f[0];carregarTroca();}},f[1])));}

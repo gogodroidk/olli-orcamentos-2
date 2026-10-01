@@ -80,6 +80,9 @@ checar('e-mail diz a data do fim', email.texto.includes('02/01/2027'));
 checar('e-mail não promete renovação/cobrança', /não há cobrança/i.test(email.texto) && /renovação automática/i.test(email.texto));
 checar('e-mail escapa HTML do nome do app', email.html.includes('App &lt;b&gt;X&lt;/b&gt;') && !email.html.includes('<b>X</b>'));
 checar('e-mail sem data final não inventa data', montarEmailAprovado({ plano: 'empresa', ate: null, appAnterior: 'Y' }).texto.includes('sem data para acabar'));
+checar('e-mail sem data final não fala em fim do período', !/período acabar/i.test(montarEmailAprovado({ plano: 'empresa', ate: null, appAnterior: 'Y' }).texto));
+checar('e-mail não promete voltar para o Grátis (pagante continua pagante)', !/Grátis/.test(email.texto) && !/Grátis/.test(email.html));
+checar('e-mail com data avisa que o acesso termina sozinho', /termina sozinho/.test(email.texto));
 
 // ─── rotas do painel com fetch simulado ─────────────────────────────────────
 const originalFetch = globalThis.fetch;
@@ -195,6 +198,9 @@ try {
   modo = { rpc: { status: 400, body: { code: 'P0001', message: 'pedido_ja_decidido' } } };
   const ja = await chamar('creditos-troca/decidir', { method: 'POST', body: { id: PEDIDO, aprovar: true, meses: 1, motivo: 'conferido' } });
   checar('pedido já decidido = 409 com código', ja.status === 409 && ((await ja.json()) as any).erro === 'pedido_ja_decidido');
+  modo = { rpc: { status: 400, body: { code: 'P0001', message: 'autoaprovacao_proibida' } } };
+  const auto = await chamar('creditos-troca/decidir', { method: 'POST', body: { id: PEDIDO, aprovar: true, meses: 1, motivo: 'conferido' } });
+  checar('autoaprovação proibida = 403 com código', auto.status === 403 && ((await auto.json()) as any).erro === 'autoaprovacao_proibida');
   modo = { rpc: { status: 500, body: { message: 'boom' } } };
   const boom = await chamar('creditos-troca/decidir', { method: 'POST', body: { id: PEDIDO, aprovar: true, meses: 1, motivo: 'conferido' } });
   checar('falha desconhecida = 502 (sem fingir sucesso)', boom.status === 502);

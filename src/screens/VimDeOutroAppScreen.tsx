@@ -186,7 +186,7 @@ export default function VimDeOutroAppScreen() {
                     'Diga qual app você usava e anexe o print ou a foto da assinatura (tela do app, recibo ou e-mail de pagamento).',
                     'Uma pessoa do OLLI confere. Não é automático.',
                     `Aprovado, você usa o Pro sem pagar por até ${CREDITO_TROCA_MESES_MAX} meses, de acordo com o tempo que ainda tem pago lá.`,
-                    'Vale uma vez por conta. Não é assinatura: não há cobrança nem renovação automática. Depois, a conta volta para o Grátis com todos os dados.',
+                    'Vale uma vez por conta. Não é assinatura: não há cobrança nem renovação automática. Depois, o acesso liberado termina sozinho e todos os seus dados continuam na conta.',
                   ].map((t, i) => (
                     <View key={t} style={styles.passo}>
                       <Text style={styles.passoNum}>{i + 1}</Text>
@@ -253,7 +253,7 @@ export default function VimDeOutroAppScreen() {
                     />
                   )}
                   <Text style={styles.nota}>
-                    A imagem fica guardada de forma privada e só a equipe do OLLI vê, para conferir o pedido.
+                    A imagem fica guardada no espaço privado da sua conta e é usada só para conferir o pedido.
                   </Text>
 
                   {erro ? (

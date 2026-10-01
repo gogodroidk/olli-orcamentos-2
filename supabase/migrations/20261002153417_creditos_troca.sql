@@ -27,7 +27,8 @@
 --   • RLS: o dono lê só o seu; administrador do SaaS (admin_memberships ativo,
 --     com MFA/AAL2) lê todos; NINGUÉM escreve direto — só pelas RPCs abaixo;
 --   • aprovar/recusar é RPC service_role (o Worker valida papel + MFA antes) e
---     grava a trilha imutável admin_audit_log NA MESMA transação.
+--     grava a trilha imutável admin_audit_log NA MESMA transação;
+--   • ninguém decide o próprio pedido (administrador não se autoaprova).
 --
 -- Aplicação em produção é gate separado (depois do merge). Aditiva: tabela nova,
 -- funções novas; nenhuma tabela existente perde dado.
@@ -258,6 +259,12 @@ begin
   if p_aprovar and (p_meses is null or p_meses < 1 or p_meses > 3) then raise exception 'meses_invalidos'; end if;
   if not exists (select 1 from auth.users where id = p_actor) then raise exception 'ator_inexistente'; end if;
 
+  -- Trava a linha ANTES da idempotência: dois envios do mesmo clique em paralelo
+  -- esperam aqui, e o segundo encontra a auditoria do primeiro (mesmo resultado)
+  -- em vez de cair em 'pedido_ja_decidido'.
+  select * into v_pedido from public.creditos_troca where id = p_pedido for update;
+  if not found then raise exception 'pedido_inexistente'; end if;
+
   -- Idempotência: o mesmo clique reenviado devolve o mesmo resultado.
   select depois into v_depois
   from public.admin_audit_log
@@ -265,9 +272,10 @@ begin
   limit 1;
   if found then return v_depois; end if;
 
-  select * into v_pedido from public.creditos_troca where id = p_pedido for update;
-  if not found then raise exception 'pedido_inexistente'; end if;
   if v_pedido.status <> 'pendente' then raise exception 'pedido_ja_decidido'; end if;
+  -- Separação de funções: quem pediu o crédito não decide o próprio pedido
+  -- (um admin financeiro não se autoaprova; outro administrador confere).
+  if v_pedido.user_id = p_actor then raise exception 'autoaprovacao_proibida'; end if;
 
   -- Mesma trava por usuário do admin_set_plano_override: nada concorre na assinatura.
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(v_pedido.user_id::text, 0));
