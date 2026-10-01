@@ -189,6 +189,15 @@ export const PULL_INICIAL_OK_PREFIX = 'olli.sync.pull_inicial_ok_';
 export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
 
 /**
+ * Coordenada da CIDADE do cadastro (`{ chave, lat, lon }`), usada só como
+ * reserva do clima do Início quando o aparelho não tem localização (services/
+ * climaReserva). Guardada para localizar a cidade UMA vez por aparelho (CEP ou
+ * OpenStreetMap, grátis), não a cada abertura. Guarda também a fonte, para o
+ * crédito do OSM. Diz onde a empresa fica → dado de conta, sai no logout.
+ */
+export const CLIMA_COORD_CIDADE_KEY = 'olli.clima.coordCidade.v1';
+
+/**
  * Marcador "estou fotografando para a OS X" (services/capturaFotoOS). Gravado
  * ANTES de abrir a câmera; se o Android matar o app no meio, o boot o encontra e
  * reabre a OS com a foto. Dado de conta (id de OS) → entra na allow-list.
@@ -248,5 +257,6 @@ export const APP_DATA_STORAGE_KEYS = [
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
   CAPTURA_OS_KEY,
+  CLIMA_COORD_CIDADE_KEY,
   ULTIMO_PULL_KEY,
 ];
