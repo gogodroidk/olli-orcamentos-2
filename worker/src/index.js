@@ -69,6 +69,7 @@ import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { handleClima } from './clima.js';
 import { fonteDoCron, handleAlertas, processarAlertas } from './alertas.js';
+import { handleGeo, modoGeoBackfill, processarGeoClientes } from './geoClientes.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
   aiConfigurada,
@@ -949,6 +950,11 @@ const handler = {
     // Contratos recorrentes: gera as visitas devidas às 06:05, 12:05 e 18:05 de
     // Brasília, só com CONTRATOS_MOTOR_MODE=production (depois da migration).
     ctx.waitUntil(processarContratos(env, { now: () => agendado }));
+    // Geo dos clientes (Onda I1): backfill em fila do ponto e do IBGE, só com
+    // GEO_BACKFILL_MODE=production (depois da migration 20261002100000). Poucos
+    // clientes por minuto e no máximo 10 consultas ao Nominatim — a política dele
+    // (1 req/s) vale para o OLLI inteiro, não por usuário. Ver geoClientes.js.
+    ctx.waitUntil(processarGeoClientes(env));
   },
 
   async fetch(request, env) {
@@ -1146,6 +1152,14 @@ const handler = {
       return handleAlertas(request, env, url);
     }
 
+    // Onde fica o cliente — POST /geo { cep, endereco, cidade, uf }, autenticado.
+    // Ponto + código IBGE por serviços GRÁTIS (BrasilAPI, ViaCEP, Nominatim/OSM),
+    // nunca pelo Google Geocoding (pago fora da cota). O app chama ao salvar o
+    // cliente; o que falhar fica para o backfill do cron. Ver geoClientes.js.
+    if (url.pathname === '/geo' && request.method === 'POST') {
+      return handleGeo(request, env);
+    }
+
     if (url.pathname === '/eta' && request.method === 'POST') {
       return handleEtaAgora(request, env);
     }
@@ -1192,6 +1206,8 @@ const handler = {
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
         // Rodada agendada dos contratos recorrentes (só o modo — nunca contagem nem conta).
         contratos_motor: modoMotorContratos(env) === 'production' ? 'on' : 'off',
+        // Backfill da geo dos clientes (só o modo). Desligado diz que está desligado.
+        geo_backfill: modoGeoBackfill(env) === 'production' ? 'on' : 'off',
       });
     }
     // EXISTÊNCIA primeiro, MÉTODO depois (achado A4 — ver METODOS_POR_ROTA).
