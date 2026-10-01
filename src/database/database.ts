@@ -17,6 +17,8 @@ import {
   type MapaParticoes,
   resolverParticao,
 } from './particao';
+import { criarGerenciadorDeConexao } from './conexao';
+import { SQL_CONTAS_A_RECEBER } from './contasAReceberSql';
 import { generateId } from '../utils/id';
 
 /**
@@ -71,13 +73,41 @@ function registrarExclusao(table: string, id: string): void {
   }
 }
 
-let db: SQLite.SQLiteDatabase | null = null;
-/** Arquivo .db aberto agora. `null` = ainda não abrimos nada nesta sessão. */
-let dbNome: string | null = null;
+/**
+ * A conexão do SQLite mora no gerenciador (`./conexao`, B01): abertura ÚNICA (dez
+ * telas pedindo ao mesmo tempo recebem a mesma promessa), troca de partição em FILA
+ * (não fecha com leitura pendente), conexão morta descartada e reaberta, e `getDb()`
+ * esperando a partição ficar pronta em vez de cair no banco legado.
+ *
+ * O handle só é PUBLICADO depois que initDb (e portanto runMigrations) termina.
+ * Publicá-lo antes deixaria, se um ALTER falhasse no meio, um banco meio migrado em
+ * cache ("no such column" a sessão inteira). Falhando, nada fica em cache, o handle
+ * cru é fechado e a próxima chamada tenta de novo.
+ */
+const conexao = criarGerenciadorDeConexao<SQLite.SQLiteDatabase>({
+  // Antes do login (tela Entrar, banner de migração) não há usuário e o legado é o
+  // único banco possível — é o comportamento de sempre. Depois do login,
+  // `abrirParticaoDoUsuario` fixa a partição.
+  nomePadrao: DB_LEGADO,
+  abrir: async (nome) => {
+    const aberto = await SQLite.openDatabaseAsync(nome);
+    try {
+      await initDb(aberto);
+    } catch (e) {
+      try {
+        await aberto.closeAsync();
+      } catch {
+        // o erro que importa é o da migração, não o do fechamento
+      }
+      throw e;
+    }
+    return aberto;
+  },
+});
 
 /** Nome do banco aberto — para o sync conferir se o banco é mesmo do usuário logado. */
 export function nomeDoBancoAberto(): string | null {
-  return dbNome;
+  return conexao.nomeAtual();
 }
 
 /**
@@ -85,7 +115,7 @@ export function nomeDoBancoAberto(): string | null {
  * Quem for sincronizar DEVE passar por aqui: `indeterminado` não é permissão.
  */
 export async function donoDoBancoAberto(userId: string | null | undefined): Promise<DonoDoBanco> {
-  return donoDoBanco(userId, dbNome, await lerMapaParticoes());
+  return donoDoBanco(userId, conexao.nomeAtual(), await lerMapaParticoes());
 }
 
 /** Lê o mapa de partições. Nunca lança: mapa ilegível = `{}` (ninguém dono). */
@@ -111,54 +141,48 @@ async function lerMapaParticoes(): Promise<MapaParticoes> {
  * A gravação do mapa acontece ANTES de abrir: se o app morrer no meio, o pior
  * caso é um mapa apontando para um arquivo ainda não criado (o open cria), e
  * nunca dois usuários disputando o mesmo arquivo.
+ *
+ * Roda na FILA do gerenciador (boot, Entrar, sync e estado da empresa chamam ao
+ * mesmo tempo): uma troca de cada vez, `getDb()` espera ela terminar, e o banco do
+ * usuário anterior só fecha depois que as consultas em voo nele acabarem — dois
+ * handles abertos no mesmo processo é a receita de escrita cruzada, e fechar com
+ * leitura pendente era o "closed resource" que derrubava todas as abas.
  */
 export async function abrirParticaoDoUsuario(userId: string): Promise<string> {
-  const mapa = await lerMapaParticoes();
-  const r = resolverParticao(userId, mapa);
-  if (r.mapa !== mapa) {
-    try {
-      await AsyncStorage.setItem(DB_PARTICOES_KEY, JSON.stringify(r.mapa));
-    } catch {
-      // Não conseguimos registrar a posse. Abrir assim mesmo arriscaria a próxima
-      // sessão "readotar" o legado e misturar contas: melhor falhar alto.
-      throw new Error('Não foi possível preparar os dados deste aparelho. Tente de novo.');
+  return conexao.trocarParticao(async () => {
+    const mapa = await lerMapaParticoes();
+    const r = resolverParticao(userId, mapa);
+    if (r.mapa !== mapa) {
+      try {
+        await AsyncStorage.setItem(DB_PARTICOES_KEY, JSON.stringify(r.mapa));
+      } catch {
+        // Não conseguimos registrar a posse. Abrir assim mesmo arriscaria a próxima
+        // sessão "readotar" o legado e misturar contas: melhor falhar alto.
+        throw new Error('Não foi possível preparar os dados deste aparelho. Tente de novo.');
+      }
     }
-  }
-  if (dbNome === r.db && db) return r.db; // já estamos no arquivo certo
-
-  // Fecha o banco do usuário anterior antes de abrir o novo: dois handles abertos
-  // no mesmo processo é a receita de escrita cruzada.
-  if (db) {
-    try {
-      await db.closeAsync();
-    } catch {
-      // best-effort: um handle que não fecha não pode impedir a troca de conta
-    }
-    db = null;
-  }
-  dbNome = r.db;
-  return r.db;
+    return r.db;
+  });
 }
 
+/**
+ * A conexão do banco da partição atual. Espera uma troca de partição em andamento;
+ * abre uma vez só; se a conexão em cache morreu, abre outra. Instruções avulsas
+ * (`runAsync`/`getAllAsync`/`getFirstAsync`) que pegam a conexão morrendo são
+ * repetidas uma vez, no MESMO arquivo, pelo próprio handle devolvido aqui.
+ */
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  if (!db) {
-    // O handle só é PUBLICADO na variável de módulo depois que initDb (e portanto
-    // runMigrations) termina. Publicá-lo antes deixaria, se um ALTER falhasse no
-    // meio, um banco meio migrado em cache: como o guard é `if (!db)`, ninguém
-    // retentaria a migração e a sessão inteira rodaria com metade das tabelas sem
-    // a coluna nova ("no such column"). Falhando, nada fica em cache e a próxima
-    // chamada tenta de novo.
-    //
-    // `dbNome ?? DB_LEGADO`: antes do login (tela Entrar, banner de migração) não
-    // há usuário e o legado é o único banco possível — é o comportamento de
-    // sempre. Depois do login, `abrirParticaoDoUsuario` já fixou a partição.
-    const alvo = dbNome ?? DB_LEGADO;
-    const aberto = await SQLite.openDatabaseAsync(alvo);
-    await initDb(aberto);
-    db = aberto;
-    dbNome = alvo;
-  }
-  return db;
+  return conexao.obter();
+}
+
+/**
+ * Roda `fn` com o banco; se a conexão morrer no meio ("closed resource" / "database
+ * is locked"), descarta, reabre e roda `fn` mais UMA vez no mesmo arquivo. Use para
+ * leituras de várias instruções ou escritas idempotentes — nunca para algo que
+ * duplicaria efeito se rodasse duas vezes.
+ */
+export async function comDb<T>(fn: (db: SQLite.SQLiteDatabase) => Promise<T>): Promise<T> {
+  return conexao.comConexao(fn);
 }
 
 async function initDb(database: SQLite.SQLiteDatabase) {
@@ -1068,26 +1092,18 @@ export async function getOrcamentosTotalAtivos(): Promise<number> {
 }
 
 /**
- * "Contas a receber": orçamentos APROVADOS sem recibo vinculado ainda.
- * Substitui `aprovados.filter(o => !getReciboDoOrcamento(o.id, recibos))`,
- * que era O(aprovados × recibos) em JS — aqui vira um anti-join em SQL.
- * Mesma regra de `getReciboDoOrcamento`: só considera recibo ATIVO
- * (excluido_em IS NULL) e só status EXATAMENTE 'aprovado' (não 'convertido').
+ * "Contas a receber": orçamentos GANHOS (aprovado OU convertido) com SALDO a receber —
+ * valor do orçamento menos os recibos ativos e não estornados dele. Pagamento parcial
+ * entra pelo que falta; orçamento convertido em OS e não pago não some mais. A regra é
+ * a do radar de dinheiro (ver `SQL_CONTAS_A_RECEBER`), em SQL (anti-join agregado), sem
+ * carregar o histórico. `semValor` = ganhos sem valor legível, que ficaram FORA da
+ * soma (não sei ≠ zero). Leitura: segura para repetir se a conexão cair no meio.
  */
-export async function getContasAReceberAgregado(): Promise<{ contagem: number; valorTotal: number }> {
-  const db = await getDb();
-  const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
-    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(o.data, '$.valorTotal')), 0) as soma
-     FROM orcamentos o
-     WHERE json_extract(o.data, '$.excluidoEm') IS NULL
-       AND json_extract(o.data, '$.status') = 'aprovado'
-       AND NOT EXISTS (
-         SELECT 1 FROM recibos r
-         WHERE json_extract(r.data, '$.orcamentoId') = o.id
-           AND json_extract(r.data, '$.excluidoEm') IS NULL
-       )`,
+export async function getContasAReceberAgregado(): Promise<{ contagem: number; valorTotal: number; semValor: number }> {
+  const row = await comDb((db) =>
+    db.getFirstAsync<{ contagem: number | null; soma: number | null; sem_valor: number | null }>(SQL_CONTAS_A_RECEBER),
   );
-  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
+  return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0, semValor: row?.sem_valor ?? 0 };
 }
 
 /**

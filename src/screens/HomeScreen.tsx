@@ -14,6 +14,7 @@ import {
 } from '../database/database';
 import { getProximoAgendamento } from '../services/agenda';
 import { abrirRotaGoogleMaps } from '../services/rotas';
+import { rotuloQuandoVisita } from '../utils/agendaDia';
 import { onSyncAplicado } from '../services/cloudSync';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
 import { clientesParaReconquistar, lembrarNoWhatsApp, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
@@ -90,9 +91,6 @@ function saudacao(): string {
   return 'Boa noite,';
 }
 
-const mesmoDia = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-
 /** Início do mês local e início do próximo, em YYYY-MM-DD para o agregado SQL. */
 function intervaloMesAtual(): { inicio: string; fimExclusivo: string } {
   const hoje = new Date();
@@ -100,18 +98,6 @@ function intervaloMesAtual(): { inicio: string; fimExclusivo: string } {
   const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
   const ymd = (data: Date) => `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
   return { inicio: ymd(inicio), fimExclusivo: ymd(fim) };
-}
-
-/** Rótulo amigável do horário da próxima parada: "Hoje · 14:30", "Amanhã · 09:00" ou "18/06 · 14:30". */
-function quandoLabel(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const hoje = new Date();
-  const amanha = new Date(); amanha.setDate(hoje.getDate() + 1);
-  if (mesmoDia(d, hoje)) return `Hoje · ${hh}`;
-  if (mesmoDia(d, amanha)) return `Amanhã · ${hh}`;
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} · ${hh}`;
 }
 
 
@@ -651,7 +637,7 @@ export default function HomeScreen() {
               </View>
             ) : proxima ? (
               <View style={styles.heroFilled}>
-                <Text style={[styles.heroWhen, { color: heroAcento }]}>{quandoLabel(proxima.inicio)}</Text>
+                <Text style={[styles.heroWhen, { color: heroAcento }]}>{rotuloQuandoVisita(proxima)}</Text>
                 <Text style={[styles.heroClient, { color: heroTexto }]} numberOfLines={1}>{proxima.clienteNome || proxima.titulo}</Text>
                 <Text style={[styles.heroType, { color: heroTextoSec }]} numberOfLines={1}>
                   {TIPO_AGENDAMENTO_LABELS[proxima.tipo]}{proxima.titulo && proxima.clienteNome ? ` · ${proxima.titulo}` : ''}
