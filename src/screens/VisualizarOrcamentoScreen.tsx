@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -649,7 +650,7 @@ export default function VisualizarOrcamentoScreen() {
         novoParaClienteNome: orc.clienteNome,
         novoParaOrcamentoId: orc.id,
         novoEndereco: orc.clienteEndereco || undefined,
-        novoTitulo: `Orçamento nº ${orc.numero}`,
+        novoTitulo: `Orçamento nº ${formatarNumeroExibicao(orc.numero)}`,
       },
     });
   }
@@ -821,7 +822,7 @@ export default function VisualizarOrcamentoScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: cores.background }}>
-      <GradientHeader title={`Orçamento nº ${orc.numero}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
+      <GradientHeader title={`Orçamento nº ${formatarNumeroExibicao(orc.numero)}`} subtitle={orc.clienteNome} onBack={() => goBackOrHome(nav)} compact>
         <View style={styles.actionBar}>
           {edicaoBloqueada(orc.status) ? (
             <ActionBtn icon="file-document-edit-outline" label="Criar revisão" onPress={handleCriarRevisao} loading={duplicando} />
@@ -861,7 +862,7 @@ export default function VisualizarOrcamentoScreen() {
         {/* STATUS */}
         <View style={styles.statusRow}>
           <View>
-            <Text style={styles.numLabel}>Orçamento nº {orc.numero}</Text>
+            <Text style={styles.numLabel}>Orçamento nº {formatarNumeroExibicao(orc.numero)}</Text>
             <Text style={styles.dateLabel}>{formatDateTime(orc.criadoEm)}</Text>
           </View>
           <TouchableOpacity onPress={() => setShowStatusMenu(!showStatusMenu)}>
@@ -1202,7 +1203,7 @@ export default function VisualizarOrcamentoScreen() {
             .map((recibo) => (
               <OlliButton
                 key={`nota-${recibo.id}`}
-                label={`Preparar nota fiscal · recibo ${recibo.numero}`}
+                label={`Preparar nota fiscal · recibo ${formatarNumeroExibicao(recibo.numero)}`}
                 variant="outline"
                 size="sm"
                 onPress={() => nav.navigate('PrepararNota', { reciboId: recibo.id })}
@@ -1301,7 +1302,7 @@ export default function VisualizarOrcamentoScreen() {
       <AssinaturaClienteModal
         visivel={assinaturaAberta}
         clienteNome={orc.clienteNome}
-        referencia={`Orçamento nº ${orc.numero}`}
+        referencia={`Orçamento nº ${formatarNumeroExibicao(orc.numero)}`}
         aoConfirmar={gravarAssinaturaCliente}
         aoCancelar={fecharAssinatura}
       />
@@ -1320,7 +1321,7 @@ export default function VisualizarOrcamentoScreen() {
         />}
       {podeFinanceiro && <EstornarPagamentoModal
         visivel={estornoAberto}
-        referencia={`Orçamento nº ${orc.numero}`}
+        referencia={`Orçamento nº ${formatarNumeroExibicao(orc.numero)}`}
         aoFechar={() => setEstornoAberto(false)}
         aoSalvar={salvarEstorno}
       />}
@@ -1330,7 +1331,7 @@ export default function VisualizarOrcamentoScreen() {
           aoFechar={() => setQrAberto(false)}
           brcode={cobrancaPronta.pixCopiaECola}
           valor={cobrancaPronta.valor}
-          referencia={`Orçamento nº ${orc.numero} · ${orc.clienteNome}`}
+          referencia={`Orçamento nº ${formatarNumeroExibicao(orc.numero)} · ${orc.clienteNome}`}
         />
       )}
       <ConfirmarEnvioSheet

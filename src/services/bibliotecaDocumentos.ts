@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento.ts';
 import type { Orcamento, OrdemServico, PmocPlano, Recibo } from '../types';
 
 export type DocumentoBibliotecaTipo =
@@ -69,17 +70,17 @@ export function construirBibliotecaDocumentos(entrada: BibliotecaEntrada): Docum
   for (const o of entrada.orcamentos) {
     const status = statusDoOrcamento(o);
     const origem = { origemTipo: 'orcamento' as const, origemId: o.id, origemNumero: o.numero, clienteId: o.clienteId, clienteNome: o.clienteNome, atualizadoEm: o.atualizadoEm };
-    documentos.push(docBase(`orcamento:${o.id}`, 'orcamento', status, `Orçamento nº ${o.numero}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
-    documentos.push(docBase(`contrato:${o.id}`, 'contrato', o.assinaturaContratoUri ? 'assinado' : 'rascunho', `Contrato · orçamento nº ${o.numero}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
-    documentos.push(docBase(`garantia:${o.id}`, 'garantia', status === 'assinado' ? 'pronto' : 'rascunho', `Termo de garantia · orçamento nº ${o.numero}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
-    documentos.push(docBase(`conclusao:${o.id}`, 'conclusao', 'rascunho', `Termo de conclusão · orçamento nº ${o.numero}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
+    documentos.push(docBase(`orcamento:${o.id}`, 'orcamento', status, `Orçamento nº ${formatarNumeroExibicao(o.numero)}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
+    documentos.push(docBase(`contrato:${o.id}`, 'contrato', o.assinaturaContratoUri ? 'assinado' : 'rascunho', `Contrato · orçamento nº ${formatarNumeroExibicao(o.numero)}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
+    documentos.push(docBase(`garantia:${o.id}`, 'garantia', status === 'assinado' ? 'pronto' : 'rascunho', `Termo de garantia · orçamento nº ${formatarNumeroExibicao(o.numero)}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
+    documentos.push(docBase(`conclusao:${o.id}`, 'conclusao', 'rascunho', `Termo de conclusão · orçamento nº ${formatarNumeroExibicao(o.numero)}`, o.clienteNome, 'orcamento', o.id, o.atualizadoEm, origem));
   }
   for (const r of entrada.recibos) {
     documentos.push(docBase(
       `recibo:${r.id}`,
       'recibo',
       r.pdfEmitido === false ? 'pronto' : 'enviado',
-      `Recibo nº ${r.numero}`,
+      `Recibo nº ${formatarNumeroExibicao(r.numero)}`,
       r.clienteNome,
       'recibo',
       r.id,

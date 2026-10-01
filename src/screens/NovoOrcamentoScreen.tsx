@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
@@ -543,7 +544,7 @@ export default function NovoOrcamentoScreen() {
     >
       <GradientHeader
         title={isEdit ? 'Editar orçamento' : 'Novo orçamento'}
-        subtitle={`${orc.numero ? `Nº ${orc.numero}` : 'Nº a definir'} · Passo ${step + 1} de 4`}
+        subtitle={`${orc.numero ? `Nº ${formatarNumeroExibicao(orc.numero)}` : 'Nº a definir'} · Passo ${step + 1} de 4`}
         onBack={handleBack}
         compact
         right={
