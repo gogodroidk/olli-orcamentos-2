@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
-  TouchableOpacity, Alert, RefreshControl, Animated,
+  TouchableOpacity, Alert, RefreshControl, Animated, Modal, Pressable,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,18 +20,21 @@ import { OlliButton } from '../components/OlliButton';
 import {
   deleteOrcamento, saveOrcamento, getNextOrcamentoNumber, edicaoBloqueada,
   getOrcamentosPagina, getOrcamentosResumoFiltro, getOrcamentosIdsFiltro,
-  getRecibos,
+  getRecibos, getEmpresa,
   type FiltroOrcamentos,
 } from '../database/database';
 import { sincronizarStatusLinks } from '../services/clienteLink';
 import { onSyncAplicado } from '../services/cloudSync';
 import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
 import { formatCurrency } from '../utils/currency';
-import { formatDate, nowISO, todayISO } from '../utils/date';
+import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
-import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../types';
+import { Empresa, Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../types';
 import { generateId } from '../utils/id';
+import { baseParaNovoDocumento, type ModoNovoDocumento } from '../utils/novoDocumento';
+import { montarMensagemFollowUpOrcamento } from '../utils/mensagensOrcamento';
+import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { FinanceiroBadge } from '../components/FinanceiroBadge';
 import { getStatusFinanceiro } from '../services/pagamentos';
 import { usePermissao } from '../hooks/usePermissao';
@@ -61,6 +64,32 @@ function montarFiltro(query: string, statusFilter: StatusOrcamento | 'todos', cl
   };
 }
 
+/**
+ * Ações visíveis no card, conforme o status (achado: "Recibo" aparecia em rascunho
+ * e em recusado, e "Excluir" vermelho em todo card). O resto (Duplicar, Criar
+ * revisão, Excluir) fica no menu ⋯.
+ *   - Rascunho: Editar e Enviar;
+ *   - Com o cliente (enviado/visualizado/em negociação/aguardando assinatura):
+ *     Cobrar resposta;
+ *   - Aprovado/convertido: Cobrar (se há saldo) e Recibo — só para quem vê valores;
+ *   - Recusado/expirado/cancelado: Criar revisão.
+ */
+type AcaoLinha = 'editar' | 'enviar' | 'cobrar_resposta' | 'cobrar' | 'recibo' | 'revisar';
+
+const COM_O_CLIENTE: StatusOrcamento[] = ['enviado', 'visualizado', 'em_negociacao', 'aguardando_assinatura'];
+
+function acoesDaLinha(status: StatusOrcamento, opts: { podeFinanceiro: boolean; aReceber: boolean }): AcaoLinha[] {
+  if (status === 'rascunho') return ['editar', 'enviar'];
+  if (COM_O_CLIENTE.includes(status)) return ['cobrar_resposta'];
+  if (status === 'aprovado' || status === 'convertido') {
+    const acoes: AcaoLinha[] = [];
+    if (opts.podeFinanceiro && opts.aReceber) acoes.push('cobrar');
+    if (opts.podeFinanceiro) acoes.push('recibo');
+    return acoes;
+  }
+  return ['revisar'];
+}
+
 interface LinhaOrcamentoProps {
   item: Orcamento;
   index: number;
@@ -68,9 +97,10 @@ interface LinhaOrcamentoProps {
   marcado: boolean;
   onPress: (item: Orcamento) => void;
   onEditar: (item: Orcamento) => void;
-  onClonar: (item: Orcamento) => void;
+  onRevisar: (item: Orcamento) => void;
+  onCobrarResposta: (item: Orcamento) => void;
   onRecibo: (item: Orcamento) => void;
-  onExcluir: (item: Orcamento) => void;
+  onMenu: (item: Orcamento) => void;
   recibos: Recibo[];
   podeFinanceiro: boolean;
 }
@@ -88,14 +118,20 @@ function LinhaOrcamentoBase({
   marcado,
   onPress,
   onEditar,
-  onClonar,
+  onRevisar,
+  onCobrarResposta,
   onRecibo,
-  onExcluir,
+  onMenu,
   recibos,
   podeFinanceiro,
 }: LinhaOrcamentoProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const statusFin = podeFinanceiro ? getStatusFinanceiro(o, recibos) : null;
+  const acoes = acoesDaLinha(o.status, {
+    podeFinanceiro,
+    aReceber: statusFin === 'aguardando_pagamento' || statusFin === 'parcial',
+  });
 
   const conteudo = (
     <OlliCard
@@ -124,36 +160,37 @@ function LinhaOrcamentoBase({
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
           <StatusBadge status={o.status} size="sm" />
-          {podeFinanceiro && <FinanceiroBadge status={getStatusFinanceiro(o, recibos)} />}
+          {podeFinanceiro && <FinanceiroBadge status={statusFin} />}
         </View>
       </View>
 
       {/* Em modo de seleção as ações somem — o card inteiro vira alvo do toque. */}
       {!selecionando && (
         <View style={styles.itemActions}>
-          {/* Documento ainda local edita no lugar. Se já foi enviado/aceito, a mesma
-              ação cria uma revisão rastreável e preserva o papel que o cliente viu. */}
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onEditar(o)}>
-            <MaterialCommunityIcons
-              name={edicaoBloqueada(o.status) ? 'file-document-edit-outline' : 'pencil-outline'}
-              size={16}
-              color={cores.primary}
-            />
-            <Text style={[styles.actionLabel, { color: cores.primary }]}>
-              {edicaoBloqueada(o.status) ? 'Revisar' : 'Editar'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onClonar(o)}>
-            <MaterialCommunityIcons name="content-copy" size={16} color={cores.secondary} />
-            <Text style={[styles.actionLabel, { color: cores.secondary }]}>Clonar</Text>
-          </TouchableOpacity>
-          {podeFinanceiro && <TouchableOpacity style={styles.actionBtn} onPress={() => onRecibo(o)}>
-            <MaterialCommunityIcons name="receipt" size={16} color={cores.success} />
-            <Text style={[styles.actionLabel, { color: cores.success }]}>Recibo</Text>
-          </TouchableOpacity>}
-          <TouchableOpacity style={styles.actionBtn} onPress={() => onExcluir(o)}>
-            <MaterialCommunityIcons name="trash-can-outline" size={16} color={cores.danger} />
-            <Text style={[styles.actionLabel, { color: cores.danger }]}>Excluir</Text>
+          {acoes.map(acao => {
+            const meta = {
+              editar: { icon: 'pencil-outline', label: 'Editar', cor: cores.primary, onPress: () => onEditar(o) },
+              enviar: { icon: 'send-outline', label: 'Enviar', cor: cores.primary, onPress: () => onPress(o) },
+              cobrar_resposta: { icon: 'whatsapp', label: 'Cobrar resposta', cor: cores.success, onPress: () => onCobrarResposta(o) },
+              cobrar: { icon: 'cash-clock', label: 'Cobrar', cor: cores.success, onPress: () => onPress(o) },
+              recibo: { icon: 'receipt', label: 'Recibo', cor: cores.success, onPress: () => onRecibo(o) },
+              revisar: { icon: 'file-document-edit-outline', label: 'Criar revisão', cor: cores.primary, onPress: () => onRevisar(o) },
+            }[acao] as { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; cor: string; onPress: () => void };
+            return (
+              <TouchableOpacity key={acao} style={styles.actionBtn} onPress={meta.onPress} accessibilityRole="button">
+                <MaterialCommunityIcons name={meta.icon} size={16} color={meta.cor} />
+                <Text style={[styles.actionLabel, { color: meta.cor }]}>{meta.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionMenu]}
+            onPress={() => onMenu(o)}
+            accessibilityRole="button"
+            accessibilityLabel={`Mais ações do orçamento nº ${o.numero}`}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <MaterialCommunityIcons name="dots-horizontal" size={20} color={cores.onSurfaceVariant} />
           </TouchableOpacity>
         </View>
       )}
@@ -235,6 +272,12 @@ export default function OrcamentosScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [sincronizando, setSincronizando] = useState(false);
+  // Menu ⋯ do card (Duplicar, Editar/Criar revisão, Excluir).
+  const [menuDe, setMenuDe] = useState<Orcamento | null>(null);
+  // Empresa só para o contato no fim da mensagem de "Cobrar resposta" e para a
+  // validade padrão do Duplicar. Leitura que falha = null (a mensagem sai sem a
+  // linha de contato; a validade cai no padrão de 15 dias).
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
   // Modo de seleção múltipla (exclusão em lote para a Lixeira).
   const [selecionando, setSelecionando] = useState(false);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
@@ -314,6 +357,7 @@ export default function OrcamentosScreen() {
   useFocusEffect(useCallback(() => {
     recarregar();
     recarregarRecibos();
+    getEmpresa().then(setEmpresa).catch(() => {});
     // sincronizarStatusLinks() nunca lança — é seguro chamar sem try/catch.
     // Se algum orçamento mudou de status (cliente aprovou/recusou pelo link),
     // recarrega a lista para refletir o novo status.
@@ -424,74 +468,53 @@ export default function OrcamentosScreen() {
     );
   }
 
-  const handleClone = useCallback(async (o: Orcamento) => {
+  /**
+   * Duplicar (rascunho independente) e Criar revisão (documento já enviado/aceito
+   * não é sobrescrito: nasce outro rascunho que aponta para o original). Os dois
+   * partem da MESMA base (`baseParaNovoDocumento`): sem nenhuma assinatura, sem as
+   * datas do documento antigo, validade recalculada a partir de hoje.
+   */
+  const criarDocumentoNovo = useCallback(async (o: Orcamento, modo: ModoNovoDocumento) => {
     try {
-      const cloneId = generateId();
       const numero = await getNextOrcamentoNumber();
-      const agora = nowISO();
-      const clone: Orcamento = {
-        ...o,
-        id: cloneId,
+      const empresaAtual = await getEmpresa().catch(() => null);
+      const novo = baseParaNovoDocumento({
+        origem: o,
+        modo,
+        id: generateId(),
         numero,
-        status: 'rascunho',
-        dataEmissao: todayISO(),
-        itens: o.itens.map(item => ({ ...item, id: generateId() })),
-        // não herdar dados específicos do orçamento original
-        assinaturaClienteUri: undefined,
-        dataAssinaturaCliente: undefined,
-        assinaturaPrestadorUri: undefined,
-        criadoDeModeloId: undefined,
-        editadoEm: undefined,
-        revisaoDeId: undefined,
-        revisaoDeNumero: undefined,
-        revisaoCriadaEm: undefined,
-        excluidoEm: undefined,
-        criadoEm: agora,
-        atualizadoEm: agora,
-      };
-      await saveOrcamento(clone);
-      recarregar();
-      nav.navigate('EditarOrcamento', { orcamentoId: cloneId });
-    } catch (e) {
-      Alert.alert('Erro', 'Não foi possível clonar o orçamento agora. Tente novamente.');
+        gerarId: generateId,
+        empresa: empresaAtual,
+      });
+      await saveOrcamento(novo);
+      await recarregar();
+      nav.navigate('EditarOrcamento', { orcamentoId: novo.id });
+    } catch {
+      Alert.alert(
+        'Erro',
+        modo === 'revisao'
+          ? 'Não foi possível criar a revisão agora. Tente novamente.'
+          : 'Não foi possível duplicar o orçamento agora. Tente novamente.',
+      );
     }
   }, [recarregar, nav]);
 
-  /**
-   * Cria a proposta que substitui um documento já enviado sem sobrescrevê-lo.
-   * A relação com o original viaja no próprio blob para ficar visível no app,
-   * no painel e no documento que será reenviado.
-   */
-  const handleRevision = useCallback(async (o: Orcamento) => {
-    try {
-      const revisionId = generateId();
-      const numero = await getNextOrcamentoNumber();
-      const agora = nowISO();
-      const revision: Orcamento = {
-        ...o,
-        id: revisionId,
-        numero,
-        status: 'rascunho',
-        dataEmissao: todayISO(),
-        itens: o.itens.map(item => ({ ...item, id: generateId() })),
-        assinaturaClienteUri: undefined,
-        dataAssinaturaCliente: undefined,
-        assinaturaPrestadorUri: undefined,
-        editadoEm: undefined,
-        revisaoDeId: o.revisaoDeId ?? o.id,
-        revisaoDeNumero: o.revisaoDeNumero ?? o.numero,
-        revisaoCriadaEm: agora,
-        excluidoEm: undefined,
-        criadoEm: agora,
-        atualizadoEm: agora,
-      };
-      await saveOrcamento(revision);
-      await recarregar();
-      nav.navigate('EditarOrcamento', { orcamentoId: revisionId });
-    } catch {
-      Alert.alert('Erro', 'Não foi possível criar a revisão agora. Tente novamente.');
+  const handleClone = useCallback((o: Orcamento) => criarDocumentoNovo(o, 'duplicar'), [criarDocumentoNovo]);
+  const handleRevision = useCallback((o: Orcamento) => criarDocumentoNovo(o, 'revisao'), [criarDocumentoNovo]);
+
+  /** "Cobrar resposta": lembrete cordial no WhatsApp de quem recebeu a proposta. */
+  const handleCobrarResposta = useCallback(async (o: Orcamento) => {
+    const telefone = (o.clienteTelefone || '').trim();
+    if (!telefone) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${o.clienteNome} para cobrar a resposta por aqui.`);
+      return;
     }
-  }, [recarregar, nav]);
+    try {
+      await abrirWhatsApp(telefone, montarMensagemFollowUpOrcamento(o, empresa));
+    } catch {
+      Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
+    }
+  }, [empresa]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -516,13 +539,29 @@ export default function OrcamentosScreen() {
     nav.navigate('EditarOrcamento', { orcamentoId: o.id });
   }, [handleRevision, nav]);
 
-  const onClonarLinha = useCallback((o: Orcamento) => { handleClone(o); }, [handleClone]);
+  // Recusado/expirado/cancelado não são edicaoBloqueada: o botão "Criar revisão"
+  // do card precisa criar a revisão de fato, não abrir o original no editor.
+  const onRevisarLinha = useCallback((o: Orcamento) => { void handleRevision(o); }, [handleRevision]);
+
+  const onCobrarRespostaLinha = useCallback((o: Orcamento) => { void handleCobrarResposta(o); }, [handleCobrarResposta]);
+
+  const onMenuLinha = useCallback((o: Orcamento) => { setMenuDe(o); }, []);
 
   const onReciboLinha = useCallback((o: Orcamento) => {
     nav.navigate('EmitirRecibo', { orcamentoId: o.id });
   }, [nav]);
 
-  const onExcluirLinha = useCallback((o: Orcamento) => { handleDelete(o); }, [handleDelete]);
+  /** Fecha o menu ⋯ e roda a ação escolhida sobre o orçamento dele. */
+  function escolherNoMenu(acao: 'duplicar' | 'editar' | 'excluir') {
+    const o = menuDe;
+    setMenuDe(null);
+    if (!o) return;
+    if (acao === 'duplicar') void handleClone(o);
+    else if (acao === 'editar') onEditarLinha(o);
+    // A confirmação (Alert) espera o menu terminar de fechar: no iOS, um Alert
+    // aberto enquanto o Modal sai some junto com ele.
+    else setTimeout(() => { void handleDelete(o); }, 350);
+  }
 
   const renderItem = useCallback(({ item: o, index }: { item: Orcamento; index: number }) => {
     const marcado = selecionados.has(o.id);
@@ -535,14 +574,15 @@ export default function OrcamentosScreen() {
         marcado={marcado}
         onPress={onPressLinha}
         onEditar={onEditarLinha}
-        onClonar={onClonarLinha}
+        onRevisar={onRevisarLinha}
+        onCobrarResposta={onCobrarRespostaLinha}
         onRecibo={onReciboLinha}
-        onExcluir={onExcluirLinha}
+        onMenu={onMenuLinha}
         recibos={recibos}
         podeFinanceiro={podeFinanceiro}
       />
     );
-  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onClonarLinha, onReciboLinha, onExcluirLinha, recibos, podeFinanceiro]);
+  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onRevisarLinha, onCobrarRespostaLinha, onReciboLinha, onMenuLinha, recibos, podeFinanceiro]);
 
   const keyExtractor = useCallback((o: Orcamento) => o.id, []);
 
@@ -708,6 +748,48 @@ export default function OrcamentosScreen() {
           />
         </View>
       )}
+
+      {/* MENU ⋯ DO CARD — ações menos frequentes e a destrutiva, longe do polegar. */}
+      <Modal visible={!!menuDe} transparent animationType="fade" onRequestClose={() => setMenuDe(null)}>
+        <Pressable style={styles.menuFundo} onPress={() => setMenuDe(null)} accessibilityLabel="Fechar menu">
+          <Pressable style={[styles.menuFolha, { paddingBottom: insets.bottom + 12 }]} onPress={() => {}}>
+            {menuDe ? (
+              <>
+                <Text style={styles.menuTitulo} numberOfLines={1}>
+                  Orçamento nº {menuDe.numero} · {menuDe.clienteNome}
+                </Text>
+                <TouchableOpacity style={styles.menuItem} onPress={() => escolherNoMenu('duplicar')} accessibilityRole="button">
+                  <MaterialCommunityIcons name="content-copy" size={20} color={cores.onSurface} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.menuItemLabel}>Duplicar</Text>
+                    <Text style={styles.menuItemSub}>Rascunho novo, sem assinaturas, com validade a partir de hoje</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => escolherNoMenu('editar')} accessibilityRole="button">
+                  <MaterialCommunityIcons
+                    name={edicaoBloqueada(menuDe.status) ? 'file-document-edit-outline' : 'pencil-outline'}
+                    size={20}
+                    color={cores.onSurface}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.menuItemLabel}>{edicaoBloqueada(menuDe.status) ? 'Criar revisão' : 'Editar'}</Text>
+                    {edicaoBloqueada(menuDe.status) ? (
+                      <Text style={styles.menuItemSub}>O original que o cliente viu fica preservado</Text>
+                    ) : null}
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => escolherNoMenu('excluir')} accessibilityRole="button">
+                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.menuItemLabel, { color: cores.danger }]}>Excluir</Text>
+                    <Text style={styles.menuItemSub}>Vai para a Lixeira por {DIAS_RETENCAO_LIXEIRA} dias</Text>
+                  </View>
+                </TouchableOpacity>
+              </>
+            ) : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -815,5 +897,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     gap: 3, paddingVertical: 4,
   },
   actionLabel: { fontSize: 11, fontWeight: '700' },
+  actionMenu: { flex: 0, paddingHorizontal: 10 },
+
+  menuFundo: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  menuFolha: {
+    backgroundColor: c.surface,
+    borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl,
+    borderWidth: 1, borderColor: c.strokeGlow,
+    paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
+    ...sombrasDe(c).lg,
+  },
+  menuTitulo: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 6 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 10 },
+  menuItemLabel: { fontSize: 15, fontWeight: '700', color: c.onSurface },
+  menuItemSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
 });

@@ -164,6 +164,25 @@ export const LEMBRETES_ENVIADOS_KEY = 'olli.posvenda.lembrados';
 export const LEMBRETES_ENVIADOS_STAMP_KEY = 'olli.posvenda.lembrados.stamp';
 
 /**
+ * Prefixo do carimbo "o primeiro download da nuvem terminou SEM falha" — uma chave
+ * por usuário (`olli.sync.pull_inicial_ok_<userId>`, valor = ISO do pull), igual à
+ * partição local, que também é por usuário (services/cloudSync). Sem ele, o SQLite
+ * ainda vazio de um aparelho recém-logado era lido como "conta com zero
+ * orçamentos" e o Início convidava a criar o primeiro quem já tinha 40.
+ *
+ * Chave dinâmica, então NÃO cabe na allow-list abaixo: quem limpa os dados chama
+ * `esquecerDownloadInicial()` (cloudSync), que apaga todas as chaves com este
+ * prefixo. Perder um carimbo é o lado seguro: a conta só passa pelo "baixando"
+ * mais uma vez.
+ */
+export const PULL_INICIAL_OK_PREFIX = 'olli.sync.pull_inicial_ok_';
+/**
+ * Resultado do último pull completo (`{ em, falhas: string[] }`, services/cloudSync):
+ * quais tabelas a nuvem NÃO entregou. Diagnóstico de conta — entra na allow-list.
+ */
+export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -194,4 +213,5 @@ export const APP_DATA_STORAGE_KEYS = [
   COBRANCAS_ENVIADAS_STAMP_KEY,
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
+  ULTIMO_PULL_KEY,
 ];

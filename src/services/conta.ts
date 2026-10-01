@@ -50,7 +50,7 @@ export async function removerFotoPerfil(): Promise<void> {
 
 export type ResultadoExclusao =
   | { ok: true }
-  | { ok: false; motivo: 'nao_configurado' | 'sem_login' | 'servidor' | 'rede' | 'falha_cancelamento' };
+  | { ok: false; motivo: 'nao_configurado' | 'sem_login' | 'servidor' | 'rede' | 'falha_cancelamento' | 'muitas_requisicoes' };
 
 /**
  * Exclui a conta do usuário logado, de forma irreversível.
@@ -90,9 +90,11 @@ export async function excluirConta(): Promise<ResultadoExclusao> {
     });
     const data: any = await r.json().catch(() => null);
     if (!r.ok || !data || data.ok !== true) {
-      return data?.erro === 'falha_cancelamento'
-        ? { ok: false, motivo: 'falha_cancelamento' }
-        : { ok: false, motivo: 'servidor' };
+      if (data?.erro === 'falha_cancelamento') return { ok: false, motivo: 'falha_cancelamento' };
+      // 429 do limite por usuário (worker/src/conta.js): não é falha do servidor, é
+      // "espere um pouco" — e nada foi apagado.
+      if (r.status === 429 || data?.erro === 'muitas_requisicoes') return { ok: false, motivo: 'muitas_requisicoes' };
+      return { ok: false, motivo: 'servidor' };
     }
   } catch {
     return { ok: false, motivo: 'rede' };

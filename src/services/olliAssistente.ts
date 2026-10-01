@@ -1,5 +1,6 @@
 import { DIAGNOSTICO_URL } from '../config';
-import { getServicos } from '../database/database';
+import { getProdutos, getServicos } from '../database/database';
+import { catalogoParaVoz, type ItemCatalogoVoz } from '../utils/orcamentoBase';
 import { track, Eventos } from './analytics';
 import { supabase } from './supabase';
 import { verticalParaIA } from '../hooks/useVerticais';
@@ -110,16 +111,24 @@ function mensagemPorStatus(status: number, fallback: string, codigo?: unknown): 
   return fallback;
 }
 
-function catalogoLeve(servicos: { nome: string; preco: number }[]): { nome: string; preco?: number }[] {
-  // Mantém o payload enxuto: só os nomes (e preço quando houver), no máx. 60 itens.
-  return servicos
-    .slice(0, 60)
-    .map(s => (s.preco > 0 ? { nome: s.nome, preco: s.preco } : { nome: s.nome }));
+/**
+ * Catálogo (serviços + produtos) para a IA da voz casar descrições com preços já
+ * cadastrados. É só uma DICA: se uma das leituras falhar, segue com a outra; se
+ * as duas falharem ou não houver nada, devolve `undefined` e a IA trabalha só
+ * com a fala — nunca bloqueia o orçamento.
+ */
+export async function carregarCatalogoVoz(): Promise<ItemCatalogoVoz[] | undefined> {
+  const [servicos, produtos] = await Promise.allSettled([getServicos(), getProdutos()]);
+  const catalogo = catalogoParaVoz(
+    servicos.status === 'fulfilled' ? servicos.value : [],
+    produtos.status === 'fulfilled' ? produtos.value : [],
+  );
+  return catalogo.length > 0 ? catalogo : undefined;
 }
 
 /**
  * Envia a transcrição (ou texto digitado) para a OLLI montar uma lista de itens.
- * Anexa o catálogo de serviços do banco quando disponível (ajuda a IA a casar
+ * Anexa o catálogo de serviços e produtos do banco quando disponível (ajuda a IA a casar
  * descrições com preços já cadastrados). Nunca lança: devolve `{ ok:false }`.
  *
  * `sinalCancelamento` (opcional) permite que a UI cancele a chamada manualmente
@@ -149,13 +158,8 @@ export async function interpretarVoz(
   const token = await accessTokenAtual();
   if (!token) return { ok: false, erro: PRECISA_LOGIN };
 
-  let catalogo: { nome: string; preco?: number }[] | undefined;
-  try {
-    const servicos = await getServicos();
-    if (servicos.length > 0) catalogo = catalogoLeve(servicos);
-  } catch {
-    // sem catálogo não tem problema — a IA segue só com o texto
-  }
+  // sem catálogo não tem problema — a IA segue só com o texto
+  const catalogo = await carregarCatalogoVoz();
 
   // Ofício da empresa → a IA monta o orçamento na língua do segmento (pintura,
   // elétrica…). undefined = sem ofício → worker usa o default (ar-condicionado).
@@ -300,13 +304,8 @@ export async function conversarVoz(
   const token = await accessTokenAtual();
   if (!token) return { ok: false, erro: PRECISA_LOGIN };
 
-  let catalogo: { nome: string; preco?: number }[] | undefined;
-  try {
-    const servicos = await getServicos();
-    if (servicos.length > 0) catalogo = catalogoLeve(servicos);
-  } catch {
-    // sem catálogo não tem problema — a IA segue só com a conversa
-  }
+  // sem catálogo não tem problema — a IA segue só com a conversa
+  const catalogo = await carregarCatalogoVoz();
   const vertical = await verticalParaIA();
 
   const controller = new AbortController();

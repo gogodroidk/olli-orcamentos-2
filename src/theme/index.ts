@@ -4,7 +4,7 @@ import { criarGradientes, criarPaleta, criarSombras, COR_MARCA_PADRAO, type Core
 
 export { Fonts };
 export * from './cores';
-export { TemaProvider, useTema, useCores, useGradientes, useEstilos } from './TemaProvider';
+export { TemaProvider, useTema, useCores, useGradientes, useEstilos, PADRAO_MODO } from './TemaProvider';
 
 /**
  * `Colors` — paleta ESTÁTICA do modo CLARO (o padrão do app).

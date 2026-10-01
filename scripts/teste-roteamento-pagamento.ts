@@ -32,6 +32,14 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, relative, sep } from 'node:path';
+import { regrasDaLoja, textosDaLoja } from '../src/config/lojaRegras.ts';
+import {
+  linhaValidade,
+  mostraPortalStripe,
+  pilulaAssinatura,
+  rotuloMetodo,
+  temCobranca,
+} from '../src/services/assinaturaTextos.ts';
 
 let falhas = 0;
 let passes = 0;
@@ -270,6 +278,81 @@ console.log('\n── Copy: a forma de pagamento anunciada é a verdadeira ─�
 
   const creditos = readFileSync(join(RAIZ, 'src/screens/CreditosScreen.tsx'), 'utf8');
   checar('a tela de créditos é a que fala de Pix', creditos.includes('Recarregar por Pix'), true);
+  // Só voz/IA debitam crédito hoje (worker/src/creditos.js: nenhum consumidor de whatsapp_*).
+  checar('o subtítulo dos créditos não promete WhatsApp', /subtitle="[^"]*WhatsApp/.test(creditos), false);
+  checar('o subtítulo dos créditos é o que consome de verdade', creditos.includes('subtitle="Voz na nuvem e IA"'), true);
+}
+
+console.log('\n── Loja: o build da Play não anuncia compra externa ──');
+{
+  // Regra do dono (BUILD_PLAY_SEM_COMPRA_EXTERNA): o APK da Google Play não vende
+  // plano nem crédito por fora. Já houve "Créditos — Saldo e recarga por Pix" no
+  // menu da Conta do Android, com a tela seguinte dizendo que não há recarga.
+  const android = textosDaLoja('android');
+  const ios = textosDaLoja('ios');
+  const web = textosDaLoja('web');
+  checar('Android: rótulo dos créditos sem "Pix"', /pix/i.test(android.creditosMenu), false);
+  checar('Android: rótulo dos créditos sem "recarga"', /recarg/i.test(android.creditosMenu), false);
+  checar('iPhone: rótulo dos créditos sem "Pix"', /pix/i.test(ios.creditosMenu), false);
+  checar('web: a recarga por Pix continua anunciada', web.creditosMenu, 'Saldo e recarga por Pix');
+  checar('Android: assinatura não promete faturas nem cancelamento', /fatura|cancel/i.test(android.assinaturaMenu('Empresa')), false);
+  checar('Android: assinatura diz o que a tela mostra', android.assinaturaMenu('Empresa'), 'Plano Empresa · status e validade');
+  checar('web: assinatura mantém faturas e cancelamento', /fatura/.test(web.assinaturaMenu('Pro')), true);
+
+  const regrasAndroid = regrasDaLoja('android');
+  checar('Android: sem compra externa', [regrasAndroid.buildPlaySemCompraExterna, regrasAndroid.compraExternaHabilitada], [true, false]);
+  checar('iPhone: sem compra no app', [regrasDaLoja('ios').compraNoApp, regrasDaLoja('ios').compraExternaHabilitada], [false, false]);
+  checar('web: compra habilitada', regrasDaLoja('web').compraExternaHabilitada, true);
+
+  // Flag ÚNICA: nenhuma tela recria a sua cópia (foi assim que o menu da Conta
+  // esqueceu de olhar a dele).
+  const recriam = arquivosDe('src')
+    .filter((rel) => rel !== 'src/config/loja.ts' && rel !== 'src/config/lojaRegras.ts')
+    .filter((rel) => /const\s+(BUILD_PLAY_SEM_COMPRA_EXTERNA|COMPRA_NO_APP|COMPRA_EXTERNA_HABILITADA)\s*=/.test(readFileSync(join(RAIZ, rel), 'utf8')))
+    .sort();
+  checar('a flag de loja só é definida em src/config/loja.ts', recriam, []);
+
+  // "recarga por Pix" escrito à mão numa tela escaparia da regra por plataforma.
+  const conta = semComentarios(readFileSync(join(RAIZ, 'src/screens/ContaScreen.tsx'), 'utf8'));
+  checar('a Conta não crava "recarga por Pix"', /recarga por pix/i.test(conta), false);
+  checar('a Conta usa o rótulo da loja para os créditos', conta.includes('desc: TEXTOS_LOJA.creditosMenu'), true);
+  checar('a Conta não promete estoque em Produtos', conta.includes("'Materiais e estoque'"), false);
+}
+
+console.log('\n── Assinatura: cada origem com o seu texto ──');
+{
+  const concedido = { planoEfetivo: 'empresa' as const, origem: 'admin' as const, validoAte: '2026-12-31T00:00:00Z' };
+  checar('admin: pílula "Concedido"', pilulaAssinatura(concedido).rotulo, 'Concedido');
+  checar('admin: validade da concessão', linhaValidade(concedido), { rotulo: 'Acesso concedido até', valorIso: '2026-12-31T00:00:00Z' });
+  checar('admin sem prazo: não vira "—"', linhaValidade({ planoEfetivo: 'empresa', origem: 'admin' }), { rotulo: 'Acesso concedido', semFim: true });
+  checar('admin: sem linha de pagamento', temCobranca(concedido), false);
+
+  const teste = { planoEfetivo: 'pro' as const, origem: 'trial' as const, validoAte: '2026-10-14T00:00:00Z' };
+  checar('teste: pílula "Teste grátis"', pilulaAssinatura(teste).rotulo, 'Teste grátis');
+  checar('teste: "Teste grátis até"', linhaValidade(teste).rotulo, 'Teste grátis até');
+  checar('teste: sem portal da Stripe', mostraPortalStripe(teste), false);
+
+  const pix = { planoEfetivo: 'pro' as const, origem: 'pagamento' as const, status: 'active', renovaSozinho: false, temClienteStripe: false };
+  checar('Pix: método "Pix (renovação manual)"', rotuloMetodo(pix, null), 'Pix (renovação manual)');
+  checar('Pix: validade é "Acesso até"', linhaValidade(pix).rotulo, 'Acesso até');
+  checar('Pix sem cliente Stripe: sem portal', mostraPortalStripe(pix), false);
+  checar('12x no cartão (cliente Stripe): não chuta Pix', rotuloMetodo({ ...pix, temClienteStripe: true }, null), 'Não informado');
+
+  const cartao = { planoEfetivo: 'pro' as const, origem: 'pagamento' as const, status: 'active', renovaSozinho: true, temClienteStripe: true };
+  checar('cartão: método lido vence', rotuloMetodo(cartao, 'Visa •••• 4242'), 'Visa •••• 4242');
+  checar('cartão: "Próxima cobrança"', linhaValidade(cartao).rotulo, 'Próxima cobrança');
+  checar('cartão: portal da Stripe', mostraPortalStripe(cartao), true);
+  checar('Play: método "Google Play"', rotuloMetodo({ ...cartao, temClienteStripe: false, renovaPelaPlay: true }, null), 'Google Play');
+
+  checar('plano pago sem status conhecido não vira "Sem assinatura"', pilulaAssinatura({ planoEfetivo: 'empresa' }).rotulo, 'Ativa');
+  checar('Grátis sem status: "Sem assinatura"', pilulaAssinatura({ planoEfetivo: 'gratis' }).rotulo, 'Sem assinatura');
+
+  // Erro nunca vira Grátis: o serviço tem o estado de erro e não lê a sessão pela rede.
+  const servico = semComentarios(readFileSync(join(RAIZ, 'src/services/assinatura.ts'), 'utf8'));
+  checar('assinatura.ts não chama getUser() (rede)', servico.includes('auth.getUser('), false);
+  checar("assinatura.ts tem o estado 'erro' explícito", servico.includes("estado: 'erro'"), true);
+  const tela = semComentarios(readFileSync(join(RAIZ, 'src/screens/AssinaturaScreen.tsx'), 'utf8'));
+  checar('a tela tem "Tentar de novo" no erro', tela.includes('Tentar de novo'), true);
 }
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
