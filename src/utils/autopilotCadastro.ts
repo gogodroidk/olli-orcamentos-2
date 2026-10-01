@@ -53,10 +53,17 @@ export type CadastroExistente = {
   servicos: ServicoItem[] | null;
 };
 
+/**
+ * Acentos que o `normalize('NFD')` separa da letra. Escape em STRING (não o
+ * caractere combinante literal, invisível no editor e apagado calado por um
+ * salvamento com encoding errado). Mesma regra de `services/cep.ts`.
+ */
+const DIACRITICOS = new RegExp('[\u0300-\u036f]', 'g');
+
 export function normalizarNome(valor?: string | null): string {
   return (valor ?? '')
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(DIACRITICOS, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
@@ -254,7 +261,12 @@ export function resolverClienteOrcamento(
   if (candidato) {
     const idNovo = cadastrados.get(candidato.chave);
     if (idNovo) return { id: idNovo, nome: candidato.nome };
-    if (candidato.duplicado?.origem === 'cadastro') return { id: candidato.duplicado.id, nome: candidato.duplicado.nome };
+    // Só liga ao cadastro existente quando o NOME bate. Telefone igual com nome
+    // diferente pode ser outra pessoa (marido/esposa, filiais): ligar ali poria
+    // o orçamento no cliente errado sem ninguém perceber.
+    if (candidato.duplicado?.origem === 'cadastro' && candidato.duplicado.motivo === 'nome') {
+      return { id: candidato.duplicado.id, nome: candidato.duplicado.nome };
+    }
   }
   const existente = ativos(clientesExistentes)?.find((c) => normalizarNome(c.nome) === alvo);
   if (existente) return { id: existente.id, nome: existente.nome };

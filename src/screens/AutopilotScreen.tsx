@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -52,6 +52,13 @@ export default function AutopilotScreen() {
   const [cadastrados, setCadastrados] = useState<Map<string, string>>(new Map());
   const [resultadoCadastro, setResultadoCadastro] = useState<ResultadoCadastro | null>(null);
   const [cadastrando, setCadastrando] = useState(false);
+  // Trava síncrona contra toque duplo (o `cadastrando` do estado só vale no
+  // próximo render — dois toques no mesmo quadro gravariam tudo em dobro).
+  const cadastrandoRef = useRef(false);
+  // Geração do checklist: muda a cada nova prévia. Resultado de um cadastro
+  // que terminou depois de trocar a prévia NÃO pode marcar como "Cadastrado"
+  // os itens da prévia nova (as chaves `tipo:índice` se repetem).
+  const geracaoRef = useRef(0);
 
   function permitidoCadastrar(chave: string): boolean {
     return chave.startsWith('cliente:') ? podeClientes : podeCatalogo;
@@ -60,6 +67,7 @@ export default function AutopilotScreen() {
   // Nova prévia → lê o cadastro atual (para avisar duplicado) e monta o checklist.
   // Leitura que falha vira `null` (não conferido), nunca "não tem duplicado".
   useEffect(() => {
+    geracaoRef.current += 1;
     setExistentes(null); setCandidatosCadastro([]); setSelecionados(new Set());
     setCadastrados(new Map()); setResultadoCadastro(null);
     if (!previa || papelCarregando) return;
@@ -92,13 +100,16 @@ export default function AutopilotScreen() {
   }
 
   async function cadastrar() {
-    if (!selecionados.size || cadastrando) return;
+    if (!selecionados.size || cadastrando || cadastrandoRef.current) return;
+    cadastrandoRef.current = true;
+    const geracao = geracaoRef.current;
     setCadastrando(true);
     try {
       const resultado = await cadastrarSelecionados(candidatosCadastro, selecionados, {
         saveCliente, saveProduto, saveServico, gerarId: generateId, agora: nowISO,
         permissoes: { clientes: podeClientes, catalogo: podeCatalogo },
       });
+      if (geracao !== geracaoRef.current) return; // prévia trocou no meio: não marca a nova.
       const novos = new Map(cadastrados);
       for (const item of resultado.itens) if (item.ok) novos.set(item.chave, item.id);
       setCadastrados(novos);
@@ -106,6 +117,7 @@ export default function AutopilotScreen() {
       setSelecionados((atual) => new Set([...atual].filter((chave) => !novos.has(chave))));
       setResultadoCadastro(resultado);
     } finally {
+      cadastrandoRef.current = false;
       setCadastrando(false);
     }
   }
@@ -254,7 +266,7 @@ export default function AutopilotScreen() {
           {previa.candidatos.documentos.map((doc) => <View key={`doc-${doc.titulo}`} style={styles.documento}><MaterialCommunityIcons name="file-edit-outline" size={18} color={cores.primaryLight} /><View style={{ flex: 1 }}><Text style={styles.linhaTitulo}>{doc.titulo}</Text><Text style={styles.linhaSub} numberOfLines={3}>{doc.texto || 'Documento identificado; abra a origem para revisar o texto completo.'}</Text></View></View>)}
           {previa.candidatos.avisos.length > 0 && <View style={styles.aviso}><Text style={styles.avisoTitulo}>Revise antes de usar</Text>{previa.candidatos.avisos.map((aviso) => <Text key={aviso} style={styles.avisoTexto}>• {aviso}</Text>)}</View>}
           <OlliButton label="Abrir orçamento rascunho" variant="gradient" size="lg" fullWidth onPress={abrirOrcamento} disabled={!paramsOrcamento} icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />} style={{ marginTop: Spacing.md }} />
-          <TouchableOpacity style={styles.limpar} onPress={limpar} accessibilityRole="button"><MaterialCommunityIcons name="refresh" size={16} color={cores.accentLight} /><Text style={styles.limparTexto}>Começar outra prévia</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.limpar} onPress={limpar} disabled={cadastrando} accessibilityRole="button" accessibilityState={{ disabled: cadastrando }}><MaterialCommunityIcons name="refresh" size={16} color={cores.accentLight} /><Text style={styles.limparTexto}>Começar outra prévia</Text></TouchableOpacity>
         </View>}
 
         <Text style={styles.nota}>A OLLI não lê WhatsApp/Instagram automaticamente, não usa cookies e não envia mensagens. Prints, PDFs e preços são referências fornecidas por você; confira telefone, documento, unidade e valor antes de salvar.</Text>

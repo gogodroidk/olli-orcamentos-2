@@ -206,6 +206,12 @@ await ok('resolverCliente: duplicado aponta para o cadastro existente', () => {
   assert.deepEqual(c, { id: 'cli-joao', nome: 'João Pereira' });
 });
 
+await ok('resolverCliente: telefone igual com nome diferente NÃO liga ao cadastro de outra pessoa', () => {
+  // "Maria S." tem o telefone de "Maria Souza": pode ser outra pessoa (marido/esposa).
+  const c = resolverClienteOrcamento({ clienteNome: 'Maria S.' }, candidatos, new Map(), existentes.clientes);
+  assert.deepEqual(c, { nome: 'Maria S.' });
+});
+
 await ok('resolverCliente: sem cadastro segue só o nome; sem nome = null', () => {
   assert.deepEqual(resolverClienteOrcamento({ clienteNome: 'Ana Lima' }, candidatos, new Map(), existentes.clientes), { nome: 'Ana Lima' });
   assert.equal(resolverClienteOrcamento({ clienteNome: '' }, candidatos, new Map(), existentes.clientes), null);
@@ -256,6 +262,18 @@ await ok('tela mostra aviso de duplicado, resultado e erro por item', () => {
   assert.ok(tela.includes('resumoCadastro(resultadoCadastro)'));
   assert.ok(tela.includes('errosPorChave.get(c.chave)'));
   assert.ok(tela.includes('accessibilityRole="checkbox"'));
+});
+
+await ok('tela trava toque duplo e não marca a prévia nova com resultado da antiga', () => {
+  assert.ok(tela.includes('cadastrandoRef.current'));
+  assert.ok(tela.includes('if (geracao !== geracaoRef.current) return;'));
+  assert.ok(tela.includes('onPress={limpar} disabled={cadastrando}'));
+});
+
+await ok('normalização sem caractere combinante literal no fonte', async () => {
+  const fonte = await readFile(new URL('../src/utils/autopilotCadastro.ts', import.meta.url), 'utf8');
+  assert.ok(!/[̀-ͯ]/.test(fonte), 'diacrítico literal no fonte (some num salvamento com encoding errado)');
+  assert.equal(normalizarNome('  JOÃO   Pêreira! '), 'joao pereira');
 });
 
 await ok('abrirOrcamento navega com os parâmetros montados', () => {
