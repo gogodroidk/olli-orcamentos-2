@@ -13,6 +13,7 @@ import {
   novaTentativaOAuth,
 } from './oauthRetorno';
 import { urlRecuperacaoSenha } from './acessoCodigo';
+import { decidirSessaoNoBoot, erroDeRenovacaoEhDeRede, type DecisaoSessao } from './sessaoOffline';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
@@ -173,13 +174,53 @@ export async function getCurrentUser() {
  * sandbox nativo.
  */
 export async function sessaoAtiva(): Promise<Session | null> {
+  return (await sessaoComOrigem()).sessao;
+}
+
+/**
+ * Lê a sessão GUARDADA no aparelho, sem rede. Só é usada quando a renovação
+ * falhou por falta de internet (ver services/sessaoOffline.ts). Nunca lança.
+ */
+async function lerSessaoGuardada(): Promise<string | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.auth.getSession();
-    return data.session ?? null;
+    const chave = (supabase.auth as unknown as { storageKey?: string }).storageKey;
+    if (!chave) return null;
+    return await authStorage.getItem(chave);
   } catch {
     return null;
   }
+}
+
+/**
+ * Sessão + de onde ela veio. `guardada_offline` = o token venceu e não havia
+ * internet para renovar, mas a sessão continua no aparelho: o app abre em modo
+ * avião em vez de pedir login. O sync segue parado até a renovação dar certo
+ * (ele usa `getCurrentUser`, que continua estrito) — é só a PORTA que não fecha.
+ */
+export async function sessaoComOrigem(): Promise<DecisaoSessao<Session>> {
+  if (!supabase) return { origem: 'nenhuma', sessao: null };
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (data.session) return { origem: 'servidor', sessao: data.session };
+    // Só lê o storage quando o motivo do null foi REDE — evita IO à toa no
+    // caminho comum (deslogado de verdade não tem erro nenhum).
+    if (!erroDeRenovacaoEhDeRede(error)) return { origem: 'nenhuma', sessao: null };
+    return decidirSessaoNoBoot<Session>(null, error, await lerSessaoGuardada());
+  } catch {
+    return { origem: 'nenhuma', sessao: null };
+  }
+}
+
+/**
+ * Usuário da sessão para IDENTIFICAR quem está no aparelho (filtro "minhas OS"
+ * do técnico, chave da fila de fotos) — inclusive offline com o token vencido.
+ * NÃO use para decidir se pode falar com a nuvem: para isso é `getCurrentUser`,
+ * que devolve null enquanto a sessão não for renovada.
+ */
+export async function usuarioDaSessaoLocal(): Promise<{ id: string; email?: string | null } | null> {
+  const { sessao } = await sessaoComOrigem();
+  return sessao?.user ?? null;
 }
 
 /**

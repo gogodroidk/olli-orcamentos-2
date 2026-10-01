@@ -2855,6 +2855,20 @@ function syncAbortado(geracao: number | undefined): boolean {
 }
 
 /**
+ * Botão [Tentar agora] do SeloSync (I0). Força o envio das fotos paradas —
+ * ignorando a espera crescente e incluindo as que a nuvem recusou — e dispara um
+ * sync completo em seguida, em segundo plano. Devolve o resultado das fotos (null
+ * = envio desligado ou não deu para ler a fila). Nunca lança.
+ */
+export async function tentarSincronizarAgora(): Promise<{ enviadas: number; falhas: number; erroLeitura: boolean } | null> {
+  const resultado = await import('./filaFotosNativa')
+    .then(m => m.enviarFotosPendentes({ forcar: true }))
+    .catch(() => null);
+  void syncOnLogin();
+  return resultado;
+}
+
+/**
  * No login (ordem importa):
  *  1) pullAll()           — aplica exclusões da nuvem, traz o estado da nuvem e
  *                           funde contadores. Vem ANTES para o aparelho recém-
@@ -2946,6 +2960,14 @@ export async function syncOnLogin(): Promise<void> {
     await import('./clienteLink')
       .then(m => m.espelharVersoesPendentes())
       .catch(() => 0);
+    if (syncAbortado(geracao)) return;
+    // Fotos da OS (I0 · selo "no aparelho/enviada"): o arquivo já está salvo no
+    // aparelho desde o clique; aqui só sobe a cópia para o bucket privado. Vem
+    // DEPOIS das linhas (a OS existe na nuvem antes da foto) e respeita a espera
+    // crescente de cada foto. Fila própria e por usuário (filaFotosNativa).
+    await import('./filaFotosNativa')
+      .then(m => m.enviarFotosPendentes())
+      .catch(() => null);
     if (syncAbortado(geracao)) return;
     await podarTombstonesAntigos();
     if (syncAbortado(geracao)) return;
