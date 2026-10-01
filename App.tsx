@@ -129,6 +129,32 @@ const ROTA_DESLOGADO: keyof RootStackParamList = Platform.OS === 'web' ? 'Landin
  */
 // navigationRef mora em src/navigation/navigationRef (modulo folha, sem ciclos).
 
+/** Payload que os lembretes locais gravam em `content.data` (agenda, PMOC, ritual). */
+type NotificacaoPendente = { ordemId?: string; agendamentoId?: string; ritual?: 'bomDia' | 'fecharDia' };
+
+/**
+ * Leva o toque na notificação para a área certa. Usado no app quente (listener)
+ * e no app frio (fila consumida no `onReady`), para os dois caminhos não divergirem.
+ *
+ * Agenda é ABA (dentro de 'Tabs'), não rota do stack raiz: `navigate('Agenda')`
+ * a partir do ref raiz só funcionava se o TabNavigator já estivesse montado — com
+ * o guard de perfil ainda verificando (app frio), o toque morria em silêncio.
+ * Navegar por 'Tabs' com a aba aninhada funciona nos dois casos, e o
+ * `abrirAgendamentoId` diz à Agenda qual compromisso abrir.
+ */
+function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
+  // `as never`/`as any`: navigate com nome de rota dinâmico (e, no caso de
+  // 'Tabs', com params de rota aninhada) não casa os overloads do ref.
+  if (data.ordemId) navigationRef.navigate('OrdemServico' as never);
+  else if (data.agendamentoId) {
+    (navigationRef.navigate as any)('Tabs', {
+      screen: 'Agenda',
+      params: { abrirAgendamentoId: data.agendamentoId },
+    });
+  } else if (data.ritual === 'fecharDia') navigationRef.navigate('RelatorioDia' as never);
+  else if (data.ritual === 'bomDia') (navigationRef.navigate as any)('Tabs', { screen: 'Home' });
+}
+
 const useNativeAnimations = Platform.OS !== 'web';
 
 function BrandSplash() {
@@ -216,10 +242,9 @@ function AppConteudo() {
 
   // Toque na notificação (lembrete de PMOC, de agenda ou do Ritual diário) leva o
   // usuário à ÁREA certa. Sem isto o payload (ordemId/agendamentoId) era CÓDIGO
-  // MORTO — tocar abria o app em qualquer tela (achado da re-auditoria). As rotas
-  // OrdemServico/Agenda não recebem id (ver RootStackParamList), então navegamos
-  // para a TELA/ABA relevante; abrir o item específico exigiria um param novo
-  // nessas rotas (follow-up). Nunca derruba o app.
+  // MORTO — tocar abria o app em qualquer tela (achado da re-auditoria). A Agenda
+  // recebe o `abrirAgendamentoId` (ver TabParamList); OrdemServico ainda não
+  // recebe id, então vai para a TELA. Nunca derruba o app.
   //
   // Ritual diário (services/ritualDiario.ts): "Bom dia da OLLI" leva pro hero da
   // Home (o "nunca-vazio" que já traz a ação de 1 toque pronta); "Fechar o dia"
@@ -232,7 +257,6 @@ function AppConteudo() {
   // deep link morria justo no caso mais comum (app fechado, lembrete tocado). O ref
   // abaixo guarda o payload pendente; o `onReady` do NavigationContainer (mais abaixo)
   // o consome assim que a navegação realmente existir.
-  type NotificacaoPendente = { ordemId?: string; agendamentoId?: string; ritual?: 'bomDia' | 'fecharDia' };
   const notificacaoPendenteRef = useRef<NotificacaoPendente | null>(null);
   useEffect(() => {
     function tratar(resposta: Notifications.NotificationResponse | null) {
@@ -244,12 +268,7 @@ function AppConteudo() {
           notificacaoPendenteRef.current = data;
           return;
         }
-        // `as never`/`as any`: navigate com nome de rota dinâmico (e, no caso de
-        // 'Tabs', com params de rota aninhada) não casa os overloads do ref.
-        if (data.ordemId) navigationRef.navigate('OrdemServico' as never);
-        else if (data.agendamentoId) navigationRef.navigate('Agenda' as never);
-        else if (data.ritual === 'fecharDia') navigationRef.navigate('RelatorioDia' as never);
-        else (navigationRef.navigate as any)('Tabs', { screen: 'Home' });
+        abrirDestinoDaNotificacao(data);
       } catch { /* best-effort: nunca derruba o app */ }
     }
     const sub = Notifications.addNotificationResponseReceivedListener(tratar);
@@ -456,10 +475,7 @@ function AppConteudo() {
                   const pendente = notificacaoPendenteRef.current;
                   if (pendente) {
                     notificacaoPendenteRef.current = null;
-                    if (pendente.ordemId) navigationRef.navigate('OrdemServico' as never);
-                    else if (pendente.agendamentoId) navigationRef.navigate('Agenda' as never);
-                    else if (pendente.ritual === 'fecharDia') navigationRef.navigate('RelatorioDia' as never);
-                    else if (pendente.ritual === 'bomDia') (navigationRef.navigate as any)('Tabs', { screen: 'Home' });
+                    try { abrirDestinoDaNotificacao(pendente); } catch { /* best-effort */ }
                   }
                 }}
               >
