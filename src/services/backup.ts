@@ -37,7 +37,7 @@ export async function estadoBackupNuvem(): Promise<MotivoBackupNuvem> {
 }
 
 /**
- * Mensagens de recusa. São o texto que o usuário lê no Alert do botão manual,
+ * Mensagens de recusa. São o texto que o usuário lê no toast de erro do botão manual,
  * então dizem o que aconteceu e o que fazer — sem culpar quem apertou e sem
  * jargão de tenant/RLS.
  */
@@ -175,7 +175,7 @@ export async function getCloudBackupDate(): Promise<string | null> {
 // `backups_versionados` guarda VÁRIAS cópias datadas (diário/semanal/manual).
 // Este é o histórico que alimenta o backup automático (services/autoBackup.ts)
 // e a tela "Ver cópias de segurança" do ContaScreen. Nunca lança: quem chama
-// decide como tratar erro (autoBackup engole tudo; a UI mostra Alert).
+// decide como tratar erro (autoBackup engole tudo; a UI mostra toast).
 
 /**
  * Insere um snapshot versionado na nuvem. Uso interno de autoBackup.ts (tipo
