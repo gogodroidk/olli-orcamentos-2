@@ -2,6 +2,7 @@ import type { Orcamento, Empresa, ItemOrcamento, ContratoPadrao } from '../types
 import { formatCurrency, formatNumber } from './currency';
 import { formatDateBR, formatDateTime, todayISO } from './date';
 import { escapeHtml } from './html';
+import { formatarNumeroExibicao } from './numeroDocumento';
 import {
   AVISO_APP,
   blocoAssinaturas,
@@ -327,7 +328,7 @@ export function gerarHtmlContrato(
   const descontoValor = o.subtotal - o.valorTotal;
 
   const corpo = `
-${cabecalhoDocumento(empresa, imagens.logo, ['Contrato de', 'Prestação de Serviços'], `Nº ${o.numero} · ${emitidoEm}`)}
+${cabecalhoDocumento(empresa, imagens.logo, ['Contrato de', 'Prestação de Serviços'], `Nº ${formatarNumeroExibicao(o.numero)} · ${emitidoEm}`)}
 
 <h2>Das partes</h2>
 <div class="bloco">
@@ -405,7 +406,7 @@ ${blocoAssinaturas({
 ${rodapeDocumento(opts?.removerMarca)}
 `;
 
-  return paginaDocumento(cor, `Contrato ${o.numero} - ${o.clienteNome}`, corpo);
+  return paginaDocumento(cor, `Contrato ${formatarNumeroExibicao(o.numero)} - ${o.clienteNome}`, corpo);
 }
 
 /** Monta o HTML já com logo e assinatura convertidas para data URI. */
@@ -435,7 +436,7 @@ export async function compartilharPdfContrato(
   const html = await montarHtmlContratoCompleto(o, empresa, termos, opts);
   const { exportarHtmlComoPdf, safeFileName } = await import('./exportarDocumento');
   await exportarHtmlComoPdf(html, `Contrato-${safeFileName(o.clienteNome)}-${o.numero}`, {
-    dialogTitle: `Contrato ${o.numero} - ${o.clienteNome}`,
+    dialogTitle: `Contrato ${formatarNumeroExibicao(o.numero)} - ${o.clienteNome}`,
   });
 }
 

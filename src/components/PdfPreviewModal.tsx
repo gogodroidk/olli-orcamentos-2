@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -194,7 +195,7 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
   const nomeArquivoEfetivo = nomeArquivo
     ?? (orcamento ? `Orcamento-${safeFileName(orcamento.clienteNome)}-${orcamento.numero}` : safeFileName(titulo ?? 'documento'));
   const dialogTituloEfetivo = orcamento
-    ? `Orçamento ${orcamento.numero} - ${orcamento.clienteNome}`
+    ? `Orçamento ${formatarNumeroExibicao(orcamento.numero)} - ${orcamento.clienteNome}`
     : (titulo ?? 'Documento');
 
   const handleExportar = useCallback(async () => {

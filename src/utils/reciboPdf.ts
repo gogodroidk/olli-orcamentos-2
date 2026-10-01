@@ -6,6 +6,7 @@ import { escapeHtml, safeHexColor } from './html';
 import { footerSeloOlliHtml, DEFAULT_ACCENT } from './pdfGenerator';
 import { ajustarParaContraste } from '../theme/cores';
 import { normalizarChavePix } from './pixBrCode';
+import { formatarNumeroExibicao } from './numeroDocumento';
 
 /** Normaliza para #RRGGBB — `safeHexColor` aceita 3 dígitos, e `${cor}0F` (o tint
  *  do PIX) só é CSS válido com 6 dígitos (#RRGGBBAA). Sem isso o fundo do PIX some. */
@@ -81,8 +82,8 @@ export async function montarHtmlRecibo(
   const clienteTelefoneHtml = escapeHtml(r.clienteTelefone);
   const dataRecebimentoHtml = escapeHtml(r.dataRecebimento);
   const formaPagamentoHtml = escapeHtml(r.formaPagamento);
-  const orcamentoNumeroHtml = escapeHtml(r.orcamentoNumero);
-  const numeroHtml = escapeHtml(r.numero);
+  const orcamentoNumeroHtml = escapeHtml(formatarNumeroExibicao(r.orcamentoNumero));
+  const numeroHtml = escapeHtml(formatarNumeroExibicao(r.numero));
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">

@@ -59,6 +59,24 @@ import { capturarExcecao, conectarSentry } from './src/services/sentryCaptura';
  * está fixa no código de propósito: em env var, uma variável faltando desligaria o
  * monitoramento em silêncio — que é o bug "erro vira vazio" que estamos matando.
  */
+/**
+ * Medição de desempenho por tela (item 2.17 — gate em docs/MOTION_PERFORMANCE.md).
+ * Cada troca de rota vira uma transação com o NOME da tela (nunca parâmetro de
+ * rota) e, no nativo, as medidas `frames_total`/`frames_slow`/`frames_frozen`
+ * (frames tracking) e `stall_*` (JS travado, stall tracking). É o que permite
+ * cobrar "0 frozen e <5% slow em Home, Agenda, Orçar e Detalhe".
+ *
+ * Só ACRESCENTA instrumentação: DSN, `sendDefaultPii`, redatores e a amostragem
+ * de erro (100%) não mudam; trace continua amostrado em 10% (`tracesSampleRate`).
+ * `routeChangeTimeoutMs`: navegação que não termina em 1 s é descartada, não
+ * registrada como tela lenta. TTID só no nativo (na web não há frame nativo).
+ */
+const navegacaoSentry = Sentry.reactNavigationIntegration({
+  routeChangeTimeoutMs: 1_000,
+  enableTimeToInitialDisplay: Platform.OS !== 'web',
+  ignoreEmptyBackNavigationTransactions: true,
+});
+
 Sentry.init({
   dsn: 'https://5c5495085721aace9d32dbd79121c084@o4511745793327104.ingest.us.sentry.io/4511745839661061',
   environment: __DEV__ ? 'development' : 'production',
@@ -69,6 +87,13 @@ Sentry.init({
   beforeBreadcrumb: (breadcrumb) => limparBreadcrumbSentry(breadcrumb as unknown as Record<string, unknown>) as unknown as typeof breadcrumb | null,
   // Plano grátis = 5k eventos/mês. Erro vai 100%; trace é amostrado.
   tracesSampleRate: 0.1,
+  // Slow/frozen frames por tela + JS travado + tempo de abertura (padrão do SDK
+  // já é true; explícito para ninguém desligar sem ver o gate cair).
+  enableNativeFramesTracking: true,
+  enableStallTracking: true,
+  enableAppStartTracking: true,
+  // Array = SOMA aos integrations padrão do SDK (não substitui).
+  integrations: [navegacaoSentry],
 });
 // Exceções que o nosso código SEGURA (ErrorBoundary, catch do boot) não passam pelo
 // handler global do SDK; elas chegam ao Sentry por esta porta (sentryCaptura.ts).
@@ -462,6 +487,8 @@ function AppConteudo() {
                 // Planos) também são diferentes da porta, e a versão antiga as
                 // descartava — matando todo deep link externo do deslogado.
                 onReady={() => {
+                  // Liga a transação por tela do Sentry (slow/frozen frames).
+                  navegacaoSentry.registerNavigationContainer(navigationRef);
                   if (!navigationRef.isReady()) return;
                   const atual = navigationRef.getCurrentRoute()?.name;
                   const precisaDePorta =
