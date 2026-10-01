@@ -83,13 +83,20 @@ export interface EntradaHistorico {
   hoje: string;
 }
 
-/** YYYY-MM-DD de um ISO/data; '' se ilegível. */
+/**
+ * YYYY-MM-DD de um ISO/data; '' se ilegível. Dia civil puro ('2026-10-15') passa
+ * direto; ISO com hora vira o dia NO FUSO DO APARELHO (o mesmo de `hojeLocal`).
+ * Cortar os 10 primeiros caracteres de um ISO em UTC punha o serviço concluído às
+ * 22h de Brasília no dia SEGUINTE (e adiantava a garantia em um dia).
+ */
 export function diaDe(iso?: string): string {
   if (!iso) return '';
-  const m = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
-  if (m) return m[1];
+  const civil = /^(\d{4}-\d{2}-\d{2})$/.exec(iso);
+  if (civil) return civil[1];
   const t = Date.parse(iso);
-  return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : '';
+  if (Number.isFinite(t)) return hojeLocal(new Date(t));
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(iso);
+  return m ? m[1] : '';
 }
 
 /**
@@ -143,6 +150,17 @@ export function osParaRetomar(abertas: OrdemServico[]): OrdemServico | undefined
     if (da !== db) return da.localeCompare(db);
     return (b.atualizadoEm || '').localeCompare(a.atualizadoEm || '');
   })[0];
+}
+
+/**
+ * A OS que ESTE técnico deve retomar. Técnico de equipe só retoma OS dele ou
+ * ainda sem técnico — nunca "rouba" (põe em execução) a OS atribuída a um colega,
+ * que ficaria fora da lista "minhas OS" dele. Sem `tecnicoId` (dono/gestão) vale
+ * a regra geral de `osParaRetomar`.
+ */
+export function osParaRetomarPor(abertas: OrdemServico[], tecnicoId?: string): OrdemServico | undefined {
+  if (!tecnicoId) return osParaRetomar(abertas);
+  return osParaRetomar(abertas.filter((os) => !os.tecnicoId || os.tecnicoId === tecnicoId));
 }
 
 export function montarHistoricoEquipamento(e: EntradaHistorico): HistoricoEquipamento {

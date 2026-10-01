@@ -520,7 +520,30 @@ async function inserirPedido(env, asset, pedido) {
 }
 
 export async function receberPedidoEtiqueta(token, env, request) {
-  if (!validToken(token)) return htmlResp(pageEtiquetaInvalida(), 404);
+  // Mesmo reforço anti-enumeração do GET: o POST responde 404 (token inexistente)
+  // x 400/200 (token válido), então sem isto ele virava uma porta de varredura de
+  // tokens que contorna o ENUM_TETO. Toda falha de resolução vira uma tentativa
+  // NÃO-resolvida em qr_scan_events (a mesma trilha que o teto conta).
+  const ip = request && request.headers ? request.headers.get('CF-Connecting-IP') || '' : '';
+  const ua = request && request.headers ? request.headers.get('User-Agent') || '' : '';
+  const ipHash = await hashIp(env, ip);
+  const falhou = () => registrarScan(env, {
+    assetId: null,
+    userId: null,
+    tokenTentado: String(token || '').slice(0, 80),
+    resolvido: false,
+    ipHash,
+    userAgent: ua,
+  });
+
+  if (!validToken(token)) {
+    await falhou();
+    return htmlResp(pageEtiquetaInvalida(), 404);
+  }
+  if ((await tentativasFalhasRecentes(env, ipHash)) >= ENUM_TETO) {
+    await falhou();
+    return htmlResp(pageEtiquetaInvalida(), 429);
+  }
 
   const { grande, raw } = await lerCorpoLimitado(request, PEDIDO_MAX_BYTES);
   if (grande) return htmlResp(pageEtiquetaInvalida(), 413);
@@ -529,7 +552,10 @@ export async function receberPedidoEtiqueta(token, env, request) {
 
   const asset = await getAsset(env, token);
   if (asset && asset.error) return htmlResp(pageErroTemporario(), 503);
-  if (!asset) return htmlResp(pageEtiquetaInvalida(), 404);
+  if (!asset) {
+    await falhou();
+    return htmlResp(pageEtiquetaInvalida(), 404);
+  }
 
   const extras = await dadosDaPagina(env, asset);
   const nomePrestador = nomeDoPrestador(extras.prestador);

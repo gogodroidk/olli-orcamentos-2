@@ -65,7 +65,15 @@ export async function listarPedidosQr(
 export async function marcarPedidoQrAtendido(id: string): Promise<string> {
   if (!supabase) throw new Error('Sem conexão com a nuvem agora. Tente de novo em instantes.');
   const agora = new Date().toISOString();
-  const { error } = await supabase.from('pedidos_orcamento_qr').update({ atendido_em: agora }).eq('id', id);
-  if (error) throw new Error('Não consegui marcar o pedido como atendido. Tente de novo.');
+  // `.select('id')`: um UPDATE barrado pela RLS não dá erro, só afeta 0 linhas —
+  // sem conferir, a tela diria "atendido" sem nada ter mudado na nuvem.
+  const { data, error } = await supabase
+    .from('pedidos_orcamento_qr')
+    .update({ atendido_em: agora })
+    .eq('id', id)
+    .select('id');
+  if (error || !Array.isArray(data) || data.length === 0) {
+    throw new Error('Não consegui marcar o pedido como atendido. Tente de novo.');
+  }
   return agora;
 }

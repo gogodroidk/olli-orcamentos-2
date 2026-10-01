@@ -10,7 +10,7 @@ import {
   iniciarAtendimento,
   type TecnicoAtendimento,
 } from '../../services/atendimentoEquipamento';
-import { diaBr, osParaRetomar, type HistoricoEquipamento } from '../../utils/historicoEquipamento';
+import { diaBr, osParaRetomarPor, type HistoricoEquipamento } from '../../utils/historicoEquipamento';
 import { STATUS_OS_CORES, STATUS_OS_LABELS, type Equipamento } from '../../types';
 
 /**
@@ -96,7 +96,7 @@ export function FichaAtendimentoEquipamento({
     );
   }
 
-  const retomar = osParaRetomar(hist.abertas);
+  const retomar = osParaRetomarPor(hist.abertas, tecnico?.id);
   const rotuloBotao = retomar
     ? (retomar.status === 'em_execucao' ? `Continuar atendimento (${retomar.numero})` : `Retomar atendimento (${retomar.numero})`)
     : 'Iniciar atendimento';

@@ -17,7 +17,7 @@ import {
   getCliente,
   getEmpresa,
 } from '../database/database';
-import { atualizarStatusOS, criarOSManual } from './ordemServico';
+import { atribuirTecnico, atualizarStatusOS, criarOSManual } from './ordemServico';
 import { modeloChecklistVertical } from './checklistVertical';
 import { verticaisEfetivos } from './verticalSegmento';
 import { generateId } from '../utils/id';
@@ -25,7 +25,7 @@ import { checklistDoModelo } from '../utils/ordemServicoDoOrcamento';
 import {
   hojeLocal,
   montarHistoricoEquipamento,
-  osParaRetomar,
+  osParaRetomarPor,
   type HistoricoEquipamento,
 } from '../utils/historicoEquipamento';
 import { CATEGORIAS_HVAC, type Equipamento, type OrdemServico } from '../types';
@@ -96,10 +96,17 @@ export async function iniciarAtendimento(
 ): Promise<ResultadoAtendimento> {
   if (eq.excluidoEm) throw new Error('Este equipamento está na lixeira. Restaure-o antes de atender.');
 
-  const aberta = osParaRetomar(historico.abertas);
+  const tecnicoId = tecnico?.id;
+  const aberta = osParaRetomarPor(historico.abertas, tecnicoId);
   if (aberta) {
+    // OS ainda sem técnico retomada por um técnico de equipe: passa a ser dele
+    // (senão some da lista "minhas OS" de quem está atendendo).
+    const atribuicao = tecnicoId && !aberta.tecnicoId
+      ? { tecnicoId, tecnicoNome: tecnico?.nome }
+      : null;
+    if (atribuicao) await atribuirTecnico(aberta.id, atribuicao.tecnicoId, atribuicao.tecnicoNome ?? '');
     if (aberta.status !== 'em_execucao') await atualizarStatusOS(aberta.id, 'em_execucao');
-    return { ordem: { ...aberta, status: 'em_execucao' }, criada: false };
+    return { ordem: { ...aberta, ...(atribuicao ?? {}), status: 'em_execucao' }, criada: false };
   }
 
   // Cliente do equipamento (nome é obrigatório na OS). Falha de leitura não

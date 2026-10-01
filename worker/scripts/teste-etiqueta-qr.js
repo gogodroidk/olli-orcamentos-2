@@ -58,6 +58,7 @@ function reset(extra = {}) {
     resumo: { status: 200, body: [{ ultima_manutencao: '2026-09-20T15:00:00+00:00', proxima_manutencao: '2026-10-31', proxima_origem: 'pmoc' }] },
     plano: { status: 200, body: 'gratis' },
     pedidosRecentes: 0,
+    falhasScan: 0,
     insertStatus: 201,
     ...extra,
   };
@@ -75,7 +76,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.includes('/rest/v1/empresa?')) return json([{ dados: cenario.empresa }]);
   if (u.endsWith('/rpc/resumo_manutencao_equipamento')) return json(cenario.resumo.body, cenario.resumo.status);
   if (u.endsWith('/rpc/plano_comercial_para_usuario')) return json(cenario.plano.body, cenario.plano.status);
-  if (u.includes('/rest/v1/qr_scan_events') && metodo === 'GET') return json([], 200, { 'content-range': '0-0/0' });
+  if (u.includes('/rest/v1/qr_scan_events') && metodo === 'GET') return json([], 200, { 'content-range': `0-0/${cenario.falhasScan}` });
   if (u.includes('/rest/v1/qr_scan_events')) return new Response(null, { status: 201 });
   if (u.includes('/rest/v1/pedidos_orcamento_qr') && metodo === 'GET') {
     return json([], 200, { 'content-range': `0-0/${cenario.pedidosRecentes}` });
@@ -229,6 +230,19 @@ await caso('etiqueta revogada/inexistente não aceita pedido', async () => {
   reset({ asset: null });
   const r = await receberPedidoEtiqueta(TOKEN, ENV, reqPost(VALIDO));
   assert.equal(r.status, 404);
+  assert.equal(inserts().length, 0);
+});
+const scansFalhos = () => chamadas.filter((c) => c.url.includes('/qr_scan_events') && c.metodo === 'POST' && JSON.parse(c.body).resolvido === false);
+await caso('POST com token inexistente registra a tentativa (conta no anti-enumeração)', async () => {
+  reset({ asset: null });
+  await receberPedidoEtiqueta(TOKEN, ENV, reqPost(VALIDO));
+  assert.equal(scansFalhos().length, 1);
+});
+await caso('POST respeita o teto anti-enumeração do GET (429 sem tocar assets)', async () => {
+  reset({ falhasScan: 99 });
+  const r = await receberPedidoEtiqueta(TOKEN, ENV, reqPost(VALIDO));
+  assert.equal(r.status, 429);
+  assert.ok(!chamadas.some((c) => c.url.includes('/rest/v1/assets?')));
   assert.equal(inserts().length, 0);
 });
 await caso('corpo grande demais é recusado sem gravar', async () => {

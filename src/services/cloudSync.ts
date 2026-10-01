@@ -1546,23 +1546,22 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   const db = await getDb();
   // Anti-perda: se a OS local for mais nova, preserva a edição local (o técnico
   // pode ter tocado status/checklist/fotos offline entre o pull e a escrita).
+  let assetLocal: string | null = null;
   try {
-    const loc = await db.getFirstAsync<{ atualizado_em: string }>(
-      'SELECT atualizado_em FROM ordens_servico WHERE id = ?', [o.id],
+    const loc = await db.getFirstAsync<{ atualizado_em: string; asset_id: string | null }>(
+      'SELECT atualizado_em, asset_id FROM ordens_servico WHERE id = ?', [o.id],
     );
     if (loc?.atualizado_em && tsMaisNovo(loc.atualizado_em, o.atualizadoEm)) return;
+    assetLocal = loc?.asset_id ?? null;
   } catch {
     // sem linha local / erro de leitura → segue e grava (piso seguro)
   }
-  // Nuvem sem a coluna `asset_id`: o que veio vazio é "não sei", não "desligou o
-  // equipamento" — mantém o vínculo que este aparelho tem (ver osSemColunaAsset).
-  let assetId = o.equipamentoId ?? null;
-  if (osSemColunaAsset && !assetId) {
-    const local = await db.getFirstAsync<{ asset_id: string | null }>(
-      'SELECT asset_id FROM ordens_servico WHERE id = ?', [o.id],
-    );
-    assetId = local?.asset_id ?? null;
-  }
+  // Vínculo com o equipamento: nuvem VAZIA nunca apaga o vínculo local. O vazio
+  // pode ser "nuvem sem a coluna" (osSemColunaAsset) ou "OS enviada enquanto a
+  // coluna não existia" (a linha da nuvem ficou com asset_id nulo e o MESMO
+  // atualizado_em — sem isto o pull seguinte zerava o vínculo para sempre). Não
+  // existe fluxo de "desligar" a OS do equipamento: o vínculo só nasce no check-in.
+  const assetId = o.equipamentoId ?? assetLocal;
   // checklist/fotos como TEXT JSON (mesmo schema local de database.ts).
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(

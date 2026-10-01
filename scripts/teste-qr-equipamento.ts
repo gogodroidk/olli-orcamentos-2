@@ -30,6 +30,7 @@ import {
   hojeLocal,
   montarHistoricoEquipamento,
   osParaRetomar,
+  osParaRetomarPor,
   prazoGarantia,
 } from '../src/utils/historicoEquipamento.ts';
 import {
@@ -207,6 +208,9 @@ ok('garantia vencida', () => {
 ok('datas: dia ISO, pt-BR e hoje local', () => {
   assert.equal(diaDe('2026-10-15T12:00:01.000Z'), '2026-10-15');
   assert.equal(diaDe('lixo'), '');
+  // ISO com hora = dia no fuso do aparelho (22h30 local não vira o dia seguinte em UTC).
+  assert.equal(diaDe(new Date(2026, 9, 1, 22, 30).toISOString()), '2026-10-01');
+  assert.equal(diaDe('2026-10-01'), '2026-10-01');
   assert.equal(diaBr('2026-10-15'), '15/10/2026');
   assert.equal(diaBr(undefined), '');
   assert.equal(hojeLocal(new Date(2026, 0, 5, 23, 0)), '2026-01-05');
@@ -225,6 +229,17 @@ ok('em execução > pausada > agendada mais cedo > aberta', () => {
   assert.equal(osParaRetomar([...lista, os({ id: 'ex', status: 'em_execucao' })])?.id, 'ex');
   assert.equal(osParaRetomar(lista.filter((o) => o.status !== 'pausada'))?.id, 'ag1');
   assert.equal(osParaRetomar([]), undefined);
+});
+ok('técnico de equipe não retoma a OS de um colega', () => {
+  const lista = [
+    os({ id: 'colega', status: 'em_execucao', tecnicoId: 'tec-b' }),
+    os({ id: 'livre', status: 'aberta' }),
+    os({ id: 'minha', status: 'agendada', tecnicoId: 'tec-a', dataAgendada: '2026-10-10T10:00:00Z' }),
+  ];
+  assert.equal(osParaRetomarPor(lista, 'tec-a')?.id, 'minha');
+  assert.equal(osParaRetomarPor(lista.filter((o) => o.id !== 'minha'), 'tec-a')?.id, 'livre');
+  assert.equal(osParaRetomarPor([lista[0]], 'tec-a'), undefined, 'só a do colega: cria OS nova');
+  assert.equal(osParaRetomarPor(lista)?.id, 'colega', 'dono/gestão: regra geral');
 });
 ok('o histórico nunca põe concluída/cancelada entre as abertas', () => {
   const v = montarHistoricoEquipamento({
@@ -330,7 +345,10 @@ ok('schema local: asset_id no CREATE, na migração incremental e no save', () =
 ok('sync: escada da coluna ausente e pull que preserva o vínculo local', () => {
   assert.match(sync, /osSemColunaAsset \? \{\} : \{ asset_id: o\.equipamentoId \?\? null \}/);
   assert.match(sync, /table === 'ordens_servico' && !osSemColunaAsset && erroDeColunaDesconhecida\(error\)/);
-  assert.match(sync, /if \(osSemColunaAsset && !assetId\)/);
+  // Nuvem vazia nunca apaga o vínculo local (nem sem a coluna, nem com a linha
+  // enviada antes da migration com o mesmo atualizado_em).
+  assert.match(sync, /const assetId = o\.equipamentoId \?\? assetLocal;/);
+  assert.match(sync, /'SELECT atualizado_em, asset_id FROM ordens_servico WHERE id = \?'/);
 });
 ok('scanner usa a regra pura e a URL saiu do serviço com banco', () => {
   assert.match(ler('src/screens/EscanearQrScreen.tsx'), /import \{ extrairTokenQr \} from '\.\.\/utils\/qrEtiqueta'/);
