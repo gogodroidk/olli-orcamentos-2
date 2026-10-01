@@ -22,8 +22,8 @@
  *   - CNPJ, CPF e chave Pix da empresa válidos; CPF/CNPJ dos clientes com dígito válido;
  *   - pelo menos 2 técnicos membros ativos, com última posição no mapa.
  *
- * IDEMPOTENTE: ids determinísticos. Rodar duas vezes no mesmo dia não muda nada além de
- *   `atualizado_em`; rodar uma vez por semana (recomendado) reposiciona as visitas. A série,
+ * IDEMPOTENTE: ids determinísticos. Rodar duas vezes no mesmo dia não muda nada além dos
+ *   carimbos (`criado_em`/`atualizado_em`) e do status das visitas; rodar uma vez por semana (recomendado) reposiciona as visitas. A série,
  *   o contrato e o orçamento do mês são criados UMA vez e depois deixados em paz (não
  *   reescrevemos documento que já existe). Nada é apagado.
  *
@@ -552,9 +552,11 @@ async function principal(): Promise<number> {
     } else {
       for (const t of faltam) {
         try {
+          // Senha aleatória e descartada na hora: ninguém entra como técnico da demo.
+          const senhaDescartavel = randomUUID() + randomUUID();
           const { data, error } = await admin.auth.admin.createUser({
             email: t.email,
-            password: `${randomUUID()}${randomUUID()}`,
+            password: senhaDescartavel,
             email_confirm: true,
             user_metadata: { full_name: t.nome },
           });
