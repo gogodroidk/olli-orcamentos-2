@@ -15,6 +15,7 @@ import { strict as assert } from 'node:assert';
 import {
   configContratos,
   ehHoraDaRodada,
+  modoMotorContratos,
   processarContratos,
 } from '../src/contratosJob.js';
 
@@ -195,6 +196,13 @@ await caso('configuração: padrões e limites', () => {
   assert.deepEqual({ ...configContratos({}) }, { maxContratos: 200, maxVisitas: 10 });
   assert.deepEqual({ ...configContratos({ CONTRATOS_MOTOR_MAX_VISITAS: '999', CONTRATOS_MOTOR_MAX_CONTRATOS: '0' }) }, { maxContratos: 200, maxVisitas: 10 });
   assert.equal(configContratos({ CONTRATOS_MOTOR_MAX_VISITAS: '25' }).maxVisitas, 25);
+});
+
+await caso('modo do motor: só "production" liga (é o que o GET / publica para a tela)', () => {
+  assert.equal(modoMotorContratos({}), 'off');
+  assert.equal(modoMotorContratos({ CONTRATOS_MOTOR_MODE: 'off' }), 'off');
+  assert.equal(modoMotorContratos({ CONTRATOS_MOTOR_MODE: 'prod' }), 'off');
+  assert.equal(modoMotorContratos({ CONTRATOS_MOTOR_MODE: ' Production ' }), 'production');
 });
 
 if (falhas) {

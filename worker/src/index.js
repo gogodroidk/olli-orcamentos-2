@@ -88,7 +88,7 @@ import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
 import { processarResumoDinheiro } from './resumoDinheiroJob.js';
-import { processarContratos } from './contratosJob.js';
+import { modoMotorContratos, processarContratos } from './contratosJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
@@ -1157,6 +1157,8 @@ const handler = {
         autopilot: autopilotConfigurado(env, '/ia/autopilot/preview') ? 'on' : 'off',
         provedor: provedorIA(env) || 'off',
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
+        // Rodada agendada dos contratos recorrentes (só o modo — nunca contagem nem conta).
+        contratos_motor: modoMotorContratos(env) === 'production' ? 'on' : 'off',
       });
     }
     // EXISTÊNCIA primeiro, MÉTODO depois (achado A4 — ver METODOS_POR_ROTA).

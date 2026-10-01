@@ -26,6 +26,7 @@ import {
   type MembroEquipe,
   type Papel,
 } from '../services/equipe';
+import { LOCALIZACAO_DISPONIVEL } from '../services/localizacaoEquipe';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -195,23 +196,35 @@ function EquipeConteudo() {
           </AnimatedEntrance>
         )}
 
-        {/* Onda 2 — atalho para a Equipe ao vivo no mapa (plano Empresa). A tela de
-            destino já traz o próprio GateEquipe/GuardaPapel — este botão só navega;
-            quem chega lá sem plano ou papel de gestão vê a oferta/aviso certos. */}
+        {/* Atalho para a Equipe ao vivo (plano Empresa). A tela de destino já traz o
+            próprio GateEquipe/GuardaPapel — este botão só navega. Enquanto a
+            localização estiver desligada (LOCALIZACAO_DISPONIVEL=false, expo-location
+            não instalado), a entrada leva o selo "Em breve" e não promete o mapa. */}
         <AnimatedEntrance index={podeGerenciar ? 2 : 1}>
           <TouchableOpacity
             style={styles.mapaEquipeBtn}
             activeOpacity={0.85}
             onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('EquipeAoVivo'); }}
             accessibilityRole="button"
-            accessibilityLabel="Ver equipe ao vivo no mapa"
+            accessibilityLabel={LOCALIZACAO_DISPONIVEL
+              ? 'Ver equipe ao vivo'
+              : 'Equipe ao vivo, em breve: localização desligada'}
           >
             <View style={styles.mapaEquipeIcon}>
               <MaterialCommunityIcons name="map-marker-radius-outline" size={20} color={cores.accentLight} />
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.mapaEquipeTitulo}>Equipe ao vivo no mapa</Text>
-              <Text style={styles.mapaEquipeSub}>Veja a última localização de cada técnico</Text>
+              <Text style={styles.mapaEquipeTitulo}>Equipe ao vivo</Text>
+              {LOCALIZACAO_DISPONIVEL ? (
+                <Text style={styles.mapaEquipeSub}>Veja a última localização de cada técnico</Text>
+              ) : (
+                <>
+                  <View style={styles.seloEmBreve}>
+                    <Text style={styles.seloEmBreveTexto}>Em breve — localização desligada</Text>
+                  </View>
+                  <Text style={styles.mapaEquipeSub}>O app ainda não usa o GPS do celular.</Text>
+                </>
+              )}
             </View>
             <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
           </TouchableOpacity>
@@ -523,6 +536,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   mapaEquipeIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.accentContainer, alignItems: 'center', justifyContent: 'center' },
   mapaEquipeTitulo: { fontSize: 14.5, fontWeight: '700', color: c.onSurface },
   mapaEquipeSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
+  // Selo neutro (não é alerta nem sucesso): só avisa que o recurso ainda não está ligado.
+  seloEmBreve: { alignSelf: 'flex-start', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 },
+  seloEmBreveTexto: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
 
   sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
 

@@ -119,7 +119,7 @@ checar('app não vende dashboard como pronto', tela.includes('Painel de gestão 
 // GPS: o expo-location não está instalado. Nenhuma tela promete localização
 // "no próximo update" nem vende "onde cada técnico está agora" (faxina 30/09).
 checar('paywall do mapa não vende como pronto', gatePro.includes("mapa_equipe: 'Equipe ao vivo no mapa (em breve).'"), true);
-checar('Equipe ao vivo diz que a localização pelo app não está disponível', equipeAoVivo.includes('Localização pelo app: ainda não disponível'), true);
+checar('Equipe ao vivo diz que a localização pelo app está desligada', equipeAoVivo.includes('Em breve — localização desligada'), true);
 checar('Equipe ao vivo não promete o "próximo update"', /pr[oó]ximo update/i.test(equipeAoVivo), false);
 checar('Equipe ao vivo não promete "onde cada técnico está agora"', equipeAoVivo.includes('onde cada técnico está agora'), false);
 checar('comparativo possui estado Em breve', tela.includes("? 'Em breve'"), true);

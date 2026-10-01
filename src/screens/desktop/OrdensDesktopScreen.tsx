@@ -17,7 +17,8 @@ import { usePermissao } from '../../hooks/usePermissao';
 import { getOrdens, getMinhasOrdens } from '../../services/ordemServico';
 import { getCurrentUser } from '../../services/supabase';
 import { onSyncAplicado } from '../../services/cloudSync';
-import { formatDateTime } from '../../utils/date';
+import { formatDate, formatDateTime } from '../../utils/date';
+import { ehDiaSemHora } from '../../utils/ordemServicoDoOrcamento';
 import { STATUS_OS_LABELS, STATUS_OS_CORES } from '../../types';
 import type { OrdemServico, StatusOS } from '../../types';
 
@@ -200,7 +201,7 @@ export default function OrdensDesktopScreen() {
           <View style={styles.agendaCel}>
             {atrasada && <MaterialCommunityIcons name="alert-circle" size={14} color={cores.danger} />}
             <Text style={[styles.celulaTexto, atrasada && styles.textoAtrasado]} numberOfLines={1}>
-              {formatDateTime(o.dataAgendada)}
+              {ehDiaSemHora(o.dataAgendada) ? formatDate(o.dataAgendada) : formatDateTime(o.dataAgendada)}
             </Text>
           </View>
         );

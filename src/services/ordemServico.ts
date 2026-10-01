@@ -16,10 +16,15 @@ import {
   getOrdemServico as getOrdemServicoDb,
   saveOrdemServico,
   getOrcamento,
+  getEmpresa,
 } from '../database/database';
 import { cancelarLembretesPmoc } from './pmocLembretes';
+import { supabase } from './supabase';
+import { modeloChecklistVertical } from './checklistVertical';
+import { verticaisEfetivos } from './verticalSegmento';
 import { generateId } from '../utils/id';
 import { concluidoEmDaTransicao } from '../utils/ordemServicoStatus';
+import { montarOSDoOrcamento, proximoNumeroOSDasFontes } from '../utils/ordemServicoDoOrcamento';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../types';
 
 /** Todas as OS visíveis (o SELECT local já reflete o tenant/org via sync). */
@@ -39,39 +44,84 @@ export async function getOrdem(id: string): Promise<OrdemServico | null> {
   return getOrdemServicoDb(id);
 }
 
+/** Teto de espera pela nuvem ao numerar: offline não pode travar a criação da OS. */
+const TIMEOUT_NUMERACAO_NUVEM_MS = 4000;
+
 /**
- * Próximo número de OS no formato OS-0001, sequencial e monotônico. Deriva do MAIOR
- * número já usado (parseando o sufixo numérico) + 1. Invariante REAL: o número nunca
- * é reusado enquanto a OS existir na tabela — ativa OU na lixeira (soft delete apenas
- * marca `excluido_em`, a linha e o número continuam lá). Por isso a query varre TODAS
- * as ordens direto no banco (sem o filtro de lixeira de getOrdensServico()): se
- * olhássemos só as ativas, a OS de maior número poderia estar na lixeira, sair do
- * cálculo do MAX e ter seu número reemitido — colidindo com ela mesma ao ser
- * restaurada (não há UNIQUE em `numero`). Sem OS ainda (ou erro/tabela ausente) →
- * OS-0001.
+ * Números de OS no SQLite local — TODAS as linhas, inclusive a lixeira (soft delete só
+ * marca `excluido_em`; o número continua reservado: se olhássemos só as ativas, a OS
+ * de maior número poderia estar na lixeira e ter o número reemitido, colidindo com
+ * ela mesma ao ser restaurada). `null` = não consegui ler (≠ `[]`, "não tem nenhuma").
  */
-async function proximoNumeroOS(): Promise<string> {
-  let maior = 0;
+async function numerosOSLocais(): Promise<string[] | null> {
   try {
     const db = await getDb();
-    const rows = await db.getAllAsync<{ numero: string }>('SELECT numero FROM ordens_servico');
-    for (const row of rows) {
-      const m = /(\d+)\s*$/.exec(row.numero ?? '');
-      if (m) {
-        const n = parseInt(m[1], 10);
-        if (Number.isFinite(n) && n > maior) maior = n;
-      }
-    }
+    const rows = await db.getAllAsync<{ numero: string | null }>('SELECT numero FROM ordens_servico');
+    return rows.map((r) => r.numero ?? '');
   } catch {
-    // Tabela ausente ou erro de leitura: segue com maior=0 (não trava a criação da OS).
+    return null;
   }
-  return `OS-${String(maior + 1).padStart(4, '0')}`;
 }
 
 /**
- * Cria uma OS a partir de um orçamento APROVADO: copia cliente (id/nome), título
- * (numero do orçamento) e valor (valorTotal). Status inicial 'aberta'. Lança se o
- * orçamento não existir (o chamador trata a mensagem).
+ * Números de OS na NUVEM que este usuário enxerga (a RLS recorta o tenant). É o que
+ * fecha a colisão com as OS que nasceram fora deste aparelho e ainda não desceram no
+ * sync: as do painel web, as do motor de contratos (servidor) e as de outro membro.
+ * Mesma consulta do motor de contratos (`proximoSequencialOs`), lixeira incluída.
+ * Best-effort com teto de tempo: sem rede, `null`, e vale o que o aparelho sabe.
+ */
+async function numerosOSNaNuvem(): Promise<string[] | null> {
+  if (!supabase) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const consulta = supabase
+      .from('ordens_servico')
+      .select('numero')
+      .order('criado_em', { ascending: false })
+      .limit(1000)
+      .then(({ data, error }) => {
+        if (error || !Array.isArray(data)) return null;
+        return (data as { numero?: string | null }[]).map((l) => l.numero ?? '');
+      });
+    const limite = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), TIMEOUT_NUMERACAO_NUVEM_MS);
+    });
+    return await Promise.race([consulta, limite]);
+  } catch {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * Próximo número de OS (OS-0001), sequencial e sem colisão: MAIOR número entre o
+ * SQLite local e a nuvem + 1. Só o local não bastava — a OS criada pelo painel, pelo
+ * motor de contratos ou por outro aparelho ainda não baixada tinha o número reemitido.
+ *
+ * Se NENHUMA das duas fontes puder ser lida, lança em vez de chutar OS-0001 (erro
+ * nunca vira vazio). Offline com o banco local ok segue funcionando como antes.
+ *
+ * O que isto não resolve sozinho: dois aparelhos OFFLINE criando ao mesmo tempo. Não
+ * há UNIQUE em `numero` na nuvem; quando houver, o handler de 23505 do sync renumera
+ * (o mesmo caminho dos orçamentos).
+ */
+async function proximoNumeroOS(): Promise<string> {
+  const [locais, nuvem] = await Promise.all([numerosOSLocais(), numerosOSNaNuvem()]);
+  const numero = proximoNumeroOSDasFontes(locais, nuvem);
+  if (!numero) {
+    throw new Error('Não consegui conferir a numeração das ordens de serviço. Tente de novo em instantes.');
+  }
+  return numero;
+}
+
+/**
+ * Cria uma OS a partir de um orçamento APROVADO, já pronta para o técnico: cliente,
+ * título, valor, os ITENS e o ENDEREÇO do serviço (na descrição), a data do
+ * agendamento do serviço (ou da prestação), o checklist do ofício da empresa e as
+ * fotos do orçamento (regra em `utils/ordemServicoDoOrcamento.ts`). Status inicial
+ * 'aberta'. Lança se o orçamento não existir ou já tiver OS (o chamador trata a
+ * mensagem).
  */
 export async function criarOSDeOrcamento(orcamentoId: string): Promise<OrdemServico> {
   const orc = await getOrcamento(orcamentoId);
@@ -84,21 +134,19 @@ export async function criarOSDeOrcamento(orcamentoId: string): Promise<OrdemServ
   if (jaExiste) {
     throw new Error('Já existe uma ordem de serviço para este orçamento.');
   }
-  const agora = new Date().toISOString();
-  const os: OrdemServico = {
+  // Ofício da empresa → roteiro de checklist (vazio para 'geral'/sem ofício). Lê o
+  // cadastro direto (mesma regra do `useVerticais`, sem importar o hook: ele puxa
+  // AppState, que o painel não tem). Falha de leitura = sem roteiro, não erro.
+  const vertical = await getEmpresa()
+    .then((emp) => verticaisEfetivos(emp)?.[0])
+    .catch(() => undefined);
+  const os = montarOSDoOrcamento(orc, {
     id: generateId(),
     numero: await proximoNumeroOS(),
-    orcamentoId: orc.id,
-    clienteId: orc.clienteId || undefined,
-    clienteNome: orc.clienteNome ?? '',
-    titulo: orc.numero ? `Orçamento ${orc.numero}` : (orc.clienteNome ?? 'Ordem de serviço'),
-    status: 'aberta',
-    checklist: [],
-    fotos: [],
-    valor: orc.valorTotal,
-    criadoEm: agora,
-    atualizadoEm: agora,
-  };
+    agora: new Date().toISOString(),
+    modeloChecklist: modeloChecklistVertical(vertical),
+    novoId: generateId,
+  });
   await saveOrdemServico(os);
   return os;
 }

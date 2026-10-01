@@ -1,35 +1,31 @@
 /**
- * Equipe ao vivo (Onda 2 — "equipe ao vivo" sem billing).
+ * Equipe ao vivo — lista os membros com a última localização que cada um
+ * compartilhou (lê `localizacoes_equipe` via `services/localizacaoEquipe.ts`), "há X
+ * min" e "Abrir no mapa" (deep-link do Google Maps, `abrirRotaGoogleMaps`, sem chave).
  *
- * Lista os técnicos da equipe com a última localização conhecida (lê
- * `localizacoes_equipe` via `services/localizacaoEquipe.ts`), "há X min" e um
- * botão "Abrir no mapa" que usa o MESMO deep-link já usado no card de
- * agendamento (`abrirRotaGoogleMaps` — abre o Google Maps app/navegador,
- * funciona hoje, zero billing).
+ * ESTADO REAL (auditoria B10): a localização está DESLIGADA. O celular não envia
+ * posição (`LOCALIZACAO_DISPONIVEL = false`, expo-location não instalado) e o build
+ * RN-web, único que tinha o botão "Compartilhar minha localização", não está
+ * publicado. Por isso a lista vem vazia em produção e esta tela diz isso — e as
+ * entradas na tela Equipe mostram o selo "Em breve — localização desligada".
+ * Não é tempo real: lê ao abrir e ao puxar para atualizar.
  *
- * Mapa EMBUTIDO (Google Maps SDK) é decisão de `mapaEmbutidoDisponivel()`
- * (EXPO_PUBLIC_MAPS_KEY) — hoje sempre indisponível, então esta tela sempre
- * mostra lista + deep-link. Quando a chave existir um dia, o lugar certo
- * para o <MapView> embutido é aqui, atrás desse mesmo flag (nada a fazer
- * agora além de deixar o gancho comentado).
+ * Três estados da leitura, nunca colapsados: `erro` (mostra "Não deu para carregar"
+ * com "Tentar de novo" — nunca "ninguém compartilhou"), `sem_org` (conta sem equipe)
+ * e `ok` (lista, que pode estar vazia de verdade). A coordenada crua só aparece ao
+ * tocar e segurar o cartão; o padrão é "há X min" + "Abrir no mapa".
  *
- * Captura periódica em background (o que POPULA `localizacoes_equipe`) só
- * liga de verdade na Onda 8 (prebuild com expo-location). Até lá, o cartão
- * "Compartilhar minha localização agora" funciona de verdade NA WEB (usa
- * navigator.geolocation — dá vida à tela sem esperar o prebuild). No nativo
- * (Android/iOS), como o módulo ainda não está instalado, o mesmo espaço vira
- * um aviso honesto em vez de um botão que não faria nada — a lista de
- * técnicos + deep-link do mapa abaixo continua funcionando plenamente.
+ * Mapa EMBUTIDO (Google Maps SDK) depende de `mapaEmbutidoDisponivel()`
+ * (EXPO_PUBLIC_MAPS_KEY) e nenhum componente de mapa existe ainda — hoje é só lista.
  *
- * Gate de plano: recurso 'mapa_equipe' é do plano Empresa (Onda 1). O <GatePro>
- * é aplicado AQUI MESMO, no componente exportado (ver o comentário dele) — antes
- * este cabeçalho dizia que a tela estava "pronta para ser envolvida em <GatePro>
- * por quem registrar a rota", e ninguém envolveu: o mapa ficou de graça em
- * qualquer plano até 2026-07-16 (item O1-12).
+ * Gate de plano: recurso 'mapa_equipe' é do plano Empresa. O <GatePro> é aplicado
+ * AQUI MESMO, no componente exportado (ver o comentário dele), com o <GuardaPapel>
+ * por dentro.
  */
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Platform, Alert } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, StyleSheet, RefreshControl, ScrollView, TouchableOpacity, Platform, Alert, Pressable } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -43,11 +39,13 @@ import { EmptyState } from '../components/EmptyState';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import {
   localizacoesEquipe, enviarMinhaLocalizacao, tempoRelativo,
-  mapaEmbutidoDisponivel, type LocalizacaoMembro,
+  mapaEmbutidoDisponivel, type LocalizacaoMembro, type LeituraLocalizacoesEquipe,
 } from '../services/localizacaoEquipe';
 import { PAPEL_LABEL } from '../services/equipe';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { GuardaPapel } from '../components/GuardaPapel';
+import { goBackOrHome } from '../navigation/safeBack';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 
 /** "recente" (<=15min) vs "desatualizado" — só um sinal visual, não filtra ninguém. */
 function estaRecente(iso: string): boolean {
@@ -78,7 +76,7 @@ export default function EquipeAoVivoScreen() {
   return (
     <GateEquipe
       recurso="mapa_equipe"
-      beneficio="Veja a última localização que cada técnico compartilhou. No app, a localização ainda não está disponível."
+      beneficio="Em breve: a última localização de cada técnico. Hoje a localização da equipe está desligada no app."
     >
       <GuardaPapel acao="ver_agenda_equipe" area="Equipe ao vivo">
         <EquipeAoVivoConteudo />
@@ -88,33 +86,45 @@ export default function EquipeAoVivoScreen() {
 }
 
 function EquipeAoVivoConteudo() {
+  const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const [itens, setItens] = useState<LocalizacaoMembro[]>([]);
-  const [carregando, setCarregando] = useState(true);
+  // null = carregando (1ª leitura). Erro e "sem equipe" são estados próprios.
+  const [leitura, setLeitura] = useState<LeituraLocalizacoesEquipe | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [compartilhando, setCompartilhando] = useState(false);
 
   const load = useCallback(async () => {
-    const data = await localizacoesEquipe();
-    setItens(data);
-    setCarregando(false);
+    try {
+      setLeitura(await localizacoesEquipe());
+    } catch {
+      // O service não lança; isto é só o cinto de segurança — erro nunca vira vazio.
+      setLeitura({ estado: 'erro', mensagem: 'Confira sua conexão e tente de novo.' });
+    }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   async function refresh() {
     setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  function tentarDeNovo() {
+    setLeitura(null);
+    void load();
   }
 
   async function compartilharAgora() {
     Haptics.selectionAsync().catch(() => {});
     setCompartilhando(true);
     try {
-      const ok = await enviarMinhaLocalizacao();
+      const ok = await enviarMinhaLocalizacao().catch(() => false);
       if (ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         await load();
@@ -132,7 +142,13 @@ function EquipeAoVivoConteudo() {
     }
   }
 
-  const vazio = itens.length === 0;
+  const itens: LocalizacaoMembro[] = leitura?.estado === 'ok' ? leitura.itens : [];
+  const subtitulo =
+    leitura === null ? 'Carregando…'
+      : leitura.estado === 'erro' ? 'Não deu para carregar'
+        : leitura.estado === 'sem_org' ? 'Você ainda não tem equipe'
+          : itens.length === 0 ? 'Localização desligada no app'
+            : `${itens.length} ${itens.length === 1 ? 'pessoa' : 'pessoas'} com localização`;
   // Decide lista+deep-link (hoje, sempre) vs mapa embutido (quando billing
   // existir — EXPO_PUBLIC_MAPS_KEY). O dia que existir um
   // <MapaEquipeEmbutido>, ele substitui a ScrollView de cards abaixo,
@@ -142,8 +158,9 @@ function EquipeAoVivoConteudo() {
   return (
     <View style={styles.container}>
       <GradientHeader
+        onBack={() => goBackOrHome(nav)}
         title="Equipe ao vivo"
-        subtitle={vazio ? 'Nenhuma localização compartilhada ainda' : `${itens.length} técnico${itens.length === 1 ? '' : 's'} com localização`}
+        subtitle={subtitulo}
         right={
           <View style={styles.headerIconWrap}>
             <MaterialCommunityIcons
@@ -160,11 +177,10 @@ function EquipeAoVivoConteudo() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.accentLight]} tintColor={cores.accentLight} />}
       >
-        {/* Compartilhar minha localização — na web usa navigator.geolocation e
-            funciona de verdade hoje. No nativo o `expo-location` NÃO está
-            instalado: o cartão diz "ainda não disponível" em vez de prometer
-            uma atualização que não tem data (o GPS contínuo está fora do
-            plano; o que vem é check-in por evento da OS). */}
+        {/* Compartilhar minha localização — só existe no build RN-web (não
+            publicado hoje; usa navigator.geolocation). No nativo o
+            `expo-location` NÃO está instalado: o cartão diz que está desligado
+            em vez de oferecer um botão que não faria nada. */}
         {Platform.OS === 'web' ? (
           <TouchableOpacity
             style={styles.shareCard}
@@ -193,13 +209,13 @@ function EquipeAoVivoConteudo() {
               <MaterialCommunityIcons name="crosshairs-gps" size={20} color={cores.onSurfaceMuted} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.shareTitle}>Localização pelo app: ainda não disponível</Text>
+              <Text style={styles.shareTitle}>Em breve — localização desligada</Text>
               <Text style={styles.shareHint}>O OLLI ainda não usa o GPS do celular, então ninguém aparece aqui pelo app. Para ir até um cliente, use o botão de rota da visita na agenda.</Text>
             </View>
           </View>
         )}
 
-        {carregando ? (
+        {leitura === null ? (
           <View style={{ gap: 10 }}>
             {[0, 1, 2].map(i => (
               <View key={i} style={styles.item}>
@@ -211,13 +227,27 @@ function EquipeAoVivoConteudo() {
               </View>
             ))}
           </View>
-        ) : vazio ? (
+        ) : leitura.estado === 'erro' ? (
+          <EmptyState
+            icon="alert-circle-outline"
+            title="Não deu para carregar"
+            subtitle={leitura.mensagem}
+            actionLabel="Tentar de novo"
+            onAction={tentarDeNovo}
+          />
+        ) : leitura.estado === 'sem_org' ? (
+          <EmptyState
+            icon="account-group-outline"
+            title="Você ainda não tem equipe"
+            subtitle="A equipe ao vivo mostra os técnicos da sua empresa. Convide alguém pela tela Equipe."
+          />
+        ) : itens.length === 0 ? (
           <EmptyState
             icon="map-marker-radius-outline"
-            title="Ninguém compartilhou a localização ainda"
+            title="Ninguém aparece aqui ainda"
             subtitle={Platform.OS === 'web'
-              ? "Peça para a equipe abrir esta tela pelo navegador e tocar em 'Compartilhar minha localização agora'."
-              : 'A localização da equipe ainda não está disponível no app.'}
+              ? "A localização está desligada no app do celular. Pelo navegador, cada pessoa pode tocar em 'Compartilhar minha localização agora'."
+              : 'A localização da equipe está desligada no app. Quando ela chegar, cada técnico aparece aqui com a última posição.'}
           />
         ) : (
           itens.map((m, i) => (
@@ -236,10 +266,22 @@ function MembroCard({ membro }: { membro: LocalizacaoMembro }) {
   const styles = useEstilos(criarEstilos);
   const recente = estaRecente(membro.capturadoEm);
   const papel = membro.papel ? PAPEL_LABEL[membro.papel] : null;
+  // Coordenada crua não é informação para o dono — só para quem pedir (tocar e segurar).
+  const [mostrarCoordenadas, setMostrarCoordenadas] = useState(false);
 
   return (
     <OlliCard style={styles.card}>
-      <View style={styles.row}>
+      <Pressable
+        style={styles.row}
+        onLongPress={() => {
+          Haptics.selectionAsync().catch(() => {});
+          setMostrarCoordenadas((v) => !v);
+        }}
+        delayLongPress={400}
+        accessibilityRole="button"
+        accessibilityLabel={`${membro.nome}, última localização ${tempoRelativo(membro.capturadoEm)}`}
+        accessibilityHint="Toque e segure para ver ou esconder as coordenadas"
+      >
         <View style={[styles.avatar, recente && styles.avatarRecente]}>
           <MaterialCommunityIcons name="account" size={22} color={recente ? cores.accentLight : cores.onSurfaceMuted} />
           {recente && <View style={styles.dot} />}
@@ -256,11 +298,13 @@ function MembroCard({ membro }: { membro: LocalizacaoMembro }) {
           <View style={styles.metaRow}>
             <MaterialCommunityIcons name="map-marker-outline" size={13} color={cores.onSurfaceMuted} />
             <Text style={styles.metaText}>
-              {membro.lat.toFixed(4)}, {membro.lng.toFixed(4)} · {tempoRelativo(membro.capturadoEm)}
+              {mostrarCoordenadas
+                ? `${membro.lat.toFixed(5)}, ${membro.lng.toFixed(5)} · ${tempoRelativo(membro.capturadoEm)}`
+                : `Última localização ${tempoRelativo(membro.capturadoEm)}`}
             </Text>
           </View>
         </View>
-      </View>
+      </Pressable>
 
       <OlliPressable
         onPress={() => abrirRotaGoogleMaps(`${membro.lat},${membro.lng}`)}
