@@ -432,5 +432,25 @@ console.log('\n12) migration 20261001120000 num Postgres (PGlite)');
   await pg.close();
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n13) formulários da agenda preservam exceções e OS ligada ao salvar');
+{
+  // O formulário remonta o Agendamento campo a campo. Sem carregar `excecoes` e
+  // `ordemServicoId` da linha aberta até o save, editar a série pelo formulário
+  // gravava nulo local e `{}` na nuvem: apagava toda ocorrência cancelada/movida.
+  for (const arquivo of ['src/screens/AgendaScreen.tsx', 'src/screens/desktop/AgendaDesktopScreen.tsx']) {
+    const src = readFileSync(arquivo, 'utf8');
+    checar(`${arquivo}: abrirEdicao carrega excecoes/ordemServicoId`,
+      src.includes('excecoes: a.excecoes,') && src.includes('ordemServicoId: a.ordemServicoId,'));
+    checar(`${arquivo}: o save devolve excecoes/ordemServicoId`,
+      src.includes('excecoes: e.excecoes,') && src.includes('ordemServicoId: e.ordemServicoId,'));
+  }
+  // E a reconciliação de lembretes lê ANTES de cancelar (leitura que lança não zera tudo).
+  const agendaSrc = readFileSync('src/services/agenda.ts', 'utf8');
+  const corpo = agendaSrc.slice(agendaSrc.indexOf('export async function resincronizarLembretes'));
+  checar('resincronizarLembretes lê a agenda antes de cancelar os lembretes',
+    corpo.indexOf('await getAgendamentos()') > -1 && corpo.indexOf('await getAgendamentos()') < corpo.indexOf('await cancelarTodosLembretes()'));
+}
+
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${ok} ok, ${falhas} falha(s)\n`);
 process.exitCode = falhas === 0 ? 0 : 1;

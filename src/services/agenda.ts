@@ -238,8 +238,11 @@ export async function cancelarTodosLembretes(): Promise<void> {
  */
 export async function resincronizarLembretes(): Promise<void> {
   try {
-    await cancelarTodosLembretes();
+    // LÊ antes de cancelar: a leitura agora pode lançar (exceções ilegíveis numa
+    // série, `lerExcecoes`). Cancelar primeiro faria "não consegui ler a agenda"
+    // virar "nenhum lembrete" — o aparelho ficaria mudo sem ninguém saber.
     const agendamentos = await getAgendamentos();
+    await cancelarTodosLembretes();
     for (const a of agendamentos) {
       try {
         await agendarLembrete(a);
