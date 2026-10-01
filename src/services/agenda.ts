@@ -2,11 +2,27 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDb, moverAgendamentoParaLixeira } from '../database/database';
-import { Agendamento } from '../types';
+import type { Agendamento, OrdemServico } from '../types';
 import { pushRow } from './cloudSync';
 import { cancelarAvisoSaida } from './avisoSaida';
 import { LEMBRETE_MAP_KEY } from './storageKeys';
-import { expandirRecorrencia, type OcorrenciaAgendamento } from '../utils/contratoRecorrente';
+import {
+  expandirRecorrencia,
+  excecoesParaTexto,
+  idAgendamentoDaOS,
+  lerExcecoes,
+  planejarEdicaoRecorrente,
+  planejarLembretes,
+  visitaConcluidaPelaOS,
+  type AlcanceEdicaoRecorrente,
+  type MudancaOcorrencia,
+  type OcorrenciaAgendamento,
+  type PlanoEdicaoRecorrente,
+} from '../utils/contratoRecorrente';
+import { generateId } from '../utils/id';
+
+// Conflito por técnico (com duração por tipo): função pura, reexportada para as telas.
+export { encontrarConflitosPorTecnico, type CandidatoConflito } from '../utils/contratoRecorrente';
 import {
   escolherProximaParada, escolherProximaSaida, filtrarVisitasSemBaixa, limitesDoDiaLocal,
   JANELA_EM_ANDAMENTO_DIAS, JANELA_PROXIMA_PARADA_DIAS, JANELA_SEM_BAIXA_DIAS,
@@ -118,53 +134,66 @@ export async function pedirPermissaoNotificacao(): Promise<boolean> {
   }
 }
 
-/** Cancela (se existir) a notificação de lembrete agendada para este agendamento. */
+/**
+ * Cancela os lembretes deste agendamento: o da própria linha e os de TODAS as
+ * ocorrências da série (chaves `<id>@<dia>`). Sem o prefixo, editar uma série
+ * deixaria tocando os lembretes das ocorrências no horário velho.
+ */
 async function cancelarLembrete(agendamentoId: string): Promise<void> {
   const map = await getLembreteMap();
-  const notifId = map[agendamentoId];
-  if (!notifId) return;
-  try { await Notifications.cancelScheduledNotificationAsync(notifId); } catch {}
-  delete map[agendamentoId];
+  const chaves = Object.keys(map).filter((k) => k === agendamentoId || k.startsWith(`${agendamentoId}@`));
+  if (!chaves.length) return;
+  for (const chave of chaves) {
+    try { await Notifications.cancelScheduledNotificationAsync(map[chave]); } catch {}
+    delete map[chave];
+  }
   await setLembreteMap(map);
 }
 
 /**
- * (Re)agenda o lembrete local de um agendamento: cancela o anterior (se
- * houver) e cria um novo, `MINUTOS_ANTECEDENCIA_LEMBRETE` minutos antes do
- * início — só se o horário do lembrete ainda estiver no futuro e o
- * agendamento não estiver cancelado/concluído. Não lança: falha de
- * notificação nunca deve impedir salvar o agendamento.
+ * (Re)agenda os lembretes locais de um agendamento: cancela os anteriores (da linha
+ * e de todas as ocorrências) e cria um por OCORRÊNCIA ainda `agendado`,
+ * `MINUTOS_ANTECEDENCIA_LEMBRETE` minutos antes do início (`planejarLembretes`).
+ * Série: só as ocorrências dos próximos `JANELA_LEMBRETES_DIAS` dias, chave
+ * `<id>@<dia>` (a mesma do aviso de saída) — cancelada não toca, movida toca no
+ * horário novo, concluída só ela para de tocar. A janela anda a cada
+ * `resincronizarLembretes` (após o sync). Avulso: o próprio, chave = id.
+ * Não lança: falha de notificação nunca deve impedir salvar o agendamento.
  */
 async function agendarLembrete(a: Agendamento): Promise<void> {
   try {
     await cancelarLembrete(a.id);
-    if (a.status !== 'agendado') return;
-    const inicio = new Date(a.inicio);
-    if (isNaN(inicio.getTime())) return;
-    const dataLembrete = new Date(inicio.getTime() - MINUTOS_ANTECEDENCIA_LEMBRETE * 60 * 1000);
-    if (dataLembrete.getTime() <= Date.now()) return; // horário do lembrete já passou
+    const planejados = planejarLembretes(a, new Date(), MINUTOS_ANTECEDENCIA_LEMBRETE);
+    if (!planejados.length) return;
 
     const temPermissao = await temPermissaoNotificacao();
     if (!temPermissao) return; // não pede permissão aqui; quem chama já deve ter pedido
 
     await garantirCanalAndroid();
 
-    const horaTxt = `${String(inicio.getHours()).padStart(2, '0')}:${String(inicio.getMinutes()).padStart(2, '0')}`;
-    const notifId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Visita em ${MINUTOS_ANTECEDENCIA_LEMBRETE >= 60 ? `${Math.round(MINUTOS_ANTECEDENCIA_LEMBRETE / 60)}h` : `${MINUTOS_ANTECEDENCIA_LEMBRETE}min`}`,
-        body: `${a.titulo} · ${a.clienteNome} às ${horaTxt}${a.endereco ? ' · ' + a.endereco : ''}`,
-        data: { agendamentoId: a.id },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: dataLembrete,
-        channelId: CANAL_ANDROID_ID,
-      },
-    });
-
     const map = await getLembreteMap();
-    map[a.id] = notifId;
+    for (const { chave, disparo, ocorrencia: o } of planejados) {
+      try {
+        const inicio = new Date(o.inicio);
+        const horaTxt = `${String(inicio.getHours()).padStart(2, '0')}:${String(inicio.getMinutes()).padStart(2, '0')}`;
+        map[chave] = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: `Visita em ${MINUTOS_ANTECEDENCIA_LEMBRETE >= 60 ? `${Math.round(MINUTOS_ANTECEDENCIA_LEMBRETE / 60)}h` : `${MINUTOS_ANTECEDENCIA_LEMBRETE}min`}`,
+            body: `${o.titulo} · ${o.clienteNome} às ${horaTxt}${o.endereco ? ' · ' + o.endereco : ''}`,
+            // agendamentoId = a LINHA (quem abre a notificação abre a base); a
+            // ocorrência vai junto para a tela saber qual dia foi.
+            data: { agendamentoId: a.id, ocorrenciaId: chave },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: disparo,
+            channelId: CANAL_ANDROID_ID,
+          },
+        });
+      } catch {
+        // uma ocorrência que falhou não derruba as outras
+      }
+    }
     await setLembreteMap(map);
   } catch {
     // Falha ao agendar notificação nunca deve travar o salvamento do agendamento.
@@ -209,8 +238,11 @@ export async function cancelarTodosLembretes(): Promise<void> {
  */
 export async function resincronizarLembretes(): Promise<void> {
   try {
-    await cancelarTodosLembretes();
+    // LÊ antes de cancelar: a leitura agora pode lançar (exceções ilegíveis numa
+    // série, `lerExcecoes`). Cancelar primeiro faria "não consegui ler a agenda"
+    // virar "nenhum lembrete" — o aparelho ficaria mudo sem ninguém saber.
     const agendamentos = await getAgendamentos();
+    await cancelarTodosLembretes();
     for (const a of agendamentos) {
       try {
         await agendarLembrete(a);
@@ -274,6 +306,9 @@ function rowToAgendamento(r: any): Agendamento {
     recorrencia: r.recorrencia ?? undefined,
     recorrenciaAte: r.recorrencia_ate ?? undefined,
     contratoId: r.contrato_id ?? undefined,
+    // Lança se ilegível: "não sei o que foi cancelado" não vira "nada foi".
+    excecoes: lerExcecoes(r.excecoes),
+    ordemServicoId: r.ordem_servico_id ?? undefined,
   };
 }
 
@@ -388,15 +423,17 @@ export async function getAgendamento(id: string): Promise<Agendamento | null> {
  */
 const SQL_SALVAR_AGENDAMENTO = `INSERT OR REPLACE INTO agendamentos
        (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em,
-        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 function valoresDoAgendamento(a: Agendamento): (string | null)[] {
   return [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
     a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
     a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null,
     a.responsavelId ?? null, a.responsavelId ? (a.responsavelNome ?? null) : null,
-    a.recorrencia ?? null, a.recorrencia ? (a.recorrenciaAte ?? null) : null, a.contratoId ?? null];
+    a.recorrencia ?? null, a.recorrencia ? (a.recorrenciaAte ?? null) : null, a.contratoId ?? null,
+    // Exceção só existe em série: tirar a repetição apaga as exceções junto.
+    a.recorrencia ? excecoesParaTexto(a.excecoes) : null, a.ordemServicoId ?? null];
 }
 
 /** Cria ou atualiza (upsert) um agendamento. */
@@ -429,4 +466,60 @@ export async function deleteAgendamento(id: string): Promise<void> {
   void cancelarLembrete(id).catch(() => {});
   // Item na lixeira não notifica — nem o lembrete fixo, nem o "saia às HH:MM".
   void cancelarAvisoSaida(id).catch(() => {});
+}
+
+// ─── SÉRIE: editar só esta / esta e as próximas / a série toda ───────────────
+
+/**
+ * Edita uma ocorrência de série recorrente (`idOcorrencia` = `'<base>@<dia>'`, ou o
+ * id da base para a 1ª ocorrência) com o alcance escolhido pelo prestador. A regra é
+ * `planejarEdicaoRecorrente` (pura, testada); aqui só lê a base e grava as linhas —
+ * cada gravação passa por `saveAgendamento` (nuvem + lembretes por ocorrência).
+ *
+ * LANÇA quando não dá para fazer o que foi pedido (base inexistente, não é série,
+ * dia fora da série, horário inválido): nada é gravado pela metade antes da checagem.
+ * Em "esta e as próximas" a série NOVA é gravada antes do corte da antiga: se a 2ª
+ * escrita falhar, sobra a série antiga inteira (visita a mais), nunca um buraco.
+ */
+export async function editarRecorrente(
+  idOcorrencia: string,
+  alcance: AlcanceEdicaoRecorrente,
+  mudanca: MudancaOcorrencia,
+): Promise<PlanoEdicaoRecorrente> {
+  const baseId = idOcorrencia.split('@')[0];
+  const base = await getAgendamento(baseId);
+  if (!base) throw new Error('Agendamento não encontrado neste aparelho.');
+  const plano = planejarEdicaoRecorrente(base, idOcorrencia, alcance, mudanca, { agora: new Date(), novoId: generateId() });
+  if (plano.novaSerie) await saveAgendamento(plano.novaSerie);
+  await saveAgendamento(plano.base);
+  return plano;
+}
+
+// ─── OS concluída → visita concluída ──────────────────────────────────────────
+
+/**
+ * Marca como concluída a visita ligada à OS que acabou de ser concluída: pelo campo
+ * `ordem_servico_id` ou, nas visitas de contrato recorrente, pelo id determinístico
+ * (`os_cv_…` ↔ `ag_cv_…`). Série: conclui só a ocorrência do dia da OS. Chamado por
+ * `saveOrdemServico`. Devolve quantas visitas mudaram. Erro de leitura/escrita
+ * PROPAGA (a OS já foi gravada; quem salvou decide o aviso).
+ */
+export async function concluirVisitasDaOS(
+  os: Pick<OrdemServico, 'id' | 'status' | 'dataAgendada' | 'concluidoEm'>,
+): Promise<number> {
+  if (os.status !== 'concluida') return 0;
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM agendamentos WHERE excluido_em IS NULL AND (ordem_servico_id = ? OR id = ?)',
+    [os.id, idAgendamentoDaOS(os.id) ?? ''],
+  );
+  let mudaram = 0;
+  const agora = new Date();
+  for (const r of rows) {
+    const concluida = visitaConcluidaPelaOS(rowToAgendamento(r), os, agora);
+    if (!concluida) continue;
+    await saveAgendamento(concluida);
+    mudaram++;
+  }
+  return mudaram;
 }

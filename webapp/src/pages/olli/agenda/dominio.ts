@@ -11,6 +11,7 @@
  * renderizar um agendamento cinza sem duração e sem nome.
  */
 import { type Agendamento, type StatusAgendamento, TIPOS_AGENDAMENTO, type TipoAgendamento } from "@dominio";
+import { lerExcecoes } from "../../../../../src/utils/contratoRecorrente";
 
 /* ──────────────────────────  1. A linha do Supabase  ───────────────────────── */
 
@@ -42,6 +43,9 @@ export interface LinhaAgendamento {
 	recorrencia?: Agendamento["recorrencia"] | null;
 	recorrencia_ate?: string | null;
 	contrato_id?: string | null;
+	// Migration 20261001120000 — exceções por ocorrência e OS ligada (opcionais idem).
+	excecoes?: unknown;
+	ordem_servico_id?: string | null;
 }
 
 /**
@@ -74,6 +78,10 @@ export function linhaParaAgendamento(r: LinhaAgendamento): Agendamento {
 	if (r.recorrencia) a.recorrencia = r.recorrencia;
 	if (r.recorrencia_ate) a.recorrenciaAte = r.recorrencia_ate;
 	if (r.contrato_id) a.contratoId = r.contrato_id;
+	// Lança se ilegível: a agenda mostra erro em vez de ressuscitar ocorrência cancelada.
+	const excecoes = lerExcecoes(r.excecoes);
+	if (excecoes) a.excecoes = excecoes;
+	if (r.ordem_servico_id) a.ordemServicoId = r.ordem_servico_id;
 	return a;
 }
 
