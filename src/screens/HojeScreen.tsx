@@ -24,6 +24,7 @@ import { getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../da
 import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
+import { maisPrioritarioFollowUp } from '../utils/prioridadeFollowUp';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import {
@@ -97,8 +98,10 @@ function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: numb
 interface ChecklistItem { id: string; texto: string; feito: boolean; data: string }
 
 
+// Dia LOCAL do aparelho. Com toISOString (UTC) o checklist "virava o dia" às 21h
+// no Brasil e as tarefas da noite sumiam.
 function todayKey(): string {
-  return new Date().toISOString().split('T')[0];
+  return format(new Date(), 'yyyy-MM-dd');
 }
 
 function saudacao(): string {
@@ -212,7 +215,8 @@ function PulsoSemana({ onFechar }: { onFechar: () => void }) {
     Haptics.selectionAsync().catch(() => {});
     setNota(valor);
     track(Eventos.pulsoRespondido, { nota: valor });
-    void enviarFeedback('pulso', '', { tela: 'HojeScreen', nota }).catch(() => {});
+    // `nota` aqui ainda é o valor ANTIGO (null) do closure: o toque grava `valor`.
+    void enviarFeedback('pulso', '', { tela: 'HojeScreen', nota: valor }).catch(() => {});
   }, [nota]);
 
   const enviarComentario = useCallback(async () => {
@@ -431,9 +435,10 @@ export default function HojeScreen() {
   const valorFollowUp = followUp.reduce((s, i) => s + i.orcamento.valorTotal, 0);
   const maisAntigoFollowUp = followUp.reduce((m, i) => Math.max(m, i.diasParado), 0);
   const aguardandoAssinatura = orcamentosResumo.aguardandoAssinatura;
-  // O mais parado de todos (a lista já vem ordenada por diasParado desc) — é
-  // nele que o botão de um toque age.
-  const maisUrgente = followUp[0] ?? null;
+  // O de MAIOR prioridade (valor × recência, ver utils/prioridadeFollowUp) — é
+  // nele que o botão de um toque age. Antes era o mais parado de todos (a lista
+  // vem por diasParado desc), ou seja, o lead mais frio.
+  const maisUrgente = maisPrioritarioFollowUp(followUp);
 
   const feitos = checklist.filter(i => i.feito).length;
   // "Tudo em dia!" é uma AFIRMAÇÃO: só pode aparecer quando as duas leituras
@@ -573,7 +578,7 @@ export default function HojeScreen() {
                     <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
                   </OlliPressable>
 
-                  {/* Ação em UM toque, no que está parado há mais tempo: abre o
+                  {/* Ação em UM toque, na proposta de maior prioridade: abre o
                       WhatsApp com a mensagem de follow-up já montada (a mesma de
                       `mensagemFollowUp`, derivada do próprio orçamento). Sem isto
                       o lembrete só sabia mandar o prestador procurar na lista. */}
@@ -679,9 +684,13 @@ export default function HojeScreen() {
                 <AnimatedEntrance key={a.id} index={i}>
                   <OlliPressable
                     style={styles.agendaCard}
-                    onPress={() => (nav as any).navigate('Tabs', { screen: 'Agenda' })}
+                    // Abre ESTA visita na Agenda. Repetição de série vai com o id
+                    // inteiro (`<base>@<dia>`), o mesmo formato da notificação: a
+                    // Agenda abre a base e foca o DIA da repetição. Mandar só a base
+                    // focaria a semana em que a série começou.
+                    onPress={() => (nav as any).navigate('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId: a.id } })}
                     haptic="selection"
-                    accessibilityLabel={`Abrir agenda — ${a.titulo}`}
+                    accessibilityLabel={`Abrir visita — ${a.titulo}`}
                   >
                     <View style={styles.agendaTime}>
                       <Text style={styles.agendaHour}>{hhmm(a.inicio)}</Text>
