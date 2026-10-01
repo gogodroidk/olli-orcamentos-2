@@ -406,7 +406,7 @@ export default function NovoOrcamentoScreen() {
     const cortesias = idsDeCortesia(parcial.itens ?? []);
     if (cortesias.length) setItensZeroConfirmados(prev => new Set([...prev, ...cortesias]));
     vibrar('sucesso');
-    toast.sucesso(`Itens do orçamento nº ${formatarNumeroExibicao(origem.numero)} copiados. Confira os preços antes de enviar.`);
+    toast.sucesso(`Itens, desconto e condições do orçamento nº ${formatarNumeroExibicao(origem.numero)} copiados. Confira os preços antes de enviar.`);
   }
 
   /**

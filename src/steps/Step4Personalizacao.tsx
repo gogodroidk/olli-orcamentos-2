@@ -139,13 +139,13 @@ export default function Step4Personalizacao({ orc, onChange, empresa, onAjustarD
           haptic="light"
           escala={0.98}
           style={styles.detalhesCard}
-          accessibilityLabel="Ajustar detalhes: datas, condições, garantia e fotos"
+          accessibilityLabel="Ajustar detalhes: datas, condições, garantia, fotos, laudo e observações"
         >
           <View style={styles.detalhesIcone}>
             <MaterialCommunityIcons name="tune-variant" size={20} color={cores.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.detalhesTitulo}>Datas, condições e fotos</Text>
+            <Text style={styles.detalhesTitulo}>Datas, condições, fotos e laudo</Text>
             {resumoDetalhes(orc).map(linha => (
               <Text key={linha} style={styles.detalhesLinha} numberOfLines={1}>{linha}</Text>
             ))}

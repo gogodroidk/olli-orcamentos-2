@@ -258,7 +258,7 @@ export default function Step2Itens({
                   <Text style={styles.repetirTexto} numberOfLines={2}>
                     Nº {formatarNumeroExibicao(ultimo.orcamento.numero)} · {ultimo.orcamento.itens.length} {ultimo.orcamento.itens.length === 1 ? 'item' : 'itens'} · {formatCurrency(ultimo.orcamento.valorTotal)}
                   </Text>
-                  <Text style={styles.repetirNota}>Os itens vêm com os preços daquele orçamento. Dá para mudar tudo depois.</Text>
+                  <Text style={styles.repetirNota}>Vêm os itens (com os preços daquele orçamento), o desconto e as condições e garantia que ele tinha. Dá para mudar tudo depois.</Text>
                 </View>
               </View>
               <OlliButton
@@ -443,7 +443,12 @@ export default function Step2Itens({
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{activeTab === 'servico' ? 'Serviços' : 'Produtos'}</Text>
-            <TouchableOpacity onPress={closeCatalog} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity
+              onPress={closeCatalog}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Fechar o catálogo"
+            >
               <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
