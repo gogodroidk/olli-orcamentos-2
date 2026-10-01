@@ -20,6 +20,7 @@ import {
   type PlanoEdicaoRecorrente,
 } from '../utils/contratoRecorrente';
 import { generateId } from '../utils/id';
+import { aplicarExtrasAoPlano, type ExtrasEdicaoSerie } from '../utils/agendaVisual';
 import { externaParaSqlite, lerExterna } from './verticais';
 
 // Conflito por técnico (com duração por tipo): função pura, reexportada para as telas.
@@ -500,11 +501,18 @@ export async function editarRecorrente(
   idOcorrencia: string,
   alcance: AlcanceEdicaoRecorrente,
   mudanca: MudancaOcorrencia,
+  extras?: ExtrasEdicaoSerie,
 ): Promise<PlanoEdicaoRecorrente> {
   const baseId = idOcorrencia.split('@')[0];
   const base = await getAgendamento(baseId);
   if (!base) throw new Error('Agendamento não encontrado neste aparelho.');
-  const plano = planejarEdicaoRecorrente(base, idOcorrencia, alcance, mudanca, { agora: new Date(), novoId: generateId() });
+  // Cliente/tipo/endereço/regra vão para a linha certa (série nova ou base); lança
+  // antes de gravar se o alcance não comporta a mudança.
+  const plano = aplicarExtrasAoPlano(
+    planejarEdicaoRecorrente(base, idOcorrencia, alcance, mudanca, { agora: new Date(), novoId: generateId() }),
+    alcance,
+    extras,
+  );
   if (plano.novaSerie) await saveAgendamento(plano.novaSerie);
   await saveAgendamento(plano.base);
   return plano;
