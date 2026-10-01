@@ -2,7 +2,7 @@
  * Taxonomia ÚNICA de falha da OLLI por IA — fonte de verdade para as 3 telas que
  * hoje reimplementavam a mesma classificação (timeout/offline/servidor/auth/cota)
  * com mensagens e visuais divergentes: DiagnosticoIAScreen, OlliChatScreen e
- * CodigosErroScreen. Não muda a lógica de rede/aterramento — só o VOCABULÁRIO e
+ * DiagnosticoScreen. Não muda a lógica de rede/aterramento — só o VOCABULÁRIO e
  * a CÓPIA que a UI mostra pra cada motivo, que continuam vindo de
  * `motivoFalhaDiagnostico()` (olliIA.ts) e do status HTTP mapeado em
  * olliAssistente.ts.

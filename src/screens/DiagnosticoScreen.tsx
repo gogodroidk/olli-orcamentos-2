@@ -25,6 +25,16 @@ import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import {
+  ESTADO_OCIOSO,
+  criarSequenciaBusca,
+  entregarCasoAoChat,
+  iniciarCarregamento,
+  itensVisiveis,
+  montarContextoDiagnostico,
+  semResultadoNaBase,
+  type EstadoBuscaDiagnostico,
+} from '../services/diagnosticoContexto';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -62,7 +72,15 @@ function confTexto(conf: string, c: Cores, sup: string): string {
   return corCategoriaEmChip(confColor(conf, c), sup);
 }
 
-export default function CodigosErroScreen() {
+/**
+ * Diagnóstico unificado (item 2.14) — uma tela só:
+ *   buscar o código → resultado da base offline (tabela local `codigos_erro`,
+ *   semeada de assets/codigos_erro.json) → "Perguntar à OLLI sobre este caso",
+ *   que abre o chat já com os registros achados (ou com "não está na base").
+ * Estados da busca: carregando | erro | resultado (vazio = sem resultado na
+ * base, dito com todas as letras, com a pergunta à OLLI oferecida).
+ */
+export default function DiagnosticoScreen() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -73,11 +91,12 @@ export default function CodigosErroScreen() {
   const [severidade, setSeveridade] = useState<string | null>(null);
   const [sevCounts, setSevCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<CodigoErro[]>([]);
+  const [estado, setEstado] = useState<EstadoBuscaDiagnostico>(ESTADO_OCIOSO);
   const [selected, setSelected] = useState<CodigoErro | null>(null);
   const [naoAchei, setNaoAchei] = useState<Partial<CasoErro> | null>(null);
-  const [carregando, setCarregando] = useState(false);
-  const [erroBusca, setErroBusca] = useState(false);
+  // Só a última busca disparada escreve o estado (debounce + async = corrida).
+  const sequencia = useRef(criarSequenciaBusca()).current;
+  const results = itensVisiveis(estado);
   // Marcas (chips de filtro) + total (subtítulo do cabeçalho): baixa prioridade
   // (a busca principal funciona sem eles), mas uma falha real não deve
   // desaparecer em silêncio — `headerErro` habilita o "Tentar de novo" abaixo
@@ -99,28 +118,26 @@ export default function CodigosErroScreen() {
   useFocusEffect(useCallback(() => { carregarHeader(); }, [carregarHeader]));
 
   const executarBusca = useCallback(async () => {
+    const id = sequencia.proxima();
     const q = query.trim();
-    if (!marca && !severidade && q.length === 0) { setResults([]); setErroBusca(false); return; }
-    setCarregando(true);
-    setErroBusca(false);
+    if (!marca && !severidade && q.length === 0) { setEstado(ESTADO_OCIOSO); return; }
+    setEstado(iniciarCarregamento);
     try {
       const r = await searchCodigosErro({ marca, q, severidade });
-      setResults(r);
+      if (!sequencia.ehAtual(id)) return;
+      setEstado({ tipo: 'resultado', itens: r });
       if (q.length >= 2) track(Eventos.errorCodeSearched, { q, marca, severidade, resultados: r.length });
     } catch {
-      setErroBusca(true);
-    } finally {
-      setCarregando(false);
+      if (sequencia.ehAtual(id)) setEstado({ tipo: 'erro' });
     }
-  }, [marca, severidade, query]);
+  }, [marca, severidade, query, sequencia]);
 
-  // busca reativa (marca/severidade imediatas, texto com debounce)
+  // busca reativa (marca/severidade imediatas via executarBusca, texto com debounce)
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
-    const q = query.trim();
-    debounce.current = setTimeout(() => { executarBusca(); }, q ? 250 : 0);
+    debounce.current = setTimeout(() => { executarBusca(); }, query.trim() ? 250 : 0);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [marca, severidade, query, executarBusca]);
+  }, [query, executarBusca]);
 
   // Contagem por severidade dentro do contexto atual (marca + texto). Ignora o
   // filtro de severidade de propósito — os números guiam qual nível vale filtrar.
@@ -157,10 +174,26 @@ export default function CodigosErroScreen() {
     setNaoAchei({ marca: marca ?? undefined, codigo: query.trim() || undefined });
   }
 
-  function pedirDiagnostico(prefill?: { marca?: string; codigo?: string; sintoma?: string }) {
+  /**
+   * "Perguntar à OLLI sobre este caso": entrega o caso ao chat (em memória —
+   * nada vai para a URL) e abre o chat. `codigos` vazio = a base não tem.
+   */
+  function perguntarOlli(caso: {
+    codigos?: CodigoErro[];
+    marca?: string | null;
+    modelo?: string | null;
+    codigoBuscado?: string | null;
+    sintoma?: string | null;
+  }) {
     Haptics.selectionAsync().catch(() => {});
     setSelected(null);
-    nav.navigate('DiagnosticoIA', prefill ?? { marca: marca ?? undefined, codigo: query.trim() || undefined });
+    entregarCasoAoChat(montarContextoDiagnostico(caso));
+    nav.navigate('OlliChat');
+  }
+
+  /** O caso da busca atual: os primeiros resultados (ou nenhum) + o que foi digitado. */
+  function perguntarOlliSobreBusca() {
+    perguntarOlli({ codigos: results, marca, codigoBuscado: query.trim() });
   }
 
   // Cria um orçamento já com um item-serviço descrevendo o reparo do código aberto.
@@ -202,7 +235,10 @@ export default function CodigosErroScreen() {
       'Fica guardado só neste aparelho, pra você lembrar depois — não sincroniza com servidor nenhum. Já dá pra perguntar pra OLLI Técnica agora mesmo com o que você digitou.',
       [
         { text: 'Agora não', style: 'cancel' },
-        { text: 'Perguntar pra OLLI', onPress: () => pedirDiagnostico({ marca: caso.marca, codigo: caso.codigo, sintoma: caso.sintoma }) },
+        {
+          text: 'Perguntar à OLLI',
+          onPress: () => perguntarOlli({ marca: caso.marca, modelo: caso.modelo, codigoBuscado: caso.codigo, sintoma: caso.sintoma }),
+        },
       ],
     );
   }
@@ -216,7 +252,13 @@ export default function CodigosErroScreen() {
         title="Diagnóstico"
         subtitle={total ? `${total} códigos de erro · ${marcas.length} marcas` : 'Códigos de erro'}
         right={
-          <TouchableOpacity style={styles.olliHeaderBtn} onPress={() => pedirDiagnostico({})} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.olliHeaderBtn}
+            onPress={() => (buscando ? perguntarOlliSobreBusca() : nav.navigate('OlliChat'))}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={buscando ? 'Perguntar à OLLI sobre este caso' : 'Abrir o chat com a OLLI'}
+          >
             <MaterialCommunityIcons name="robot-happy-outline" size={16} color={cores.accentLight} />
             <Text style={styles.olliHeaderText}>OLLI</Text>
           </TouchableOpacity>
@@ -365,11 +407,13 @@ export default function CodigosErroScreen() {
           </AnimatedEntrance>
         )}
         ListEmptyComponent={
-          carregando ? (
-            <View style={{ gap: 10 }}>
-              {[0, 1, 2].map(i => <View key={i} style={styles.skeletonCard} />)}
+          estado.tipo === 'carregando' ? (
+            <View style={{ gap: 10 }} accessibilityLabel="Buscando na base offline">
+              <View style={styles.skeletonCard} />
+              <View style={styles.skeletonCard} />
+              <View style={styles.skeletonCard} />
             </View>
-          ) : erroBusca ? (
+          ) : estado.tipo === 'erro' ? (
             <EstadoIA
               variante="erro"
               tipoErro="desconhecido"
@@ -378,22 +422,24 @@ export default function CodigosErroScreen() {
               onAcao={executarBusca}
               style={{ marginTop: 30 }}
             />
-          ) : buscando ? (
+          ) : semResultadoNaBase(estado) ? (
             <View style={styles.noResult}>
               <MaterialCommunityIcons name="magnify-close" size={44} color={cores.onSurfaceMuted} />
-              <Text style={styles.noResultTitle}>Nenhum código encontrado</Text>
-              <Text style={styles.noResultSub}>Tente outra marca, o código exato ou descreva o sintoma.</Text>
-              <OlliButton label="Não achei meu erro" variant="outline" size="md" onPress={abrirNaoAchei} icon={<MaterialCommunityIcons name="help-circle-outline" size={18} color={cores.primary} />} style={{ marginTop: 14 }} />
-              {query.trim().length > 0 && (
-                <OlliButton
-                  label="Perguntar pra OLLI mesmo assim"
-                  variant="gradient"
-                  size="md"
-                  onPress={() => pedirDiagnostico({ marca: marca ?? undefined, sintoma: query.trim() })}
-                  icon={<MaterialCommunityIcons name="robot-happy-outline" size={18} color="#fff" />}
-                  style={{ marginTop: 10 }}
-                />
-              )}
+              <Text style={styles.noResultTitle}>Não está na base offline</Text>
+              <Text style={styles.noResultSub}>
+                {query.trim()
+                  ? `A base offline${marca ? ` da ${marca}` : ''} não tem “${query.trim()}”. A OLLI pode ajudar com o caso — sem inventar o significado oficial do código.`
+                  : 'Nenhum código com esses filtros. A OLLI pode ajudar com o caso.'}
+              </Text>
+              <OlliButton
+                label="Perguntar à OLLI sobre este caso"
+                variant="gradient"
+                size="md"
+                onPress={perguntarOlliSobreBusca}
+                icon={<MaterialCommunityIcons name="robot-happy-outline" size={18} color="#fff" />}
+                style={{ marginTop: 14 }}
+              />
+              <OlliButton label="Anotar caso neste aparelho" variant="outline" size="md" onPress={abrirNaoAchei} icon={<MaterialCommunityIcons name="help-circle-outline" size={18} color={cores.primary} />} style={{ marginTop: 10 }} />
             </View>
           ) : (
             <EmptyState
@@ -405,12 +451,24 @@ export default function CodigosErroScreen() {
         }
       />
 
-      {/* botão flutuante "não achei" quando há busca ativa */}
+      {/* com resultado: perguntar à OLLI com os registros achados, ou anotar */}
       {buscando && results.length > 0 && (
-        <TouchableOpacity style={[styles.naoAcheiFab, { bottom: insets.bottom + 18 }]} onPress={abrirNaoAchei} activeOpacity={0.9}>
-          <MaterialCommunityIcons name="help-circle-outline" size={16} color={cores.accentLight} />
-          <Text style={styles.naoAcheiFabText}>Não achei meu erro</Text>
-        </TouchableOpacity>
+        <View style={[styles.acoesFab, { bottom: insets.bottom + 18 }]}>
+          <TouchableOpacity
+            style={styles.perguntarFab}
+            onPress={perguntarOlliSobreBusca}
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel="Perguntar à OLLI sobre este caso"
+          >
+            <MaterialCommunityIcons name="robot-happy-outline" size={16} color={cores.onPrimary} />
+            <Text style={styles.perguntarFabText}>Perguntar à OLLI</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.naoAcheiFab} onPress={abrirNaoAchei} activeOpacity={0.9} accessibilityRole="button">
+            <MaterialCommunityIcons name="help-circle-outline" size={16} color={cores.accentLight} />
+            <Text style={styles.naoAcheiFabText}>Não achei</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* ─── DETALHE ─── */}
@@ -490,16 +548,17 @@ export default function CodigosErroScreen() {
                 </TouchableOpacity>
               )}
 
-              {/* Etapa 2 — diagnóstico guiado por IA (cache + fallback pra base) */}
+              {/* Etapa 2 — o chat da OLLI recebe ESTE registro da base como contexto */}
               <TouchableOpacity
                 style={styles.olliBox}
                 activeOpacity={0.85}
-                onPress={() => pedirDiagnostico({ marca: selected.marca, codigo: selected.codigo, sintoma: selected.falha })}
+                accessibilityRole="button"
+                onPress={() => perguntarOlli({ codigos: [selected], marca: selected.marca, codigoBuscado: selected.codigo })}
               >
                 <MaterialCommunityIcons name="robot-happy-outline" size={22} color={cores.accentLight} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.olliTitle}>Perguntar pra OLLI</Text>
-                  <Text style={styles.olliText}>resposta com citação de manual e página — testes em ordem, o que não fazer ainda e mensagem pro cliente.</Text>
+                  <Text style={styles.olliTitle}>Perguntar à OLLI sobre este caso</Text>
+                  <Text style={styles.olliText}>O chat abre já com este código, a causa e a ação da base. Se faltar o modelo, a OLLI pergunta antes de responder.</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={cores.accentLight} />
               </TouchableOpacity>
@@ -622,7 +681,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   noResultTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginTop: 10 },
   noResultSub: { fontSize: 13, color: c.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 19 },
 
-  naoAcheiFab: { position: 'absolute', alignSelf: 'center', bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.surfaceElevated, borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 11, ...sombrasDe(c).lg },
+  acoesFab: { position: 'absolute', alignSelf: 'center', bottom: 18, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  perguntarFab: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.primary, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 11, ...sombrasDe(c).lg },
+  perguntarFabText: { fontSize: 13, fontWeight: '800', color: c.onPrimary },
+  naoAcheiFab: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.surfaceElevated, borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 11, ...sombrasDe(c).lg },
   naoAcheiFabText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
 
   // detalhe

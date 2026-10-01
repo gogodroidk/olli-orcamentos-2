@@ -71,6 +71,7 @@ import { handleClima } from './clima.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
   aiConfigurada,
+  comContextoDiagnostico,
   definirAlertaFalhaIA,
   gerarIA,
   pagamentoOpenRouterPermitido,
@@ -880,9 +881,15 @@ async function handleChat(bodyText, env, user) {
         : cortar(m.texto, CHAT_MAX.texto) }],
     }));
   if (!contents.length) return json({ ok: false, erro: 'sem_mensagens' });
+  // Contexto da tela Diagnóstico (códigos achados na base offline). Só no modo
+  // consulta: o modo de ação prepara alteração e não precisa de dado externo.
+  // Sanitizado/limitado em ai.js e enviado como DADO delimitado, nunca system.
+  const prompt = actionMode
+    ? { system: chatActionSystem(vertical), user: contents }
+    : comContextoDiagnostico({ system: chatSystem(vertical), user: contents }, raw.contextoDiagnostico);
   const text = await gerarIA(env, {
-    system: actionMode ? chatActionSystem(vertical) : chatSystem(vertical),
-    user: contents,
+    system: prompt.system,
+    user: prompt.user,
     wantJson: actionMode,
     jsonSchema: actionMode ? IA_ACTION_DRAFT_SCHEMA : undefined,
     temperature: actionMode ? 0.1 : 0.6,
