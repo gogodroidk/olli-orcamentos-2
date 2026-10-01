@@ -10,6 +10,8 @@ import { orcamentosParaCobrar } from './radarCobranca';
 import { clientesParaReconquistar } from './radarClientes';
 import { gerarRelatorioDia, relatorioParaTexto } from './relatorioDia';
 import { escopoAgendaAtual } from './escopoAgendaAtual';
+import { lerTipoContaAtual } from '../hooks/useTipoConta';
+import { podeComPapel } from '../utils/permissoesPapel';
 import { aplicarEscopo, escopoConhecido, type EscopoConhecido } from '../utils/agendaDominio';
 import { semMovimentosConhecidos } from '../utils/relatorioDiaTexto';
 import { formatCurrency } from '../utils/currency';
@@ -52,6 +54,13 @@ import {
  * "saia às" da visita do colega). Papel desconhecido = a agenda fica fora:
  * nenhum aviso é criado ou trocado a partir dela, e o "Bom dia" cai para os
  * outros sinais (ou silêncio). Nunca vira "sem visita" nem a agenda da equipe.
+ *
+ * "FECHAR O DIA" SÓ PARA QUEM VÊ RELATÓRIOS — o relatório do dia soma
+ * orçamentos, recibos e clientes novos da base INTEIRA (valores agregados da
+ * empresa), e a `RelatorioDiaScreen` é guardada por `ver_relatorios`. O técnico
+ * não tem essa permissão: agendar para ele vazaria os totais da empresa na
+ * prévia e o toque cairia numa tela bloqueada. Papel desconhecido = não agenda
+ * (silêncio, nunca "não sei" promovido a dono).
  *
  * REGRA DE OURO (ENGAJAMENTO_VISAO.md): sinal real ou silêncio. Nunca "bom dia
  * sem novidades", nunca badge vazio. Teto de 2 notificações de engajamento/dia
@@ -313,12 +322,17 @@ function horarioFecharHojeOuNull(): Date | null {
 }
 
 /**
- * Prévia do "Fechar o dia": `null` se não há relatório (falha de leitura) ou
+ * Prévia do "Fechar o dia": `null` se o papel não pode ver relatórios (técnico
+ * ou papel desconhecido), se não há relatório (falha de leitura) ou
  * se `semMovimentos` (dia sem nenhum movimento — nunca notifica um dia vazio).
  * A prévia é a 1ª frase da MESMA narrativa que `RelatorioDiaScreen` fala em
  * voz alta (`relatorioParaTexto`) — nunca um resumo reescrito à parte.
  */
 async function montarFecharDia(): Promise<{ titulo: string; corpo: string } | null> {
+  // Antes de ler o relatório: quem não pode vê-lo não recebe nem a prévia (ver
+  // o cabeçalho). `lerTipoContaAtual` nunca lança; sem papel, `podeComPapel` nega.
+  if (!podeComPapel('ver_relatorios', await lerTipoContaAtual())) return null;
+
   let relatorio;
   try {
     relatorio = await gerarRelatorioDia();

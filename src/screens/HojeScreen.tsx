@@ -34,6 +34,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { CHECKLIST_KEY, PULSO_ULTIMO_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
+import { usePermissao } from '../hooks/usePermissao';
 import { track, Eventos } from '../services/analytics';
 import { enviarFeedback } from '../services/feedback';
 
@@ -302,6 +303,12 @@ export default function HojeScreen() {
   const styles = useEstilos(criarEstilos);
   const { temAcesso } = usePlano();
   const relatorioLiberado = temAcesso('relatorio_dia');
+  // "Como foi seu dia?" abre o relatório com os totais da EMPRESA (orçamentos,
+  // recibos, clientes novos), guardado por `ver_relatorios`. Técnico não tem essa
+  // permissão: o card levaria a uma tela bloqueada, então nem aparece. Papel
+  // ainda desconhecido também esconde (fail-closed, sem piscar o card de dono).
+  const { pode, carregando: papelCarregando } = usePermissao();
+  const mostraRelatorioDia = !papelCarregando && pode('ver_relatorios');
 
   const [itens, setItens] = useState<Agendamento[]>([]);
   const [orcamentosResumo, setOrcamentosResumo] = useState({ aguardandoAssinatura: 0, houveRecente: false });
@@ -773,35 +780,38 @@ export default function HojeScreen() {
           </AnimatedEntrance>
         )}
 
-        {/* RELATÓRIO DO DIA FALADO — recurso Pro; KPIs continuam grátis dentro da tela */}
-        <AnimatedEntrance index={2}>
-          <OlliPressable
-            style={styles.relatorioCard}
-            haptic={false}
-            accessibilityLabel="Abrir relatório do dia"
-            onPress={() => {
-              vibrar('selecao');
-              if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
-              nav.navigate('RelatorioDia');
-            }}
-          >
-            <View style={styles.relatorioIcon}>
-              <MaterialCommunityIcons name="volume-high" size={20} color={cores.accentLight} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
-              <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
-            </View>
-            {relatorioLiberado ? (
-              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-            ) : (
-              <View style={styles.relatorioProBadge}>
-                <MaterialCommunityIcons name="lock-outline" size={11} color={cores.plan} />
-                <Text style={styles.relatorioProBadgeText}>Pro</Text>
+        {/* RELATÓRIO DO DIA FALADO — recurso Pro; KPIs continuam grátis dentro da tela.
+            Só para quem vê relatórios (ver `mostraRelatorioDia`). */}
+        {mostraRelatorioDia && (
+          <AnimatedEntrance index={2}>
+            <OlliPressable
+              style={styles.relatorioCard}
+              haptic={false}
+              accessibilityLabel="Abrir relatório do dia"
+              onPress={() => {
+                vibrar('selecao');
+                if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
+                nav.navigate('RelatorioDia');
+              }}
+            >
+              <View style={styles.relatorioIcon}>
+                <MaterialCommunityIcons name="volume-high" size={20} color={cores.accentLight} />
               </View>
-            )}
-          </OlliPressable>
-        </AnimatedEntrance>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
+                <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
+              </View>
+              {relatorioLiberado ? (
+                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+              ) : (
+                <View style={styles.relatorioProBadge}>
+                  <MaterialCommunityIcons name="lock-outline" size={11} color={cores.plan} />
+                  <Text style={styles.relatorioProBadgeText}>Pro</Text>
+                </View>
+              )}
+            </OlliPressable>
+          </AnimatedEntrance>
+        )}
 
         {/* ESTADO 100% VAZIO E ELEGANTE */}
         {!carregando && !carregandoErro && !followUpCarregando && !followUpErro && semNada && checklist.length === 0 && (

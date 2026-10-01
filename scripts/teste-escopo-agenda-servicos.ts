@@ -164,9 +164,10 @@ caso('fonte: escopo fora do React usa o store do papel, getCurrentUser e a matri
   assert.match(src, /papelCarregando: false/);
   assert.match(src, /catch \{\s*return \{ status: 'erro' \};/);
   const perm = ler('src/hooks/usePermissao.ts');
-  assert.match(perm, /export function podeComPapel\(/);
   assert.match(perm, /podeComPapel\(acao, \{ tipo, org, resolvido \}\)/, 'o hook e o serviço decidem pela mesma função');
-  assert.match(perm, /if \(!conta\.resolvido\) return false;/);
+  const matriz = ler('src/utils/permissoesPapel.ts');
+  assert.match(matriz, /export function podeComPapel\(/);
+  assert.match(matriz, /if \(!conta\.resolvido\) return false;/);
   const tipo = ler('src/hooks/useTipoConta.ts');
   assert.match(tipo, /export async function lerTipoContaAtual\(\)/);
   assert.match(tipo, /return \{ tipo: estado\.tipo, org: estado\.org, resolvido: estado\.resolvido \};/);

@@ -1239,21 +1239,26 @@ export default function ContaScreen() {
               />
             </View>
 
-            <View style={[styles.toolRow, styles.toolDivider]}>
-              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
-                <MaterialCommunityIcons name="weather-night" size={20} color={cores.primaryLight} />
+            {/* "Fechar o dia" é a prévia do relatório com os totais da empresa: só
+                existe para quem vê relatórios (o ritual nem agenda para técnico — ver
+                ritualDiario.ts). Papel desconhecido esconde, como as ferramentas. */}
+            {!carregandoPermissao && pode('ver_relatorios') && (
+              <View style={[styles.toolRow, styles.toolDivider]}>
+                <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
+                  <MaterialCommunityIcons name="weather-night" size={20} color={cores.primaryLight} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
+                  <Text style={styles.toolLabel}>Fechar o dia</Text>
+                  <Text style={styles.toolDesc}>~18h, só nos dias com movimento — prévia do relatório falado</Text>
+                </View>
+                <Switch
+                  value={ritualFecharDia}
+                  onValueChange={(v) => handleToggleRitual('fecharDia', v)}
+                  trackColor={{ false: cores.outline, true: cores.primary + '80' }}
+                  thumbColor={ritualFecharDia ? cores.primary : '#fff'}
+                />
               </View>
-              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
-                <Text style={styles.toolLabel}>Fechar o dia</Text>
-                <Text style={styles.toolDesc}>~18h, só nos dias com movimento — prévia do relatório falado</Text>
-              </View>
-              <Switch
-                value={ritualFecharDia}
-                onValueChange={(v) => handleToggleRitual('fecharDia', v)}
-                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                thumbColor={ritualFecharDia ? cores.primary : '#fff'}
-              />
-            </View>
+            )}
 
             {/* Resumo diário por E-MAIL: diferente dos rituais acima (notificação local
                 deste aparelho), sai do servidor e vale para a conta — celular, desktop e
