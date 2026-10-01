@@ -557,9 +557,11 @@ export default function ClientesScreen() {
                   <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={cores.accentLight} />
                   <Text style={styles.selEnterLabel}>Selecionar</Text>
                 </TouchableOpacity>
-              ) : (
+              ) : carregandoPermissao ? null : (
                 // O lápis e a lixeira aparecem apagados para quem não gerencia
                 // clientes: a explicação fica visível, não só no leitor de tela.
+                // Enquanto o papel não é conhecido, não diz nada: "não sei" não é
+                // "acesso restrito" (o dono abrindo offline não pode ler isso).
                 <Text style={styles.infoMuted}>Acesso restrito ao gestor da conta: editar e excluir clientes.</Text>
               )}
             </View>

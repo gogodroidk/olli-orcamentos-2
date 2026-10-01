@@ -279,4 +279,16 @@ caso('a tela usa numeroWhatsAppBR, abrirRotaGoogleMaps e a rota está registrada
   assert.ok(lista.includes("navigate('ClienteDetalhe'"), 'tocar na lista abre a página do cliente');
 });
 
+// ─── 8. Técnico não vê agenda/OS da equipe nem dinheiro ─────────────────────
+caso('a tela aplica o escopo do papel: técnico só vê o dele e nada de valores', () => {
+  const tela = readFileSync(new URL('../src/screens/ClienteDetalheScreen.tsx', import.meta.url), 'utf8');
+  assert.ok(tela.includes('resolverEscopoAgenda(') && tela.includes('aplicarEscopo('), 'visitas passam pelo escopo da Agenda');
+  assert.ok(/os\.tecnicoId === escopo\.userId/.test(tela), 'OS do técnico = só as atribuídas a ele');
+  assert.ok(tela.includes("pode('ver_valores_agregados')"), 'gasto/recibos dependem de ver_valores_agregados');
+  assert.ok(/podeFinanceiro \? recibos : \[\]/.test(tela), 'recibos não chegam à timeline de quem não vê dinheiro');
+  assert.ok(/escopo\.status === 'erro'/.test(tela), 'papel ilegível vira aviso, não visão de gestão');
+  const lista = readFileSync(new URL('../src/screens/ClientesScreen.tsx', import.meta.url), 'utf8');
+  assert.ok(/carregandoPermissao \? null :/.test(lista), '"acesso restrito" não aparece enquanto o papel carrega');
+});
+
 console.log(`\nPASSOU: ${passos} casos`);

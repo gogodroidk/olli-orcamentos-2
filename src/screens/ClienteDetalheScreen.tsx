@@ -17,6 +17,12 @@
  * As contas (KPIs e timeline) moram em `utils/clienteDetalhe.ts`, TS puro testado
  * por `scripts/teste-cliente-detalhe.ts`. Aqui só se lê o banco e se desenha.
  *
+ * QUEM VÊ O QUÊ (mesma matriz de `hooks/usePermissao.ts`): o TÉCNICO vê só as
+ * visitas e OS atribuídas a ele (como na Agenda e em "Minhas OS") e nada de
+ * dinheiro (gasto total pago e recibos são `ver_valores_agregados`). Enquanto o
+ * papel não é conhecido a página fica em "carregando"; se não der para saber o
+ * papel, ela diz isso — nunca cai na visão de gestão nem numa página vazia.
+ *
  * Estados honestos: carregando | erro (com "Tentar de novo") | cliente não
  * encontrado | conteúdo. Erro NUNCA vira "sem histórico"; a falha só dos
  * equipamentos aparece como aviso na seção dela, sem derrubar a página.
@@ -47,6 +53,10 @@ import { onSyncAplicado } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { usePlano } from '../hooks/usePlano';
+import { usePermissao } from '../hooks/usePermissao';
+import { useTipoConta } from '../hooks/useTipoConta';
+import { getCurrentUser } from '../services/supabase';
+import { aplicarEscopo, resolverEscopoAgenda, type EntradaEscopo, type EscopoAgenda } from '../utils/agendaDominio';
 import { EXPO_PUBLIC_MAPS_KEY } from '../config';
 import { numeroWhatsAppBR } from '../utils/telefoneWhatsapp';
 import { abrirWhatsApp, exportarHtmlComoPdf } from '../utils/exportarDocumento';
@@ -88,6 +98,8 @@ interface DadosCliente {
   timeline: ItemTimeline[];
   recibos: Map<string, Recibo>;
   empresa: Empresa | null;
+  /** A leitura da empresa FALHOU (≠ empresa não cadastrada). */
+  empresaFalhou: boolean;
 }
 
 type EstadoEquipamentos = { estado: 'ok'; lista: Equipamento[] } | { estado: 'erro' };
@@ -100,6 +112,26 @@ export default function ClienteDetalheScreen() {
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
   const { temAcesso } = usePlano();
+  const tipoConta = useTipoConta();
+  const { pode } = usePermissao();
+
+  // Quem está logado — o técnico só vê o que é dele (mesma regra da Agenda).
+  const [usuario, setUsuario] = useState<EntradaEscopo['usuario']>({ status: 'carregando' });
+  const lerUsuario = useCallback(() => {
+    setUsuario({ status: 'carregando' });
+    getCurrentUser()
+      .then((u) => setUsuario({ status: 'ok', id: u?.id ?? null }))
+      .catch(() => setUsuario({ status: 'ok', id: null }));
+  }, []);
+  useEffect(() => { lerUsuario(); }, [lerUsuario]);
+  const escopo: EscopoAgenda = useMemo(() => resolverEscopoAgenda({
+    papelResolvido: tipoConta.resolvido,
+    papelCarregando: tipoConta.carregando,
+    podeVerEquipe: pode('ver_agenda_equipe'),
+    usuario,
+  }), [tipoConta.resolvido, tipoConta.carregando, pode, usuario]);
+  // Dinheiro (gasto pago, recibos) é camada de valores do negócio: negada ao técnico.
+  const podeFinanceiro = tipoConta.resolvido && pode('ver_valores_agregados');
 
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
@@ -111,35 +143,54 @@ export default function ClienteDetalheScreen() {
   const [mapaFalhou, setMapaFalhou] = useState(false);
 
   const carregar = useCallback(async () => {
+    // Papel/usuário ainda indefinidos: não lê nada (nem mostra a visão de gestão).
+    if (escopo.status === 'carregando') { setCarregando(true); return; }
+    if (escopo.status === 'erro') { setCarregando(false); return; }
     setErro(false);
     try {
       const agora = new Date();
-      const [cliente, orcamentos, ordens, recibos, agendamentos, futuras, empresa] = await Promise.all([
+      const [cliente, orcamentos, todasOrdens, recibos, todosAgendamentos, todasFuturas, leituraEmpresa] = await Promise.all([
         getCliente(clienteId),
         getOrcamentos(),
         getOrdens(),
         getRecibos(),
         getAgendamentos(),
         getAgendamentosExpandidos(agora.toISOString(), new Date(agora.getTime() + JANELA_PROXIMA_VISITA_MS).toISOString()),
-        // Sem empresa a página ainda funciona (intervalo genérico do ofício).
-        getEmpresa().catch(() => null),
+        // Sem empresa a página ainda funciona (intervalo genérico do ofício). Falha
+        // de leitura fica marcada: não pode virar "cadastre sua empresa".
+        getEmpresa().then(
+          (e) => ({ empresa: e, falhou: false }),
+          () => ({ empresa: null, falhou: true }),
+        ),
       ]);
+      const empresa = leituraEmpresa.empresa;
       if (!cliente || cliente.excluidoEm) {
         setDados(null);
         return;
       }
-      const entrada = { clienteId: cliente.id, orcamentos, ordens, recibos, agendamentos };
+      // Técnico: só as visitas e OS atribuídas a ele; gestão/conta pessoal: tudo.
+      const agendamentos = aplicarEscopo(todosAgendamentos, escopo);
+      const futuras = aplicarEscopo(todasFuturas, escopo);
+      const ordens = escopo.status === 'propria'
+        ? todasOrdens.filter((os) => os.tecnicoId === escopo.userId)
+        : todasOrdens;
+      // Recibos: a DATA ainda conta como "último serviço" para todos (não é valor),
+      // mas a lista e os valores só chegam a quem pode ver dinheiro.
+      const recibosVisiveis = podeFinanceiro ? recibos : [];
+      const entrada = { clienteId: cliente.id, orcamentos, ordens, recibos: recibosVisiveis, agendamentos };
       setDados({
         cliente,
         kpis: calcularKpisCliente({
           ...entrada,
+          recibos,
           ocorrenciasFuturas: futuras,
           mesesIntervalo: retornoDoOficio(empresa?.verticais).meses,
           agora,
         }),
         timeline: montarTimelineCliente(entrada),
-        recibos: new Map(recibos.filter((r) => r.clienteId === cliente.id).map((r) => [r.id, r] as const)),
+        recibos: new Map(recibosVisiveis.filter((r) => r.clienteId === cliente.id).map((r) => [r.id, r] as const)),
         empresa,
+        empresaFalhou: leituraEmpresa.falhou,
       });
       // Equipamentos são um extra: a falha deles não derruba a página inteira.
       try {
@@ -153,7 +204,7 @@ export default function ClienteDetalheScreen() {
     } finally {
       setCarregando(false);
     }
-  }, [clienteId]);
+  }, [clienteId, escopo, podeFinanceiro]);
 
   useFocusEffect(useCallback(() => { void carregar(); }, [carregar]));
   useEffect(() => onSyncAplicado(() => { void carregar(); }), [carregar]);
@@ -236,6 +287,10 @@ export default function ClienteDetalheScreen() {
     const recibo = dados?.recibos.get(id);
     const empresa = dados?.empresa;
     if (!recibo) return;
+    if (!empresa && dados?.empresaFalhou) {
+      Alert.alert('Não deu para abrir', 'Não conseguimos ler os dados da sua empresa agora. Puxe a tela para atualizar e tente de novo.');
+      return;
+    }
     if (!empresa) {
       Alert.alert('Cadastre sua empresa antes', 'Para abrir o PDF do recibo, cadastre os dados da sua empresa em Meu Negócio.');
       return;
@@ -300,7 +355,17 @@ export default function ClienteDetalheScreen() {
         onBack={() => goBackOrHome(nav)}
       />
 
-      {carregando ? (
+      {escopo.status === 'erro' ? (
+        <View style={{ flex: 1 }}>
+          <EmptyState
+            icon="account-lock-outline"
+            title="Não deu para confirmar seu acesso"
+            subtitle="Não conseguimos saber o seu papel na equipe agora, então a página não mostra nada para não mostrar o que não devia. Verifique a conexão e tente de novo."
+            actionLabel="Tentar de novo"
+            onAction={() => { void tipoConta.recarregar(); lerUsuario(); }}
+          />
+        </View>
+      ) : carregando ? (
         <View style={styles.conteudo}>
           <View style={styles.kpiGrid}>
             {[0, 1, 2, 3].map((i) => (
@@ -357,14 +422,24 @@ export default function ClienteDetalheScreen() {
           {/* KPIs */}
           <AnimatedEntrance index={1}>
             <View style={styles.kpiGrid}>
-              <Kpi
-                rotulo="Gasto total pago"
-                valor={formatCurrency(dados.kpis.gastoTotalPago)}
-                detalhe={dados.kpis.pagamentos > 0
-                  ? `${dados.kpis.pagamentos} pagamento${dados.kpis.pagamentos === 1 ? '' : 's'}`
-                  : 'Nenhum recibo ainda'}
-                destaque
-              />
+              {podeFinanceiro ? (
+                <Kpi
+                  rotulo="Gasto total pago"
+                  valor={formatCurrency(dados.kpis.gastoTotalPago)}
+                  detalhe={dados.kpis.pagamentos > 0
+                    ? `${dados.kpis.pagamentos} pagamento${dados.kpis.pagamentos === 1 ? '' : 's'}`
+                    : 'Nenhum recibo ainda'}
+                  destaque
+                />
+              ) : (
+                // Técnico não vê valores do negócio: no lugar do gasto, quantos
+                // orçamentos este cliente tem (o técnico também cria orçamento).
+                <Kpi
+                  rotulo="Orçamentos"
+                  valor={String(dados.timeline.filter((i) => i.tipo === 'orcamento').length)}
+                  detalhe="Deste cliente"
+                />
+              )}
               <Kpi
                 rotulo="Último serviço"
                 valor={dados.kpis.ultimoServico ? formatDate(dados.kpis.ultimoServico) : '—'}
@@ -474,7 +549,11 @@ export default function ClienteDetalheScreen() {
             <View style={[styles.card, styles.vazio]}>
               <MaterialCommunityIcons name="timeline-clock-outline" size={28} color={cores.onSurfaceMuted} />
               <Text style={styles.vazioTitulo}>Nenhum documento ainda</Text>
-              <Text style={styles.textoMudo}>Orçamentos, ordens de serviço, recibos e visitas deste cliente aparecem aqui.</Text>
+              <Text style={styles.textoMudo}>
+                {podeFinanceiro
+                  ? 'Orçamentos, ordens de serviço, recibos e visitas deste cliente aparecem aqui.'
+                  : 'Orçamentos deste cliente e as ordens de serviço e visitas atribuídas a você aparecem aqui.'}
+              </Text>
               <TouchableOpacity style={styles.botaoRota} onPress={novoOrcamento} activeOpacity={0.85} accessibilityRole="button">
                 <MaterialCommunityIcons name="file-plus-outline" size={18} color={cores.primaryLight} />
                 <Text style={styles.botaoRotaTexto}>Criar o primeiro orçamento</Text>
