@@ -22,8 +22,9 @@
  * verificar e oferece o retry. "Não sei" virando "você não tem dinheiro parado"
  * é a mentira mais cara que este app poderia contar.
  *
- * MOVIMENTO: um só, funcional — o número conta até o valor (CountUp, que respeita
- * "reduzir movimento"). Sem pulso perpétuo: número piscando sem parar vira
+ * MOVIMENTO: um só, funcional — o número conta até o valor (ContadorAnimado no
+ * "Esperando resposta", CountUp no de cobrança; os dois respeitam "reduzir
+ * movimento"). Sem pulso perpétuo: número piscando sem parar vira
  * ansiedade e o prestador desliga o app.
  */
 import React, { useCallback, useMemo, useState } from 'react';
@@ -39,6 +40,7 @@ import { avisoPix, type SituacaoPix } from '../utils/cobrancaCliente';
 import { OlliPressable } from './OlliPressable';
 import { OlliSkeleton } from './OlliSkeleton';
 import { CountUp } from './CountUp';
+import { ContadorAnimado } from './motion/ContadorAnimado';
 import type { OrcamentoParaCobrar } from '../services/radarCobranca';
 import type { OrcamentoParaFollowUp } from '../services/radarFollowUp';
 
@@ -475,7 +477,7 @@ export function PainelDinheiroParado({
             <View style={[styles.kickerDot, { backgroundColor: tons.destaque }]} />
             <Text style={[styles.kicker, { color: tons.destaque }]}>ESPERANDO RESPOSTA</Text>
           </View>
-          <CountUp value={totalFollowUp} format="currency" style={[styles.numerao, { color: tons.forte }]} duration={700} />
+          <ContadorAnimado valor={totalFollowUp} formato="brl" style={[styles.numerao, { color: tons.forte }]} />
           <Text style={[styles.subtitulo, { color: tons.secundario }]}>
             {followUp.length === 1
               ? `1 proposta enviada, sem resposta há ${dias(maisAntigoFollowUp)}`
