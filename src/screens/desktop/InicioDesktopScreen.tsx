@@ -22,6 +22,7 @@ import {
   getOrcamentosAgregadoPorStatus, getContasAReceberAgregado, getUltimosOrcamentos,
 } from '../../database/database';
 import { getProximoAgendamento } from '../../services/agenda';
+import { rotuloQuandoVisita } from '../../utils/agendaDia';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../../services/eta';
 import { getOrdens, getMinhasOrdens } from '../../services/ordemServico';
 import { clientesParaReconquistar, lembrarNoWhatsApp, ClienteParaReconquistar } from '../../services/radarClientes';
@@ -68,18 +69,6 @@ function saudacao(): string {
 
 const mesmoDia = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-
-/** Rótulo amigável do horário da próxima parada: "Hoje · 14:30", "Amanhã · 09:00" ou "18/06 · 14:30". */
-function quandoLabel(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const hh = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const hoje = new Date();
-  const amanha = new Date(); amanha.setDate(hoje.getDate() + 1);
-  if (mesmoDia(d, hoje)) return `Hoje · ${hh}`;
-  if (mesmoDia(d, amanha)) return `Amanhã · ${hh}`;
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} · ${hh}`;
-}
 
 /** Abre o endereço no Google Maps (sem precisar de API key — só um link de busca). */
 function abrirMapa(endereco?: string) {
@@ -852,7 +841,7 @@ function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Ag
 
   return (
     <View style={{ marginTop: 10, gap: 4 }}>
-      <Text style={styles.visitaQuando}>{quandoLabel(proxima.inicio)}</Text>
+      <Text style={styles.visitaQuando}>{rotuloQuandoVisita(proxima)}</Text>
       <Text style={styles.visitaCliente} numberOfLines={1}>{proxima.clienteNome || proxima.titulo}</Text>
       <Text style={styles.visitaTipo} numberOfLines={1}>
         {TIPO_AGENDAMENTO_LABELS[proxima.tipo]}{proxima.titulo && proxima.clienteNome ? ` · ${proxima.titulo}` : ''}

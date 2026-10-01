@@ -182,7 +182,9 @@ export async function cancelarAvisoSaida(agendamentoId?: string): Promise<void> 
   try {
     const reg = await lerRegistro();
     if (!reg) return;
-    if (agendamentoId && reg.agendamentoId !== agendamentoId) return;
+    // A próxima parada pode ser uma repetição de série (id `<base>@<dia>`), mas
+    // salvar/excluir chega com o id da BASE: editar a série derruba o aviso dela.
+    if (agendamentoId && reg.agendamentoId !== agendamentoId && reg.agendamentoId.split('@')[0] !== agendamentoId) return;
     if (reg.notifId && Platform.OS !== 'web') {
       try { await Notifications.cancelScheduledNotificationAsync(reg.notifId); } catch {}
     }
