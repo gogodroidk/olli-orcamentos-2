@@ -1,5 +1,5 @@
 import { CommonActions } from '@react-navigation/native';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 
 type TabFallback = 'Home' | 'Agenda' | 'Hoje' | 'Conta';
 type BackNavigation = {
@@ -9,7 +9,7 @@ type BackNavigation = {
 };
 
 export function goBackOrHome(navigation: BackNavigation, fallback: TabFallback = 'Home') {
-  Haptics.selectionAsync().catch(() => {});
+  vibrar('selecao');
   if (navigation.canGoBack()) {
     navigation.goBack();
     return;

@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import {
   format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addDays, addWeeks, addMonths, isSameDay, isSameMonth, eachDayOfInterval, isToday,
@@ -354,26 +354,26 @@ export default function AgendaScreen() {
     .filter(a => isSameDay(new Date(a.inicio), ref))), [itensFiltrados, ref]);
 
   function passo(delta: number) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setRef(prev => modo === 'semana' ? addWeeks(prev, delta) : addMonths(prev, delta));
   }
 
   function alternarVisao() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setModo(prev => prev === 'semana' ? 'mes' : 'semana');
   }
 
   function selecionarDia(dia: Date, voltarParaSemana = false) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setRef(dia);
     if (voltarParaSemana) setModo('semana');
   }
 
   function abrirNovo(prefill?: Partial<EditState>) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    vibrar('leve');
     // Hoje: próximo meio-hora (às 15h o padrão era 09:00, um horário já passado e
     // sem lembrete). Outro dia: 09:00. O fim já vem com a duração do tipo.
     const inicioPadrao = inicioPadraoNovo(ref, new Date());
@@ -601,7 +601,7 @@ export default function AgendaScreen() {
     try {
       await garantirPermissaoNotificacaoComAviso();
       await saveAgendamento(a);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       setEditing(null);
       // foca o período no dia do agendamento salvo
       setRef(e.data);
@@ -631,7 +631,7 @@ export default function AgendaScreen() {
     setSalvando(true);
     try {
       await deleteAgendamento(id);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      vibrar('aviso');
       setEditing(null);
       await load();
       // Remove o espelho no Google Agenda em segundo plano (silencioso).
@@ -673,7 +673,7 @@ export default function AgendaScreen() {
         title="Agenda"
         subtitle={`${itensDoDia.length} compromisso${itensDoDia.length === 1 ? '' : 's'}${escopo.status === 'propria' ? (itensDoDia.length === 1 ? ' seu' : ' seus') : ''} em ${format(ref, "d 'de' MMM", { locale: ptBR })}`}
         right={
-          <TouchableOpacity style={styles.todayBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setRef(new Date()); setModo('semana'); }} activeOpacity={0.85}>
+          <TouchableOpacity style={styles.todayBtn} onPress={() => { vibrar('selecao'); setRef(new Date()); setModo('semana'); }} activeOpacity={0.85}>
             <Text style={[styles.todayBtnText, { color: gradientes.sobreHeader }]}>Hoje</Text>
           </TouchableOpacity>
         }
@@ -688,7 +688,7 @@ export default function AgendaScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.navLabelBtn}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); setIrParaData(true); }}
+            onPress={() => { vibrar('selecao'); setIrParaData(true); }}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel={`${rotuloPeriodo(modo, ref)}. Escolher outra data`}
@@ -1058,7 +1058,7 @@ function AgendaItem({ item, onPress }: { item: OcorrenciaAgendamento; onPress: (
       {item.endereco ? (
         <TouchableOpacity
           style={styles.routeBtn}
-          onPress={(ev) => { ev.stopPropagation(); Haptics.selectionAsync().catch(() => {}); abrirRotaGoogleMaps(item.endereco!); }}
+          onPress={(ev) => { ev.stopPropagation(); vibrar('selecao'); abrirRotaGoogleMaps(item.endereco!); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityLabel="Traçar rota"
@@ -1164,13 +1164,13 @@ function AgendamentoForm({
   const nomeLivre = buscaCliente.trim();
 
   function escolherCliente(c: Cliente) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     set({ clienteId: c.id, clienteNome: c.nome, endereco: state.endereco || c.endereco || '' });
     setShowClientes(false);
   }
 
   function usarNomeLivre(nome: string) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     set({ clienteId: undefined, clienteNome: nome });
     setShowClientes(false);
   }
@@ -1182,7 +1182,7 @@ function AgendamentoForm({
   }
 
   function deslocarDia(delta: number) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     set({ data: addDays(state.data, delta) });
   }
 
@@ -1242,7 +1242,7 @@ function AgendamentoForm({
               <TouchableOpacity
                 key={t.id}
                 style={[styles.tipoOption, active && { backgroundColor: t.color + '22', borderColor: t.color }]}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); set({ tipo: t.id, ...fimPara(state.horaInicio, t.id) }); }}
+                onPress={() => { vibrar('selecao'); set({ tipo: t.id, ...fimPara(state.horaInicio, t.id) }); }}
                 activeOpacity={0.85}
               >
                 <MaterialCommunityIcons name={t.icon as any} size={18} color={active ? corCategoriaEmChip(t.color, cores.surface) : cores.onSurfaceVariant} />
@@ -1301,7 +1301,7 @@ function AgendamentoForm({
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.dateDisplay}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); setDatePicker(true); }}
+            onPress={() => { vibrar('selecao'); setDatePicker(true); }}
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel={`Data: ${format(state.data, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}. Escolher outra`}
@@ -1340,7 +1340,7 @@ function AgendamentoForm({
             <FieldLabel>Início</FieldLabel>
             <TouchableOpacity
               style={styles.clientePicker}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setTimePicker('inicio'); }}
+              onPress={() => { vibrar('selecao'); setTimePicker('inicio'); }}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Escolher horário de início"
@@ -1353,7 +1353,7 @@ function AgendamentoForm({
             <FieldLabel>Fim (opcional)</FieldLabel>
             <TouchableOpacity
               style={styles.clientePicker}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setTimePicker('fim'); }}
+              onPress={() => { vibrar('selecao'); setTimePicker('fim'); }}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel="Escolher horário de fim"
@@ -1480,7 +1480,7 @@ function AgendamentoForm({
                   <TouchableOpacity
                     key={s}
                     style={[styles.statusOption, active && { backgroundColor: cor + '22', borderColor: cor }]}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); set({ status: s }); }}
+                    onPress={() => { vibrar('selecao'); set({ status: s }); }}
                     activeOpacity={0.85}
                   >
                     {/* Texto usa accentLight (não accent) quando 'agendado': o preenchimento
@@ -1571,7 +1571,7 @@ function QuickDate({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <TouchableOpacity
       style={styles.quickDate}
-      onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }}
+      onPress={() => { vibrar('selecao'); onPress(); }}
       activeOpacity={0.8}
     >
       <Text style={styles.quickDateText}>{label}</Text>

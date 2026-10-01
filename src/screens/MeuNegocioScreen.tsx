@@ -6,7 +6,7 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -208,26 +208,26 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     const vertical = SEGMENTO_PARA_VERTICAL[id];
     setEmpresa(p => (p ? { ...p, segmento: id, verticais: [vertical], ferramentasAtivas: ferramentasSugeridas([vertical]) } : p));
     setDirty(true);
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.segmentoChanged, { segmento: id });
   }
 
   function chooseCorMarca(cor: string) {
     setEmpresa(p => (p ? { ...p, corMarca: cor } : p));
     setDirty(true);
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
   }
 
   function chooseValidadeDias(dias: number) {
     setEmpresa(p => (p ? { ...p, validadeDiasPadrao: dias } : p));
     setDirty(true);
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
   }
 
   function chooseGarantiaSugerida(texto: string) {
     setEmpresa(p => (p ? { ...p, garantiaPadrao: texto } : p));
     setDirty(true);
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
   }
 
   async function handleSave() {
@@ -248,7 +248,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     try {
       await saveEmpresa(empresa);
       void recarregarVerticais(); // atualiza o gate de ferramentas por ofício na hora
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       setDirty(false);
       Alert.alert('Salvo!', 'Dados da empresa atualizados.');
     } catch (e) {
@@ -330,7 +330,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             ? `Achei ${nomeEmpresa}. Completei os campos vazios — confira antes de salvar.`
             : `Achei ${nomeEmpresa} e identifiquei ${verticalPorId(principal).label}. Confira antes de salvar.`,
         );
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        vibrar('sucesso');
       } else if (resultado.estado === 'nao_encontrado') {
         setCnpjInfo('Não achei esse CNPJ. Confira o número ou preencha os dados manualmente.');
       } else if (resultado.estado === 'invalido') {
@@ -364,7 +364,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
       if (resultado.estado === 'ok') {
         setSugestaoMarca(resultado.sugestao);
         await consumirUsoIa();
-        Haptics.selectionAsync().catch(() => {});
+        vibrar('selecao');
       } else {
         setMarcaIaErro(resultado.mensagem);
       }
@@ -382,7 +382,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     } : atual);
     setDirty(true);
     setShowMarcaIA(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    vibrar('sucesso');
   }
 
   async function handleSaveDep() {

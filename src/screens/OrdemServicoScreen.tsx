@@ -8,7 +8,7 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corStatusOS, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -202,7 +202,7 @@ export default function OrdemServicoScreen() {
   }, [ordens, filtro, busca, ehGestao]);
 
   function abrirDetalhe(id: string) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setDetalheId(id);
   }
 
@@ -283,7 +283,7 @@ export default function OrdemServicoScreen() {
             <TouchableOpacity
               style={styles.newBtn}
               activeOpacity={0.85}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowNova(true); }}
+              onPress={() => { vibrar('selecao'); setShowNova(true); }}
             >
               <MaterialCommunityIcons name="plus" size={20} color="#fff" />
               <Text style={styles.newBtnLabel}>Nova OS</Text>
@@ -496,7 +496,7 @@ function DetalheOS({
 
   async function mudarStatus(status: StatusOS) {
     if (!ordem || ordem.status === status) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setSalvandoStatus(status);
     try {
       await atualizarStatusOS(ordem.id, status);
@@ -506,7 +506,7 @@ function DetalheOS({
       setOrdem((prev) => (prev ? { ...prev, status } : prev));
       onMudou();
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Não deu', e?.message ?? 'Não consegui mudar o status agora.');
     } finally {
       setSalvandoStatus(null);
@@ -515,7 +515,7 @@ function DetalheOS({
 
   function toggleItem(itemId: string) {
     if (!ordem) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     // Updater funcional: computa a nova lista a partir do estado ATUAL e reusa a
     // mesma referência para persistir — sem clobber entre mutações concorrentes.
     let listaParaSalvar: ItemChecklist[] | null = null;
@@ -558,7 +558,7 @@ function DetalheOS({
   /** Kickstart: aplica o checklist do ofício, pulando itens de texto já presente. */
   function aplicarModeloChecklist() {
     if (!ordem || modeloOficio.length === 0) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     let listaParaSalvar: ItemChecklist[] | null = null;
     setOrdem((prev) => {
       if (!prev) return prev;
@@ -627,7 +627,7 @@ function DetalheOS({
         await registrarFotoParaEnvio(ordem.id, uri);
       }
       void enviarFotosPendentes();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       const atualizado = await getOrdem(ordem.id);
       if (atualizado) setOrdem(atualizado);
       onMudou();
@@ -738,7 +738,7 @@ function DetalheOS({
               <TouchableOpacity
                 style={styles.atribuirBtn}
                 activeOpacity={0.85}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowAtribuir(true); }}
+                onPress={() => { vibrar('selecao'); setShowAtribuir(true); }}
               >
                 <MaterialCommunityIcons name="account-arrow-right-outline" size={18} color={cores.accentLight} />
                 <Text style={styles.atribuirBtnText}>
@@ -931,7 +931,7 @@ function AcaoRapida({
 }) {
   return (
     <TouchableOpacity
-      onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }}
+      onPress={() => { vibrar('selecao'); onPress(); }}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -1022,10 +1022,10 @@ function ModalAtribuir({
     setSalvandoId(m.userId);
     try {
       await atribuirTecnico(ordemId, m.userId, nome);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       onAtribuido(m.userId, nome);
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Não deu', e?.message ?? 'Não consegui atribuir agora.');
     } finally {
       setSalvandoId(null);
@@ -1135,10 +1135,10 @@ function NovaOS({ onFechar, onCriada }: { onFechar: () => void; onCriada: (id: s
               setCriando(true);
               try {
                 const os = await criarOSDeOrcamento(orcamentoId);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                vibrar('sucesso');
                 onCriada(os.id);
               } catch (e: any) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+                vibrar('erro');
                 Alert.alert('Não deu', e?.message ?? 'Não consegui criar a OS agora.');
               } finally {
                 setCriando(false);
@@ -1155,10 +1155,10 @@ function NovaOS({ onFechar, onCriada }: { onFechar: () => void; onCriada: (id: s
               try {
                 const os = await criarOSManual(parcial);
                 limparRascunho(); // criada de verdade: o rascunho já não é necessário
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                vibrar('sucesso');
                 onCriada(os.id);
               } catch (e: any) {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+                vibrar('erro');
                 Alert.alert('Não deu', e?.message ?? 'Não consegui criar a OS agora.');
               } finally {
                 setCriando(false);
@@ -1272,7 +1272,7 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
             <TouchableOpacity
               style={[styles.orcRow, sel && styles.orcRowSel]}
               activeOpacity={0.85}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setSelecionado(o.id); }}
+              onPress={() => { vibrar('selecao'); setSelecionado(o.id); }}
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.orcCliente} numberOfLines={1}>{o.clienteNome}</Text>

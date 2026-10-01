@@ -32,6 +32,13 @@ interface Props {
   /** Estado anunciado ao leitor de tela (`busy`, `selected`…). `disabled` entra sozinho. */
   accessibilityState?: AccessibilityState;
   hitSlop?: number | { top?: number; bottom?: number; left?: number; right?: number };
+  /**
+   * Escala ao pressionar. Padrão `TOQUE.escalaPressionado` (0.97). Card grande
+   * pede menos (0.98): a mesma redução em pixel parece um "pulo" numa área larga.
+   */
+  escala?: number;
+  /** Atraso do long-press (ms). Padrão do RN (500). */
+  delayLongPress?: number;
 }
 
 /**
@@ -54,6 +61,8 @@ export function PressableAnimado({
   accessibilityRole = 'button',
   accessibilityState,
   hitSlop,
+  escala = TOQUE.escalaPressionado,
+  delayLongPress,
 }: Props) {
   const reduzir = useReduzirMovimento();
   // 0 = solto, 1 = pressionado.
@@ -71,7 +80,7 @@ export function PressableAnimado({
   const opacidadeRepouso = disabled
     ? TOQUE.opacidadeDesabilitado
     : typeof visualStyle.opacity === 'number' ? visualStyle.opacity : 1;
-  const escalaAlvo = reduzir ? 1 : TOQUE.escalaPressionado;
+  const escalaAlvo = reduzir ? 1 : escala;
 
   const estiloAnimado = useAnimatedStyle(() => {
     const p = pressionado.get();
@@ -100,6 +109,7 @@ export function PressableAnimado({
     <Pressable
       onPress={aoTocar}
       onLongPress={onLongPress}
+      delayLongPress={delayLongPress}
       onPressIn={aoEncostar}
       onPressOut={aoSoltar}
       disabled={disabled}

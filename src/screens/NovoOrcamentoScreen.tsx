@@ -8,7 +8,7 @@ import { useNavigation, useRoute, RouteProp, usePreventRemove, type NavigationAc
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, comAlfa, textoSobre, type Cores } from '../theme';
 import { Motion, useReducedMotion } from '../theme/motion';
 import { avisar, confirmar } from './desktop/dialogo';
@@ -173,7 +173,7 @@ export default function NovoOrcamentoScreen() {
 
   function goNext() {
     if (!canAdvance()) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const novoStep = step + 1;
     setStep(novoStep);
     animateStep(1, novoStep);
@@ -439,7 +439,7 @@ export default function NovoOrcamentoScreen() {
       }
       // Feedback não bloqueante: haptic de sucesso + volta direto, sem exigir
       // toque em "OK" para sair (o aviso só entra no caminho de erro abaixo).
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       sairLiberado(acao);
     } catch (e) {
       avisarFalhaSalvar(e);
@@ -560,7 +560,7 @@ export default function NovoOrcamentoScreen() {
             style={styles.voiceBtn}
             activeOpacity={0.85}
             onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
+              vibrar('selecao');
               nav.navigate('OlliVoz');
             }}
             accessibilityRole="button"

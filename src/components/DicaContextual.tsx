@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../theme';
 import { AnimatedEntrance } from './AnimatedEntrance';
 import { OlliPressable } from './OlliPressable';
@@ -51,7 +51,7 @@ export function DicaContextual({ id, texto, icon = 'lightbulb-on-outline', style
   );
 
   function entendi() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setVisivel(false);
     void marcarDicaVista(id);
   }
