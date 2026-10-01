@@ -21,6 +21,7 @@ import {
   diaRelativo,
   mensagemRemarcarChuva,
   simboloEhChuvaForte,
+  visitaPrecisaDeClima,
   whatsappRemarcarChuva,
   type AlertaOficial,
   type VisitaParaClima,
@@ -163,6 +164,16 @@ console.log('\n4) REGRA DURA: "não sei" nunca vira "sem chuva"');
   );
   checar('janela meio coberta e seca → incerto (não "sem chuva")', borda.nivel, 'incerto');
 
+  const vazia = analisarClimaVisita(visita15h, { ...clima(SECO), chuvaPorHora: [] }, op);
+  checar('série vazia com visita em 1h → incerto (não "sai 12h antes")', vazia.nivel, 'incerto');
+  checar('série vazia: texto de previsão incompleta', vazia.texto, 'Previsão incompleta para as 15h');
+  const amanhaFalha = analisarClimaVisita({ ...visita15h, inicio: '2026-10-02T10:00:00-03:00' }, 'carregando', op);
+  checar('fora da janela responde sem esperar o clima', amanhaFalha.estado, 'fora_da_janela');
+  checar('visitaPrecisaDeClima: hoje 15h com coordenada', visitaPrecisaDeClima(visita15h, AGORA), true);
+  checar('visitaPrecisaDeClima: amanhã 10h não gasta rede', visitaPrecisaDeClima({ ...visita15h, inicio: '2026-10-02T10:00:00-03:00' }, AGORA), false);
+  checar('visitaPrecisaDeClima: sem coordenada não gasta rede', visitaPrecisaDeClima({ inicio: visita15h.inicio }, AGORA), false);
+  checar('visitaPrecisaDeClima: passada não gasta rede', visitaPrecisaDeClima({ ...visita15h, inicio: '2026-10-01T09:00:00-03:00' }, AGORA), false);
+
   const falha = analisarClimaVisita(visita15h, { ok: false, motivo: 'clima_indisponivel' }, op);
   checar('falha → Clima indisponível', falha.texto, 'Clima indisponível');
   checar('falha → estado indisponivel', falha.estado, 'indisponivel');
@@ -203,6 +214,18 @@ console.log('\n5) alertas oficiais');
   });
   checar('amarelo → aviso (laranja)', amarelo.tom, 'aviso');
   checar('não externa + alerta → não sugere', amarelo.sugerirRemarcar, false);
+
+  const umidade = analisarClimaVisita(externa15h, clima(SECO), {
+    ...op,
+    alertas: { ok: true, alertas: [{ ...tempestade, nivel: 'laranja', evento: 'Baixa Umidade' }] },
+  });
+  checar('alerta de baixa umidade aparece no chip', umidade.textoAlerta, 'Alerta INMET: baixa umidade até 18h');
+  checar('…mas não pede remarcar serviço externo', umidade.sugerirRemarcar, false);
+  const calorVermelho = analisarClimaVisita(externa15h, clima(SECO), {
+    ...op,
+    alertas: { ok: true, alertas: [{ ...tempestade, evento: 'Onda de Calor' }] },
+  });
+  checar('alerta vermelho (grande perigo) sempre pede remarcar', calorVermelho.sugerirRemarcar, true);
 
   const depois = analisarClimaVisita(visita15h, clima(SECO), {
     ...op,

@@ -19,6 +19,7 @@ import { buscarClima } from './clima';
 import type { EstadoClima } from './climaTexto';
 import {
   analisarClimaVisita,
+  visitaPrecisaDeClima,
   type OpcoesClimaVisita,
   type ResultadoClimaVisita,
   type VisitaParaClima,
@@ -34,11 +35,15 @@ export * from './climaVisitaRegra';
 export function useClimaVisita(visita: VisitaParaClima, opcoes: OpcoesClimaVisita = {}): ResultadoClimaVisita {
   const [clima, setClima] = useState<EstadoClima>('carregando');
   const { lat, lon } = visita;
+  // Visita passada, sem coordenada ou além da série de 12h: a regra já responde
+  // sem clima ('passada' / 'sem_local' / 'fora_da_janela') — não gasta rede nem
+  // o balde por IP do /clima. Vira `true` sozinho quando a visita entra na janela
+  // (a próxima renderização refaz a conta e o efeito busca).
+  const precisa = visitaPrecisaDeClima(visita, opcoes.agora);
 
   useEffect(() => {
     let vivo = true;
-    if (typeof lat !== 'number' || typeof lon !== 'number') {
-      setClima({ ok: false, motivo: 'sem_localizacao' });
+    if (!precisa || typeof lat !== 'number' || typeof lon !== 'number') {
       return;
     }
     setClima('carregando');
@@ -52,7 +57,7 @@ export function useClimaVisita(visita: VisitaParaClima, opcoes: OpcoesClimaVisit
     return () => {
       vivo = false;
     };
-  }, [lat, lon]);
+  }, [lat, lon, precisa]);
 
   return analisarClimaVisita(visita, clima, opcoes);
 }

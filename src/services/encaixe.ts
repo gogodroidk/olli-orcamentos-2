@@ -292,7 +292,7 @@ export function sugerirEncaixe(
         },
         deslocamentoMin: desl,
         quando: textoQuando(c.ini, agoraMs),
-        motivo: `a ${textoDistancia(km)} da visita de ${a.v.clienteNome.trim() || 'outro cliente'} (${horaAncora})`,
+        motivo: `a ${textoDistancia(km)} da visita de ${String(a.v.clienteNome ?? '').trim() || 'outro cliente'} (${horaAncora})`,
       });
     }
   }

@@ -18,6 +18,8 @@
  *     laranja (perigo potencial/perigo) ou vermelho (grande perigo).
  *  4. REMARCAR. Visita marcada como EXTERNA com chuva forte ou alerta oficial no
  *     horário → `sugerirRemarcar: true` (a tela abre a `FolhaRemarcarChuva`).
+ *     Alerta só conta se for de chuva/tempestade/vento (ou vermelho): "baixa
+ *     umidade" amarelo aparece no chip, mas não pede remarcar.
  *
  * ─── A REGRA DURA DA CASA (`olli-gate-erro-vira-vazio`) ────────────────────
  *  - clima que falhou → "Clima indisponível", nunca "sem chuva";
@@ -57,6 +59,22 @@ export const LIMIAR_MM_CHUVA_FORTE = 2;
 export const DURACAO_VISITA_PADRAO_MIN = 60;
 /** Teto de horas olhadas numa visita longa (o dia inteiro de obra não vira 12 chips). */
 const MAX_HORAS_JANELA = 8;
+/** O worker devolve a chuva das próximas 12h a partir da hora cheia corrente. */
+export const JANELA_PREVISAO_HORAS = 12;
+
+/**
+ * Evento de alerta que pede remarcar serviço EXTERNO: chuva, tempestade, vento,
+ * granizo, raio, alagamento. "Baixa umidade", "onda de calor", "geada" e afins
+ * aparecem no chip, mas não viram "Serviço externo com chuva prevista" — salvo
+ * em nível vermelho (grande perigo), que sempre pede remarcar.
+ */
+const EVENTO_ALERTA_REMARCAR = /chuv|tempest|temporal|vendaval|vento|granizo|raio|trovo|ciclone|alag|inunda|enxurr|deslizamento/i;
+
+/** O alerta justifica sugerir remarcar uma visita externa? */
+export function alertaPedeRemarcar(a: AlertaOficial | null): boolean {
+  if (!a) return false;
+  return a.nivel === 'vermelho' || EVENTO_ALERTA_REMARCAR.test(String(a.evento ?? ''));
+}
 
 // ─── Entradas ──────────────────────────────────────────────────────────────
 
@@ -255,6 +273,26 @@ function resultado(parcial: Partial<ResultadoClimaVisita> & { estado: EstadoClim
   return r;
 }
 
+/** Instante em que acaba a série do worker (hora cheia corrente + 12h). */
+function fimDaJanelaMs(agoraMs: number): number {
+  return Math.floor(agoraMs / MS_HORA) * MS_HORA + JANELA_PREVISAO_HORAS * MS_HORA;
+}
+
+/**
+ * A visita precisa do `/clima` agora? Só quando ainda não acabou, tem
+ * coordenada e começa dentro da série de 12h. Visita da semana que vem não gasta
+ * requisição (o `/clima` é limitado por IP: uma agenda de 7 dias não pode
+ * estourar o balde e pintar "Clima indisponível" nas visitas de hoje).
+ */
+export function visitaPrecisaDeClima(visita: VisitaParaClima, agora: Date = new Date()): boolean {
+  const agoraMs = agora.getTime();
+  const iniMs = msDe(visita.inicio);
+  if (iniMs === null || !coordValida(visita.lat, visita.lon)) return false;
+  const fimInformado = msDe(visita.fim);
+  const fimMs = fimInformado !== null && fimInformado > iniMs ? fimInformado : iniMs + DURACAO_VISITA_PADRAO_MIN * MS_MIN;
+  return fimMs > agoraMs && iniMs < fimDaJanelaMs(agoraMs);
+}
+
 function coordValida(lat: unknown, lon: unknown): boolean {
   return (
     typeof lat === 'number' &&
@@ -298,6 +336,9 @@ export function analisarClimaVisita(
   if (!coordValida(visita.lat, visita.lon)) {
     return resultado({ estado: 'sem_local', texto: 'Clima: endereço do cliente sem localização' });
   }
+  // Começa depois do fim da série que o worker devolve: não há o que buscar
+  // (o hook nem vai à rede — ver `visitaPrecisaDeClima`).
+  const foraDaJanela = iniMs >= fimDaJanelaMs(agoraMs);
 
   // Alertas (independentes do clima: um pode falhar e o outro não).
   let alerta: AlertaOficial | null = null;
@@ -315,9 +356,19 @@ export function analisarClimaVisita(
     alerta,
     textoAlerta,
     alertasIndisponiveis,
-    sugerirRemarcar: externa && alerta !== null,
+    sugerirRemarcar: externa && alertaPedeRemarcar(alerta),
   };
   const creditoAlerta = alerta ? `Alerta: ${alerta.fonte}` : null;
+
+  if (foraDaJanela) {
+    return resultado({
+      ...comum,
+      estado: 'fora_da_janela',
+      texto: `Previsão de chuva sai ${JANELA_PREVISAO_HORAS}h antes da visita`,
+      tom: tomAlerta ?? 'mudo',
+      atribuicao: creditoAlerta,
+    });
+  }
 
   if (clima === 'carregando') {
     return resultado({ ...comum, estado: 'carregando', texto: 'Carregando clima…', tom: tomAlerta ?? 'mudo', atribuicao: creditoAlerta });
@@ -345,17 +396,17 @@ export function analisarClimaVisita(
     else faltando++;
   }
 
-  const ultima = clima.chuvaPorHora[clima.chuvaPorHora.length - 1];
   if (janela.length === 0) {
-    // A visita está além da série (o worker dá as próximas 12h).
-    const horas = clima.chuvaPorHora.length || 12;
+    // A visita está DENTRO das próximas 12h (o caso de fora já saiu acima), mas a
+    // série não cobre nenhuma hora dela (série vazia/curta): é "não sei", nunca
+    // "a previsão sai mais tarde" nem "sem chuva".
     return resultado({
       ...comum,
-      estado: 'fora_da_janela',
-      texto: `Previsão de chuva sai ${horas}h antes da visita`,
+      estado: 'previsao',
+      nivel: 'incerto',
+      texto: `Previsão incompleta para as ${horaCurta(partesBrasilia(iniMs).hora)}`,
       tom: tomAlerta ?? 'mudo',
       atribuicao: creditoAlerta,
-      hora: ultima ? ultima.hora : null,
     });
   }
 
@@ -400,7 +451,7 @@ export function analisarClimaVisita(
     mm: pior === 'seco' || pior === 'incerto' ? null : decisiva.mm,
     texto,
     tom: tomAlerta ?? tomChuva,
-    sugerirRemarcar: externa && (pior === 'forte' || alerta !== null),
+    sugerirRemarcar: externa && (pior === 'forte' || alertaPedeRemarcar(alerta)),
     atribuicao: creditoAlerta ? `${ATRIBUICAO_CLIMA} · ${creditoAlerta}` : ATRIBUICAO_CLIMA,
   });
 }

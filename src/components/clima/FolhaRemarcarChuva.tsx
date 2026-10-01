@@ -119,7 +119,11 @@ export function FolhaRemarcarChuva({
               />
             </View>
             <View style={styles.cabecalhoTexto}>
-              <Text style={styles.titulo}>Serviço externo com chuva prevista</Text>
+              <Text style={styles.titulo}>
+                {analise.alerta && analise.nivel !== 'forte'
+                  ? 'Serviço externo com alerta oficial'
+                  : 'Serviço externo com chuva prevista'}
+              </Text>
               <Text style={styles.subtitulo}>Quer avisar o cliente?</Text>
             </View>
             <PressableAnimado onPress={fechar} accessibilityLabel="Fechar" hitSlop={10}>
