@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
+  Keyboard, Alert, ActivityIndicator,
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, usePreventRemove, type NavigationAction } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -15,9 +16,10 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { Celebracao } from '../components/Celebracao';
 import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa, edicaoBloqueada } from '../database/database';
-import { Orcamento, ItemOrcamento, FormaPagamento, Cliente, Empresa } from '../types';
+import { Orcamento, ItemOrcamento, Empresa } from '../types';
 import { generateId } from '../utils/id';
-import { nowISO, todayISO } from '../utils/date';
+import { nowISO } from '../utils/date';
+import { emptyOrcamento, clienteParaOrc, calcTotais, round2 } from '../utils/orcamentoBase';
 import { formatCurrency } from '../utils/currency';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -36,11 +38,6 @@ type Route = RouteProp<RootStackParamList, 'NovoOrcamento'>;
 const STEPS = ['Cliente', 'Itens', 'Detalhes', 'Revisar'];
 const useNativeAnimations = Platform.OS !== 'web';
 
-// Compatibilidade: o domínio ainda mantém o campo para abrir backups/documentos
-// antigos, mas orçamentos novos não anunciam nem processam forma de pagamento.
-// O acerto financeiro acontece diretamente entre cliente e empresa; o OLLI só
-// registra recibos depois, em fluxo próprio.
-const defaultFormas: FormaPagamento = { credito: false, debito: false, dinheiro: false, pix: false };
 const PDF_MODEL_LABELS: Record<string, string> = {
   editorial: 'Editorial',
   minimalista: 'Minimalista',
@@ -51,96 +48,45 @@ const PDF_MODEL_LABELS: Record<string, string> = {
   premium_capa: 'Premium com capa',
 };
 
-/** Data de hoje + N dias, já formatada em DD/MM/AAAA (mesmo padrão do Step4Personalizacao). */
-function validadeEmDias(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-}
+/** Carga inicial do editor em 3 estados — falha NUNCA vira tela em branco. */
+type Carga =
+  | { estado: 'carregando' }
+  | { estado: 'erro'; titulo: string; mensagem: string }
+  | { estado: 'pronto' };
+
+type EscolhaSaida = 'descartar' | 'rascunho' | 'ficar';
 
 /**
- * Orçamento em branco, já com os padrões de negócio da empresa (quando
- * cadastrados em "Meu Negócio" > Personalização) para o técnico não precisar
- * redigitar validade/garantia/condições/observações em todo orçamento novo.
- * Aparência e identidade vêm do padrão central da empresa; cobrança/Pix não
- * fazem parte do documento comercial nesta versão.
+ * Pergunta o que fazer com o orçamento ao sair do passo 1 (botão da tela,
+ * voltar do Android ou gesto). No celular são 3 saídas, com "Descartar" em
+ * vermelho e o verbo certo; na web o diálogo do app só tem confirmar/cancelar —
+ * lá o "Rascunho" continua à mão no rodapé.
  */
-function emptyOrcamento(numero: string, empresa: Empresa | null): Orcamento {
-  const validadeDias = empresa?.validadeDiasPadrao ?? 15;
-  return {
-    id: generateId(),
-    numero,
-    clienteId: '',
-    clienteNome: '',
-    clienteTelefone: '',
-    itens: [],
-    subtotalServicos: 0,
-    subtotalProdutos: 0,
-    subtotal: 0,
-    desconto: 0,
-    descontoTipo: 'valor',
-    valorTotal: 0,
-    status: 'rascunho',
-    dataEmissao: todayISO(),
-    // Validade padrão vem da empresa (ou 15 dias) — evita orçamento sair sem
-    // prazo algum (o técnico pode ajustar/limpar depois em Step4Personalizacao).
-    validadeOrcamento: validadeEmDias(validadeDias),
-    garantia: empresa?.garantiaPadrao || undefined,
-    condicoesPagamento: empresa?.condicoesPagamentoPadrao || undefined,
-    informacoesAdicionais: empresa?.observacoesPadrao || undefined,
-    corMarca: empresa?.corMarca || undefined,
-    // Modelo de PDF padrão escolhido em Conta → Modelos de documento (o técnico
-    // ainda troca por orçamento em Step4). Sem padrão, Step4 assume 'editorial'.
-    modeloPdf: empresa?.modeloPdfPadrao || undefined,
-    formasPagamento: defaultFormas,
-    exibirAssinatura: true,
-    solicitarAssinaturaCliente: false,
-    exibirAprovacao: true,
-    exibirRecusa: true,
-    criadoEm: nowISO(),
-    atualizadoEm: nowISO(),
-  };
+function perguntarSaida(isEdit: boolean): Promise<EscolhaSaida> {
+  const titulo = isEdit ? 'Descartar alterações?' : 'Descartar orçamento?';
+  if (Platform.OS === 'web') {
+    return confirmar(titulo, 'As informações preenchidas serão perdidas.')
+      .then((ok): EscolhaSaida => (ok ? 'descartar' : 'ficar'));
+  }
+  return new Promise(resolve => {
+    Alert.alert(
+      titulo,
+      isEdit
+        ? 'Você pode salvar o que mudou antes de sair.'
+        : 'Você pode guardar como rascunho e terminar depois.',
+      [
+        { text: 'Continuar editando', style: 'cancel', onPress: () => resolve('ficar') },
+        { text: isEdit ? 'Salvar alterações' : 'Salvar rascunho', onPress: () => resolve('rascunho') },
+        { text: 'Descartar', style: 'destructive', onPress: () => resolve('descartar') },
+      ],
+      { cancelable: true, onDismiss: () => resolve('ficar') },
+    );
+  });
 }
 
-/** Mapeia um Cliente para os campos de cliente do orçamento (igual ao Step1Cliente). */
-function clienteParaOrc(c: Cliente): Partial<Orcamento> {
-  return {
-    clienteId: c.id,
-    clienteNome: c.nome,
-    clienteTelefone: c.telefone,
-    clienteCpfCnpj: c.cpf ?? c.cnpj,
-    clienteEndereco: c.endereco
-      ? [c.endereco, c.complemento, c.cidade, c.estado].filter(Boolean).join(', ')
-      : undefined,
-  };
-}
-
-const round2 = (x: number) => Math.round(x * 100) / 100;
-
-function calcTotais(o: Orcamento): Orcamento {
-  const servicos = round2(o.itens.filter(i => i.tipo === 'servico').reduce((s, i) => s + i.subtotal, 0));
-  const produtos = round2(o.itens.filter(i => i.tipo === 'produto').reduce((s, i) => s + i.subtotal, 0));
-  const subtotal = round2(servicos + produtos);
-  // Desconto em valor fixo (R$) é reclampado ao subtotal atual sempre que os
-  // itens mudarem, para não ficar "preso" a um valor maior que os itens que
-  // restaram (ex.: desconto de R$100 definido com R$500 em itens, depois o
-  // técnico apaga itens e sobra R$50 — o desconto exibido cai para R$50).
-  const descontoBruto = o.descontoTipo === 'valor'
-    ? round2(Math.max(0, Math.min(subtotal, o.desconto)))
-    : round2(o.desconto);
-  const desconto = o.descontoTipo === 'percentual'
-    ? round2(subtotal * (descontoBruto / 100))
-    : descontoBruto;
-  const valorTotal = round2(Math.max(0, subtotal - desconto));
-  // Sinal/entrada em VALOR (R$) também é reclampado ao novo total, pela mesma razão do
-  // desconto: um sinal definido com o total maior não pode ficar PRESO acima do total
-  // quando os itens caem — senão o Pix/PDF cobraria MAIS que o próprio orçamento. O modo
-  // PERCENTUAL (sinalValor ausente) fica intacto: um % é sempre válido sobre qualquer total.
-  const sinalValor = o.sinalValor && o.sinalValor > 0 ? round2(Math.min(o.sinalValor, valorTotal)) : o.sinalValor;
-  const sinalPercentual = sinalValor && sinalValor > 0 && valorTotal > 0
-    ? Math.round((sinalValor / valorTotal) * 100)
-    : o.sinalPercentual;
-  return { ...o, subtotalServicos: servicos, subtotalProdutos: produtos, subtotal, desconto: descontoBruto, valorTotal, sinalValor, sinalPercentual };
+/** Ações de navegação que são "voltar" (botão do Android, gesto, seta do header). */
+function ehAcaoDeVoltar(acao: NavigationAction): boolean {
+  return acao.type === 'GO_BACK' || acao.type === 'POP';
 }
 
 export default function NovoOrcamentoScreen() {
@@ -169,6 +115,17 @@ export default function NovoOrcamentoScreen() {
   const [saving, setSaving] = useState(false);
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [carga, setCarga] = useState<Carga>({ estado: 'carregando' });
+  // O usuário mexeu em algo (cliente, itens, detalhes)? Decide se sair pede confirmação.
+  const [alterado, setAlterado] = useState(false);
+  // Teclado aberto → o rodapé (total + botões) sai da frente dos campos e da busca.
+  const [tecladoAberto, setTecladoAberto] = useState(false);
+  // Liga logo antes de uma saída que JÁ foi decidida (salvou, descartou) para o
+  // usePreventRemove não perguntar de novo sobre o mesmo trabalho.
+  const saidaLiberadaRef = useRef(false);
+  // Número reservado num save que falhou: reaproveitado no próximo, para uma
+  // nova tentativa não queimar outro número da sequência.
+  const numeroReservadoRef = useRef<string | null>(null);
   // Celebração ao gerar com sucesso (só na criação — editar não repete a festa).
   // Navega para VisualizarOrcamento só depois do onDone, para o usuário ver o overlay.
   const [celebrando, setCelebrando] = useState(false);
@@ -201,11 +158,13 @@ export default function NovoOrcamentoScreen() {
       Animated.spring(slide, { toValue: 0, useNativeDriver: useNativeAnimations, friction: 9, tension: 60 }),
       Animated.timing(fade, { toValue: 1, duration: Motion.dur.base, easing: Motion.easing.standard, useNativeDriver: useNativeAnimations }),
     ]).start();
+    // A barra cresce por scaleX (transform) — roda no driver nativo, fora do
+    // JS thread, em vez de animar `width` a cada quadro.
     Animated.timing(stepProgress, {
       toValue: progressoFinal,
       duration: Motion.dur.base,
       easing: Motion.easing.standard,
-      useNativeDriver: false,
+      useNativeDriver: useNativeAnimations,
     }).start();
   }, [slide, fade, stepProgress, reduzirMovimento]);
 
@@ -217,45 +176,73 @@ export default function NovoOrcamentoScreen() {
     animateStep(1, novoStep);
   }
 
+  // Teclado aberto esconde o rodapé: com ele de pé, a busca de cliente só
+  // mostrava meio resultado (o rodapé subia junto com o teclado).
   useEffect(() => {
-    async function init() {
+    const evAbrir = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const evFechar = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const abrir = Keyboard.addListener(evAbrir, () => setTecladoAberto(true));
+    const fechar = Keyboard.addListener(evFechar, () => setTecladoAberto(false));
+    return () => { abrir.remove(); fechar.remove(); };
+  }, []);
+
+  // Evita setState depois de sair da tela (a carga é assíncrona).
+  const montadoRef = useRef(true);
+  useEffect(() => () => { montadoRef.current = false; }, []);
+
+  const carregar = useCallback(async () => {
+    setCarga({ estado: 'carregando' });
+    try {
       // Carregada primeiro porque tanto a edição (Step4 precisa dela pro
       // default de cor) quanto a criação (padrões pré-preenchidos) dependem
       // da empresa já estar em mãos antes de montar o orçamento.
       const emp = await getEmpresa();
+      if (!montadoRef.current) return;
       setEmpresa(emp);
 
-      if (isEdit && orcamentoId) {
-        const existing = await getOrcamento(orcamentoId);
-        if (existing) {
-          // TRAVA DO PRÓPRIO EDITOR (gêmea da de `FormOrcamento.tsx` no painel).
-          // As telas que trazem o usuário até aqui já escondem "Editar" nesses
-          // status, mas esta é a única guarda que cobre quem NÃO passa por tela:
-          // o deep link `orcamentos/:id/editar` (`linking.ts`) abre o editor
-          // direto pela URL. Sem ela, o usuário preenche a tela inteira e só
-          // descobre no "Salvar" que `saveOrcamento` recusa — perdendo o que
-          // digitou. Recusar na porta custa zero e aponta o caminho que funciona.
-          if (edicaoBloqueada(existing.status)) {
-            avisar(
-              'Este orçamento não pode mais ser editado',
-              'O cliente já recebeu este documento. Para mudar valores ou itens, use “Criar revisão” — nasce um rascunho novo ligado ao original, que continua preservado.',
-            );
-            goBackOrHome(nav);
-            return;
-          }
-          setOrc(existing);
-          // Itens de um orçamento já salvo (fora deste fluxo) com preço 0 são
-          // tratados como já confirmados, para não travar a edição de um
-          // orçamento antigo pedindo reconfirmação de itens que já existiam.
-          const idsZeroExistentes = existing.itens.filter(i => i.preco <= 0).map(i => i.id);
-          if (idsZeroExistentes.length > 0) {
-            setItensZeroConfirmados(new Set(idsZeroExistentes));
-          }
+      if (isEdit) {
+        const existing = orcamentoId ? await getOrcamento(orcamentoId) : null;
+        if (!montadoRef.current) return;
+        if (!existing) {
+          // Editar um orçamento que não está neste aparelho NÃO pode virar um
+          // orçamento novo em branco (era o que acontecia): diz o que houve.
+          setCarga({
+            estado: 'erro',
+            titulo: 'Orçamento não encontrado',
+            mensagem: 'Ele não está neste aparelho. Se foi criado em outro lugar, espere a sincronização e tente de novo.',
+          });
           return;
         }
+        // TRAVA DO PRÓPRIO EDITOR (gêmea da de `FormOrcamento.tsx` no painel).
+        // As telas que trazem o usuário até aqui já escondem "Editar" nesses
+        // status, mas esta é a única guarda que cobre quem NÃO passa por tela:
+        // o deep link `orcamentos/:id/editar` (`linking.ts`) abre o editor
+        // direto pela URL. Sem ela, o usuário preenche a tela inteira e só
+        // descobre no "Salvar" que `saveOrcamento` recusa — perdendo o que
+        // digitou. Recusar na porta custa zero e aponta o caminho que funciona.
+        if (edicaoBloqueada(existing.status)) {
+          avisar(
+            'Este orçamento não pode mais ser editado',
+            'O cliente já recebeu este documento. Para mudar valores ou itens, use “Criar revisão” — nasce um rascunho novo ligado ao original, que continua preservado.',
+          );
+          goBackOrHome(nav);
+          return;
+        }
+        setOrc(existing);
+        // Itens de um orçamento já salvo (fora deste fluxo) com preço 0 são
+        // tratados como já confirmados, para não travar a edição de um
+        // orçamento antigo pedindo reconfirmação de itens que já existiam.
+        const idsZeroExistentes = existing.itens.filter(i => i.preco <= 0).map(i => i.id);
+        if (idsZeroExistentes.length > 0) {
+          setItensZeroConfirmados(new Set(idsZeroExistentes));
+        }
+        setCarga({ estado: 'pronto' });
+        return;
       }
-      const numero = await getNextOrcamentoNumber();
-      let base = emptyOrcamento(numero, emp);
+
+      // Número só no SALVAR (handleSave/handleRascunho): abrir o formulário e
+      // desistir queimava um número e deixava buraco na sequência que o cliente vê.
+      let base = emptyOrcamento('', emp);
 
       // Pré-seleciona o cliente (mesmos campos que o Step1Cliente preenche).
       if (prefillClienteId) {
@@ -283,12 +270,26 @@ export default function NovoOrcamentoScreen() {
       });
       if (itensPrefill.length) base = calcTotais({ ...base, itens: itensPrefill });
 
+      if (!montadoRef.current) return;
       setOrc(base);
+      setCarga({ estado: 'pronto' });
+    } catch {
+      if (!montadoRef.current) return;
+      setCarga({
+        estado: 'erro',
+        titulo: 'Não consegui abrir o orçamento',
+        mensagem: 'Os dados do aparelho não carregaram agora. Nada foi perdido — toque em “Tentar de novo”.',
+      });
     }
-    init();
-  }, []);
+    // Os params da rota não mudam com a tela aberta: na prática carrega uma vez.
+  }, [isEdit, orcamentoId, prefillClienteId, prefillItem, prefillItems, nav]);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
 
   function update(partial: Partial<Orcamento>) {
+    setAlterado(true);
     setOrc(prev => {
       if (!prev) return prev;
       const updated = { ...prev, ...partial, atualizadoEm: nowISO() };
@@ -340,14 +341,37 @@ export default function NovoOrcamentoScreen() {
     avisar('Não foi possível salvar', 'Tente novamente em instantes.');
   }
 
+  /**
+   * Número do orçamento: reservado só agora, na hora de gravar (abrir e
+   * desistir não gasta número). Na edição ele já existe. Se um save falhar
+   * depois de reservar, a próxima tentativa reaproveita o mesmo número.
+   */
+  async function garantirNumero(atual: Orcamento): Promise<string> {
+    if (atual.numero) return atual.numero;
+    if (numeroReservadoRef.current) return numeroReservadoRef.current;
+    const numero = await getNextOrcamentoNumber();
+    numeroReservadoRef.current = numero;
+    if (montadoRef.current) setOrc(prev => (prev && !prev.numero ? { ...prev, numero } : prev));
+    return numero;
+  }
+
+  /** Sai da tela por um caminho já decidido (salvou ou descartou), sem perguntar de novo. */
+  function sairLiberado(acao?: NavigationAction) {
+    saidaLiberadaRef.current = true;
+    if (acao) nav.dispatch(acao);
+    else goBackOrHome(nav);
+  }
+
   async function handleSave(finalOrc?: Partial<Orcamento>) {
     if (!orc) return;
     setSaving(true);
     try {
       const agora = nowISO();
+      const numero = await garantirNumero(orc);
       const toSave: Orcamento = {
         ...orc,
         ...(finalOrc ?? {}),
+        numero,
         atualizadoEm: agora,
         ...(isEdit ? { editadoEm: agora } : {}),
       };
@@ -358,8 +382,10 @@ export default function NovoOrcamentoScreen() {
       if (!isEdit) {
         track(Eventos.quoteCreated, { origem: ehExemplo ? 'exemplo_ativacao' : 'manual', itens: toSave.itens.length });
         pendingNavRef.current = toSave.id;
+        saidaLiberadaRef.current = true;
         setCelebrando(true);
       } else {
+        saidaLiberadaRef.current = true;
         nav.replace('VisualizarOrcamento', { orcamentoId: toSave.id });
       }
     } catch (e) {
@@ -369,26 +395,32 @@ export default function NovoOrcamentoScreen() {
     }
   }
 
-  async function handleRascunho() {
+  /**
+   * Guarda como rascunho e sai. `acao` = a navegação que o usuário tentou
+   * (voltar do Android, gesto) quando o rascunho veio do diálogo de saída.
+   */
+  async function handleRascunho(acao?: NavigationAction) {
     if (!orc) return;
     setSaving(true);
     try {
       const agora = nowISO();
+      const numero = await garantirNumero(orc);
       await saveOrcamento(calcTotais({
         ...orc,
+        numero,
         atualizadoEm: agora,
         ...(isEdit ? { editadoEm: agora } : {}),
       }));
       if (!isEdit) track(Eventos.quoteCreated, { origem: 'manual', itens: orc.itens.length, rascunho: true });
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');
-        goBackOrHome(nav);
+        sairLiberado(acao);
         return;
       }
       // Feedback não bloqueante: haptic de sucesso + volta direto, sem exigir
       // toque em "OK" para sair (o aviso só entra no caminho de erro abaixo).
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      goBackOrHome(nav);
+      sairLiberado(acao);
     } catch (e) {
       avisarFalhaSalvar(e);
     } finally {
@@ -396,26 +428,97 @@ export default function NovoOrcamentoScreen() {
     }
   }
 
-  function handleBack() {
-    if (step === 0) {
-      void confirmar('Descartar orçamento?', 'As informações preenchidas serão perdidas.')
-        .then(ok => { if (ok) goBackOrHome(nav); });
-      return;
-    }
-    const novoStep = step - 1;
+  function recuarPasso() {
+    const novoStep = Math.max(0, step - 1);
     setStep(novoStep);
     animateStep(-1, novoStep);
+  }
+
+  /**
+   * Botão "Voltar/Cancelar" e seta do header. Nos passos 2–4 recua um passo.
+   * No passo 1 tenta sair — e, se houver trabalho, o usePreventRemove abaixo
+   * pergunta "Descartar ou salvar rascunho" (mesma pergunta do voltar do Android).
+   */
+  function handleBack() {
+    if (step > 0) {
+      recuarPasso();
+      return;
+    }
+    goBackOrHome(nav);
   }
 
   function finalizarCelebracao() {
     setCelebrando(false);
     const id = pendingNavRef.current;
     pendingNavRef.current = null;
-    if (id) nav.replace('VisualizarOrcamento', { orcamentoId: id });
+    if (id) {
+      saidaLiberadaRef.current = true;
+      nav.replace('VisualizarOrcamento', { orcamentoId: id });
+    }
   }
 
-  if (!orc) {
-    return <View style={{ flex: 1, backgroundColor: cores.background }} />;
+  // Há trabalho a perder? Na criação, qualquer cliente/item já conta (inclusive o
+  // pré-carregado); na edição, só o que o usuário mudou.
+  const temTrabalho = !!orc && (alterado || (!isEdit && (orc.itens.length > 0 || !!orc.clienteNome.trim())));
+  // Voltar do Android / gesto / seta: antes descartava o orçamento inteiro sem
+  // perguntar. Agora, nos passos 2–4 recua um passo; no passo 1 pergunta.
+  usePreventRemove(carga.estado === 'pronto' && !celebrando && (step > 0 || temTrabalho), ({ data }) => {
+    if (saidaLiberadaRef.current) {
+      nav.dispatch(data.action);
+      return;
+    }
+    if (step > 0 && ehAcaoDeVoltar(data.action)) {
+      recuarPasso();
+      return;
+    }
+    if (!temTrabalho) {
+      nav.dispatch(data.action);
+      return;
+    }
+    Keyboard.dismiss();
+    void perguntarSaida(isEdit).then(escolha => {
+      if (escolha === 'descartar') sairLiberado(data.action);
+      else if (escolha === 'rascunho') void handleRascunho(data.action);
+    });
+  });
+
+  if (carga.estado !== 'pronto' || !orc) {
+    return (
+      <View style={styles.container}>
+        <GradientHeader
+          title={isEdit ? 'Editar orçamento' : 'Novo orçamento'}
+          onBack={() => goBackOrHome(nav)}
+          compact
+        />
+        {carga.estado === 'erro' ? (
+          <View style={styles.estadoBox} accessibilityRole="alert">
+            <MaterialCommunityIcons name="alert-circle-outline" size={40} color={cores.danger} />
+            <Text style={styles.estadoTitulo}>{carga.titulo}</Text>
+            <Text style={styles.estadoTexto}>{carga.mensagem}</Text>
+            <OlliButton
+              label="Tentar de novo"
+              variant="gradient"
+              size="md"
+              onPress={() => { void carregar(); }}
+              icon={<MaterialCommunityIcons name="refresh" size={18} color="#fff" />}
+              style={{ marginTop: Spacing.base, alignSelf: 'stretch' }}
+            />
+            <OlliButton
+              label="Voltar"
+              variant="ghost"
+              size="md"
+              onPress={() => goBackOrHome(nav)}
+              style={{ marginTop: 6, alignSelf: 'stretch' }}
+            />
+          </View>
+        ) : (
+          <View style={styles.estadoBox} accessibilityLabel="Carregando o orçamento">
+            <ActivityIndicator size="large" color={cores.primary} />
+            <Text style={styles.estadoTexto}>Preparando o orçamento…</Text>
+          </View>
+        )}
+      </View>
+    );
   }
 
   const clienteResumo = orc.clienteNome.trim() || 'sem cliente';
@@ -429,7 +532,7 @@ export default function NovoOrcamentoScreen() {
     >
       <GradientHeader
         title={isEdit ? 'Editar orçamento' : 'Novo orçamento'}
-        subtitle={`Nº ${orc.numero} · Passo ${step + 1} de 4`}
+        subtitle={`${orc.numero ? `Nº ${orc.numero}` : 'Nº a definir'} · Passo ${step + 1} de 4`}
         onBack={handleBack}
         compact
         right={
@@ -469,10 +572,12 @@ export default function NovoOrcamentoScreen() {
             style={[
               styles.progressFill,
               {
-                width: stepProgress.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0%', '100%'],
-                }),
+                transform: [{
+                  scaleX: stepProgress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.001, 1],
+                  }),
+                }],
               },
             ]}
           />
@@ -494,6 +599,9 @@ export default function NovoOrcamentoScreen() {
         {step === 3 && <Step4Personalizacao orc={orc} onChange={update} empresa={empresa} />}
       </Animated.View>
 
+      {/* Com o teclado aberto o rodapé sai da frente (some e volta ao fechar). */}
+      {!tecladoAberto && (
+      <>
       <View
         style={styles.quoteSummary}
         accessible
@@ -532,7 +640,7 @@ export default function NovoOrcamentoScreen() {
         <View style={{ flexDirection: 'row', gap: 8, flex: 1, justifyContent: 'flex-end' }}>
           {step < 3 ? (
             <>
-              <OlliButton label="Rascunho" variant="outline" size="md" onPress={handleRascunho} loading={saving} haptic={false} />
+              <OlliButton label="Rascunho" variant="outline" size="md" onPress={() => { void handleRascunho(); }} loading={saving} haptic={false} />
               <OlliButton
                 label="Avançar"
                 variant="gradient"
@@ -556,6 +664,9 @@ export default function NovoOrcamentoScreen() {
         </View>
       </View>
 
+      </>
+      )}
+
       <Celebracao visible={celebrando} tipo="gerado" onDone={finalizarCelebracao} />
     </KeyboardAvoidingView>
   );
@@ -564,6 +675,9 @@ export default function NovoOrcamentoScreen() {
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   content: { flex: 1 },
+  estadoBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: 10 },
+  estadoTitulo: { fontSize: 18, fontWeight: '800', color: c.onSurface, textAlign: 'center' },
+  estadoTexto: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
   revisionBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
     marginBottom: 10, paddingHorizontal: 11, paddingVertical: 8,
@@ -583,8 +697,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     overflow: 'hidden',
   },
   progressFill: {
+    width: '100%',
     height: '100%',
     borderRadius: 2,
+    // scaleX cresce a partir da esquerda (a barra enche da esquerda pra direita).
+    transformOrigin: 'left',
     backgroundColor: c.accentLight,
   },
   quoteSummary: {

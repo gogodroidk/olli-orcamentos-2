@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
-  Animated, Easing, Platform, ActivityIndicator, KeyboardAvoidingView,
+  Animated, Easing, Platform, ActivityIndicator, KeyboardAvoidingView, Alert,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,17 +19,16 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { SinalizarIA } from '../components/SinalizarIA';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { interpretarVoz, VozResultadoOk, VozItem, conversarVoz, ConversaTurno, ConversaResultado } from '../services/olliAssistente';
+import { interpretarVoz, VozResultadoOk, VozItem, conversarVoz, ConversaTurno, ConversaResultado, carregarCatalogoVoz } from '../services/olliAssistente';
 import { useReconhecimentoVoz, vozProvavelmenteDisponivel } from '../services/reconhecimentoVoz';
 import { useReducedMotion } from '../theme/motion';
 import { useGravadorNuvem } from '../services/vozNuvem';
 import {
-  getNextOrcamentoNumber, saveOrcamento, getServicos, getEmpresa,
+  getNextOrcamentoNumber, saveOrcamento, getEmpresa, getClientes,
 } from '../database/database';
-import { getUltimasFormasPagamento, salvarUltimasFormasPagamento } from '../services/formasPagamentoPadrao';
-import { Orcamento, ItemOrcamento, FormaPagamento } from '../types';
+import { Orcamento, ItemOrcamento, Cliente, Empresa } from '../types';
 import { generateId } from '../utils/id';
-import { nowISO, todayISO } from '../utils/date';
+import { emptyOrcamento, calcTotais, clienteParaOrc, casarClientePorNome, round2, type ItemCatalogoVoz } from '../utils/orcamentoBase';
 import { formatCurrency, parseNumber } from '../utils/currency';
 import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -95,8 +94,6 @@ interface ConversaBolha {
   texto: string;
 }
 
-const defaultFormas: FormaPagamento = { credito: false, debito: false, dinheiro: false, pix: true };
-
 function vozItemParaEditavel(it: VozItem): ItemEditavel {
   return {
     id: generateId(),
@@ -107,16 +104,30 @@ function vozItemParaEditavel(it: VozItem): ItemEditavel {
   };
 }
 
-/** Constrói um Orçamento rascunho a partir da revisão e grava no MESMO CRUD do app. */
-function montarOrcamento(
-  numero: string,
-  titulo: string | undefined,
-  clienteNome: string | undefined,
-  itensEdit: ItemEditavel[],
-  observacao: string | undefined,
-  formasPagamentoPadrao?: FormaPagamento,
-): Orcamento {
-  const itens: ItemOrcamento[] = itensEdit.map(e => {
+/** Lista de clientes para ligar o nome falado ao cadastro — 3 estados, erro nunca vira "sem cliente". */
+type ClientesVoz =
+  | { estado: 'carregando' }
+  | { estado: 'erro' }
+  | { estado: 'pronto'; lista: Cliente[] };
+
+/**
+ * Constrói um Orçamento rascunho a partir da revisão e grava no MESMO CRUD do app.
+ * Parte da MESMA base do wizard (`emptyOrcamento`): validade, garantia, condições,
+ * observações, cor e modelo de PDF da empresa. Se o nome falado bate com um cliente
+ * cadastrado, o orçamento já nasce ligado a ele (telefone e endereço) — sem isso o
+ * "Enviar no WhatsApp" falhava com "Cliente sem telefone".
+ */
+function montarOrcamento(args: {
+  numero: string;
+  empresa: Empresa | null;
+  titulo: string | undefined;
+  clienteNome: string | undefined;
+  clienteCadastrado: Cliente | null;
+  itensEdit: ItemEditavel[];
+  observacao: string | undefined;
+}): Orcamento {
+  const base = emptyOrcamento(args.numero, args.empresa);
+  const itens: ItemOrcamento[] = args.itensEdit.map(e => {
     const preco = e.valorUnitario ?? 0;
     return {
       id: generateId(),
@@ -127,45 +138,44 @@ function montarOrcamento(
       preco,
       quantidade: e.quantidade,
       unidade: 'un',
-      subtotal: preco * e.quantidade,
+      subtotal: round2(preco * e.quantidade),
     };
   });
 
-  const subtotalServicos = itens.filter(i => i.tipo === 'servico').reduce((s, i) => s + i.subtotal, 0);
-  const subtotalProdutos = itens.filter(i => i.tipo === 'produto').reduce((s, i) => s + i.subtotal, 0);
-  const subtotal = subtotalServicos + subtotalProdutos;
-
-  const infoAdicional = [titulo ? `Pedido: ${titulo}` : '', observacao ?? '']
+  // O que foi falado vem primeiro; as observações padrão da empresa continuam embaixo.
+  const infoVoz = [args.titulo ? `Pedido: ${args.titulo}` : '', args.observacao ?? '']
     .filter(Boolean)
     .join('\n')
     .trim();
+  const informacoesAdicionais = [infoVoz, base.informacoesAdicionais ?? '']
+    .filter(Boolean)
+    .join('\n\n') || undefined;
 
-  return {
-    id: generateId(),
-    numero,
-    clienteId: '',
-    clienteNome: (clienteNome ?? '').trim(),
-    clienteTelefone: '',
-    itens,
-    subtotalServicos,
-    subtotalProdutos,
-    subtotal,
-    desconto: 0,
-    descontoTipo: 'valor',
-    valorTotal: subtotal,
-    status: 'rascunho',
-    dataEmissao: todayISO(),
-    informacoesAdicionais: infoAdicional || undefined,
-    // Smart default: mesma última combinação da empresa que o wizard manual usa
-    // (services/formasPagamentoPadrao) — cai no PIX-só estático sem padrão salvo.
-    formasPagamento: formasPagamentoPadrao ?? defaultFormas,
-    exibirAssinatura: true,
-    solicitarAssinaturaCliente: false,
-    exibirAprovacao: true,
-    exibirRecusa: true,
-    criadoEm: nowISO(),
-    atualizadoEm: nowISO(),
-  };
+  const cliente: Partial<Orcamento> = args.clienteCadastrado
+    ? clienteParaOrc(args.clienteCadastrado)
+    : { clienteNome: (args.clienteNome ?? '').trim() };
+
+  return calcTotais({ ...base, ...cliente, itens, informacoesAdicionais });
+}
+
+/** Pergunta antes de jogar fora o que a voz já juntou (voltar do Android, gesto, seta). */
+function confirmarDescarteVoz(temRevisao: boolean): Promise<boolean> {
+  const titulo = temRevisao ? 'Descartar o orçamento da OLLI?' : 'Descartar o que você falou?';
+  const mensagem = temRevisao
+    ? 'O orçamento montado ainda não foi salvo. Para guardar, toque em “Criar orçamento”.'
+    : 'O que você falou ainda não virou orçamento.';
+  if (Platform.OS === 'web') return confirmar(titulo, mensagem);
+  return new Promise(resolve => {
+    Alert.alert(
+      titulo,
+      mensagem,
+      [
+        { text: 'Continuar aqui', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Descartar', style: 'destructive', onPress: () => resolve(true) },
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) },
+    );
+  });
 }
 
 export default function OlliVozScreen() {
@@ -237,7 +247,7 @@ export default function OlliVozScreen() {
   // transcrever com o Gemini — funciona em QUALQUER aparelho com microfone,
   // mesmo sem o serviço de voz do Google instalado/habilitado.
   const [modoVoz, setModoVoz] = useState<'dispositivo' | 'nuvem'>('dispositivo');
-  const [catalogoVoz, setCatalogoVoz] = useState<{ nome: string; preco?: number }[] | undefined>(undefined);
+  const [catalogoVoz, setCatalogoVoz] = useState<ItemCatalogoVoz[] | undefined>(undefined);
 
   // ── MODO CONVERSA (Tier B, cluster T3b) ──
   // Alternativa opt-in ao "tiro único": em vez de mandar tudo de uma vez pro
@@ -341,24 +351,32 @@ export default function OlliVozScreen() {
     if (!voz.disponivel) setModoVoz('nuvem');
   }, [voz.checandoDisponibilidade, voz.disponivel]);
 
-  // Catálogo de serviços (nome + preço) pro Gemini casar descrições com
-  // preços já cadastrados no modo nuvem/orçamento — mesmo padrão do /voz.
+  // Catálogo de serviços E produtos (nome + preço) pra IA casar descrições com
+  // preços já cadastrados no modo nuvem/orçamento — mesmo catálogo do /voz.
+  // Sem catálogo não tem problema — a IA segue só com o áudio.
   useEffect(() => {
     let cancelado = false;
-    getServicos()
-      .then(servicos => {
-        if (cancelado || servicos.length === 0) return;
-        setCatalogoVoz(
-          servicos.slice(0, 60).map(s => (s.preco > 0 ? { nome: s.nome, preco: s.preco } : { nome: s.nome }))
-        );
-      })
-      .catch(() => {
-        // sem catálogo não tem problema — a IA segue só com o áudio
-      });
+    void carregarCatalogoVoz().then(catalogo => {
+      if (!cancelado) setCatalogoVoz(catalogo);
+    });
     return () => {
       cancelado = true;
     };
   }, []);
+
+  // Clientes cadastrados, para ligar o nome falado ao cadastro (telefone e endereço).
+  const [clientesVoz, setClientesVoz] = useState<ClientesVoz>({ estado: 'carregando' });
+  useEffect(() => {
+    let vivo = true;
+    getClientes()
+      .then(lista => { if (vivo) setClientesVoz({ estado: 'pronto', lista }); })
+      .catch(() => { if (vivo) setClientesVoz({ estado: 'erro' }); });
+    return () => { vivo = false; };
+  }, []);
+  // Saída já decidida (orçamento salvo): o usePreventRemove não pergunta de novo.
+  const saidaLiberadaRef = useRef(false);
+  // Número reservado num save que falhou — a nova tentativa reaproveita (não queima outro).
+  const numeroReservadoRef = useRef<string | null>(null);
 
   const nuvem = useGravadorNuvem({
     modo: 'orcamento',
@@ -803,23 +821,53 @@ export default function OlliVozScreen() {
     }
     setSalvando(true);
     try {
-      const numero = await getNextOrcamentoNumber();
       const emp = await getEmpresa();
-      const formasPagamentoPadrao = await getUltimasFormasPagamento(emp?.id);
-      const orc = montarOrcamento(numero, titulo, clienteNome, itens, observacao, formasPagamentoPadrao ?? undefined);
+      // Liga ao cliente cadastrado. Se a lista não carregou, tenta uma vez agora;
+      // se ainda falhar, o orçamento sai SEM vínculo (a Revisão já avisou) e o
+      // prestador escolhe o cliente no editor — nunca liga a um cliente "achado" no escuro.
+      let listaClientes: Cliente[] | null = clientesVoz.estado === 'pronto' ? clientesVoz.lista : null;
+      if (!listaClientes) listaClientes = await getClientes().catch(() => null);
+      const clienteCadastrado = listaClientes ? casarClientePorNome(clienteNome, listaClientes) : null;
+      // Número da sequência só aqui, no salvar (e reaproveitado se o save falhar).
+      const numero = numeroReservadoRef.current ?? await getNextOrcamentoNumber();
+      numeroReservadoRef.current = numero;
+      const orc = montarOrcamento({
+        numero, empresa: emp, titulo, clienteNome, clienteCadastrado, itensEdit: itens, observacao,
+      });
       await saveOrcamento(orc);
-      void salvarUltimasFormasPagamento(emp?.id, orc.formasPagamento);
+      numeroReservadoRef.current = null;
       track(Eventos.quoteCreated, { origem: 'voz', itens: itens.length });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      // abre a MESMA tela de edição do app para o usuário finalizar (cliente, preços, enviar)
-      nav.navigate('EditarOrcamento', { orcamentoId: orc.id });
+      // abre a MESMA tela de edição do app para o usuário finalizar (cliente, preços, enviar).
+      // `replace`: voltar do editor não cai de novo nesta Revisão (que criaria um 2º orçamento).
+      saidaLiberadaRef.current = true;
+      nav.replace('EditarOrcamento', { orcamentoId: orc.id });
     } catch {
       setErro('Não consegui salvar o orçamento agora. Tente novamente.');
       setFase('erro');
     } finally {
       setSalvando(false);
     }
-  }, [itens, titulo, clienteNome, observacao, nav]);
+  }, [itens, titulo, clienteNome, observacao, nav, clientesVoz]);
+
+  // Voltar do Android / gesto / seta do header: antes descartava calado o
+  // orçamento que a IA montou (e o crédito/cota já gasto nele). Agora pergunta.
+  // Itens só existem depois que a IA respondeu ("Refazer" limpa) — inclusive se o save falhou.
+  const temRevisao = itens.length > 0;
+  const temTrabalhoVoz = temRevisao || conversaBolhas.length > 0 || transcript.trim().length > 0;
+  usePreventRemove(temTrabalhoVoz && !salvando, ({ data }) => {
+    if (saidaLiberadaRef.current) {
+      nav.dispatch(data.action);
+      return;
+    }
+    void confirmarDescarteVoz(temRevisao).then(descartar => {
+      if (!descartar) return;
+      saidaLiberadaRef.current = true;
+      nav.dispatch(data.action);
+    });
+  });
+
+  const clienteCasado = clientesVoz.estado === 'pronto' ? casarClientePorNome(clienteNome, clientesVoz.lista) : null;
 
   // ── edição de itens na revisão ──
   function updateItem(id: string, patch: Partial<ItemEditavel>) {
@@ -869,6 +917,8 @@ export default function OlliVozScreen() {
         <Revisao
           titulo={titulo}
           clienteNome={clienteNome}
+          clienteCasado={clienteCasado}
+          clientesEstado={clientesVoz.estado}
           itens={itens}
           observacao={observacao}
           salvando={salvando}
@@ -1382,6 +1432,9 @@ function ConversaDigitando() {
 function Revisao(props: {
   titulo: string;
   clienteNome: string;
+  /** Cliente cadastrado ligado ao nome (null = nenhum ou ambíguo). */
+  clienteCasado: Cliente | null;
+  clientesEstado: ClientesVoz['estado'];
   itens: ItemEditavel[];
   observacao: string;
   salvando: boolean;
@@ -1441,6 +1494,18 @@ function Revisao(props: {
             placeholder="Você confirma o cliente no próximo passo"
             placeholderTextColor={cores.onSurfaceMuted}
           />
+          {props.clienteCasado ? (
+            <View style={styles.clienteCasadoRow} accessible>
+              <MaterialCommunityIcons name="account-check-outline" size={15} color={cores.success} />
+              <Text style={styles.clienteCasadoText}>
+                Cliente cadastrado: {props.clienteCasado.nome} · {props.clienteCasado.telefone || 'sem telefone'}. Vai com telefone e endereço.
+              </Text>
+            </View>
+          ) : props.clientesEstado === 'erro' ? (
+            <Text style={styles.clienteHint}>Não consegui consultar seus clientes agora. Você escolhe o cliente no próximo passo.</Text>
+          ) : props.clientesEstado === 'pronto' && props.clienteNome.trim().length > 0 ? (
+            <Text style={styles.clienteHint}>Não achei esse nome nos seus clientes. Você escolhe ou cadastra no próximo passo.</Text>
+          ) : null}
         </View>
 
         {/* ITENS */}
@@ -1663,6 +1728,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // warningLight já usado no erroCard desta tela, só que não-bloqueante.
   avisoClienteCard: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.warningLight, borderWidth: 1, borderColor: comAlfa(c.warning, 0.35), borderRadius: BorderRadius.md, paddingHorizontal: 12, paddingVertical: 10, marginBottom: Spacing.base },
   avisoClienteText: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 18 },
+  clienteCasadoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 8 },
+  clienteCasadoText: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
+  clienteHint: { fontSize: 12.5, color: c.onSurfaceMuted, lineHeight: 18, marginTop: 8 },
 
   fieldCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginBottom: Spacing.base, ...sombrasDe(c).sm },
   fieldLabel: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },

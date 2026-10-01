@@ -1730,8 +1730,9 @@ async function maiorSequenciaDocumento(tabela: TabelaNumerada): Promise<number> 
  *
  * OFFLINE: continua funcionando sem rede, porque o piso é lido do banco LOCAL —
  * nada de "perguntar à nuvem" na hora de criar. O contador segue no jogo porque é
- * o que segura o número queimado: se o usuário abre o formulário, o app reserva o
- * 004 e ele desiste, o contador fica em 4 enquanto o MAX dos documentos ainda é 3.
+ * o que segura o número queimado: se o app reserva o 004 (o editor e a voz só
+ * reservam no SALVAR) e a gravação falha, o contador fica em 4 enquanto o MAX dos
+ * documentos ainda é 3.
  * O painel pode usar esse 004 livre (não pertence a documento nenhum) e o celular
  * segue no 005 — divergência sem colisão, porque o contador só fica À FRENTE dos
  * documentos, nunca atrás.
