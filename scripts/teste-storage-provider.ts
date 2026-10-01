@@ -8,7 +8,10 @@ const config = fs.readFileSync('supabase/config.toml', 'utf8');
 
 assert.match(porta, /tenantId\?: string/);
 assert.match(adapter, /createSignedUrl\(alvo\.caminho, 60 \* 60\)/);
-assert.match(adapter, /crypto\.randomUUID\(\)/);
+// Hermes (APK) não tem `crypto` global: o UUID vem do expo-crypto.
+assert.match(adapter, /import \* as Crypto from 'expo-crypto'/);
+assert.match(adapter, /Crypto\.randomUUID\(\)/);
+assert.doesNotMatch(adapter, /[^.\w]crypto\.randomUUID\(\)/);
 assert.match(adapter, /upsert: false/);
 assert.match(adapter, /MIME_PERMITIDO/);
 assert.match(adapter, /LIMITE_BYTES/);

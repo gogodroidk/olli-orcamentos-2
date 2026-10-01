@@ -68,6 +68,8 @@ import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { handleClima } from './clima.js';
+import { fonteDoCron, handleAlertas, processarAlertas } from './alertas.js';
+import { handleGeo, modoGeoBackfill, processarGeoClientes } from './geoClientes.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
   aiConfigurada,
@@ -923,6 +925,16 @@ async function handleChat(bodyText, env, user) {
 
 const handler = {
   scheduled(controller, env, ctx) {
+    // Alertas oficiais (hoje só INMET; a Defesa Civil está desligada — ver
+    // alertas.js): cron PRÓPRIO e, portanto, invocação própria, que não divide
+    // os 10 ms de CPU do plano Free com a outbox. Esta invocação faz SÓ isso e
+    // sai: os jobs abaixo pertencem ao cron de minuto e não podem rodar em dobro.
+    const fonteAlertas = fonteDoCron(controller?.cron);
+    if (fonteAlertas) {
+      const quando = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
+      ctx.waitUntil(processarAlertas(env, { fonte: fonteAlertas, now: () => quando }));
+      return;
+    }
     // Dispatch da outbox (boas-vindas + lembretes): fail-closed pelo
     // WELCOME_DISPATCH_MODE; em simulator o consumer só aceita o endereço de
     // teste oficial. A Promise fica registrada no ciclo de vida do evento.
@@ -938,6 +950,11 @@ const handler = {
     // Contratos recorrentes: gera as visitas devidas às 06:05, 12:05 e 18:05 de
     // Brasília, só com CONTRATOS_MOTOR_MODE=production (depois da migration).
     ctx.waitUntil(processarContratos(env, { now: () => agendado }));
+    // Geo dos clientes (Onda I1): backfill em fila do ponto e do IBGE, só com
+    // GEO_BACKFILL_MODE=production (depois da migration 20261002100000). Poucos
+    // clientes por minuto e no máximo 10 consultas ao Nominatim — a política dele
+    // (1 req/s) vale para o OLLI inteiro, não por usuário. Ver geoClientes.js.
+    ctx.waitUntil(processarGeoClientes(env));
   },
 
   async fetch(request, env) {
@@ -1128,6 +1145,21 @@ const handler = {
       return handleClima(request, env, url);
     }
 
+    // Alertas oficiais — GET /alertas?ibge=<7 dígitos>[&lat=&lon=] (INMET + Defesa
+    // Civil/IDAP). PÚBLICO, limitado por IP (ALERTAS_RL). Lê só o KV que o cron
+    // preenche; feed fora = 'indisponivel', nunca "sem alertas". Ver alertas.js.
+    if (url.pathname === '/alertas' && request.method === 'GET') {
+      return handleAlertas(request, env, url);
+    }
+
+    // Onde fica o cliente — POST /geo { cep, endereco, cidade, uf }, autenticado.
+    // Ponto + código IBGE por serviços GRÁTIS (BrasilAPI, ViaCEP, Nominatim/OSM),
+    // nunca pelo Google Geocoding (pago fora da cota). O app chama ao salvar o
+    // cliente; o que falhar fica para o backfill do cron. Ver geoClientes.js.
+    if (url.pathname === '/geo' && request.method === 'POST') {
+      return handleGeo(request, env);
+    }
+
     if (url.pathname === '/eta' && request.method === 'POST') {
       return handleEtaAgora(request, env);
     }
@@ -1174,6 +1206,8 @@ const handler = {
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
         // Rodada agendada dos contratos recorrentes (só o modo — nunca contagem nem conta).
         contratos_motor: modoMotorContratos(env) === 'production' ? 'on' : 'off',
+        // Backfill da geo dos clientes (só o modo). Desligado diz que está desligado.
+        geo_backfill: modoGeoBackfill(env) === 'production' ? 'on' : 'off',
       });
     }
     // EXISTÊNCIA primeiro, MÉTODO depois (achado A4 — ver METODOS_POR_ROTA).

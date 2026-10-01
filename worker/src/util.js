@@ -45,6 +45,8 @@ const METODOS_POR_ROTA = new Map([
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
   ['/clima', 'GET'],
+  ['/alertas', 'GET'],
+  ['/geo', 'POST'],
   ['/resend/webhook', 'POST'],
   ['/auth/email-hook', 'POST'],
   // Descadastro de lembretes: GET mostra a confirmação, POST grava.

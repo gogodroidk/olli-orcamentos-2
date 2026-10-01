@@ -10,7 +10,7 @@ import { cancelarTodosLembretes, concluirVisitasDaOS, resincronizarLembretes } f
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 import { cancelarRitualDiario } from '../services/ritualDiario';
 import { cancelarFollowUpLembretes } from '../services/followUpLembretes';
-import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY } from '../services/storageKeys';
+import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY, RASCUNHO_CAMPO_PREFIX } from '../services/storageKeys';
 import {
   DB_LEGADO,
   donoDoBanco,
@@ -19,6 +19,9 @@ import {
   resolverParticao,
 } from './particao';
 import { criarGerenciadorDeConexao } from './conexao';
+import { geoAposEdicao, geoParaColunas, lerGeoDaLinha, precisaGeocodificar } from '../utils/geoCliente';
+import { geocodificarEndereco } from '../services/cep';
+import { externaParaSqlite, lerExterna } from '../services/verticais';
 import { SQL_CONTAS_A_RECEBER } from './contasAReceberSql';
 import {
   escaparLike,
@@ -225,7 +228,11 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       cep TEXT,
       criado_em TEXT NOT NULL,
       excluido_em TEXT,
-      atualizado_em TEXT
+      atualizado_em TEXT,
+      lat REAL,
+      lon REAL,
+      ibge TEXT,
+      geo_precisao TEXT
     );
 
     CREATE TABLE IF NOT EXISTS servicos (
@@ -446,7 +453,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       recorrencia_ate TEXT,
       contrato_id TEXT,
       excecoes TEXT,
-      ordem_servico_id TEXT
+      ordem_servico_id TEXT,
+      externa INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
 
@@ -603,7 +611,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -702,6 +710,19 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   if (v < 8) {
     await addColumnIfMissing(database, 'agendamentos', 'excecoes', 'TEXT');
     await addColumnIfMissing(database, 'agendamentos', 'ordem_servico_id', 'TEXT');
+  }
+
+  // v < 9 — GEO DO CLIENTE e VISITA EXTERNA (Onda I1; espelha a migration da nuvem
+  // 20261002100000). Ponto (lat/lon + precisão) e IBGE do cliente; `externa` da
+  // visita como INTEGER 1/0 com NULL = "não informado" (nunca "interna"). Sem
+  // backfill aqui: o ponto chega pelo pull (o cron do worker preenche a nuvem) ou
+  // pela geocodificação no próximo salvar. `geo_tentado_em` NÃO existe no
+  // aparelho: é a fila do worker, só dele.
+  if (v < 9) {
+    for (const [coluna, def] of [['lat', 'REAL'], ['lon', 'REAL'], ['ibge', 'TEXT'], ['geo_precisao', 'TEXT']] as const) {
+      await addColumnIfMissing(database, 'clientes', coluna, def);
+    }
+    await addColumnIfMissing(database, 'agendamentos', 'externa', 'INTEGER');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -811,17 +832,67 @@ export async function saveCliente(cliente: Cliente): Promise<void> {
   // espelhado na nuvem tem que levar o MESMO carimbo que foi para o SQLite, senão
   // os dois lados divergem e o guard de conflito passa a comparar valores errados.
   const agora = new Date().toISOString();
-  const salvo: Cliente = { ...cliente, atualizadoEm: agora };
+  // GEO: a verdade é o que JÁ está gravado, não o que a tela devolveu (ela edita
+  // um objeto carregado antes, com a geo velha junto — inclusive depois de trocar
+  // o CEP). Endereço igual mantém o ponto; mudou, o ponto velho morre aqui
+  // (`geoAposEdicao`) e a nuvem faz o mesmo pelo trigger da migration 20261002100000.
+  const anteriorRow = await db.getFirstAsync<any>(
+    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao FROM clientes WHERE id = ?',
+    [cliente.id],
+  );
+  const anterior = anteriorRow ? { ...anteriorRow, ...lerGeoDaLinha(anteriorRow) } : null;
+  const { lat: _lat, lon: _lon, ibge: _ibge, geoPrecisao: _geoPrecisao, ...semGeo } = cliente;
+  const salvo: Cliente = { ...semGeo, ...geoAposEdicao(anterior, cliente), atualizadoEm: agora };
+  const geo = geoParaColunas(salvo);
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
-     (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em,
+      lat, lon, ibge, geo_precisao)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [salvo.id, salvo.nome, salvo.telefone, salvo.cpf ?? null,
      salvo.cnpj ?? null, salvo.endereco ?? null, salvo.complemento ?? null,
      salvo.estado ?? null, salvo.cidade ?? null, salvo.cep ?? null,
-     salvo.criadoEm, salvo.excluidoEm ?? null, agora]
+     salvo.criadoEm, salvo.excluidoEm ?? null, agora,
+     geo.lat, geo.lon, geo.ibge, geo.geo_precisao]
   );
   mirrorPush('clientes', salvo);
+  // Onde fica o cliente: DEPOIS de gravar, em segundo plano. Salvar nunca espera
+  // rede; sem rede o backfill do worker completa depois (ver cep.ts).
+  if (!salvo.excluidoEm && precisaGeocodificar(salvo)) {
+    void geocodificarClienteSalvo(salvo).catch(() => {});
+  }
+}
+
+/**
+ * Busca ponto + IBGE do cliente recém-salvo e grava SÓ se o endereço ainda for o
+ * mesmo (o prestador pode ter editado de novo enquanto a resposta voltava — ponto
+ * do endereço velho no endereço novo é erro calado). NÃO mexe em `atualizado_em`:
+ * geo é derivada do endereço, não é edição do usuário, e carimbar aqui faria esta
+ * escrita vencer uma edição real feita em outro aparelho.
+ */
+async function geocodificarClienteSalvo(c: Cliente): Promise<void> {
+  const r = await geocodificarEndereco(c);
+  if (r.estado === 'invalido') return;
+  const ponto = r.estado === 'ok' ? { lat: r.lat, lon: r.lon, precisao: r.precisao } : null;
+  const ibge = r.ibge ?? null;
+  // Nada novo (worker calado e sem IBGE): o backfill do cron tenta de novo depois.
+  if (!ponto && !ibge) return;
+  const db = await getDb();
+  // Só preenche o que está VAZIO e só se o endereço gravado ainda é o mesmo.
+  const res = await db.runAsync(
+    `UPDATE clientes
+        SET lat = CASE WHEN lat IS NULL THEN ? ELSE lat END,
+            lon = CASE WHEN lat IS NULL THEN ? ELSE lon END,
+            geo_precisao = CASE WHEN lat IS NULL THEN ? ELSE geo_precisao END,
+            ibge = COALESCE(ibge, ?)
+      WHERE id = ? AND excluido_em IS NULL
+        AND IFNULL(cep, '') = ? AND IFNULL(endereco, '') = ? AND IFNULL(cidade, '') = ? AND IFNULL(estado, '') = ?`,
+    [ponto?.lat ?? null, ponto?.lon ?? null, ponto?.precisao ?? null, ibge,
+     c.id, c.cep ?? '', c.endereco ?? '', c.cidade ?? '', c.estado ?? ''],
+  );
+  if (!res || res.changes < 1) return;
+  const atualizado = await getClienteRaw(c.id);
+  if (atualizado) mirrorPush('clientes', atualizado);
 }
 
 /**
@@ -886,6 +957,8 @@ function rowToCliente(r: any): Cliente {
     cep: r.cep ?? undefined, criadoEm: r.criado_em,
     excluidoEm: r.excluido_em ?? undefined,
     atualizadoEm: r.atualizado_em ?? undefined,
+    // Ponto pela metade ou fora do planeta = sem ponto (nunca 0,0).
+    ...lerGeoDaLinha(r),
   };
 }
 
@@ -2611,6 +2684,7 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     contratoId: r.contrato_id ?? undefined,
     excecoes: lerExcecoes(r.excecoes),
     ordemServicoId: r.ordem_servico_id ?? undefined,
+    externa: lerExterna(r.externa),
   };
 }
 
@@ -2878,13 +2952,16 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     // Snapshots antigos não têm o campo → caímos em criadoEm (nunca em "agora",
     // que faria o item restaurado vencer cópias remotas mais recentes).
     for (const c of clientes) {
+      // Geo do backup passa pelo mesmo filtro da leitura: ponto inválido não volta.
+      const geo = geoParaColunas(c);
       await db.runAsync(
         `INSERT OR REPLACE INTO clientes
-         (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, atualizado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+         (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, atualizado_em,
+          lat, lon, ibge, geo_precisao)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [c.id, c.nome, c.telefone, c.cpf ?? null, c.cnpj ?? null, c.endereco ?? null,
          c.complemento ?? null, c.estado ?? null, c.cidade ?? null, c.cep ?? null, c.criadoEm,
-         c.atualizadoEm ?? c.criadoEm],
+         c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao],
       );
     }
     for (const s of servicos) {
@@ -2938,8 +3015,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       await db.runAsync(
         `INSERT OR REPLACE INTO agendamentos
            (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em,
-            responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id, externa)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
          a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
          a.observacao ?? null, a.criadoEm, a.atualizadoEm,
@@ -2947,7 +3024,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          a.recorrenciaAte ?? null, a.contratoId ?? null,
          // Backup é JSON: as exceções chegam como objeto (lerExcecoes valida e lança
          // se vierem ilegíveis — restore com série corrompida falha alto).
-         excecoesParaTexto(lerExcecoes(a.excecoes)), a.ordemServicoId ?? null],
+         excecoesParaTexto(lerExcecoes(a.excecoes)), a.ordemServicoId ?? null,
+         externaParaSqlite(lerExterna(a.externa))],
       );
     }
     for (const os of ordensServico) {
@@ -3150,6 +3228,15 @@ export async function clearAllLocalData(): Promise<void> {
   // Best-effort: uma falha aqui não deve impedir o logout (o SQLite já foi limpo).
   try {
     await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS);
+  } catch {
+    // não bloqueia o logout
+  }
+  // 3b) Rascunhos por campo (texto digitado: nome de cliente, título de OS) têm
+  // chave dinâmica — saem por prefixo. Best-effort, igual ao passo 3.
+  try {
+    const chaves = await AsyncStorage.getAllKeys();
+    const rascunhos = chaves.filter((k) => k.startsWith(RASCUNHO_CAMPO_PREFIX));
+    if (rascunhos.length > 0) await AsyncStorage.multiRemove(rascunhos);
   } catch {
     // não bloqueia o logout
   }
