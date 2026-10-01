@@ -1,13 +1,14 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch,
-  Alert, Share, ActivityIndicator, Modal, TextInput, Platform,
+  Share, ActivityIndicator, Modal, TextInput, Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { vibrar } from '../utils/haptico';
+import { confirmar, toast } from '../components/feedback';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { GateEquipe } from '../components/GateEquipe';
@@ -97,26 +98,28 @@ function EquipeConteudo() {
       setMembros((prev) => prev.map((x) => (x.userId === m.userId ? { ...x, ativo: novo } : x)));
     } catch (e: any) {
       vibrar('erro');
-      Alert.alert('Não deu', e?.message ?? 'Não consegui alterar esse membro agora.');
+      // O Switch volta sozinho (o estado só muda no sucesso); o toast diz o porquê.
+      toast.erro(e?.message ?? 'Não consegui alterar esse membro agora. Tente de novo.', {
+        titulo: novo ? 'Membro não reativado' : 'Membro não desativado',
+      });
     }
     setAlterandoId(null);
   }
 
-  function handleToggleAtivo(m: MembroEquipe) {
+  async function handleToggleAtivo(m: MembroEquipe) {
     if (!org || m.papel === 'owner') return; // o dono nunca é desativado por aqui
     const novo = !m.ativo;
     // DESATIVAR tira o acesso do membro — pede confirmação (o Switch dispara direto, então
     // sem isto um toque acidental derruba alguém). Reativar é inócuo e vai direto.
     if (!novo) {
-      Alert.alert(
-        'Desativar este membro?',
-        'Ele perderá o acesso à equipe até ser reativado.',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Desativar', style: 'destructive', onPress: () => { void aplicarAtivo(m, novo); } },
-        ],
-      );
-      return;
+      const nome = m.nome?.trim();
+      const sim = await confirmar({
+        titulo: nome ? `Desativar ${nome}?` : 'Desativar este membro?',
+        mensagem: 'Ele perde o acesso à equipe até ser reativado. Nada do que ele já fez é apagado.',
+        destrutivo: true,
+        rotuloConfirmar: 'Desativar',
+      });
+      if (!sim) return;
     }
     void aplicarAtivo(m, novo);
   }
@@ -337,8 +340,11 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
   const [email, setEmail] = useState('');
   const [gerando, setGerando] = useState(false);
   const [resultado, setResultado] = useState<{ token: string; link: string } | null>(null);
+  // Falha fica DENTRO da folha: o toast ficaria por baixo do Modal no Android.
+  const [erro, setErro] = useState<string | null>(null);
 
   async function gerar() {
+    setErro(null);
     setGerando(true);
     try {
       const r = await criarConvite(papel, email.trim() || undefined);
@@ -346,7 +352,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
       vibrar('sucesso');
     } catch (e: any) {
       vibrar('erro');
-      Alert.alert('Não deu', e?.message ?? 'Não consegui criar o convite agora.');
+      setErro(e?.message ?? 'Não consegui criar o convite agora. Tente de novo.');
     }
     setGerando(false);
   }
@@ -438,6 +444,16 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
                   O convite vai por link — você compartilha por WhatsApp ou onde quiser. O e-mail é só uma anotação.
                 </Text>
 
+                {erro ? (
+                  <View style={styles.erroInline} accessibilityLiveRegion="polite" accessibilityRole="alert">
+                    <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.danger} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.erroInlineTitulo}>O convite não foi criado</Text>
+                      <Text style={styles.erroInlineTexto}>{erro}</Text>
+                    </View>
+                  </View>
+                ) : null}
+
                 <OlliButton
                   label="Gerar convite"
                   variant="gradient"
@@ -516,6 +532,11 @@ function Cabecalho({ onVoltar }: { onVoltar: () => void }) {
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   center: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
+
+  // Erro dentro da folha de convite (o toast ficaria por baixo do Modal).
+  erroInline: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: c.dangerLight, borderRadius: BorderRadius.md, padding: 12, marginTop: Spacing.base },
+  erroInlineTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
+  erroInlineTexto: { fontSize: 13, color: c.onSurface, lineHeight: 18, marginTop: 2 },
 
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
   screenTitle: { fontSize: 22, fontWeight: '800', color: c.onBackground, letterSpacing: 0 },
