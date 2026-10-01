@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StatusBar, View, Text, StyleSheet, Animated, Easing, Platform, Dimensions } from 'react-native';
+import { StatusBar, View, Text, StyleSheet, Platform, Dimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { PaperProvider } from 'react-native-paper';
 import { registerTranslation, pt as ptDatas } from 'react-native-paper-dates';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
@@ -26,6 +28,9 @@ import { applyFontPatch } from './src/theme/aplicarFontPatch';
 import { OlliLogo } from './src/components/OlliLogo';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
+import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
+import { curvas } from './src/components/motion/curvas';
+import { DURACAO, MOLA, TOQUE, useReduzirMovimento } from './src/theme/motion';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { navigationRef } from './src/navigation/navigationRef';
 import { instalarCapturaDeErro } from './src/services/errorReport';
@@ -198,27 +203,73 @@ function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
   else if (data.listaOrcamentos) navigationRef.navigate('Orcamentos' as never);
 }
 
-const useNativeAnimations = Platform.OS !== 'web';
+/**
+ * Fundo da splash. É o MESMO `backgroundColor` do plugin `expo-splash-screen` em
+ * app.json: a splash nativa some e a BrandSplash assume no mesmo pixel, sem
+ * piscar de cor no meio (teste-feedback-toast.ts confere que os dois batem).
+ */
+const FUNDO_SPLASH = '#0A2547';
 
-function BrandSplash() {
-  const scale = useRef(new Animated.Value(0.7)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+/**
+ * Splash da marca — a PONTE entre a splash nativa e a primeira tela.
+ *
+ * Sequência (item 2.2 da Onda 2):
+ * 1. a splash nativa (logo parado) cobre o boot do JS;
+ * 2. assim que as fontes carregam e esta view já foi desenhada, a nativa é
+ *    escondida — por baixo dela já está a BrandSplash, na mesma cor;
+ * 3. a marca entra com a mola `gentle` enquanto o banco e a sessão resolvem;
+ * 4. quando o app fica pronto, o navegador monta POR BAIXO e a BrandSplash
+ *    some em fade (`DURACAO.slow`) por cima dele — a Home aparece, não "pula".
+ *
+ * Antes, a troca era seca: a splash nativa ficava até tudo pronto e a Home
+ * surgia de uma vez (a BrandSplash animada quase nunca chegava a ser vista).
+ * Com "Reduzir movimento", nada desliza: a marca já nasce no lugar e a saída é
+ * imediata. Só transform/opacity, na UI thread.
+ */
+function BrandSplash({ saindo, aoDesenhar, aoSair }: { saindo: boolean; aoDesenhar: () => void; aoSair: () => void }) {
+  const reduzir = useReduzirMovimento();
+  // Marca: 0 = antes de entrar, 1 = no lugar. Véu: 1 = cobrindo, 0 = saiu.
+  const marca = useSharedValue(reduzir ? 1 : 0);
+  const cobertura = useSharedValue(1);
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(scale, { toValue: 1, duration: 650, easing: Easing.out(Easing.back(1.5)), useNativeDriver: useNativeAnimations }),
-      Animated.timing(opacity, { toValue: 1, duration: 500, useNativeDriver: useNativeAnimations }),
-    ]).start();
-  }, []);
+    if (reduzir) { marca.set(1); return; }
+    marca.set(withSpring(1, MOLA.gentle));
+    return () => cancelAnimation(marca);
+  }, [reduzir, marca]);
+
+  useEffect(() => {
+    if (!saindo) return;
+    if (reduzir) { aoSair(); return; }
+    cobertura.set(withTiming(0, { duration: DURACAO.slow, easing: curvas.standard }, (terminou) => {
+      if (terminou) scheduleOnRN(aoSair);
+    }));
+    // Rede de segurança: animação interrompida não pode deixar a splash por cima do app.
+    const t = setTimeout(aoSair, DURACAO.slow * 3);
+    return () => clearTimeout(t);
+  }, [saindo, reduzir, cobertura, aoSair]);
+
+  const estiloCobertura = useAnimatedStyle(() => ({ opacity: cobertura.get() }));
+  const estiloMarca = useAnimatedStyle(() => {
+    const p = marca.get();
+    // Cresce de `escalaDestaque` (0.92) até 1: presença sem o "pulo" do back-easing antigo.
+    const de = TOQUE.escalaDestaque;
+    return { opacity: Math.min(1, p), transform: [{ scale: de + (1 - de) * p }] };
+  });
 
   return (
-    <View style={styles.splash}>
-      <Animated.View style={{ transform: [{ scale }], opacity, alignItems: 'center' }}>
+    <Animated.View
+      style={[StyleSheet.absoluteFill, styles.splash, estiloCobertura]}
+      pointerEvents={saindo ? 'none' : 'auto'}
+      onLayout={aoDesenhar}
+      accessibilityLabel="OLLI carregando"
+    >
+      <Animated.View style={[styles.splashMarca, estiloMarca]}>
         <OlliLogo size={104} />
         <Text style={styles.brand}>OLLI</Text>
         <Text style={styles.tagline}>Orçamentos que fecham negócio</Text>
       </Animated.View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -457,8 +508,18 @@ function AppConteudo() {
 
   const ready = dbReady && fontsLoaded;
 
-  // Esconde a splash nativa só quando tudo (fontes + banco) estiver pronto,
-  // para a UI não aparecer antes da hora.
+  // Handoff da splash (ver BrandSplash): a nativa sai assim que a BrandSplash
+  // está desenhada COM as fontes certas — antes disso o texto da marca piscaria
+  // na fonte do sistema. A BrandSplash cobre o resto do boot e some em fade.
+  const [splashDesenhada, setSplashDesenhada] = useState(false);
+  const [splashNaTela, setSplashNaTela] = useState(true);
+  const marcarSplashDesenhada = useCallback(() => setSplashDesenhada(true), []);
+  const tirarSplash = useCallback(() => setSplashNaTela(false), []);
+  useEffect(() => {
+    if (fontsLoaded && splashDesenhada) SplashScreen.hideAsync().catch(() => {});
+  }, [fontsLoaded, splashDesenhada]);
+  // Rede de segurança: se a BrandSplash não reportar o layout (web sem layout,
+  // erro de render), a nativa sai quando o app estiver pronto, como antes.
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => {});
   }, [ready]);
@@ -481,7 +542,7 @@ function AppConteudo() {
               total, como qualquer site responsivo. No nativo isto nunca se
               aplicou — comportamento do APK intacto. */}
           <View style={[styles.appFrame, { backgroundColor: cores.background }]}>
-            {ready ? (
+            {ready && (
               // linking com URLs reais (v4): o mapa é fixado no boot (linkingConfig).
               <NavigationContainer
                 ref={navigationRef}
@@ -532,14 +593,21 @@ function AppConteudo() {
                   <AppNavigator initialRouteName={initialRoute} />
                 </ErrorBoundary>
               </NavigationContainer>
-            ) : (
-              <BrandSplash />
+            )}
+            {/* Por cima do navegador até terminar o fade de saída (ver BrandSplash). */}
+            {splashNaTela && (
+              <BrandSplash saindo={ready} aoDesenhar={marcarSplashDesenhada} aoSair={tirarSplash} />
             )}
           </View>
           {/* Host único de avisar()/confirmar() das telas desktop (dialogo.ts).
               Fica dentro do PaperProvider pra herdar o tema, mas fora do
               NavigationContainer/appFrame — não pode fechar junto com uma tela. */}
           <DialogoDesktopHost />
+          {/* Feedback do app (item 2.2): toast (aviso que some sozinho) e folha de
+              confirmação (sim/não). Fora do appFrame pelo mesmo motivo do host
+              acima; o toast fica por cima de tudo que não é Modal. */}
+          <ToastHost />
+          <ConfirmSheetHost />
         </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
@@ -548,7 +616,8 @@ function AppConteudo() {
 
 const styles = StyleSheet.create({
   appFrame: { flex: 1, backgroundColor: Colors.background },
-  splash: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.primaryDark },
+  splash: { justifyContent: 'center', alignItems: 'center', backgroundColor: FUNDO_SPLASH, zIndex: 10 },
+  splashMarca: { alignItems: 'center' },
   brand: { fontSize: 42, fontFamily: Fonts.extraBold, color: '#fff', letterSpacing: 5, marginTop: 22 },
-  tagline: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.accent, letterSpacing: 1, marginTop: 4 }, // contraste-ok: splash Colors.primaryDark #042646 fixo (não segue o modo) — accentLight cairia a 2.96:1 (7.46:1)
+  tagline: { fontSize: 13, fontFamily: Fonts.semiBold, color: Colors.accent, letterSpacing: 1, marginTop: 4 }, // contraste-ok: splash FUNDO_SPLASH #0A2547 fixo (não segue o modo, igual à splash nativa) — accentLight cairia abaixo de 3:1
 });

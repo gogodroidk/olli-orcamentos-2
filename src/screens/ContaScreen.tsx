@@ -5,7 +5,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
+import { confirmar, toast } from '../components/feedback';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, comAlfa, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { ResumoEmailControle, descricaoResumoEmail } from '../components/ResumoEmailControle';
@@ -377,17 +378,17 @@ export default function ContaScreen() {
     try {
       const when = await backupManualVersionado();
       setLastBackup(when);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      Alert.alert('Backup feito!', 'Seus dados estão seguros na nuvem.');
+      // Toast (some sozinho, vibra "sucesso") no lugar do alerta cinza do sistema
+      // que travava a tela pedindo "OK" — e que na web nem aparecia.
+      toast.sucesso('Seus dados estão seguros na nuvem.', { titulo: 'Backup feito' });
     } catch (e: unknown) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      Alert.alert(
-        'Backup não feito',
+      toast.erro(
         mensagemDeErro(
           e,
           'Sem internet agora — o backup automático tenta de novo quando a conexão voltar.',
           'Não foi possível fazer o backup agora. Tente de novo em instantes.',
         ),
+        { titulo: 'Backup não feito' },
       );
     } finally {
       setFazendoBackup(false);
@@ -396,19 +397,19 @@ export default function ContaScreen() {
 
   /** Liga/desliga o backup automático (respeitado por services/autoBackup.ts). Persistido de imediato. */
   async function handleToggleAutoBackup(v: boolean) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setAutoBackupAtivo(v);
     try {
       await AsyncStorage.setItem(AUTO_BACKUP_TOGGLE_KEY, v ? '1' : '0');
     } catch {
-      Alert.alert('Erro', 'Não foi possível salvar essa preferência agora.');
+      toast.erro('Não foi possível salvar essa preferência agora. A opção voltou como estava.');
       setAutoBackupAtivo(!v);
     }
   }
 
   /** Liga/desliga as dicas contextuais (onboarding.ts). Otimista. */
   async function handleToggleAjuda(v: boolean) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setAjudaAtiva(v);
     // ligar/desligarAjuda são best-effort e nunca lançam (persistem em AsyncStorage).
     if (v) await ligarAjuda();
@@ -427,7 +428,7 @@ export default function ContaScreen() {
    * — sem esperar o próximo boot/sync.
    */
   async function handleToggleRitual(canal: 'bomDia' | 'fecharDia' | 'domingo', v: boolean) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const setters = { bomDia: setRitualBomDia, fecharDia: setRitualFecharDia, domingo: setRitualDomingo };
     setters[canal](v);
     try {
@@ -438,7 +439,7 @@ export default function ContaScreen() {
           // não é gravada) e o card abaixo explica e leva aos ajustes.
           setters[canal](false);
           setNotifBloqueada(true);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+          vibrar('aviso');
           return;
         }
         setNotifBloqueada(false);
@@ -446,21 +447,17 @@ export default function ContaScreen() {
       await setPreferenciaRitual(canal, v);
       void reagendarRitualDiario().catch(() => {});
     } catch {
-      Alert.alert('Erro', 'Não foi possível salvar essa preferência agora.');
+      toast.erro('Não foi possível salvar essa preferência agora. A opção voltou como estava.');
       setters[canal](!v);
     }
   }
 
   /** "Rever apresentação e dicas": religa a ajuda, esquece dicas vistas e refaz o onboarding. */
   async function handleReverApresentacao() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     await resetarAjuda();
     setAjudaAtiva(true); // resetarAjuda religa a Central de Ajuda
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    Alert.alert(
-      'Tudo pronto!',
-      'A apresentação e as dicas vão aparecer de novo na próxima vez que você abrir o app.',
-    );
+    toast.sucesso('A apresentação e as dicas vão aparecer de novo na próxima vez que você abrir o app.');
   }
 
   /** Carrega (ou recarrega) a lista de cópias de segurança da nuvem. */
@@ -479,55 +476,49 @@ export default function ContaScreen() {
 
   /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
   function handleAbrirBackups() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setShowBackups(true);
     carregarBackups();
   }
 
-  /** Restaura uma cópia específica da lista, com confirmação dupla (é destrutivo). */
-  function handleRestaurarBackup(item: BackupVersionadoResumo) {
-    Alert.alert(
-      'Restaurar esta cópia?',
-      `Isso vai SUBSTITUIR os dados atuais deste aparelho pelos da cópia de ${formatDateTime(item.criadoEm)} (${TIPO_BACKUP_LABEL[item.tipo]}). Essa ação não pode ser desfeita.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Continuar', style: 'destructive',
-          onPress: () => {
-            // Confirmação DUPLA: a primeira já avisa a substituição; a segunda
-            // reforça que é definitivo antes de tocar nos dados do aparelho.
-            Alert.alert(
-              'Tem certeza?',
-              'Todos os orçamentos, clientes, produtos e serviços salvos neste aparelho agora serão substituídos pelos dessa cópia. Não é possível desfazer.',
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                  text: 'Restaurar', style: 'destructive',
-                  onPress: async () => {
-                    setRestaurandoId(item.id);
-                    try {
-                      const when = await restoreBackupById(item.id);
-                      setShowBackups(false);
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-                      Alert.alert('Restaurado!', `Dados da cópia de ${formatDateTime(when)} aplicados.`);
-                      await load();
-                    } catch (e: any) {
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-                      Alert.alert('Erro', e?.message ?? 'Falha ao restaurar essa cópia.');
-                    }
-                    setRestaurandoId(null);
-                  },
-                },
-              ],
-            );
-          },
-        },
-      ],
-    );
+  /**
+   * Restaura uma cópia específica da lista, com confirmação DUPLA (é destrutivo):
+   * a primeira folha avisa a substituição; a segunda reforça que é definitivo
+   * antes de tocar nos dados do aparelho. As folhas abrem POR CIMA do modal da
+   * lista (são Modal também); o resultado sai em toast depois que a lista fecha.
+   */
+  async function handleRestaurarBackup(item: BackupVersionadoResumo) {
+    const continuar = await confirmar({
+      titulo: 'Restaurar esta cópia?',
+      mensagem: `Isso vai SUBSTITUIR os dados atuais deste aparelho pelos da cópia de ${formatDateTime(item.criadoEm)} (${TIPO_BACKUP_LABEL[item.tipo]}). Essa ação não pode ser desfeita.`,
+      destrutivo: true,
+      rotuloConfirmar: 'Continuar',
+    });
+    if (!continuar) return;
+    const certeza = await confirmar({
+      titulo: 'Tem certeza?',
+      mensagem: 'Todos os orçamentos, clientes, produtos e serviços salvos neste aparelho agora serão substituídos pelos dessa cópia. Não é possível desfazer.',
+      destrutivo: true,
+      rotuloConfirmar: 'Restaurar',
+    });
+    if (!certeza) return;
+    setRestaurandoId(item.id);
+    try {
+      const when = await restoreBackupById(item.id);
+      setShowBackups(false);
+      toast.sucesso(`Dados da cópia de ${formatDateTime(when)} aplicados.`, { titulo: 'Cópia restaurada' });
+      await load();
+    } catch (e: any) {
+      // A lista (Modal) continua aberta: o toast ficaria por baixo dela, então o
+      // erro segue no alerta do sistema, que sempre aparece por cima.
+      vibrar('erro');
+      Alert.alert('Não deu para restaurar', e?.message ?? 'Falha ao restaurar essa cópia. Tente de novo em instantes.');
+    }
+    setRestaurandoId(null);
   }
 
   function handleLogout() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     Alert.alert(
       'Sair da conta',
       'O que você quer fazer com os dados salvos neste aparelho?',
@@ -622,7 +613,7 @@ export default function ContaScreen() {
   }
 
   function abrirFerramenta(f: Ferramenta) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (f.route === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
     else nav.navigate(f.route as never);
   }
@@ -661,10 +652,9 @@ export default function ContaScreen() {
       await salvarFotoPerfil(uri);
       setUser(prev => (prev ? { ...prev, avatarUrl: uri } : prev));
       setAvatarErro(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      Alert.alert('Erro', e?.message ?? 'Não foi possível salvar sua foto agora.');
+      toast.erro(e?.message ?? 'Não foi possível salvar sua foto agora.');
     } finally {
       setSalvandoFoto(false);
     }
@@ -678,9 +668,9 @@ export default function ContaScreen() {
       await removerFotoPerfil();
       setUser(prev => (prev ? { ...prev, avatarUrl: undefined } : prev));
       setAvatarErro(false);
-      Haptics.selectionAsync().catch(() => {});
+      vibrar('selecao');
     } catch (e: any) {
-      Alert.alert('Erro', e?.message ?? 'Não foi possível remover sua foto agora.');
+      toast.erro(e?.message ?? 'Não foi possível remover sua foto agora.');
     } finally {
       setSalvandoFoto(false);
     }
@@ -721,7 +711,7 @@ export default function ContaScreen() {
                           // seguro para tentar de novo.
                           ? 'Não consegui cancelar sua assinatura agora, então não apaguei nada. Sua conta e sua cobrança seguem como estavam. Tente de novo em alguns minutos.'
                           : 'Não foi possível excluir a conta agora. Tente novamente em instantes.';
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+                vibrar('erro');
                 Alert.alert('Não deu', msg);
                 setExcluindo(false);
                 return;
@@ -729,7 +719,7 @@ export default function ContaScreen() {
               // Sucesso: o SIGNED_OUT (logout local no serviço) reseta a navegação
               // para 'Entrar'. Fecha o modal por garantia; a tela será desmontada.
               setShowExcluir(false);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              vibrar('sucesso');
             } catch (e: unknown) {
               Alert.alert('Não deu', mensagemDeErro(e, SEM_INTERNET, 'Não foi possível excluir a conta agora. Nada foi apagado.'));
               setExcluindo(false);
@@ -773,7 +763,7 @@ export default function ContaScreen() {
           label="Entrar de novo"
           variant="gradient" size="lg" fullWidth
           onPress={() => {
-            Haptics.selectionAsync().catch(() => {});
+            vibrar('selecao');
             if (navigationRef.isReady()) navigationRef.reset({ index: 0, routes: [{ name: 'Entrar' }] });
           }}
           icon={<MaterialCommunityIcons name="login" size={20} color="#fff" />}
@@ -844,7 +834,7 @@ export default function ContaScreen() {
             <TouchableOpacity
               style={styles.avatar}
               activeOpacity={0.85}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowFotoOpcoes(true); }}
+              onPress={() => { vibrar('selecao'); setShowFotoOpcoes(true); }}
               disabled={salvandoFoto}
               accessibilityRole="button"
               accessibilityLabel="Trocar foto de perfil"
@@ -885,7 +875,7 @@ export default function ContaScreen() {
           </OlliPressable>
           <Text style={styles.identidadeHint}>
             Toque na foto para trocar a <Text style={styles.identidadeHintForte}>sua foto de perfil</Text>. A logo e a identidade visual da empresa (que aparecem nos PDFs) ficam em{' '}
-            <Text style={styles.identidadeLink} onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('MeuNegocio'); }}>Meu Negócio</Text>.
+            <Text style={styles.identidadeLink} onPress={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }}>Meu Negócio</Text>.
           </Text>
         </AnimatedEntrance>
 
@@ -916,7 +906,7 @@ export default function ContaScreen() {
               haptic={false}
               scaleTo={0.98}
               accessibilityLabel="Ver sua assinatura"
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Assinatura' as never); }}
+              onPress={() => { vibrar('selecao'); nav.navigate('Assinatura' as never); }}
             >
               <View style={styles.assinaturaIcon}>
                 <MaterialCommunityIcons name="check-decagram" size={20} color={cores.accentLight} />
@@ -949,7 +939,7 @@ export default function ContaScreen() {
                 haptic={false}
                 scaleTo={0.97}
                 accessibilityLabel={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Planos'); }}
+                onPress={() => { vibrar('selecao'); nav.navigate('Planos'); }}
               >
                 <Text style={styles.proBtnText}>{COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={16} color={cores.accentLight} />
@@ -977,7 +967,7 @@ export default function ContaScreen() {
                     style={styles.empresaBtn}
                     haptic={false}
                     accessibilityLabel="Gerenciar equipe"
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Equipe'); }}
+                    onPress={() => { vibrar('selecao'); nav.navigate('Equipe'); }}
                   >
                     <MaterialCommunityIcons name="account-group-outline" size={18} color={cores.accentLight} />
                     <Text style={styles.empresaBtnText}>Gerenciar equipe</Text>
@@ -1004,7 +994,7 @@ export default function ContaScreen() {
                   style={styles.empresaBtn}
                   haptic={false}
                   accessibilityLabel="Criar conta empresa"
-                  onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowCriarEmpresa(true); }}
+                  onPress={() => { vibrar('selecao'); setShowCriarEmpresa(true); }}
                 >
                   <MaterialCommunityIcons name="rocket-launch-outline" size={18} color={cores.accentLight} />
                   <Text style={styles.empresaBtnText}>Criar conta empresa</Text>
@@ -1015,7 +1005,7 @@ export default function ContaScreen() {
                   haptic={false}
                   scaleTo={0.98}
                   accessibilityLabel="Tenho um código de convite"
-                  onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowEntrarEquipe(true); }}
+                  onPress={() => { vibrar('selecao'); setShowEntrarEquipe(true); }}
                 >
                   <MaterialCommunityIcons name="ticket-confirmation-outline" size={18} color={cores.onSurfaceVariant} />
                   <Text style={styles.empresaBtnGhostText}>Tenho um código de convite</Text>
@@ -1069,7 +1059,7 @@ export default function ContaScreen() {
             {/* Ajuda e suporte — disponível para todos os papéis. */}
             <OlliPressable
               style={[styles.toolRow, styles.toolDivider]}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Ajuda'); }}
+              onPress={() => { vibrar('selecao'); nav.navigate('Ajuda'); }}
               haptic={false}
               scaleTo={0.985}
               accessibilityLabel="Ajuda e suporte"
@@ -1088,7 +1078,7 @@ export default function ContaScreen() {
             {papel !== 'tecnico' && (
               <OlliPressable
                 style={[styles.toolRow, styles.toolDivider]}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Lixeira'); }}
+                onPress={() => { vibrar('selecao'); nav.navigate('Lixeira'); }}
                 haptic={false}
                 scaleTo={0.985}
                 accessibilityLabel="Lixeira"
@@ -1149,7 +1139,7 @@ export default function ContaScreen() {
           <View style={styles.toolsCard}>
             <OlliPressable
               style={[styles.toolRow, styles.toolDivider]}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Privacidade'); }}
+              onPress={() => { vibrar('selecao'); nav.navigate('Privacidade'); }}
               haptic={false}
               scaleTo={0.985}
               accessibilityLabel="Política de privacidade"
@@ -1165,7 +1155,7 @@ export default function ContaScreen() {
             </OlliPressable>
             <OlliPressable
               style={[styles.toolRow, styles.toolDivider]}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Termos'); }}
+              onPress={() => { vibrar('selecao'); nav.navigate('Termos'); }}
               haptic={false}
               scaleTo={0.985}
               accessibilityLabel="Termos de uso"
@@ -1182,7 +1172,7 @@ export default function ContaScreen() {
             <OlliPressable
               style={styles.toolRow}
               onPress={() => {
-                Haptics.selectionAsync().catch(() => {});
+                vibrar('selecao');
                 Linking.openURL(URL_EXCLUIR_CONTA_WEB).catch(() => {
                   Alert.alert('Excluir conta pela web', `Não consegui abrir o navegador. Acesse ${URL_EXCLUIR_CONTA_WEB}`);
                 });
@@ -1221,7 +1211,7 @@ export default function ContaScreen() {
                   Os avisos abaixo só chegam depois que você liberar as notificações do OLLI nos ajustes do aparelho.
                 </Text>
                 <TouchableOpacity
-                  onPress={() => { Haptics.selectionAsync().catch(() => {}); void abrirConfiguracoesPermissao(); }}
+                  onPress={() => { vibrar('selecao'); void abrirConfiguracoesPermissao(); }}
                   accessibilityRole="button"
                   accessibilityLabel="Abrir ajustes do aparelho"
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1389,7 +1379,7 @@ export default function ContaScreen() {
             {/* ZONA DE PERIGO — exclusão de conta (requisito Apple + LGPD) */}
             <TouchableOpacity
               style={styles.excluirLink}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowExcluir(true); }}
+              onPress={() => { vibrar('selecao'); setShowExcluir(true); }}
               disabled={saindo || excluindo}
               accessibilityRole="button"
               accessibilityLabel="Excluir minha conta"
@@ -1721,7 +1711,7 @@ function ModalCriarEmpresa({
     setCriando(true);
     try {
       await criarOrganizacao(nome);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       // Só promete convite a quem o plano libera: sem o Empresa, a tela Equipe mostra
       // o muro do plano, e "agora você pode convidar" seria mentira.
       Alert.alert(
@@ -1732,7 +1722,7 @@ function ModalCriarEmpresa({
       );
       onCriada();
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Não deu', e?.message ?? 'Não consegui criar a empresa agora.');
       setCriando(false);
     }
@@ -1795,11 +1785,11 @@ function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAce
     setAceitando(true);
     try {
       const org = await aceitarConvite(token);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       Alert.alert('Bem-vindo à equipe!', `Você entrou em ${org.nome} como ${PAPEL_LABEL[org.papel]}.`);
       onAceito();
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Não deu', e?.message ?? 'Não consegui aceitar o convite agora.');
       setAceitando(false);
     }

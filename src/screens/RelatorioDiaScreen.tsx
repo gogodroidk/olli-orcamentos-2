@@ -3,7 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Share, LayoutAnimation, Platform, R
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { useReducedMotion } from '../theme/motion';
 import { GradientHeader } from '../components/GradientHeader';
@@ -75,7 +75,7 @@ function DiaHistoricoCard({ row, index }: { row: RelatorioDiaRow; index: number 
 
   function toggle() {
     if (Platform.OS !== 'web' && !reduzirMovimento) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setAberto(a => !a);
   }
 
@@ -146,7 +146,7 @@ function NotaDoDia({ data, inicial, onSalvo }: { data: string; inicial?: string;
       await salvarNotaDia(data, texto);
       baseRef.current = texto;
       onSalvo?.(texto.trim());
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     } catch {
       Alert.alert('Ops', 'Não consegui salvar sua nota agora. Tente de novo.');
     } finally {
@@ -254,7 +254,7 @@ function RelatorioDiaConteudo() {
 
   async function alternarFala() {
     if (!relatorio) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (falando) {
       pararFala();
       setFalando(false);
@@ -270,7 +270,7 @@ function RelatorioDiaConteudo() {
 
   async function compartilhar() {
     if (!relatorio) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       await Share.share({ message: relatorioParaTexto(relatorio) + notaComoTexto(relatorio) });
     } catch {
