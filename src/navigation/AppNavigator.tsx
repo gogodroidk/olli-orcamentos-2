@@ -211,7 +211,7 @@ export type TabParamList = {
   // Agenda pode abrir já criando um agendamento para um cliente/orçamento (CRM).
   // `abrirAgendamentoId`: vem do toque na notificação "Visita em 1h" (App.tsx);
   // a tela foca o dia e abre aquele compromisso.
-  Agenda: { novoParaClienteId?: string; novoParaClienteNome?: string; novoParaOrcamentoId?: string; novoEndereco?: string; novoTitulo?: string; abrirAgendamentoId?: string } | undefined;
+  Agenda: { novo?: boolean; novoParaClienteId?: string; novoParaClienteNome?: string; novoParaOrcamentoId?: string; novoEndereco?: string; novoTitulo?: string; abrirAgendamentoId?: string } | undefined;
   Orcar: undefined;     // botão central elevado → abre NovoOrcamento (stack)
   Hoje: undefined;
   Conta: undefined;
