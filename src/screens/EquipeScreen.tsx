@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { GateEquipe } from '../components/GateEquipe';
@@ -90,13 +90,13 @@ function EquipeConteudo() {
 
   async function aplicarAtivo(m: MembroEquipe, novo: boolean) {
     if (!org) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setAlterandoId(m.userId);
     try {
       await definirAtivoMembro(org.id, m.userId, novo);
       setMembros((prev) => prev.map((x) => (x.userId === m.userId ? { ...x, ativo: novo } : x)));
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Não deu', e?.message ?? 'Não consegui alterar esse membro agora.');
     }
     setAlterandoId(null);
@@ -188,7 +188,7 @@ function EquipeConteudo() {
             <TouchableOpacity
               style={styles.convidarBtn}
               activeOpacity={0.85}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowConvite(true); }}
+              onPress={() => { vibrar('selecao'); setShowConvite(true); }}
             >
               <MaterialCommunityIcons name="account-plus-outline" size={20} color={textoSobre(cores.accentLight)} />
               <Text style={styles.convidarBtnText}>Convidar para a equipe</Text>
@@ -204,7 +204,7 @@ function EquipeConteudo() {
           <TouchableOpacity
             style={styles.mapaEquipeBtn}
             activeOpacity={0.85}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('EquipeAoVivo'); }}
+            onPress={() => { vibrar('selecao'); nav.navigate('EquipeAoVivo'); }}
             accessibilityRole="button"
             accessibilityLabel={LOCALIZACAO_DISPONIVEL
               ? 'Ver equipe ao vivo'
@@ -343,9 +343,9 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
     try {
       const r = await criarConvite(papel, email.trim() || undefined);
       setResultado(r);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Não deu', e?.message ?? 'Não consegui criar o convite agora.');
     }
     setGerando(false);
@@ -357,7 +357,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
 
   async function compartilhar() {
     if (!resultado) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const msg = mensagemConvite(resultado.link);
     try {
       await Share.share({ message: msg });
@@ -368,7 +368,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
 
   async function enviarWhatsApp() {
     if (!resultado) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     // Sem número específico: wa.me/?text= abre o WhatsApp com a mensagem pronta
     // para o dono ESCOLHER o contato (o convite vai pelo link, não por número).
     // Não usamos abrirWhatsApp() aqui porque ela força um DDI '55' num número
@@ -408,7 +408,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
                         key={p}
                         style={[styles.papelOpcao, sel && styles.papelOpcaoSel]}
                         activeOpacity={0.85}
-                        onPress={() => { Haptics.selectionAsync().catch(() => {}); setPapel(p); }}
+                        onPress={() => { vibrar('selecao'); setPapel(p); }}
                       >
                         <View style={styles.papelRadio}>
                           {sel ? <View style={styles.papelRadioDot} /> : null}

@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
@@ -131,16 +131,16 @@ export default function TecnicoHomeScreen() {
    * `comPendencia` alimenta a BarraOffline com a contagem em voo.
    */
   async function avancarStatus(ordem: OrdemServico, proximo: StatusOS) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    vibrar('medio');
     setAvancandoId(ordem.id);
     const statusAnterior = ordem.status;
     setOrdens((prev) => prev.map((o) => (o.id === ordem.id ? { ...o, status: proximo } : o)));
     try {
       await comPendencia(() => atualizarStatusOS(ordem.id, proximo));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     } catch {
       setOrdens((prev) => prev.map((o) => (o.id === ordem.id ? { ...o, status: statusAnterior } : o)));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
     } finally {
       setAvancandoId(null);
       load();

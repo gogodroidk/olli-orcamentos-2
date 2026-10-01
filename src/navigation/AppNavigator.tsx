@@ -1,14 +1,20 @@
 import React from 'react';
-import { ActivityIndicator, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { createBottomTabNavigator, BottomTabBarButtonProps } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ActivityIndicator, Easing, View, Text, StyleSheet } from 'react-native';
+import {
+  createBottomTabNavigator,
+  type BottomTabBarButtonProps,
+  type BottomTabNavigationOptions,
+} from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator, type NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigatorScreenParams } from '@react-navigation/native';
-import * as Haptics from 'expo-haptics';
 import { BorderRadius, comAlfa, sombrasDe, useCores, useEstilos, useGradientes, type Cores } from '../theme';
 import { useEhDesktop } from '../hooks/useEhDesktop';
+import { CURVA, DURACAO, TOQUE, useReduzirMovimento } from '../theme/motion';
+import { PressableAnimado } from '../components/motion/PressableAnimado';
+import { vibrar } from '../utils/haptico';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
 import { OlliButton } from '../components/OlliButton';
 import { SidebarNav } from '../components/web/SidebarNav';
@@ -423,6 +429,33 @@ const AssinaturaCentro = comCentroDesktop(AssinaturaScreen);
 const AjudaCentro = comCentroDesktop(AjudaScreen);
 const LegalCentro = comCentroDesktop(LegalScreen);
 
+/**
+ * Troca de aba (item 2.3): cross-fade com um encolher quase imperceptível da aba
+ * que sai/entra (0.985 -> 1). Sem deslize lateral: aba não é "próxima página",
+ * é outro cômodo da mesma casa. Só opacity/transform, no driver nativo (o
+ * bottom-tabs anima com `useNativeDriver` fora da web).
+ */
+const ESCALA_ABA_FORA = 0.985;
+const trocaDeAbaSuave: NonNullable<BottomTabNavigationOptions['sceneStyleInterpolator']> = ({ current }) => ({
+  sceneStyle: {
+    opacity: current.progress.interpolate({ inputRange: [-1, 0, 1], outputRange: [0, 1, 0] }),
+    transform: [{
+      scale: current.progress.interpolate({
+        inputRange: [-1, 0, 1],
+        outputRange: [ESCALA_ABA_FORA, 1, ESCALA_ABA_FORA],
+      }),
+    }],
+  },
+});
+const TRANSICAO_ABA: Pick<BottomTabNavigationOptions, 'animation' | 'sceneStyleInterpolator' | 'transitionSpec'> = {
+  animation: 'fade',
+  sceneStyleInterpolator: trocaDeAbaSuave,
+  transitionSpec: {
+    animation: 'timing',
+    config: { duration: DURACAO.fast, easing: Easing.bezier(...CURVA.standard) },
+  },
+};
+
 /** Tela stub para a aba central "Orcar", que nunca é exibida (tabPress.preventDefault). */
 const EmptyTab = () => null;
 
@@ -444,14 +477,13 @@ function CenterButton(_props: BottomTabBarButtonProps) {
   const gradientes = useGradientes();
   return (
     <View style={styles.centerWrap} pointerEvents="box-none">
-      <TouchableOpacity
-        accessibilityRole="button"
+      {/* Ação principal do app: afunda mais que um botão comum (escalaDestaque)
+          e vibra "médio" — o polegar sente que abriu algo novo. */}
+      <PressableAnimado
         accessibilityLabel="Novo orçamento"
-        activeOpacity={0.85}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-          nav.navigate('NovoOrcamento', {});
-        }}
+        haptic="medium"
+        escala={TOQUE.escalaDestaque}
+        onPress={() => nav.navigate('NovoOrcamento', {})}
         style={styles.centerTouch}
       >
         <LinearGradient
@@ -463,7 +495,7 @@ function CenterButton(_props: BottomTabBarButtonProps) {
           <MaterialCommunityIcons name="plus" size={30} color="#fff" />
         </LinearGradient>
         <Text style={styles.centerLabel}>Orçar</Text>
-      </TouchableOpacity>
+      </PressableAnimado>
     </View>
   );
 }
@@ -484,6 +516,10 @@ function TabNavigator() {
   // null (indistinguível de conta pessoal), então não dá para escolher a Home pelo
   // papel sozinho. Montamos uma Home neutra e escondemos o atalho de orçamento.
   const { papel, carregando: papelCarregando } = usePermissao();
+  // "Reduzir movimento" (e o desktop, onde a sidebar troca o conteúdo como um
+  // site): troca de aba seca, sem fade.
+  const reduzir = useReduzirMovimento();
+  const transicaoAba = ehDesktop || reduzir ? { animation: 'none' as const } : TRANSICAO_ABA;
   const homeMobile = papelCarregando
     ? HomeCarregando
     : papel === 'tecnico'
@@ -494,6 +530,7 @@ function TabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        ...transicaoAba,
         tabBarActiveTintColor: cores.tabActive,
         tabBarInactiveTintColor: cores.tabInactive,
         // Desktop: a barra vira uma sidebar à esquerda (SidebarNav custom, abaixo).
@@ -525,6 +562,12 @@ function TabNavigator() {
       // Sidebar permanente no desktop: substitui a tab bar inferior por completo.
       // No mobile mantém a tab bar padrão do bottom-tabs (tabBar undefined).
       tabBar={ehDesktop ? (props) => <SidebarNav {...props} /> : undefined}
+      // Háptico de SELEÇÃO ao trocar de aba (só no celular; a aba já focada não vibra).
+      screenListeners={({ navigation }) => ({
+        tabPress: () => {
+          if (!ehDesktop && !navigation?.isFocused?.()) vibrar('selecao');
+        },
+      })}
     >
       <Tab.Screen
         name="Home"
@@ -659,27 +702,47 @@ function TabNavigator() {
   );
 }
 
+/**
+ * Transições do stack (item 2.3) — três gestos, cada um com um significado:
+ * - `slide_from_right` (padrão): ir mais FUNDO (lista -> detalhe -> edição);
+ * - `slide_from_bottom`: CRIAR/compor algo novo por cima do que se vê (Novo
+ *   orçamento, falar com a OLLI) — some descendo, como uma folha;
+ * - `fade`: trocar de CONTEXTO (capas Entrar/Onboarding/Landing, câmera).
+ * Durações dos tokens (o Android usa a do sistema; o iOS respeita estas).
+ * Com "Reduzir movimento" tudo vira fade: o iOS faz o mesmo nas próprias telas.
+ */
+type AnimacaoStack = NonNullable<NativeStackNavigationOptions['animation']>;
+function opcoesTransicao(animacao: AnimacaoStack, reduzir: boolean): NativeStackNavigationOptions {
+  const final: AnimacaoStack = reduzir ? 'fade' : animacao;
+  return {
+    animation: final,
+    animationDuration: final === 'fade' ? DURACAO.slow : DURACAO.base,
+  };
+}
+
 export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof RootStackParamList } = {}) {
   const cores = useCores();
+  const reduzir = useReduzirMovimento();
+  const criar = opcoesTransicao('slide_from_bottom', reduzir);
+  const capa = opcoesTransicao('fade', reduzir);
   return (
     <Stack.Navigator
       initialRouteName={initialRouteName ?? 'Tabs'}
       screenOptions={{
         headerShown: false,
-        // Design de movimento (v3): transição padrão do stack — deslize lateral
-        // suave. As "capas" (Entrar/Onboarding) usam fade (abaixo).
-        animation: 'slide_from_right',
-        animationDuration: 260,
+        ...opcoesTransicao('slide_from_right', reduzir),
+        // iOS: o deslize segue o dedo na direção da animação (folha volta descendo).
+        animationMatchesGesture: true,
         contentStyle: { backgroundColor: cores.background },
       }}
     >
       <Stack.Screen name="Tabs" component={TabsComPerfilGuard} />
       {/* Onboarding é pós-login: entra com fade (não é uma "próxima página").
           NÃO recebe wrap desktop — é capa full-bleed (centraliza por conta própria). */}
-      <Stack.Screen name="Onboarding" component={OnboardingScreen} options={{ animation: 'fade', animationDuration: 320 }} />
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} options={capa} />
       {/* Entrar é a CAPA/porta: fade e sem gesto de voltar (não há para onde).
           NÃO recebe wrap desktop — capa full-bleed. */}
-      <Stack.Screen name="Entrar" component={EntrarScreen} options={{ animation: 'fade', animationDuration: 320, gestureEnabled: false }} />
+      <Stack.Screen name="Entrar" component={EntrarScreen} options={{ ...capa, gestureEnabled: false }} />
       {/* Landing pública (web deslogado): capa full-bleed, sem wrap desktop e sem
           gesto de voltar. NÃO tem path no linking (a URL raiz '/' segue sendo '/'
           para preservar o canonical de SEO). */}
@@ -687,8 +750,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
         name="Landing"
         component={LandingScreen}
         options={{
-          animation: 'fade',
-          animationDuration: 320,
+          ...capa,
           gestureEnabled: false,
           title: 'OLLI Orçamentos',
         }}
@@ -696,7 +758,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* As telas abaixo usam `comCentroDesktop`: mobile/APK intacto (pass-through);
           desktop centraliza a tela mobile-like sobre o shell. Referências estáveis
           criadas no módulo (ver topo do arquivo). */}
-      <Stack.Screen name="NovoOrcamento" component={NovoOrcamentoCentro} />
+      <Stack.Screen name="NovoOrcamento" component={NovoOrcamentoCentro} options={criar} />
       <Stack.Screen name="EditarOrcamento" component={NovoOrcamentoCentro} />
       <Stack.Screen name="VisualizarOrcamento" component={VisualizarOrcamentoCentro} />
       {/* Lista de orçamentos — alcançável pela Home ("ver todos") e pela Conta. */}
@@ -715,7 +777,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="CentralDocumentos" component={CentralDocumentosCentro} />
       <Stack.Screen name="DiagnosticoIA" component={DiagnosticoIACentro} />
       {/* Fase 3 — OLLI Voz, Chat e Planos (chegáveis pela Home e pela Conta). */}
-      <Stack.Screen name="OlliVoz" component={OlliVozCentro} />
+      <Stack.Screen name="OlliVoz" component={OlliVozCentro} options={criar} />
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
       <Stack.Screen name="Autopilot" component={AutopilotCentro} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
@@ -734,7 +796,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />
       {/* PMOC Fase 1 — Equipamentos HVAC (inventário + etiqueta QR). */}
       <Stack.Screen name="Equipamento" component={EquipamentoCentro} />
-      <Stack.Screen name="EscanearQr" component={EscanearQrScreen} />
+      <Stack.Screen name="EscanearQr" component={EscanearQrScreen} options={capa} />
       {/* PMOC Fase 2 — planos de manutenção (/pmoc) e o detalhe (/pmoc/:id). */}
       <Stack.Screen name="Pmoc" component={PmocCentro} />
       <Stack.Screen name="PmocPlano" component={PmocPlanoCentro} />

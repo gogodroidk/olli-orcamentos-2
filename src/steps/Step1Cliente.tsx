@@ -4,7 +4,7 @@ import {
   TouchableOpacity, Modal, Alert, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Orcamento, Cliente } from '../types';
 import { searchClientes, saveCliente, getClientes } from '../database/database';
@@ -91,7 +91,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   }, []);
 
   const selectCliente = useCallback((c: Cliente) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     // Escolheu: o teclado fecha e o cartão do cliente fica à vista.
     Keyboard.dismiss();
     onChange(clienteParaOrc(c));
@@ -130,7 +130,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
     }
     if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone) {
       setNcErrors(nextErrors);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       return;
     }
     setNcErrors({});
@@ -155,7 +155,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
       setShowNew(false);
       setNc({});
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Erro', 'Não foi possível salvar o cliente agora. Tente novamente.');
     } finally {
       setSalvandoNovo(false);

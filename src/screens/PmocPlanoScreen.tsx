@@ -5,7 +5,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, comAlfa, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -197,11 +197,11 @@ function PmocPlanoConteudo() {
     try {
       const r = await gerarOrdensDoPlano(id);
       setResultado(r);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       await load();
     } catch (e) {
       setErroGeracao(e instanceof Error ? e.message : 'Não foi possível gerar as ordens agora.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
     } finally {
       setGerando(false);
     }
@@ -789,7 +789,7 @@ function EditorPeriodicidadesModal({
     setSalvando(true);
     try {
       await salvarPeriodicidades(planoId, limpos, equipSel);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       onSalvo();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível salvar as periodicidades.');
@@ -976,7 +976,7 @@ function AprovacaoModal({
     setSalvando(true);
     try {
       await aprovarVersao(planoId, numeroVersao, responsavel, doc);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       onAprovado();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Não foi possível registrar a aprovação.');

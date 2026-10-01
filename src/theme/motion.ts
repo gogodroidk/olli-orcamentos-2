@@ -55,6 +55,21 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 /**
+ * Último valor conhecido da preferência, compartilhado entre instâncias. O hook
+ * resolve assíncrono; sem este cache, TODO componente montado depois do boot
+ * (um toast, uma folha) nascia com `false` e animava o primeiro quadro mesmo com
+ * "Reduzir movimento" ligado. Lido uma vez no import e mantido pelo listener.
+ */
+let reduzirConhecido = false;
+try {
+  AccessibilityInfo.isReduceMotionEnabled?.()
+    .then(v => { reduzirConhecido = !!v; })
+    .catch(() => {});
+} catch {
+  // API ausente: fica false (anima normalmente).
+}
+
+/**
  * `true` quando o usuário pediu MENOS movimento no sistema (iOS/Android "Reduzir
  * movimento", ou `prefers-reduced-motion: reduce` no web via react-native-web).
  * Componentes de motion devem pular o timing e renderizar direto no estado final
@@ -62,12 +77,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
  * `false` (resolve async) e atualiza ao vivo se a preferência mudar. Nunca lança.
  */
 export function useReduzirMovimento(): boolean {
-  const [reduzir, setReduzir] = useState(false);
+  const [reduzir, setReduzir] = useState(reduzirConhecido);
   useEffect(() => {
     let vivo = true;
     try {
       AccessibilityInfo.isReduceMotionEnabled?.()
-        .then(v => { if (vivo) setReduzir(!!v); })
+        .then(v => { reduzirConhecido = !!v; if (vivo) setReduzir(!!v); })
         .catch(() => {});
     } catch {
       // API ausente em alguma plataforma → mantém false (anima normalmente)
@@ -75,6 +90,7 @@ export function useReduzirMovimento(): boolean {
     let sub: { remove?: () => void } | undefined;
     try {
       sub = AccessibilityInfo.addEventListener?.('reduceMotionChanged', (v: boolean) => {
+        reduzirConhecido = !!v;
         if (vivo) setReduzir(!!v);
       }) as { remove?: () => void } | undefined;
     } catch {

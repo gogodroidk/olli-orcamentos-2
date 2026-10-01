@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { confirmar } from './desktop/dialogo';
 import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
@@ -414,7 +414,7 @@ export default function OlliVozScreen() {
       setItens(ok.itens.map(vozItemParaEditavel));
       setObservacao(ok.observacao ?? '');
       setFase('revisao');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     },
     onErro: (m, opts) => {
       setErro(m);
@@ -465,7 +465,7 @@ export default function OlliVozScreen() {
     if (!res.pronto) {
       setConversaBolhas(prev => [...prev, { id: generateId(), papel: 'olli', texto: res.pergunta }]);
       setFase('inicial');
-      Haptics.selectionAsync().catch(() => {});
+      vibrar('selecao');
       return;
     }
     if (!res.itens || res.itens.length === 0) {
@@ -486,7 +486,7 @@ export default function OlliVozScreen() {
     setItens(res.itens.map(vozItemParaEditavel));
     setObservacao(res.observacao ?? '');
     setFase('revisao');
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    vibrar('sucesso');
   }, [usarCredito, consumirUsoIa]);
 
   // Chamada de rede de um turno da conversa (histórico completo, turno mais
@@ -527,7 +527,7 @@ export default function OlliVozScreen() {
       track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz_conversa' });
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const userBolha: ConversaBolha = { id: generateId(), papel: 'user', texto };
     const novasBolhas = [...conversaBolhas, userBolha];
     setConversaBolhas(novasBolhas);
@@ -538,7 +538,7 @@ export default function OlliVozScreen() {
   // qualquer momento; a Olli fecha com o que já entendeu em vez de perguntar mais.
   const encerrarConversa = useCallback(() => {
     if (conversaBolhas.length === 0) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     void chamarConversa(conversaBolhas.map(b => ({ papel: b.papel, texto: b.texto })), true);
   }, [conversaBolhas, chamarConversa]);
 
@@ -580,7 +580,7 @@ export default function OlliVozScreen() {
   // de um modo com o outro confundiria mais do que ajudaria. Trocar de volta
   // pro modo normal NÃO reaproveita nada do que a conversa já tinha juntado.
   const alternarModoConversa = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setModoConversa(prev => !prev);
     setTranscript('');
     setParcial('');
@@ -604,7 +604,7 @@ export default function OlliVozScreen() {
 
   const onMicPressDispositivo = useCallback(() => {
     if (!vozOk) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    vibrar('medio');
     setErro(null);
     setPermissaoNegadaPermanente(false);
     if (voz.ouvindo) {
@@ -641,7 +641,7 @@ export default function OlliVozScreen() {
     // de 2min, quando a fase ainda pode estar 'ouvindo'): sem isso, um toque
     // iniciaria uma 2ª gravação concorrente com o envio em voo.
     if (nuvemAtivo.enviando) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    vibrar('medio');
     setErro(null);
     setPermissaoNegadaPermanente(false);
     if (nuvemAtivo.gravando) {
@@ -665,7 +665,7 @@ export default function OlliVozScreen() {
   // IA grátis esgotada (3 usos/mês): bloqueia o microfone ANTES de gastar
   // bateria/permissão — mostra o teaser caloroso em vez de deixar tocar.
   const irParaPlanos = useCallback((origem: string) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.gateCta, { recurso: 'ia_ilimitada', plano: 'pro', origem });
     nav.navigate('Planos');
   }, [nav]);
@@ -673,7 +673,7 @@ export default function OlliVozScreen() {
   const onMicPress = useCallback(() => {
     if (iaEsgotada && !usarCredito) {
       track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      vibrar('aviso');
       return;
     }
     if (saudacaoVisivel) dispensarSaudacao();
@@ -683,7 +683,7 @@ export default function OlliVozScreen() {
   // ── Gate gracioso: as 3 opções quando a cota grátis acabou ──
   const usarUmCredito = useCallback(() => {
     if (saldoCreditos === 0) return; // defesa em profundidade — o botão já fica desabilitado nesse caso
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.gateCreditoUsado, { recurso: 'ia_ilimitada', origem: 'olli_voz' });
     setErro(null);
     setSemCreditosNoErro(false);
@@ -692,7 +692,7 @@ export default function OlliVozScreen() {
   }, [saldoCreditos]);
 
   const montarNaMao = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.gateMontarNaMao, { recurso: 'ia_ilimitada', origem: 'olli_voz' });
     nav.navigate('NovoOrcamento', {});
   }, [nav]);
@@ -710,7 +710,7 @@ export default function OlliVozScreen() {
         track(Eventos.gateVisto, { recurso: 'ia_ilimitada', plano: 'pro', motivo: 'limite_mensal', origem: 'olli_voz' });
         return;
       }
-      Haptics.selectionAsync().catch(() => {});
+      vibrar('selecao');
       setFase('enviando');
       setErro(null);
       setSemCreditosNoErro(false);
@@ -733,7 +733,7 @@ export default function OlliVozScreen() {
       return;
     }
     pararReconhecimento();
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setFase('enviando');
     setErro(null);
     setSemCreditosNoErro(false);
@@ -782,7 +782,7 @@ export default function OlliVozScreen() {
       setItens(ok.itens.map(vozItemParaEditavel));
       setObservacao(ok.observacao ?? '');
       setFase('revisao');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
     } finally {
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
       setPodeCancelar(false);
@@ -791,14 +791,14 @@ export default function OlliVozScreen() {
   }, [modoVoz, nuvem, transcript, pararReconhecimento, iaEsgotada, usarCredito, creditoRefAtual, consumirUsoIa]);
 
   const cancelarEnvio = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     abortRef.current?.abort();
     nuvem.cancelar();
     nuvemConversa.cancelar();
   }, [nuvem, nuvemConversa]);
 
   const refazer = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setFase('inicial');
     setTranscript('');
     setParcial('');
@@ -850,7 +850,7 @@ export default function OlliVozScreen() {
       await saveOrcamento(orc);
       numeroReservadoRef.current = null;
       track(Eventos.quoteCreated, { origem: 'voz', itens: itens.length });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       // abre a MESMA tela de edição do app para o usuário finalizar (cliente, preços, enviar).
       // `replace`: voltar do editor não cai de novo nesta Revisão (que criaria um 2º orçamento).
       saidaLiberadaRef.current = true;
@@ -887,11 +887,11 @@ export default function OlliVozScreen() {
     setItens(prev => prev.map(i => (i.id === id ? { ...i, ...patch } : i)));
   }
   function removeItem(id: string) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setItens(prev => prev.filter(i => i.id !== id));
   }
   function addItem() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setItens(prev => [...prev, { id: generateId(), descricao: '', quantidade: 1, valorUnitario: null, tipo: 'servico' }]);
   }
 

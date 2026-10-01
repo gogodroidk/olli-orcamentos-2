@@ -4,7 +4,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -55,10 +55,10 @@ export default function ConviteScreen() {
       try {
         const org = await aceitarConvite(token);
         await recarregarTipoConta();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        vibrar('sucesso');
         if (vivo) setEstado({ fase: 'sucesso', nomeOrg: org.nome, papel: rotuloPapel(org.papel) });
       } catch (e: any) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        vibrar('erro');
         if (vivo) setEstado({ fase: 'erro', mensagem: e?.message ?? 'Não consegui aceitar o convite agora.' });
       }
     })();
@@ -66,12 +66,12 @@ export default function ConviteScreen() {
   }, [tokenParam]);
 
   function irParaApp() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
   }
 
   function irParaEntrar() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     nav.reset({ index: 0, routes: [{ name: 'Entrar' }] });
   }
 

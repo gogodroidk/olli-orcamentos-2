@@ -6,7 +6,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, corCategoria, comAlfa, type Cores } from '../theme';
 import {
   getEmpresa, getClientes,
@@ -360,7 +360,7 @@ export default function HomeScreen() {
       Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.cliente.nome} em Clientes para chamar por aqui.`);
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       // Abre o WhatsApp com o lembrete do ofício e registra: o cliente sai da lista
       // por 30 dias (não insiste). Some da tela na hora, igual ao "Adiar".
@@ -373,7 +373,7 @@ export default function HomeScreen() {
   }
 
   async function adiarRadar(item: ClienteParaReconquistar) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setAdiandoId(item.cliente.id);
     try {
       await adiarClienteRadar(item.cliente.id, 30);
@@ -391,7 +391,7 @@ export default function HomeScreen() {
       Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para cobrar por aqui.`);
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       // Mensagem + Pix do prestador já montados pelo radar; o envio fica registrado
       // e o item desce com "cobrado hoje" (o radar não insiste no mesmo dia).
@@ -413,7 +413,7 @@ export default function HomeScreen() {
       Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       await abrirWhatsApp(telefone, mensagemFollowUp(item));
     } catch {
@@ -433,7 +433,7 @@ export default function HomeScreen() {
 
   const estouACaminho = useCallback(async () => {
     if (!proxima || !telefoneProxima) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const mensagem = mensagemEstouACaminho(proxima.clienteNome, temEta ? etaResultado : null);
     try {
       await abrirWhatsApp(telefoneProxima, mensagem);
@@ -447,7 +447,7 @@ export default function HomeScreen() {
   const radarBloqueados = radarLiberado ? 0 : Math.max(0, radarTotal.length - RADAR_GRATIS_QTD);
 
   const irParaPlanos = useCallback((origem: string) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.gateCta, { recurso: 'radar_clientes', plano: 'pro', origem });
     nav.navigate('Planos');
   }, [nav]);
@@ -494,20 +494,20 @@ export default function HomeScreen() {
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
 
   const abrirOlli = () => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setOlliMenu(true);
   };
 
   /** Do menu da OLLI até o palco: as propostas que pedem retorno ficam no topo. */
   const verFollowUps = () => {
     setOlliMenu(false);
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const irPara = (rota: 'OlliVoz' | 'OlliChat') => {
     setOlliMenu(false);
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     nav.navigate(rota);
   };
 
@@ -578,14 +578,14 @@ export default function HomeScreen() {
             cobrancaErro={cobrancaErro}
             onRecarregarCobranca={loadCobranca}
             onCobrar={cobrarNoWhatsApp}
-            onCadastrarPix={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('MeuNegocio'); }}
+            onCadastrarPix={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }}
             followUp={followUp}
             followUpCarregando={followUpCarregando}
             followUpErro={followUpErro}
             onRecarregarFollowUp={loadFollowUp}
             onFollowUp={followUpNoWhatsApp}
             temHistorico={temHistorico}
-            onVerTodos={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Orcamentos'); }}
+            onVerTodos={() => { vibrar('selecao'); nav.navigate('Orcamentos'); }}
           />
         </AnimatedEntrance>
         )}
@@ -613,7 +613,7 @@ export default function HomeScreen() {
                 <MaterialCommunityIcons name="alert-circle-outline" size={30} color={heroAcento} />
                 <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Não deu para carregar</Text>
                 <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Não conseguimos buscar seus dados agora. Verifique a conexão e tente de novo.</Text>
-                <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); load(); }} activeOpacity={0.85}>
+                <TouchableOpacity style={styles.heroBtn} onPress={() => { vibrar('selecao'); load(); }} activeOpacity={0.85}>
                   <MaterialCommunityIcons name="refresh" size={18} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.heroBtnText}>Tentar de novo</Text>
                 </TouchableOpacity>
@@ -630,7 +630,7 @@ export default function HomeScreen() {
                     : 'Sua agenda e seus orçamentos aparecem aqui assim que o download terminar.'}
                 </Text>
                 {download === 'falhou' ? (
-                  <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); tentarDownload(); }} activeOpacity={0.85}>
+                  <TouchableOpacity style={styles.heroBtn} onPress={() => { vibrar('selecao'); tentarDownload(); }} activeOpacity={0.85}>
                     <MaterialCommunityIcons name="refresh" size={18} color={textoSobre(cores.accentLight)} />
                     <Text style={styles.heroBtnText}>Tentar de novo</Text>
                   </TouchableOpacity>
@@ -690,7 +690,7 @@ export default function HomeScreen() {
                   {proxima.endereco ? (
                     <TouchableOpacity
                       style={[styles.heroBtn, { marginTop: 0 }]}
-                      onPress={() => { Haptics.selectionAsync().catch(() => {}); void abrirRotaGoogleMaps(proxima.endereco ?? ''); }}
+                      onPress={() => { vibrar('selecao'); void abrirRotaGoogleMaps(proxima.endereco ?? ''); }}
                       activeOpacity={0.85}
                       accessibilityRole="button"
                       accessibilityLabel={`Traçar rota até ${proxima.endereco}`}
@@ -699,7 +699,7 @@ export default function HomeScreen() {
                       <Text style={styles.heroBtnText}>Traçar rota</Text>
                     </TouchableOpacity>
                   ) : null}
-                  <TouchableOpacity style={styles.heroBtnGhost} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
+                  <TouchableOpacity style={styles.heroBtnGhost} onPress={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
                     <Text style={[styles.heroBtnGhostText, { color: heroAcento }]}>Ver agenda</Text>
                   </TouchableOpacity>
                 </View>
@@ -709,7 +709,7 @@ export default function HomeScreen() {
                 <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={heroAcento} />
                 <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Nenhuma visita agendada</Text>
                 <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Agende seus serviços e organize o seu dia. A próxima parada aparece aqui.</Text>
-                <TouchableOpacity style={styles.heroBtn} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
+                <TouchableOpacity style={styles.heroBtn} onPress={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
                   <MaterialCommunityIcons name="calendar-plus" size={18} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.heroBtnText}>Abrir agenda</Text>
                 </TouchableOpacity>
@@ -890,7 +890,7 @@ export default function HomeScreen() {
         <AnimatedEntrance index={2}>
           <TouchableOpacity
             activeOpacity={0.9}
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Diagnostico'); }}
+            onPress={() => { vibrar('selecao'); nav.navigate('Diagnostico'); }}
           >
             <LinearGradient
               colors={['rgba(11,111,206,0.30)', 'rgba(52,198,217,0.10)']}
@@ -926,29 +926,29 @@ export default function HomeScreen() {
                 icon="format-list-bulleted"
                 label="Todos os orçamentos"
                 tone={cores.accentLight}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Orcamentos'); }}
+                onPress={() => { vibrar('selecao'); nav.navigate('Orcamentos'); }}
               />
               <ShortcutTile
                 icon="cube-outline"
                 label="Produtos"
                 tone={cores.primaryLight}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Produtos'); }}
+                onPress={() => { vibrar('selecao'); nav.navigate('Produtos'); }}
               />
               {mostraHvac && (
                 <ShortcutTile
                   icon="card-search-outline"
                   label="Diagnóstico IA"
                   tone={cores.accentLight}
-                  onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('DiagnosticoIA', {}); }}
+                  onPress={() => { vibrar('selecao'); nav.navigate('DiagnosticoIA', {}); }}
                 />
               )}
             </View>
 
             <View style={styles.processActions}>
-              <TouchableOpacity style={styles.processPrimary} onPress={() => { Haptics.selectionAsync().catch(() => {}); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.processPrimary} onPress={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
                 <Text style={styles.processPrimaryText}>Abrir agenda</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.processGhost} onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('MeuNegocio'); }} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.processGhost} onPress={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }} activeOpacity={0.85}>
                 <Text style={styles.processGhostText}>Meu negócio</Text>
               </TouchableOpacity>
             </View>
@@ -1173,7 +1173,7 @@ function ShortcutTile({ icon, label, tone, onPress }: { icon: keyof typeof Mater
 function Action({ icon, label, color, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; color: string; onPress: () => void }) {
   const styles = useEstilos(criarEstilos);
   return (
-    <TouchableOpacity style={styles.action} onPress={() => { Haptics.selectionAsync().catch(() => {}); onPress(); }} activeOpacity={0.8}>
+    <TouchableOpacity style={styles.action} onPress={() => { vibrar('selecao'); onPress(); }} activeOpacity={0.8}>
       <View style={[styles.actionIcon, { backgroundColor: color + '22', borderColor: color + '44' }]}>
         <MaterialCommunityIcons name={icon} size={24} color={color} />
       </View>

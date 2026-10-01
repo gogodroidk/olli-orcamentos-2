@@ -9,7 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, sobreSecundario, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
@@ -174,7 +174,7 @@ export default function OnboardingScreen() {
   }, []);
 
   function chooseSegmento(id: Segmento) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const vertical = SEGMENTO_PARA_VERTICAL[id];
     setEmp(p => ({
       ...p,
@@ -230,7 +230,7 @@ export default function OnboardingScreen() {
         ...(campos.cidade !== undefined ? { cidade: campos.cidade } : null),
         ...(campos.estado !== undefined ? { estado: campos.estado } : null),
       }));
-      Haptics.selectionAsync().catch(() => {});
+      vibrar('selecao');
     },
     () => ({ endereco: endRef.current.rua, cidade: empRef.current.cidade, estado: empRef.current.estado }),
     // Fluxo único: uma empresa só, sem troca de registro — a chave é constante.
@@ -280,7 +280,7 @@ export default function OnboardingScreen() {
           ? `Achei ${nomeEmpresa}. Confira os dados abaixo.`
           : `Achei ${nomeEmpresa} — detectei ${verticalPorId(principal).label}. Confira e ajuste se precisar.`,
       );
-      Haptics.selectionAsync().catch(() => {});
+      vibrar('selecao');
     } else if (r.estado === 'nao_encontrado') {
       setCnpjInfo('Não achei esse CNPJ. Confira o número ou preencha na mão.');
     } else if (r.estado === 'invalido') {
@@ -407,17 +407,17 @@ export default function OnboardingScreen() {
 
   function avancar() {
     if (!validarEtapa()) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setErrors({});
     setStep(s => Math.min(s + 1, ULTIMO));
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }
 
   function voltar() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setErrors({});
     setStep(s => Math.max(s - 1, 0));
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -441,7 +441,7 @@ export default function OnboardingScreen() {
     try {
       if (!(await confirmarAusenciaAntesDeSalvar())) return;
       await salvarTudo();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       track(Eventos.onboardingCompleted, { comServico: !!servNome.trim() });
       await marcarConcluido();
       // Concluiu = quer usar: cai no wizard do primeiro orçamento (ver irParaApp).
@@ -467,7 +467,7 @@ export default function OnboardingScreen() {
           return;
         }
         setEmp(p => ({ ...p, [field]: resultado.dataUri }));
-        Haptics.selectionAsync().catch(() => {});
+        vibrar('selecao');
       } finally {
         setImagemProcessando(null);
       }
@@ -511,7 +511,7 @@ export default function OnboardingScreen() {
     return (
       <BoasVindas
         insets={insets}
-        onStart={() => { Haptics.selectionAsync().catch(() => {}); setWelcomed(true); }}
+        onStart={() => { vibrar('selecao'); setWelcomed(true); }}
       />
     );
   }

@@ -7,7 +7,6 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
@@ -20,7 +19,11 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AvisoClienteDuplicado } from '../components/AvisoClienteDuplicado';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
 import { getAgendamentos } from '../services/agenda';
-import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
+import { DIAS_RETENCAO_LIXEIRA, restaurarItem } from '../services/lixeira';
+import { confirmar, toast } from '../components/feedback';
+import { PressableAnimado } from '../components/motion/PressableAnimado';
+import { TOQUE } from '../theme/motion';
+import { vibrar } from '../utils/haptico';
 import { clientesParaReconquistar } from '../services/radarClientes';
 import { useCepLookup } from '../services/cep';
 import { AvisoCep } from '../components/AvisoCep';
@@ -111,11 +114,12 @@ function LinhaClienteBase({
   const styles = useEstilos(criarEstilos);
 
   const conteudo = (
-    <TouchableOpacity
+    <PressableAnimado
       style={[styles.card, selecionando && marcado && styles.cardSelected]}
-      activeOpacity={0.85}
+      escala={TOQUE.escalaCard}
       onPress={() => onPress(c)}
       onLongPress={() => onLongPress(c)}
+      accessibilityState={selecionando ? { checked: marcado } : undefined}
     >
       {selecionando && (
         <MaterialCommunityIcons
@@ -166,7 +170,7 @@ function LinhaClienteBase({
           </TouchableOpacity>
         </View>
       )}
-    </TouchableOpacity>
+    </PressableAnimado>
   );
 
   // Cascata de entrada só nas primeiras linhas (ver LIMITE_ANIMACAO_ENTRADA) —
@@ -323,7 +327,7 @@ export default function ClientesScreen() {
     }
     if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone) {
       setErrors(nextErrors);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       return;
     }
     setErrors({});
@@ -340,11 +344,11 @@ export default function ClientesScreen() {
     setSalvando(true);
     try {
       await saveCliente(c);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       setEditing(null);
       load();
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Erro', 'Não foi possível salvar o cliente agora. Tente novamente.');
     } finally {
       setSalvando(false);
@@ -376,22 +380,28 @@ export default function ClientesScreen() {
       : '';
     const mensagem = `${aviso}"${c.nome}" vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`;
 
-    Alert.alert('Excluir cliente', mensagem, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir', style: 'destructive', onPress: async () => {
-          setExcluindoId(c.id);
-          try {
-            await deleteCliente(c.id);
-            load();
-          } catch {
-            Alert.alert('Erro', 'Não foi possível excluir o cliente agora. Tente novamente.');
-          } finally {
-            setExcluindoId(null);
-          }
-        }
-      },
-    ]);
+    const ok = await confirmar({ titulo: 'Excluir cliente?', mensagem, destrutivo: true });
+    if (!ok) return;
+    setExcluindoId(c.id);
+    try {
+      await deleteCliente(c.id);
+      load();
+      // "Desfazer" no próprio toast: o caminho de volta fica a um toque.
+      toast.sucesso(`"${c.nome}" foi para a Lixeira.`, {
+        acao: {
+          rotulo: 'Desfazer',
+          aoTocar: () => {
+            restaurarItem('cliente', c.id)
+              .then(() => { load(); toast.sucesso('Cliente restaurado.'); })
+              .catch(() => toast.erro('Não foi possível restaurar agora. Ele continua na Lixeira (Conta → Lixeira).'));
+          },
+        },
+      });
+    } catch {
+      toast.erro('Não foi possível excluir o cliente agora. Tente novamente.');
+    } finally {
+      setExcluindoId(null);
+    }
   }, [load, podeGerenciarClientes]);
 
   // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
@@ -417,28 +427,29 @@ export default function ClientesScreen() {
     setSelecionados(new Set(filtered.map(c => c.id)));
   }
 
-  function handleExcluirSelecionados() {
+  async function handleExcluirSelecionados() {
     const ids = Array.from(selecionados);
     if (!ids.length || !podeGerenciarClientes) return;
-    Alert.alert(
-      'Excluir selecionados',
-      `${ids.length} cliente${ids.length === 1 ? '' : 's'} ${ids.length === 1 ? 'vai' : 'vão'} para a Lixeira. Você pode restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir', style: 'destructive', onPress: async () => {
-            try {
-              for (const id of ids) {
-                try { await deleteCliente(id); } catch { /* pula um; segue o lote */ }
-              }
-            } finally {
-              sairSelecao();
-              await load();
-            }
-          },
-        },
-      ],
-    );
+    const ok = await confirmar({
+      titulo: `Excluir ${ids.length} cliente${ids.length === 1 ? '' : 's'}?`,
+      mensagem: `${ids.length === 1 ? 'Ele vai' : 'Eles vão'} para a Lixeira. Você pode restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
+      destrutivo: true,
+    });
+    if (!ok) return;
+    let falhas = 0;
+    try {
+      for (const id of ids) {
+        try { await deleteCliente(id); } catch { falhas++; /* pula um; segue o lote */ }
+      }
+    } finally {
+      sairSelecao();
+      await load();
+    }
+    // O lote não esconde falha parcial: "3 de 5" é diferente de "5".
+    const movidos = ids.length - falhas;
+    if (falhas === 0) toast.sucesso(`${movidos} cliente${movidos === 1 ? '' : 's'} na Lixeira.`);
+    else if (movidos > 0) toast.erro(`${movidos} de ${ids.length} foram para a Lixeira. ${falhas} não ${falhas === 1 ? 'pôde' : 'puderam'} ser excluído${falhas === 1 ? '' : 's'} agora — tente de novo.`);
+    else toast.erro('Não foi possível excluir os clientes agora. Tente novamente.');
   }
 
   // Callbacks estáveis (useCallback) parametrizadas pelo item — passadas como
@@ -446,7 +457,7 @@ export default function ClientesScreen() {
   // dentro do renderItem quebraria o React.memo (props sempre "diferentes");
   // aqui a IDENTIDADE da função fica igual entre renders, só o item varia.
   const onPressLinha = useCallback((c: Cliente) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     // Fora do modo de seleção, tocar abre a PÁGINA DO CLIENTE (KPIs, histórico e
     // as ações rápidas que antes ficavam num menu: WhatsApp, ligar, orçamento, agenda).
     if (selecionando) alternarSelecao(c.id); else nav.navigate('ClienteDetalhe', { clienteId: c.id });
@@ -454,7 +465,7 @@ export default function ClientesScreen() {
 
   const onLongPressLinha = useCallback((c: Cliente) => {
     if (!podeGerenciarClientes) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('medio');
     entrarSelecao(c.id);
   }, [entrarSelecao, podeGerenciarClientes]);
 

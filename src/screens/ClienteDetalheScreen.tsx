@@ -35,7 +35,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, corCategoria, type Cores,
@@ -232,7 +232,7 @@ export default function ClienteDetalheScreen() {
         : 'Este cliente não tem telefone cadastrado.');
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const primeiroNome = cliente.nome.trim().split(/\s+/)[0] || cliente.nome;
     try {
       await abrirWhatsApp(numeroWhats, `Olá ${primeiroNome}!`);
@@ -247,7 +247,7 @@ export default function ClienteDetalheScreen() {
       Alert.alert('Ligar', 'Este cliente não tem telefone cadastrado.');
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       await Linking.openURL(`tel:${digitosTelefone}`);
     } catch {
@@ -257,13 +257,13 @@ export default function ClienteDetalheScreen() {
 
   function novoOrcamento() {
     if (!cliente) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     nav.navigate('NovoOrcamento', { clienteId: cliente.id });
   }
 
   function agendarVisita() {
     if (!cliente) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const enderecoVisita = [cliente.endereco, cliente.complemento, cliente.cidade, cliente.estado].filter(Boolean).join(', ');
     nav.navigate('Tabs', {
       screen: 'Agenda',
@@ -274,7 +274,7 @@ export default function ClienteDetalheScreen() {
   function tracarRota() {
     const destino = coordenada ? `${coordenada.lat},${coordenada.lng}` : endereco;
     if (!destino) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     void abrirRotaGoogleMaps(destino);
   }
 
@@ -319,7 +319,7 @@ export default function ClienteDetalheScreen() {
   }
 
   function abrirItem(item: ItemTimeline) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     switch (item.tipo) {
       case 'orcamento':
         nav.navigate('VisualizarOrcamento', { orcamentoId: item.id });
@@ -337,7 +337,7 @@ export default function ClienteDetalheScreen() {
   }
 
   function abrirEquipamento(e: Equipamento) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     nav.navigate('Equipamento', e.qrToken ? { abrirToken: e.qrToken } : undefined);
   }
 

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Animated, StyleSheet, Easing, Platform, AccessibilityInfo } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Typography, useCores, useGradientes, useEstilos, sombrasDe, type Cores } from '../theme';
 import { Motion, useReducedMotion } from '../theme/motion';
 
@@ -61,7 +61,7 @@ export function Celebracao({ visible, tipo, onDone }: Props) {
   // assíncrona e pode mudar enquanto o overlay está visível.
   useEffect(() => {
     if (!visible) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    vibrar('sucesso');
     AccessibilityInfo.announceForAccessibility?.(TEXTOS[tipo]);
   }, [visible, tipo]);
 
