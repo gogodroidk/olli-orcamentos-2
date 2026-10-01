@@ -95,6 +95,12 @@ export interface TipoVisita {
   duracaoMin: number;
   /** Repetição sugerida ao escolher (o prestador muda ou tira). */
   recorrenciaSugerida?: RecorrenciaAgendamento;
+  /**
+   * Serviço ao ar livre ou em altura (sujeito a chuva). Só `true` existe aqui: a
+   * AUSÊNCIA quer dizer "o ofício não sabe dizer" (ex.: pintura pode ser sala ou
+   * fachada), nunca "é interno". Ver `sugerirVisitaExterna`.
+   */
+  externa?: true;
 }
 
 /** Catálogo de ferramentas por vertical (o "documento que vale dinheiro"). */
@@ -137,7 +143,8 @@ export const VERTICAIS: readonly Vertical[] = [
     // fabricantes (o PMOC comercial tem periodicidade própria, por equipamento).
     retorno: { meses: 6, servico: 'a limpeza do ar-condicionado' },
     tiposVisita: [
-      { id: 'refrigeracao_instalacao', label: 'Instalação de ar-condicionado', tipo: 'instalacao', duracaoMin: 180 },
+      // A condensadora vai do lado de fora (fachada, laje, telhado): instalar com chuva é risco.
+      { id: 'refrigeracao_instalacao', label: 'Instalação de ar-condicionado', tipo: 'instalacao', duracaoMin: 180, externa: true },
       { id: 'refrigeracao_limpeza', label: 'Limpeza / higienização de split', tipo: 'limpeza', duracaoMin: 90, recorrenciaSugerida: 'semestral' },
       { id: 'refrigeracao_preventiva', label: 'Manutenção preventiva (PMOC)', tipo: 'manutencao', duracaoMin: 60, recorrenciaSugerida: 'mensal' },
       { id: 'refrigeracao_diagnostico', label: 'Visita técnica / diagnóstico', tipo: 'visita', duracaoMin: 60 },
@@ -228,9 +235,9 @@ export const VERTICAIS: readonly Vertical[] = [
     // Piscina é visita semanal ou quinzenal: cliente sem serviço há 1 mês já saiu da rotina.
     retorno: { meses: 1, servico: 'a manutenção da piscina' },
     tiposVisita: [
-      { id: 'piscina_manutencao', label: 'Manutenção da piscina', tipo: 'manutencao', duracaoMin: 60, recorrenciaSugerida: 'semanal' },
-      { id: 'piscina_choque', label: 'Tratamento de choque', tipo: 'manutencao', duracaoMin: 90 },
-      { id: 'piscina_limpeza_pesada', label: 'Limpeza pesada', tipo: 'limpeza', duracaoMin: 180 },
+      { id: 'piscina_manutencao', label: 'Manutenção da piscina', tipo: 'manutencao', duracaoMin: 60, recorrenciaSugerida: 'semanal', externa: true },
+      { id: 'piscina_choque', label: 'Tratamento de choque', tipo: 'manutencao', duracaoMin: 90, externa: true },
+      { id: 'piscina_limpeza_pesada', label: 'Limpeza pesada', tipo: 'limpeza', duracaoMin: 180, externa: true },
     ],
   },
   {
@@ -260,9 +267,9 @@ export const VERTICAIS: readonly Vertical[] = [
     ferramentas: ['contrato_recorrente'],
     retorno: { meses: 3, servico: 'a manutenção do jardim (poda e adubação)' },
     tiposVisita: [
-      { id: 'jardinagem_manutencao', label: 'Manutenção do jardim', tipo: 'manutencao', duracaoMin: 120, recorrenciaSugerida: 'mensal' },
-      { id: 'jardinagem_poda', label: 'Poda', tipo: 'manutencao', duracaoMin: 180 },
-      { id: 'jardinagem_implantacao', label: 'Implantação de paisagismo', tipo: 'instalacao', duracaoMin: 480 },
+      { id: 'jardinagem_manutencao', label: 'Manutenção do jardim', tipo: 'manutencao', duracaoMin: 120, recorrenciaSugerida: 'mensal', externa: true },
+      { id: 'jardinagem_poda', label: 'Poda', tipo: 'manutencao', duracaoMin: 180, externa: true },
+      { id: 'jardinagem_implantacao', label: 'Implantação de paisagismo', tipo: 'instalacao', duracaoMin: 480, externa: true },
     ],
   },
 ];
@@ -399,4 +406,84 @@ export function tiposDeVisita(verticaisEmpresa: readonly VerticalId[] | undefine
   }
   for (const t of TIPOS_VISITA_SEMPRE) out.push(t);
   return out;
+}
+
+// ─── Visita externa (Onda I1: chuva na visita) ───────────────────────────────
+
+/**
+ * Palavras que, no título/observação da visita, indicam serviço ao ar livre ou em
+ * altura. Casam por palavra inteira, sem acento e sem caixa. A lista é curta de
+ * propósito: palavra ambígua ("área", "parede") faria a sugestão errar mais do que
+ * acertar, e sugestão que erra sempre é sugestão que ninguém lê.
+ */
+export const PALAVRAS_VISITA_EXTERNA: readonly string[] = [
+  'condensadora',
+  'telhado',
+  'telha',
+  'calha',
+  'fachada',
+  'laje',
+  'muro',
+  'jardim',
+  'jardinagem',
+  'poda',
+  'gramado',
+  'piscina',
+  'externa',
+  'externo',
+  'perimetro',
+  'quintal',
+];
+
+const DIACRITICOS_VISITA = new RegExp('[\\u0300-\\u036f]', 'g');
+
+function palavrasDe(texto: string | null | undefined): Set<string> {
+  return new Set(
+    String(texto ?? '')
+      .normalize('NFD')
+      .replace(DIACRITICOS_VISITA, '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Sugere marcar a visita como EXTERNA. Devolve `true` (sugira "externa") ou
+ * `undefined` (sem sugestão — o campo fica "não informado"). NUNCA devolve
+ * `false`: o app não sabe afirmar que um serviço é interno, e "não sei" não pode
+ * virar "não" (é o que desligaria o aviso de chuva calado).
+ *
+ * Ordem: o tipo de visita escolhido no chip (`TipoVisita.externa`), depois as
+ * palavras do título/observação (condensadora, telhado, fachada, jardim, piscina,
+ * dedetização "externa"…). É sugestão: o prestador confirma ou troca.
+ */
+export function sugerirVisitaExterna(entrada: {
+  tipoVisitaId?: string | null;
+  titulo?: string | null;
+  observacao?: string | null;
+}): true | undefined {
+  if (entrada.tipoVisitaId) {
+    for (const v of [...VERTICAIS, VERTICAL_GERAL]) {
+      const t = v.tiposVisita.find((x) => x.id === entrada.tipoVisitaId);
+      if (t?.externa) return true;
+    }
+  }
+  const palavras = palavrasDe(`${entrada.titulo ?? ''} ${entrada.observacao ?? ''}`);
+  return PALAVRAS_VISITA_EXTERNA.some((p) => palavras.has(p)) ? true : undefined;
+}
+
+/** `externa` → coluna INTEGER do SQLite (1/0) ou NULL quando não informado. */
+export function externaParaSqlite(v: boolean | null | undefined): 0 | 1 | null {
+  return v === true ? 1 : v === false ? 0 : null;
+}
+
+/**
+ * Coluna (SQLite 0/1/'1', ou boolean da nuvem) → domínio. Tudo que não for um
+ * sim/não legível vira `undefined` ("não informado") — nunca `false`.
+ */
+export function lerExterna(v: unknown): boolean | undefined {
+  if (v === true || v === 1 || v === '1' || v === 'true') return true;
+  if (v === false || v === 0 || v === '0' || v === 'false') return false;
+  return undefined;
 }
