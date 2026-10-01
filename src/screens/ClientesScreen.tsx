@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
-  KeyboardAvoidingView, Platform, Linking,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoria, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -30,7 +30,6 @@ import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
 import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
-import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
@@ -192,8 +191,6 @@ export default function ClientesScreen() {
   const [editing, setEditing] = useState<Partial<Cliente> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
-  // Cliente "aberto" no menu de ações (CRM: ver orçamentos, novo orçamento, etc.).
-  const [acoes, setAcoes] = useState<Cliente | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -399,7 +396,6 @@ export default function ClientesScreen() {
 
   // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
   const entrarSelecao = useCallback((inicialId?: string) => {
-    setAcoes(null);
     setSelecionando(true);
     setSelecionados(inicialId ? new Set([inicialId]) : new Set());
   }, []);
@@ -445,73 +441,16 @@ export default function ClientesScreen() {
     );
   }
 
-  // ─── AÇÕES DE CRM (a partir do menu do cliente) ───────────────
-  function verOrcamentos(c: Cliente) {
-    setAcoes(null);
-    nav.navigate('Orcamentos', { clienteId: c.id, clienteNome: c.nome });
-  }
-
-  function novoOrcamento(c: Cliente) {
-    setAcoes(null);
-    nav.navigate('NovoOrcamento', { clienteId: c.id });
-  }
-
-  function agendarVisita(c: Cliente) {
-    setAcoes(null);
-    const endereco = [c.endereco, c.complemento, c.cidade, c.estado].filter(Boolean).join(', ');
-    nav.navigate('Tabs', {
-      screen: 'Agenda',
-      params: { novoParaClienteId: c.id, novoParaClienteNome: c.nome, novoEndereco: endereco || undefined },
-    });
-  }
-
-  async function chamarWhatsApp(c: Cliente) {
-    if (!c.telefone?.trim()) {
-      Alert.alert('WhatsApp', 'Este cliente não tem telefone cadastrado.');
-      return;
-    }
-    setAcoes(null);
-    try {
-      await abrirWhatsApp(c.telefone, `Olá ${c.nome}!`);
-    } catch {
-      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
-    }
-  }
-
-  // Mesmo tratamento de telefone ausente do WhatsApp acima — só troca o app
-  // que abre (discador em vez do WhatsApp).
-  async function chamarTelefone(c: Cliente) {
-    if (!c.telefone?.trim()) {
-      Alert.alert('Ligar', 'Este cliente não tem telefone cadastrado.');
-      return;
-    }
-    setAcoes(null);
-    try {
-      await Linking.openURL(`tel:${c.telefone.replace(/[^\d+]/g, '')}`);
-    } catch {
-      Alert.alert('Erro', 'Não foi possível abrir o telefone.');
-    }
-  }
-
-  function editarCliente(c: Cliente) {
-    if (!podeGerenciarClientes) {
-      Alert.alert('Acesso restrito', 'Só o gestor da conta pode editar o cadastro deste cliente.');
-      return;
-    }
-    setAcoes(null);
-    setEditing({ ...c });
-    setIsNew(false);
-    setErrors({});
-  }
-
   // Callbacks estáveis (useCallback) parametrizadas pelo item — passadas como
   // prop para o LinhaCliente memoizado. Recriar closures novas a cada item
   // dentro do renderItem quebraria o React.memo (props sempre "diferentes");
   // aqui a IDENTIDADE da função fica igual entre renders, só o item varia.
   const onPressLinha = useCallback((c: Cliente) => {
     Haptics.selectionAsync().catch(() => {});
-    if (selecionando) alternarSelecao(c.id); else setAcoes(c);
-  }, [selecionando, alternarSelecao]);
+    // Fora do modo de seleção, tocar abre a PÁGINA DO CLIENTE (KPIs, histórico e
+    // as ações rápidas que antes ficavam num menu: WhatsApp, ligar, orçamento, agenda).
+    if (selecionando) alternarSelecao(c.id); else nav.navigate('ClienteDetalhe', { clienteId: c.id });
+  }, [selecionando, alternarSelecao, nav]);
 
   const onLongPressLinha = useCallback((c: Cliente) => {
     if (!podeGerenciarClientes) return;
@@ -557,8 +496,8 @@ export default function ClientesScreen() {
         </View>
       </GradientHeader>
 
-      {/* DICA (1º uso) — o que a tela faz. Tocar num cliente abre o menu de ações
-          (verOrcamentos / novoOrcamento / agendarVisita / chamarWhatsApp / editar). */}
+      {/* DICA (1º uso) — o que a tela faz. Tocar num cliente abre a página dele
+          (ClienteDetalheScreen: histórico, WhatsApp, orçamento, agenda, rota). */}
       {/* Sem padding VERTICAL: DicaContextual devolve null quando dispensada, mas o
           wrapper continua na arvore — um View com paddingTop e sem filho ainda ocupa
           essa altura, deixando um vao permanente depois do "Entendi". O card da dica
@@ -567,7 +506,7 @@ export default function ClientesScreen() {
         <DicaContextual
           id="clientes.acoes"
           icon="gesture-tap"
-          texto="Cadastre seus clientes aqui. Toque em um cliente para criar orçamento, agendar visita ou chamar no WhatsApp na hora."
+          texto="Cadastre seus clientes aqui. Toque em um cliente para ver o histórico, criar orçamento, agendar visita ou chamar no WhatsApp na hora."
         />
       </View>
 
@@ -618,7 +557,11 @@ export default function ClientesScreen() {
                   <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={16} color={cores.accentLight} />
                   <Text style={styles.selEnterLabel}>Selecionar</Text>
                 </TouchableOpacity>
-              ) : null}
+              ) : (
+                // O lápis e a lixeira aparecem apagados para quem não gerencia
+                // clientes: a explicação fica visível, não só no leitor de tela.
+                <Text style={styles.infoMuted}>Acesso restrito ao gestor da conta: editar e excluir clientes.</Text>
+              )}
             </View>
           ) : null
         }
@@ -682,73 +625,7 @@ export default function ClientesScreen() {
         )}
       </Modal>
 
-      {/* MENU DE AÇÕES DO CLIENTE (CRM) */}
-      <Modal visible={!!acoes} transparent animationType="fade" onRequestClose={() => setAcoes(null)}>
-        <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setAcoes(null)}>
-          <TouchableOpacity style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} activeOpacity={1} onPress={() => {}}>
-            <View style={styles.sheetHandle} />
-            {acoes && (
-              <>
-                <View style={styles.sheetHead}>
-                  <View style={styles.avatar}><Text style={styles.avatarText}>{acoes.nome.charAt(0).toUpperCase()}</Text></View>
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.sheetName} numberOfLines={1}>{acoes.nome}</Text>
-                    {acoes.telefone ? <Text style={styles.sheetSub}>{acoes.telefone}</Text> : null}
-                  </View>
-                </View>
-
-                <SheetAction icon="file-document-multiple-outline" color={cores.primaryLight} label="Ver orçamentos" desc="Histórico deste cliente" onPress={() => verOrcamentos(acoes)} />
-                <SheetAction
-                  icon="file-plus-outline"
-                  color={cores.accent} // contraste-ok: prop só vira o fundo/borda translúcidos do chip (color+'1E'/'3A' sobre c.surface — não se toca); o ícone real usa iconColor=cores.accentLight, que já mede 4.73:1 no claro / 6.23:1 no escuro sobre esse fundo (4.73:1)
-                  iconColor={cores.accentLight}
-                  label="Novo orçamento"
-                  desc="Já com este cliente"
-                  onPress={() => novoOrcamento(acoes)}
-                />
-                <SheetAction
-                  icon="calendar-plus"
-                  color="#A78BFA" // contraste-ok: prop só vira o fundo/borda translúcidos do chip (color+'1E'/'3A' sobre c.surface — não se toca); o ícone real usa iconColor, ajustado por corCategoria contra cores.surface (mesmo padrão de "Novo orçamento" acima)
-                  iconColor={corCategoria('#A78BFA', cores.surface)}
-                  label="Agendar visita"
-                  desc="Adicionar à agenda"
-                  onPress={() => agendarVisita(acoes)}
-                />
-                <SheetAction icon="whatsapp" color={cores.whatsapp} label="WhatsApp" desc="Falar com o cliente" onPress={() => chamarWhatsApp(acoes)} />
-                <SheetAction icon="phone" color={cores.success} label="Ligar" desc="Chamada direta" onPress={() => chamarTelefone(acoes)} />
-                 <SheetAction
-                   icon="pencil-outline"
-                   color={cores.onSurfaceVariant}
-                   label="Editar cadastro"
-                   desc={podeGerenciarClientes ? 'Dados do cliente' : 'Acesso restrito ao gestor da conta'}
-                   disabled={!podeGerenciarClientes}
-                   onPress={() => editarCliente(acoes)}
-                 />
-              </>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </View>
-  );
-}
-
-function SheetAction({ icon, color, iconColor, label, desc, onPress, disabled = false }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; color: string; iconColor?: string; label: string; desc: string; onPress: () => void; disabled?: boolean }) {
-  const cores = useCores();
-  const styles = useEstilos(criarEstilos);
-  return (
-    <TouchableOpacity style={[styles.sheetItem, disabled && { opacity: 0.5 }]} onPress={onPress} disabled={disabled} activeOpacity={0.8} accessibilityState={{ disabled }}>
-      <View style={[styles.sheetIcon, { backgroundColor: color + '1E', borderColor: color + '3A' }]}>
-        {/* `color` pinta a tinta/borda do chip (fundo — não se toca). O glifo pode precisar
-            de um tom mais escuro para passar contraste sobre esse chip claro: `iconColor`. */}
-        <MaterialCommunityIcons name={icon} size={20} color={iconColor ?? color} />
-      </View>
-      <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={styles.sheetItemTitle}>{label}</Text>
-        <Text style={styles.sheetItemDesc}>{desc}</Text>
-      </View>
-      <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-    </TouchableOpacity>
   );
 }
 
@@ -806,17 +683,4 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   modalFooter: { padding: Spacing.base, paddingBottom: 28, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   rowFields: { flexDirection: 'row' },
   // (o spinner do CEP virou estado do <AvisoCep>, que fala em vez de só girar)
-
-  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
-  // padrão de overlay de modal — sem chave "scrim" na paleta).
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,12,22,0.72)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 10, paddingBottom: 32 },
-  sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, marginBottom: Spacing.base },
-  sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base, paddingHorizontal: 2 },
-  sheetName: { fontSize: 17, fontWeight: '800', color: c.onSurface },
-  sheetSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
-  sheetItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
-  sheetIcon: { width: 44, height: 44, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  sheetItemTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
-  sheetItemDesc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 });
