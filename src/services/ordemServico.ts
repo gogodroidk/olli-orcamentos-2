@@ -16,11 +16,12 @@ import {
   getOrdemServico as getOrdemServicoDb,
   saveOrdemServico,
   getOrcamento,
+  getEmpresa,
 } from '../database/database';
 import { cancelarLembretesPmoc } from './pmocLembretes';
 import { supabase } from './supabase';
 import { modeloChecklistVertical } from './checklistVertical';
-import { verticalParaIA } from '../hooks/useVerticais';
+import { verticaisEfetivos } from './verticalSegmento';
 import { generateId } from '../utils/id';
 import { concluidoEmDaTransicao } from '../utils/ordemServicoStatus';
 import { montarOSDoOrcamento, proximoNumeroOSDasFontes } from '../utils/ordemServicoDoOrcamento';
@@ -133,9 +134,12 @@ export async function criarOSDeOrcamento(orcamentoId: string): Promise<OrdemServ
   if (jaExiste) {
     throw new Error('Já existe uma ordem de serviço para este orçamento.');
   }
-  // Ofício da empresa → roteiro de checklist (vazio para 'geral'/sem ofício).
-  // `verticalParaIA` nunca lança e só devolve o 1º ofício do cadastro.
-  const vertical = await verticalParaIA();
+  // Ofício da empresa → roteiro de checklist (vazio para 'geral'/sem ofício). Lê o
+  // cadastro direto (mesma regra do `useVerticais`, sem importar o hook: ele puxa
+  // AppState, que o painel não tem). Falha de leitura = sem roteiro, não erro.
+  const vertical = await getEmpresa()
+    .then((emp) => verticaisEfetivos(emp)?.[0])
+    .catch(() => undefined);
   const os = montarOSDoOrcamento(orc, {
     id: generateId(),
     numero: await proximoNumeroOS(),
