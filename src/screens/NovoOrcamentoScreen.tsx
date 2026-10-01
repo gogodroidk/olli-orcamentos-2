@@ -187,8 +187,13 @@ export default function NovoOrcamentoScreen() {
   }, []);
 
   // Evita setState depois de sair da tela (a carga é assíncrona).
+  // Religa no (re)montar: no StrictMode o React desmonta e remonta o efeito, e um
+  // `false` que nunca volta a `true` deixaria a tela presa em "Preparando…".
   const montadoRef = useRef(true);
-  useEffect(() => () => { montadoRef.current = false; }, []);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => { montadoRef.current = false; };
+  }, []);
 
   const carregar = useCallback(async () => {
     setCarga({ estado: 'carregando' });
@@ -281,10 +286,16 @@ export default function NovoOrcamentoScreen() {
         mensagem: 'Os dados do aparelho não carregaram agora. Nada foi perdido — toque em “Tentar de novo”.',
       });
     }
-    // Os params da rota não mudam com a tela aberta: na prática carrega uma vez.
   }, [isEdit, orcamentoId, prefillClienteId, prefillItem, prefillItems, nav]);
 
+  // Carga automática UMA vez só. `carregar` muda de identidade se `nav` ou os
+  // params mudarem (setParams, navigate para a mesma rota) — recarregar aí
+  // zeraria o orçamento que o usuário já está montando. Depois disso, só o
+  // "Tentar de novo" chama `carregar` de novo.
+  const cargaIniciadaRef = useRef(false);
   useEffect(() => {
+    if (cargaIniciadaRef.current) return;
+    cargaIniciadaRef.current = true;
     void carregar();
   }, [carregar]);
 

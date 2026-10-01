@@ -158,6 +158,19 @@ function montarOrcamento(args: {
   return calcTotais({ ...base, ...cliente, itens, informacoesAdicionais });
 }
 
+/**
+ * O que REALMENTE vai junto do cadastro — derivado dos campos, não prometido.
+ * Mesma regra de `clienteParaOrc`: telefone se houver, endereço só com rua.
+ */
+function textoDadosDoCliente(c: Cliente): string {
+  const temTelefone = !!c.telefone?.trim();
+  const temEndereco = !!c.endereco?.trim();
+  if (temTelefone && temEndereco) return 'Vai com telefone e endereço.';
+  if (temTelefone) return 'Vai com o telefone (sem endereço no cadastro).';
+  if (temEndereco) return 'Vai com o endereço (o cadastro não tem telefone).';
+  return 'O cadastro não tem telefone nem endereço — complete no próximo passo.';
+}
+
 /** Pergunta antes de jogar fora o que a voz já juntou (voltar do Android, gesto, seta). */
 function confirmarDescarteVoz(temRevisao: boolean): Promise<boolean> {
   const titulo = temRevisao ? 'Descartar o orçamento da OLLI?' : 'Descartar o que você falou?';
@@ -1498,7 +1511,7 @@ function Revisao(props: {
             <View style={styles.clienteCasadoRow} accessible>
               <MaterialCommunityIcons name="account-check-outline" size={15} color={cores.success} />
               <Text style={styles.clienteCasadoText}>
-                Cliente cadastrado: {props.clienteCasado.nome} · {props.clienteCasado.telefone || 'sem telefone'}. Vai com telefone e endereço.
+                Cliente cadastrado: {props.clienteCasado.nome} · {props.clienteCasado.telefone || 'sem telefone'}. {textoDadosDoCliente(props.clienteCasado)}
               </Text>
             </View>
           ) : props.clientesEstado === 'erro' ? (
