@@ -110,7 +110,8 @@ export default function InicioDesktopScreen() {
   const [aprovadosResumo, setAprovadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
   const [enviadosResumo, setEnviadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
   const [emAbertoResumo, setEmAbertoResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
-  const [contasAReceberResumo, setContasAReceberResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
+  // `semValor`: ganhos sem valor legível — ficam fora da soma, mas não viram "tudo recebido".
+  const [contasAReceberResumo, setContasAReceberResumo] = useState<ResumoOrcamentos & { semValor?: number }>(RESUMO_VAZIO);
   const [ultimosOito, setUltimosOito] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -479,10 +480,21 @@ export default function InicioDesktopScreen() {
         />
         <KpiCard
           titulo="Contas a receber"
-          valor={carregando ? '—' : formatCurrency(valorAReceber)}
+          // NÃO SEI ≠ ZERO: só ganhos sem valor legível → "—", nunca "R$ 0,00".
+          valor={carregando || (!contasAReceberResumo.contagem && contasAReceberResumo.semValor) ? '—' : formatCurrency(valorAReceber)}
           icone="cash-clock"
           corIcone={cores.accentLight}
-          rodape={contasAReceberResumo.contagem ? `${contasAReceberResumo.contagem} aprovado${contasAReceberResumo.contagem === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
+          rodape={(() => {
+            const n = contasAReceberResumo.contagem;
+            const sv = contasAReceberResumo.semValor ?? 0;
+            // Quem ficou fora da soma (sem valor) aparece SEMPRE, inclusive ao lado do saldo.
+            const semValorTxt = sv ? `${sv} sem valor informado` : '';
+            if (n) {
+              const base = `${n} orçamento${n === 1 ? '' : 's'} com saldo a receber`;
+              return semValorTxt ? `${base} · ${semValorTxt}` : base;
+            }
+            return semValorTxt || 'tudo recebido';
+          })()}
           onPress={() => irParaOrcamentos('a_receber')}
           style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
