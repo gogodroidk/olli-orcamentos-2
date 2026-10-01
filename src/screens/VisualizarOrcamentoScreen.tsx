@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, Share, ActivityIndicator, Image,
+  Alert, Share, ActivityIndicator, Image, Modal,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -19,10 +19,19 @@ import { OverlayProgresso } from '../components/OverlayProgresso';
 import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
-import { formatDateTime, nowISO, todayISO } from '../utils/date';
+import { formatDateTime, nowISO } from '../utils/date';
+import { formatarDataBR } from '../utils/formatarData';
 import { generateId } from '../utils/id';
+import { baseParaNovoDocumento, type ModoNovoDocumento } from '../utils/novoDocumento';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
-import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from '../utils/mensagensOrcamento';
+import {
+  montarMensagemCobranca,
+  montarMensagemCobrancaLink,
+  montarMensagemEnvioOrcamento,
+  montarMensagemLinkOrcamento,
+  montarMensagemPedidoAvaliacao,
+} from '../utils/mensagensOrcamento';
+import { PixCobrancaModal } from '../components/PixCobrancaModal';
 import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { criarOSDeOrcamento } from '../services/ordemServico';
 import { estornarPagamento, getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
@@ -73,6 +82,25 @@ const STATUS_MANUAIS: StatusOrcamento[] = [
   'rascunho', 'enviado', 'em_negociacao', 'aguardando_assinatura',
   'aprovado', 'recusado', 'expirado', 'cancelado', 'convertido',
 ];
+
+// O card de ação do topo muda com o status (achado B31: "Fechar negócio" aparecia
+// em orçamento já aprovado e pago). Antes da aprovação: fechar. Depois: cobrar o
+// saldo e, pago, cuidar do pós-venda. Recusado/expirado/cancelado não têm card
+// (a revisão continua no topo).
+const STATUS_PRE_APROVACAO: StatusOrcamento[] = [
+  'rascunho', 'enviado', 'visualizado', 'em_negociacao', 'aguardando_assinatura',
+];
+const STATUS_POS_APROVACAO: StatusOrcamento[] = ['aprovado', 'convertido'];
+
+/**
+ * Mensagem aberta no WhatsApp esperando o prestador dizer se SAIU. Abrir o WhatsApp
+ * não é enviar: quem volta sem mandar não pode ficar com o orçamento "Enviado" nem
+ * com a cota gasta, e a cobrança não pode constar como "enviada hoje".
+ */
+type EnvioPendente =
+  | { tipo: 'orcamento'; reserva: ReservaEnvioOrcamento; semLink: boolean }
+  | { tipo: 'cobranca'; ofertarCodigo: boolean; semLink: boolean };
+
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -122,6 +150,11 @@ export default function VisualizarOrcamentoScreen() {
   const [linking, setLinking] = useState(false);
   const [duplicando, setDuplicando] = useState(false);
   const [criandoOS, setCriandoOS] = useState(false);
+  const [enviandoWhats, setEnviandoWhats] = useState(false);
+  const [cobrando, setCobrando] = useState(false);
+  const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
+  const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
+  const [qrAberto, setQrAberto] = useState(false);
   const [pagamentoAberto, setPagamentoAberto] = useState(false);
   const [estornoAberto, setEstornoAberto] = useState(false);
   const [estornando, setEstornando] = useState(false);
@@ -273,26 +306,99 @@ export default function VisualizarOrcamentoScreen() {
     }
   }
 
+  /**
+   * Envia o orçamento no WhatsApp DO CLIENTE com o LINK de aprovação (o cliente
+   * confere e aprova com um toque; o status volta sozinho). Sem nuvem/login, ou se
+   * o link falhar agora, cai no texto com os dados e "responda aprovado".
+   *
+   * Três etapas com tratamento próprio (antes um try só fazia a falha de uma
+   * parecer falha de outra): autorizar a cota, abrir o WhatsApp e, só quando o
+   * prestador CONFIRMAR que mandou ("Conseguiu enviar?"), consumir a cota e marcar
+   * "Enviado". Abrir o WhatsApp não é enviar.
+   */
   async function handleWhatsApp() {
-    if (!orc) return;
-    if (!orc.clienteTelefone?.trim()) {
-      Alert.alert('WhatsApp', 'Cliente sem telefone cadastrado.');
+    if (!orc || enviandoWhats) return;
+    const telefone = (orc.clienteTelefone || '').trim();
+    if (!telefone) {
+      Alert.alert('WhatsApp', `Cadastre o WhatsApp de ${orc.clienteNome} para enviar por aqui.`);
       return;
     }
-    const msg = montarMensagemEnvioOrcamento(orc, empresa);
+    setEnviandoWhats(true);
     let reserva: ReservaEnvioOrcamento | null = null;
     try {
       reserva = await autorizarEntrega('whatsapp');
-      if (!reserva) return;
-      await abrirWhatsApp(orc.clienteTelefone, msg);
-      await confirmarEntrega(reserva);
-      if (orc.status === 'rascunho') await updateStatus('enviado');
-    } catch (e) {
-      if (reserva?.requerConfirmacao) {
-        await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
-      }
-      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+    } catch {
+      setEnviandoWhats(false);
+      Alert.alert('Não foi possível verificar a cota', 'Confira a conexão e tente de novo.');
+      return;
     }
+    if (!reserva) {
+      setEnviandoWhats(false);
+      return;
+    }
+
+    let mensagem = montarMensagemEnvioOrcamento(orc, empresa);
+    let semLink = false;
+    if (linkConfigurado()) {
+      setOverlayInfo({ titulo: 'Gerando o link do cliente...', subtitulo: 'Preparando a página de aprovação...' });
+      try {
+        const url = await gerarLinkOrcamento(orc, empresa);
+        mensagem = montarMensagemLinkOrcamento(orc, empresa, url);
+      } catch {
+        // O texto sem link ainda fecha negócio ("responda aprovado"); a folha de
+        // confirmação conta que foi sem link, para ninguém achar que foi com.
+        semLink = true;
+      } finally {
+        setOverlayInfo(null);
+      }
+    }
+
+    try {
+      await abrirWhatsApp(telefone, mensagem);
+    } catch {
+      if (reserva.requerConfirmacao) await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
+      Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
+      return;
+    } finally {
+      setEnviandoWhats(false);
+    }
+    setEnvioPendente({ tipo: 'orcamento', reserva, semLink });
+  }
+
+  /** Resposta do "Conseguiu enviar?". Nunca lança. */
+  async function responderEnvio(enviou: boolean) {
+    const pendente = envioPendente;
+    if (!pendente || !orc || confirmandoEnvio) return;
+    if (pendente.tipo === 'orcamento') {
+      if (!enviou) {
+        setEnvioPendente(null);
+        if (pendente.reserva.requerConfirmacao) {
+          await cancelarReservaEnvioOrcamento(orc.id, pendente.reserva.reservaToken);
+        }
+        return;
+      }
+      setConfirmandoEnvio(true);
+      try {
+        await confirmarEntrega(pendente.reserva).catch(() => {});
+        // updateStatus nunca lança e, se não gravar, avisa e mantém o status antigo.
+        if (orc.status === 'rascunho') await updateStatus('enviado');
+      } finally {
+        setConfirmandoEnvio(false);
+        setEnvioPendente(null);
+      }
+      return;
+    }
+    // Cobrança
+    setEnvioPendente(null);
+    if (!enviou) return;
+    try {
+      await registrarCobrancaEnviada(orc.id);
+      setCobradoEm(new Date().toISOString());
+    } catch {
+      Alert.alert('Não consegui registrar a cobrança', 'A mensagem saiu, mas o registro de "cobrado hoje" não foi gravado agora.');
+    }
+    // Sem link de pagamento, o código Pix vai numa SEGUNDA mensagem, sozinho.
+    if (pendente.ofertarCodigo) setQrAberto(true);
   }
 
   async function handleLinkCliente() {
@@ -441,43 +547,42 @@ export default function VisualizarOrcamentoScreen() {
     }
   }
 
-  // Duplica este orçamento como um RASCUNHO NOVO — o caminho para "editar" uma
-  // proposta que o cliente já viu sem mexer no documento original: id novo,
-  // itens com ids novos, número novo (o original fica com o dele), status
-  // volta a rascunho e a assinatura do cliente não viaja (ele assinou aquele
-  // papel, não este). Mesmo padrão do `duplicarComoRascunho` do painel
-  // (webapp/src/pages/olli/orcamentos/FormOrcamento.tsx), portado aqui.
-  async function handleDuplicar() {
+  /**
+   * Cria o documento novo e abre no editor. "Duplicar" = rascunho independente
+   * (outro cliente, outra obra); "Criar revisão" = documento já enviado/aceito não
+   * é sobrescrito: nasce outro rascunho que aponta para o original. A base é a
+   * mesma da lista (`baseParaNovoDocumento`): sem nenhuma assinatura, sem as datas
+   * do documento antigo, validade recalculada a partir de hoje.
+   */
+  async function criarDocumentoNovo(modo: ModoNovoDocumento) {
     if (!orc) return;
     setDuplicando(true);
     try {
       const numero = await getNextOrcamentoNumber();
-      const agora = nowISO();
-      const duplicado: Orcamento = {
-        ...orc,
+      const novo = baseParaNovoDocumento({
+        origem: orc,
+        modo,
         id: generateId(),
         numero,
-        status: 'rascunho',
-        dataEmissao: todayISO(),
-        itens: orc.itens.map(i => ({ ...i, id: generateId() })),
-        assinaturaClienteUri: undefined,
-        dataAssinaturaCliente: undefined,
-        editadoEm: undefined,
-        revisaoDeId: undefined,
-        revisaoDeNumero: undefined,
-        revisaoCriadaEm: undefined,
-        excluidoEm: undefined,
-        criadoEm: agora,
-        atualizadoEm: agora,
-      };
-      await saveOrcamento(duplicado);
-      nav.navigate('EditarOrcamento', { orcamentoId: duplicado.id });
+        gerarId: generateId,
+        empresa,
+      });
+      await saveOrcamento(novo);
+      nav.navigate('EditarOrcamento', { orcamentoId: novo.id });
     } catch (e: any) {
-      Alert.alert('Erro', e?.message || 'Não foi possível duplicar o orçamento.');
+      Alert.alert(
+        'Erro',
+        e?.message || (modo === 'revisao'
+          ? 'Não foi possível criar a revisão deste orçamento.'
+          : 'Não foi possível duplicar o orçamento.'),
+      );
     } finally {
       setDuplicando(false);
     }
   }
+
+  const handleDuplicar = () => criarDocumentoNovo('duplicar');
+  const handleCriarRevisao = () => criarDocumentoNovo('revisao');
 
   async function salvarPagamento(form: PagamentoForm) {
     if (!orc) return;
@@ -514,57 +619,17 @@ export default function VisualizarOrcamentoScreen() {
     }
   }
 
-  /**
-   * Documento já enviado/aceito não é sobrescrito. "Criar revisão" faz uma
-   * cópia rastreável como novo rascunho, apontando para o orçamento original.
-   * Assim o prestador consegue corrigir e enviar a versão nova sem apagar o que
-   * o cliente já recebeu ou aceitou.
-   */
-  async function handleCriarRevisao() {
-    if (!orc) return;
-    setDuplicando(true);
-    try {
-      const numero = await getNextOrcamentoNumber();
-      const agora = nowISO();
-      const revisao: Orcamento = {
-        ...orc,
-        id: generateId(),
-        numero,
-        status: 'rascunho',
-        dataEmissao: todayISO(),
-        itens: orc.itens.map(i => ({ ...i, id: generateId() })),
-        assinaturaClienteUri: undefined,
-        dataAssinaturaCliente: undefined,
-        assinaturaPrestadorUri: undefined,
-        excluidoEm: undefined,
-        editadoEm: undefined,
-        revisaoDeId: orc.revisaoDeId ?? orc.id,
-        revisaoDeNumero: orc.revisaoDeNumero ?? orc.numero,
-        revisaoCriadaEm: agora,
-        criadoEm: agora,
-        atualizadoEm: agora,
-      };
-      await saveOrcamento(revisao);
-      nav.navigate('EditarOrcamento', { orcamentoId: revisao.id });
-    } catch (e: any) {
-      Alert.alert('Erro', e?.message || 'Não foi possível criar a revisão deste orçamento.');
-    } finally {
-      setDuplicando(false);
-    }
-  }
-
   // Converte este orçamento aprovado numa ordem de serviço — mesma função já
   // usada pelo fluxo "De um orçamento aprovado" em OrdemServicoScreen, chamada
-  // direto daqui para poupar os 4-5 toques do caminho normal.
+  // direto daqui para poupar os 4-5 toques do caminho normal — e abre a OS criada.
   async function handleCriarOS() {
     if (!orc) return;
     setCriandoOS(true);
     try {
       const os = await criarOSDeOrcamento(orc.id);
-      Alert.alert('Ordem de serviço criada', `OS nº ${os.numero} criada a partir deste orçamento.`, [
-        { text: 'Depois', style: 'cancel' },
-        { text: 'Ver ordens', onPress: () => nav.navigate('OrdemServico') },
-      ]);
+      // Abre a OS que acabou de nascer (antes levava à lista e o prestador tinha
+      // que procurá-la).
+      nav.navigate('OrdemServico', { ordemId: os.id });
     } catch (e: any) {
       Alert.alert('Não deu', e?.message ?? 'Não consegui criar a OS agora.');
     } finally {
@@ -668,19 +733,80 @@ export default function VisualizarOrcamentoScreen() {
       })
     : null;
 
+  // Qual card de ação o topo mostra (ver STATUS_PRE_APROVACAO).
+  const servicoPago = statusFin === 'pago' || statusFin === 'recibo_emitido';
+  const linkAvaliacao = empresa?.linkGoogleAvaliacoes?.trim() || '';
+  const cardAcao: 'fechar' | 'cobrar' | 'pos_venda' | null = STATUS_PRE_APROVACAO.includes(orc.status)
+    ? 'fechar'
+    : cobrancaPronta
+      ? 'cobrar'
+      : STATUS_POS_APROVACAO.includes(orc.status)
+        ? 'pos_venda'
+        : null;
+
+  /**
+   * Cobra o saldo no WhatsApp do cliente com o LINK de pagamento
+   * (`.../o/<token>#pagar`) em vez do código Pix cru no meio do texto (achado B22:
+   * o cliente copiava a mensagem inteira e o banco recusava). Na página ele vê o
+   * QR e copia só o código.
+   *
+   * Sem link (sem nuvem/login, ou falhou agora): a mensagem vai sem o código e,
+   * depois do "Conseguiu enviar?", o QR abre para mandar o código SOZINHO numa
+   * segunda mensagem. Nunca o código no meio do texto.
+   */
   async function handleCobrar() {
-    if (!orc || !cobrancaPronta) return;
+    if (!orc || !cobrancaPronta || cobrando) return;
     const telefone = (orc.clienteTelefone || '').trim();
     if (!telefone) {
       Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${orc.clienteNome} para cobrar por aqui.`);
       return;
     }
+    const comPix = cobrancaPronta.situacaoPix === 'com_pix';
+    const dias = diasDesdeIso(orc.atualizadoEm || orc.criadoEm);
+    const saldo = cobrancaPronta.valor + 0.005 < orc.valorTotal ? cobrancaPronta.valor : undefined;
+    setCobrando(true);
+    let mensagem = montarMensagemCobranca(orc, dias, undefined, saldo);
+    let semLink = true;
+    if (linkConfigurado()) {
+      setOverlayInfo({ titulo: 'Preparando a cobrança...', subtitulo: 'Gerando o link de pagamento...' });
+      try {
+        const url = await gerarLinkOrcamento(orc, empresa);
+        mensagem = montarMensagemCobrancaLink(orc, dias, `${url}#pagar`, { comPix, valorEmAberto: saldo });
+        semLink = false;
+      } catch {
+        // segue sem link (ver acima)
+      } finally {
+        setOverlayInfo(null);
+      }
+    }
     try {
-      await abrirWhatsApp(telefone, cobrancaPronta.texto);
-      await registrarCobrancaEnviada(orc.id);
-      setCobradoEm(new Date().toISOString());
+      await abrirWhatsApp(telefone, mensagem);
     } catch {
-      Alert.alert('Erro', 'Não foi possível abrir o WhatsApp.');
+      Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
+      return;
+    } finally {
+      setCobrando(false);
+    }
+    setEnvioPendente({ tipo: 'cobranca', ofertarCodigo: semLink && comPix, semLink });
+  }
+
+  /** Pós-venda: pede a avaliação no Google com o link do cadastro (Meu Negócio). */
+  async function handlePedirAvaliacao() {
+    if (!orc) return;
+    const link = empresa?.linkGoogleAvaliacoes?.trim();
+    const telefone = (orc.clienteTelefone || '').trim();
+    if (!link) {
+      nav.navigate('MeuNegocio');
+      return;
+    }
+    if (!telefone) {
+      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${orc.clienteNome} para pedir a avaliação por aqui.`);
+      return;
+    }
+    try {
+      await abrirWhatsApp(telefone, montarMensagemPedidoAvaliacao(orc.clienteNome, link, empresa));
+    } catch {
+      Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
     }
   }
 
@@ -695,7 +821,7 @@ export default function VisualizarOrcamentoScreen() {
           )}
           <ActionBtn icon="content-copy" label="Duplicar" onPress={handleDuplicar} loading={duplicando} />
           <ActionBtn icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
-          <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} />
+          <ActionBtn icon="whatsapp" label="WhatsApp" onPress={handleWhatsApp} loading={enviandoWhats} />
           <ActionBtn icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
           {podeFinanceiro && <ActionBtn icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />}
           {podeFinanceiro && (getStatusFinanceiro(orc, recibos) === 'aguardando_pagamento' || getStatusFinanceiro(orc, recibos) === 'parcial') && (
@@ -752,44 +878,156 @@ export default function VisualizarOrcamentoScreen() {
           </OlliCard>
         )}
 
-        <OlliCard style={styles.closeCard}>
-          <View style={styles.closeTop}>
-            <View style={styles.closeIcon}>
-              <MaterialCommunityIcons name="handshake-outline" size={24} color={cores.accentLight} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.closeEyebrow}>Fechar negócio</Text>
-              <Text style={styles.closeTitle}>Envie uma proposta pronta para aprovação</Text>
-              <Text style={styles.closeSub}>
-                {fechamentoOk}/{fechamentoChecks.length} sinais de confiança configurados
-              </Text>
-            </View>
-          </View>
-
-          <OlliPressable style={styles.closePrimary} onPress={handleWhatsApp} haptic="light">
-            <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />
-            <Text style={styles.closePrimaryText}>Enviar no WhatsApp</Text>
-          </OlliPressable>
-
-          <View style={styles.closeActions}>
-            <CloseAction icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
-            <CloseAction icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
-            <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
-          </View>
-
-          <View style={styles.closeChecklist}>
-            {fechamentoChecks.map(check => (
-              <View key={check.label} style={styles.closeCheck}>
-                <MaterialCommunityIcons
-                  name={check.ok ? 'check-circle' : 'alert-circle-outline'}
-                  size={15}
-                  color={check.ok ? cores.success : cores.warning}
-                />
-                <Text style={[styles.closeCheckText, !check.ok && styles.closeCheckTextWarn]}>{check.label}</Text>
+        {/* CARD DE AÇÃO POR STATUS — antes da aprovação, fechar; com saldo aberto,
+            cobrar; aprovado e sem saldo, o próximo passo (agendar, avaliação). */}
+        {cardAcao === 'fechar' && (
+          <OlliCard style={styles.closeCard}>
+            <View style={styles.closeTop}>
+              <View style={styles.closeIcon}>
+                <MaterialCommunityIcons name="handshake-outline" size={24} color={cores.accentLight} />
               </View>
-            ))}
-          </View>
-        </OlliCard>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.closeEyebrow}>Fechar negócio</Text>
+                <Text style={styles.closeTitle}>
+                  {orc.status === 'rascunho' ? 'Envie uma proposta pronta para aprovação' : 'A proposta está com o cliente'}
+                </Text>
+                <Text style={styles.closeSub}>
+                  {fechamentoOk}/{fechamentoChecks.length} sinais de confiança configurados
+                </Text>
+              </View>
+            </View>
+
+            <OlliPressable style={styles.closePrimary} onPress={handleWhatsApp} haptic="light" disabled={enviandoWhats}>
+              {enviandoWhats
+                ? <ActivityIndicator size="small" color={textoSobreAccent} />
+                : <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />}
+              <Text style={styles.closePrimaryText}>
+                {orc.status === 'rascunho' ? 'Enviar no WhatsApp' : 'Reenviar no WhatsApp'}
+              </Text>
+            </OlliPressable>
+
+            <View style={styles.closeActions}>
+              <CloseAction icon="link-variant" label="Link" onPress={handleLinkCliente} loading={linking} />
+              <CloseAction icon="file-pdf-box" label="PDF" onPress={handleShare} loading={sharing} />
+              <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />
+            </View>
+
+            <View style={styles.closeChecklist}>
+              {fechamentoChecks.map(check => (
+                <View key={check.label} style={styles.closeCheck}>
+                  <MaterialCommunityIcons
+                    name={check.ok ? 'check-circle' : 'alert-circle-outline'}
+                    size={15}
+                    color={check.ok ? cores.success : cores.warning}
+                  />
+                  <Text style={[styles.closeCheckText, !check.ok && styles.closeCheckTextWarn]}>{check.label}</Text>
+                </View>
+              ))}
+            </View>
+          </OlliCard>
+        )}
+
+        {cardAcao === 'cobrar' && cobrancaPronta && (
+          <OlliCard style={styles.closeCard}>
+            <View style={styles.closeTop}>
+              <View style={styles.closeIcon}>
+                <MaterialCommunityIcons name="cash-clock" size={24} color={cores.accentLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.closeEyebrow}>Receber</Text>
+                <Text style={styles.closeTitle}>Falta receber {formatCurrency(cobrancaPronta.valor)}</Text>
+                <Text style={styles.closeSub}>
+                  {statusFin === 'parcial'
+                    ? `Recebido ${formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de ${formatCurrency(orc.valorTotal)}.`
+                    : 'Cobre no WhatsApp ou mostre o QR do Pix para o cliente pagar na hora.'}
+                </Text>
+              </View>
+            </View>
+
+            <OlliPressable
+              style={styles.closePrimary}
+              onPress={handleCobrar}
+              haptic="light"
+              disabled={cobrando}
+              accessibilityLabel={`Cobrar ${formatCurrency(cobrancaPronta.valor)} no WhatsApp`}
+            >
+              {cobrando
+                ? <ActivityIndicator size="small" color={textoSobreAccent} />
+                : <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />}
+              <Text style={styles.closePrimaryText}>Cobrar {formatCurrency(cobrancaPronta.valor)} no WhatsApp</Text>
+            </OlliPressable>
+
+            <View style={styles.closeActions}>
+              {cobrancaPronta.situacaoPix === 'com_pix' && (
+                <CloseAction icon="qrcode" label="Mostrar QR" onPress={() => setQrAberto(true)} />
+              )}
+              <CloseAction icon="cash-check" label="Registrar" onPress={() => setPagamentoAberto(true)} />
+              {orc.status === 'aprovado' && (
+                <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+              )}
+            </View>
+
+            {cobradoEm ? (
+              <Text style={[styles.financeiroNota, { marginTop: 10, marginBottom: 0 }]}>
+                {enviadoHoje(cobradoEm) ? 'Cobrança enviada hoje.' : `Última cobrança enviada em ${formatDateTime(cobradoEm)}.`}
+              </Text>
+            ) : null}
+            {avisoPix(cobrancaPronta.situacaoPix) && (
+              <TouchableOpacity onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.8} style={styles.cobrancaAviso}>
+                <MaterialCommunityIcons name="key-variant" size={20} color={cores.warning} />
+                <Text style={styles.cobrancaAvisoTexto}>{avisoPix(cobrancaPronta.situacaoPix)?.titulo}</Text>
+                <Text style={styles.cobrancaAvisoAcao}>{avisoPix(cobrancaPronta.situacaoPix)?.acao}</Text>
+              </TouchableOpacity>
+            )}
+          </OlliCard>
+        )}
+
+        {cardAcao === 'pos_venda' && (
+          <OlliCard style={styles.closeCard}>
+            <View style={styles.closeTop}>
+              <View style={styles.closeIcon}>
+                <MaterialCommunityIcons name={servicoPago ? 'check-decagram' : 'calendar-check'} size={24} color={cores.accentLight} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.closeEyebrow}>Próximo passo</Text>
+                <Text style={styles.closeTitle}>{servicoPago ? 'Serviço pago' : 'Orçamento aprovado'}</Text>
+                <Text style={styles.closeSub}>
+                  {servicoPago
+                    ? 'Peça uma avaliação enquanto o cliente está satisfeito e combine o próximo serviço.'
+                    : 'Agende o serviço e crie a ordem de serviço para a equipe.'}
+                </Text>
+              </View>
+            </View>
+
+            {servicoPago ? (
+              <OlliPressable style={styles.closePrimary} onPress={handlePedirAvaliacao} haptic="light">
+                <MaterialCommunityIcons
+                  name={linkAvaliacao ? 'star-outline' : 'link-variant-plus'}
+                  size={20}
+                  color={textoSobreAccent}
+                />
+                <Text style={styles.closePrimaryText}>
+                  {linkAvaliacao ? 'Pedir avaliação no WhatsApp' : 'Cadastrar link de avaliação do Google'}
+                </Text>
+              </OlliPressable>
+            ) : (
+              <OlliPressable style={styles.closePrimary} onPress={agendarVisita} haptic="light">
+                <MaterialCommunityIcons name="calendar-plus" size={20} color={textoSobreAccent} />
+                <Text style={styles.closePrimaryText}>Agendar o serviço</Text>
+              </OlliPressable>
+            )}
+
+            <View style={styles.closeActions}>
+              {servicoPago && <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />}
+              {orc.status === 'aprovado' && (
+                <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+              )}
+              {podeFinanceiro && (
+                <CloseAction icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
+              )}
+            </View>
+          </OlliCard>
+        )}
 
         {/* ACEITE DO CLIENTE (assinatura no dedo) — o palco do gesto que fecha o
             serviço em campo. Fica ALTO na página de propósito: o motor já sabia
@@ -933,28 +1171,6 @@ export default function VisualizarOrcamentoScreen() {
           {getStatusFinanceiro(orc, recibos) === 'parcial' && (
             <Text style={styles.financeiroNota}>Recebido {formatCurrency(totalRecebidoDoOrcamento(orc.id, recibos))} de {formatCurrency(orc.valorTotal)}. O botão acima registra apenas o próximo recebimento.</Text>
           )}
-          {/* COBRAR COM 1 TOQUE — aprovado e ainda com saldo: WhatsApp do cliente com
-              valor, referência e o Pix do prestador (o saldo, se já pagou parte). */}
-          {cobrancaPronta && (
-            <View style={{ marginTop: 10, gap: 8 }}>
-              <OlliPressable style={styles.closePrimary} onPress={handleCobrar} haptic="light" accessibilityLabel={`Cobrar ${formatCurrency(cobrancaPronta.valor)} no WhatsApp`}>
-                <MaterialCommunityIcons name="whatsapp" size={20} color={textoSobreAccent} />
-                <Text style={styles.closePrimaryText}>Cobrar {formatCurrency(cobrancaPronta.valor)} no WhatsApp</Text>
-              </OlliPressable>
-              {cobradoEm ? (
-                <Text style={styles.financeiroNota}>
-                  {enviadoHoje(cobradoEm) ? 'Cobrança enviada hoje.' : `Última cobrança enviada em ${formatDateTime(cobradoEm)}.`}
-                </Text>
-              ) : null}
-              {avisoPix(cobrancaPronta.situacaoPix) && (
-                <TouchableOpacity onPress={() => nav.navigate('MeuNegocio')} activeOpacity={0.8} style={styles.cobrancaAviso}>
-                  <MaterialCommunityIcons name="key-variant" size={20} color={cores.warning} />
-                  <Text style={styles.cobrancaAvisoTexto}>{avisoPix(cobrancaPronta.situacaoPix)?.titulo}</Text>
-                  <Text style={styles.cobrancaAvisoAcao}>{avisoPix(cobrancaPronta.situacaoPix)?.acao}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
           {recibos.some((recibo) => recibo.orcamentoId === orc.id && recibo.ledgerStatus === 'pendente') && (
             <Text style={styles.financeiroNota}>O recebimento foi salvo neste aparelho e está aguardando confirmação da nuvem. Não registre o mesmo pagamento novamente.</Text>
           )}
@@ -998,9 +1214,9 @@ export default function VisualizarOrcamentoScreen() {
         <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
           <Text style={styles.cardTitle}>Detalhes</Text>
           {orc.modeloNome && <Row label="Modelo PDF" value={orc.modeloNome} />}
-          {orc.validadeOrcamento && <Row label="Válido até" value={orc.validadeOrcamento} />}
-          {orc.dataVisitaTecnica && <Row label="Visita técnica" value={orc.dataVisitaTecnica} />}
-          {orc.agendamentoServico && <Row label="Agendamento" value={orc.agendamentoServico} />}
+          {orc.validadeOrcamento && <Row label="Válido até" value={formatarDataBR(orc.validadeOrcamento)} />}
+          {orc.dataVisitaTecnica && <Row label="Visita técnica" value={formatarDataBR(orc.dataVisitaTecnica)} />}
+          {orc.agendamentoServico && <Row label="Agendamento" value={formatarDataBR(orc.agendamentoServico)} />}
           {orc.condicoesPagamento && <Row label="Condições comerciais" value={orc.condicoesPagamento} />}
           {orc.garantia && <Row label="Garantia" value={orc.garantia} />}
           {orc.condicoesContratuais && (
@@ -1065,7 +1281,7 @@ export default function VisualizarOrcamentoScreen() {
                 </View>
                 <Text style={styles.versaoResumo}>
                   {(v.dados.itens?.length ?? 0)} {(v.dados.itens?.length ?? 0) === 1 ? 'item' : 'itens'}
-                  {v.dados.validadeOrcamento ? ` · válido até ${v.dados.validadeOrcamento}` : ''}
+                  {v.dados.validadeOrcamento ? ` · válido até ${formatarDataBR(v.dados.validadeOrcamento)}` : ''}
                 </Text>
               </View>
             ))}
@@ -1099,7 +1315,86 @@ export default function VisualizarOrcamentoScreen() {
         aoFechar={() => setEstornoAberto(false)}
         aoSalvar={salvarEstorno}
       />}
+      {cobrancaPronta && cobrancaPronta.situacaoPix === 'com_pix' && (
+        <PixCobrancaModal
+          visivel={qrAberto}
+          aoFechar={() => setQrAberto(false)}
+          brcode={cobrancaPronta.pixCopiaECola}
+          valor={cobrancaPronta.valor}
+          referencia={`Orçamento nº ${orc.numero} · ${orc.clienteNome}`}
+        />
+      )}
+      <ConfirmarEnvioSheet
+        visivel={!!envioPendente}
+        ocupado={confirmandoEnvio}
+        titulo={envioPendente?.tipo === 'cobranca' ? 'Conseguiu enviar a cobrança?' : 'Conseguiu enviar o orçamento?'}
+        mensagem={textoConfirmacaoEnvio(envioPendente, orc)}
+        aoResponder={responderEnvio}
+      />
     </View>
+  );
+}
+
+/** Texto da folha "Conseguiu enviar?" — diz o que acontece em cada resposta. */
+function textoConfirmacaoEnvio(pendente: EnvioPendente | null, orc: Orcamento): string {
+  if (!pendente) return '';
+  if (pendente.tipo === 'orcamento') {
+    const efeito = orc.status === 'rascunho'
+      ? `Confirme só se a mensagem saiu para ${orc.clienteNome}: aí o orçamento passa para Enviado.`
+      : `Confirme só se a mensagem saiu para ${orc.clienteNome}.`;
+    return pendente.semLink
+      ? `${efeito} A mensagem foi sem o link de aprovação (não consegui gerá-lo agora): o cliente aprova respondendo no WhatsApp.`
+      : efeito;
+  }
+  const efeito = 'Confirmando, fica registrado que você cobrou hoje.';
+  if (!pendente.semLink) return efeito;
+  return pendente.ofertarCodigo
+    ? `${efeito} A mensagem foi sem o link de pagamento (não consegui gerá-lo agora). Em seguida, envie o código Pix sozinho numa segunda mensagem.`
+    : `${efeito} A mensagem foi sem o link de pagamento (não consegui gerá-lo agora).`;
+}
+
+/**
+ * Folha "Conseguiu enviar?" — aparece quando o prestador volta do WhatsApp. Voltar
+ * pelo botão do sistema conta como "Não enviei" (nada é marcado sem confirmação).
+ */
+function ConfirmarEnvioSheet({ visivel, titulo, mensagem, ocupado, aoResponder }: {
+  visivel: boolean;
+  titulo: string;
+  mensagem: string;
+  ocupado: boolean;
+  aoResponder: (enviou: boolean) => void;
+}) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  return (
+    <Modal visible={visivel} transparent animationType="slide" onRequestClose={() => aoResponder(false)}>
+      <View style={styles.sheetFundo}>
+        <View style={styles.sheet} accessibilityViewIsModal>
+          <View style={styles.sheetAlca} />
+          <Text style={styles.sheetTitulo} accessibilityRole="header">{titulo}</Text>
+          {mensagem ? <Text style={styles.sheetTexto}>{mensagem}</Text> : null}
+          <OlliButton
+            label="Sim, enviei"
+            variant="gradient"
+            fullWidth
+            loading={ocupado}
+            disabled={ocupado}
+            onPress={() => aoResponder(true)}
+            icon={<MaterialCommunityIcons name="check" size={18} color="#fff" />}
+            style={{ marginTop: Spacing.base }}
+          />
+          <OlliButton
+            label="Não enviei"
+            variant="ghost"
+            fullWidth
+            disabled={ocupado}
+            onPress={() => aoResponder(false)}
+            icon={<MaterialCommunityIcons name="close" size={18} color={cores.onSurfaceVariant} />}
+            style={{ marginTop: Spacing.sm }}
+          />
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1318,6 +1613,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginTop: 8 },
   cobrancaAvisoTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
   cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+
+  // Folha "Conseguiu enviar?"
+  sheetFundo: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  sheet: {
+    backgroundColor: c.surface,
+    borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl,
+    borderWidth: 1, borderColor: c.strokeGlow,
+    padding: Spacing.lg, paddingBottom: Spacing.xl,
+    ...sombrasDe(c).lg,
+  },
+  sheetAlca: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outline, marginBottom: Spacing.base },
+  sheetTitulo: { fontSize: 18, fontWeight: '800', color: c.onSurface },
+  sheetTexto: { fontSize: 13.5, color: c.onSurfaceVariant, lineHeight: 20, marginTop: 6 },
 
   // Histórico de versões
   versoesHeader: { flexDirection: 'row', alignItems: 'center' },

@@ -2,7 +2,7 @@
 // também nos testes em Node (type stripping exige o caminho completo) e no worker.
 import type { Empresa, Orcamento } from '../types';
 import { formatCurrency } from './currency.ts';
-import { formatDateBR } from './date.ts';
+import { formatarDataBR } from './formatarData.ts';
 
 function primeiroNome(nome?: string): string {
   return (nome ?? '').trim().split(/\s+/)[0] || 'tudo bem';
@@ -19,7 +19,7 @@ function resumoItens(orc: Orcamento): string {
 function dadosComerciais(orc: Orcamento): string[] {
   const linhas = [
     `Total: ${formatCurrency(orc.valorTotal)}`,
-    orc.validadeOrcamento ? `Validade: até ${formatDateBR(orc.validadeOrcamento)}` : '',
+    orc.validadeOrcamento ? `Validade: até ${formatarDataBR(orc.validadeOrcamento)}` : '',
     orc.garantia ? `Garantia: ${orc.garantia}` : '',
     orc.condicoesPagamento ? `Condições comerciais: ${orc.condicoesPagamento}` : '',
   ];
@@ -63,7 +63,7 @@ export function montarMensagemLinkOrcamento(orc: Orcamento, empresa: Empresa | n
 export function montarMensagemFollowUpOrcamento(orc: Orcamento, empresa?: Empresa | null): string {
   const linhas = [
     `Olá, ${primeiroNome(orc.clienteNome)}! Passando para saber se posso te ajudar com o orçamento nº ${orc.numero}.`,
-    `Ele está em ${formatCurrency(orc.valorTotal)}${orc.validadeOrcamento ? ` e vale até ${formatDateBR(orc.validadeOrcamento)}` : ''}.`,
+    `Ele está em ${formatCurrency(orc.valorTotal)}${orc.validadeOrcamento ? ` e vale até ${formatarDataBR(orc.validadeOrcamento)}` : ''}.`,
     'Se estiver tudo certo, posso deixar aprovado e combinar o próximo passo.',
     empresa?.telefone || empresa?.whatsapp ? `Contato: ${empresa.telefone || empresa.whatsapp}` : '',
   ];
@@ -124,23 +124,7 @@ export function montarMensagemCobranca(
   pixCopiaECola?: string,
   valorEmAberto?: number,
 ): string {
-  // Tom escalonado por tempo parado (dunning cordial): recém-aprovado é leve;
-  // quanto mais dias, mais direto — sem nunca soar a cobrança agressiva.
-  const corpo =
-    diasParado >= 7
-      ? `Já faz ${diasParado} dias e o pagamento ainda não caiu — consigo te ajudar a resolver isso hoje?`
-      : diasParado >= 3
-        ? `Já faz ${diasParado} dias e ainda não recebi o pagamento — posso te ajudar a fechar isso?`
-        : 'Posso te ajudar a fechar o pagamento?';
-
-  const parcial =
-    typeof valorEmAberto === 'number' && valorEmAberto > 0 && valorEmAberto + 0.005 < orc.valorTotal;
-  const linhas = [
-    parcial
-      ? `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}. Falta ${formatCurrency(valorEmAberto)} para fechar.`
-      : `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`,
-    corpo,
-  ];
+  const linhas = [aberturaCobranca(orc, valorEmAberto), corpoCobranca(diasParado)];
   // Pix Copia e Cola PRONTO (valor já embutido): o cliente copia e paga na hora.
   // Fica na ÚLTIMA linha, sozinho, para ser fácil de selecionar/copiar no WhatsApp.
   if (pixCopiaECola) {
@@ -150,6 +134,54 @@ export function montarMensagemCobranca(
     linhas.push('Qualquer dúvida sobre forma de pagamento, é só me chamar por aqui.');
   }
   return linhas.filter(Boolean).join('\n');
+}
+
+/**
+ * Cobrança com o LINK do orçamento (`.../o/<token>#pagar`) no lugar do código Pix
+ * cru no meio do texto: no WhatsApp, segurar a mensagem copia o texto INTEIRO, e o
+ * banco recusa o "código" com a saudação junto. Na página o cliente vê o QR e um
+ * botão que copia só o código.
+ *
+ * `comPix` diz se o prestador tem chave Pix válida (a página só mostra o Pix nesse
+ * caso). Sem Pix a mensagem não promete pagamento pelo link: manda conferir o
+ * orçamento e combinar a forma de pagamento.
+ */
+export function montarMensagemCobrancaLink(
+  orc: Orcamento,
+  diasParado: number,
+  url: string,
+  opcoes: { comPix: boolean; valorEmAberto?: number },
+): string {
+  const linhas = [
+    aberturaCobranca(orc, opcoes.valorEmAberto),
+    corpoCobranca(diasParado),
+    opcoes.comPix
+      ? 'Pelo link você confere o orçamento e paga por Pix (QR ou código para copiar):'
+      : 'Pelo link você confere o orçamento. Qualquer dúvida sobre forma de pagamento, é só me chamar por aqui:',
+    url,
+  ];
+  return linhas.filter(Boolean).join('\n');
+}
+
+/** 1ª linha da cobrança: referência, total aprovado e, se pagou parte, quanto falta. */
+function aberturaCobranca(orc: Orcamento, valorEmAberto?: number): string {
+  const parcial =
+    typeof valorEmAberto === 'number' && valorEmAberto > 0 && valorEmAberto + 0.005 < orc.valorTotal;
+  return parcial
+    ? `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}. Falta ${formatCurrency(valorEmAberto)} para fechar.`
+    : `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`;
+}
+
+/**
+ * Tom escalonado por tempo parado (dunning cordial): recém-aprovado é leve;
+ * quanto mais dias, mais direto — sem nunca soar a cobrança agressiva.
+ */
+function corpoCobranca(diasParado: number): string {
+  return diasParado >= 7
+    ? `Já faz ${diasParado} dias e o pagamento ainda não caiu — consigo te ajudar a resolver isso hoje?`
+    : diasParado >= 3
+      ? `Já faz ${diasParado} dias e ainda não recebi o pagamento — posso te ajudar a fechar isso?`
+      : 'Posso te ajudar a fechar o pagamento?';
 }
 
 /**
