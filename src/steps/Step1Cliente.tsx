@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
-  TouchableOpacity, Modal, ActivityIndicator, Alert,
+  TouchableOpacity, Modal, Alert, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -18,6 +18,16 @@ import { useCepLookup } from '../services/cep';
 import { AvisoCep } from '../components/AvisoCep';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
 import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
+import { clienteParaOrc } from '../utils/orcamentoBase';
+
+/** Quantos clientes recentes aparecem antes de digitar na busca. */
+const QTD_RECENTES = 5;
+
+/** Mais recentes primeiro: última alteração do cadastro (ou criação). */
+function clientesRecentes(lista: Cliente[]): Cliente[] {
+  const quando = (c: Cliente) => c.atualizadoEm || c.criadoEm || '';
+  return [...lista].sort((a, b) => quando(b).localeCompare(quando(a))).slice(0, QTD_RECENTES);
+}
 
 interface Props {
   orc: Orcamento;
@@ -38,15 +48,19 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   // explícitos (nunca colapsar erro em "sem duplicata"): se a leitura falhar,
   // `erroClientesDuplicados` avisa que a checagem não rodou — ver
   // AvisoClienteDuplicado — mas o cadastro de cliente novo continua liberado.
+  // A mesma leitura alimenta os "recentes" antes de digitar — e aí `carregouClientes`
+  // separa "ainda lendo" de "leu e não tem cliente" (3 estados, com o erro acima).
   const [todosClientes, setTodosClientes] = useState<Cliente[]>([]);
   const [erroClientesDuplicados, setErroClientesDuplicados] = useState(false);
+  const [carregouClientes, setCarregouClientes] = useState(false);
   useEffect(() => {
     let vivo = true;
     getClientes()
-      .then(lista => { if (vivo) { setTodosClientes(lista); setErroClientesDuplicados(false); } })
+      .then(lista => { if (vivo) { setTodosClientes(lista); setErroClientesDuplicados(false); setCarregouClientes(true); } })
       .catch(() => { if (vivo) setErroClientesDuplicados(true); });
     return () => { vivo = false; };
   }, []);
+  const recentes = useMemo(() => clientesRecentes(todosClientes), [todosClientes]);
   const duplicados = useMemo(
     () => encontrarClientesDuplicados(todosClientes, { telefone: nc.telefone, cpf: nc.cpf, cnpj: nc.cnpj }),
     [todosClientes, nc.telefone, nc.cpf, nc.cnpj],
@@ -78,15 +92,9 @@ export default function Step1Cliente({ orc, onChange }: Props) {
 
   const selectCliente = useCallback((c: Cliente) => {
     Haptics.selectionAsync().catch(() => {});
-    onChange({
-      clienteId: c.id,
-      clienteNome: c.nome,
-      clienteTelefone: c.telefone,
-      clienteCpfCnpj: c.cpf ?? c.cnpj,
-      clienteEndereco: c.endereco
-        ? [c.endereco, c.complemento, c.cidade, c.estado].filter(Boolean).join(', ')
-        : undefined,
-    });
+    // Escolheu: o teclado fecha e o cartão do cliente fica à vista.
+    Keyboard.dismiss();
+    onChange(clienteParaOrc(c));
     setQuery(c.nome);
     setShowResults(false);
   }, [onChange]);
@@ -204,6 +212,37 @@ export default function Step1Cliente({ orc, onChange }: Props) {
         <Text style={styles.noResults}>Nenhum cliente encontrado. Crie um novo abaixo.</Text>
       )}
 
+      {/* RECENTES — antes de digitar, os últimos clientes a um toque */}
+      {!selected && query.length < 2 && recentes.length > 0 && (
+        <View>
+          <Text style={styles.recentesTitulo}>Clientes recentes</Text>
+          <View style={styles.dropdown}>
+            {recentes.map(c => (
+              <TouchableOpacity
+                key={c.id}
+                style={styles.dropItem}
+                onPress={() => selectCliente(c)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Usar ${c.nome}${c.telefone ? `, ${c.telefone}` : ''}`}
+              >
+                <View style={styles.dropAvatar}>
+                  <Text style={styles.dropAvatarText}>{c.nome.charAt(0).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.dropName}>{c.nome}</Text>
+                  <Text style={styles.dropPhone}>{c.telefone || 'Sem telefone'}</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+      {!selected && query.length < 2 && erroClientesDuplicados && !carregouClientes && (
+        <Text style={styles.noResults}>Não consegui carregar seus clientes recentes agora. A busca e o cadastro continuam funcionando.</Text>
+      )}
+
       {/* SELECIONADO */}
       {selected && (
         <AnimatedEntrance from="scale">
@@ -297,6 +336,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   dropName: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   dropPhone: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   noResults: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 12, textAlign: 'center' },
+  recentesTitulo: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginTop: Spacing.base },
   selectedCard: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: c.surface, borderRadius: BorderRadius.lg,
