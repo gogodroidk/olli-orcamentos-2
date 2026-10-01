@@ -27,6 +27,7 @@ import { mensagemEstouACaminho } from '../services/eta';
 import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { maisPrioritarioFollowUp } from '../utils/prioridadeFollowUp';
 import { limitesDoDiaLocal } from '../utils/agendaDia';
+import { aplicarEscopo, resolverEscopoAgenda, type EntradaEscopo } from '../utils/agendaDominio';
 import {
   ROTULO_FASE, detalheHorario, montarLinhaDoTempo, resumoDoDia, type ItemLinhaDoTempo,
 } from '../utils/linhaDoTempoHoje';
@@ -40,6 +41,9 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { CHECKLIST_KEY, PULSO_ULTIMO_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
+import { usePermissao } from '../hooks/usePermissao';
+import { useTipoConta } from '../hooks/useTipoConta';
+import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { enviarFeedback } from '../services/feedback';
 
@@ -435,6 +439,30 @@ export default function HojeScreen() {
   const styles = useEstilos(criarEstilos);
   const { temAcesso } = usePlano();
   const relatorioLiberado = temAcesso('relatorio_dia');
+  // QUEM VÊ O QUÊ — mesma regra da Agenda (`resolverEscopoAgenda`): o técnico vê
+  // só as visitas DELE; gestão e conta pessoal veem a equipe inteira. Enquanto o
+  // papel não é conhecido, a linha do tempo não aparece (nem vazia, nem a da
+  // equipe); se a leitura falhar, a tela diz isso e deixa tentar de novo.
+  const { pode } = usePermissao();
+  const tipoConta = useTipoConta();
+  const [usuario, setUsuario] = useState<EntradaEscopo['usuario']>({ status: 'carregando' });
+  const lerUsuario = useCallback(() => {
+    setUsuario({ status: 'carregando' });
+    getCurrentUser()
+      .then(u => setUsuario({ status: 'ok', id: u?.id ?? null }))
+      .catch(() => setUsuario({ status: 'ok', id: null }));
+  }, []);
+  useEffect(() => { lerUsuario(); }, [lerUsuario]);
+  const escopo = useMemo(() => resolverEscopoAgenda({
+    papelResolvido: tipoConta.resolvido,
+    papelCarregando: tipoConta.carregando,
+    podeVerEquipe: pode('ver_agenda_equipe'),
+    usuario,
+  }), [tipoConta.resolvido, tipoConta.carregando, pode, usuario]);
+  const escopoPronto = escopo.status === 'equipe' || escopo.status === 'propria';
+  // O total em R$ das propostas paradas é valor AGREGADO da empresa: o técnico
+  // vê a contagem, não a soma (mesma matriz do resto do app).
+  const podeValores = pode('ver_valores_agregados');
 
   const [itens, setItens] = useState<OcorrenciaAgendamento[]>([]);
   // Visitas de DIAS ANTERIORES que terminaram e seguem "agendado" (ninguém deu
@@ -551,6 +579,9 @@ export default function HojeScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
+    // Puxar para atualizar também relê o papel e o usuário: sem isto, quem caiu
+    // no aviso "não deu para confirmar seu acesso" ficaria preso nele.
+    if (escopo.status === 'erro') { void tipoConta.recarregar(); lerUsuario(); }
     try {
       await Promise.all([load(), loadFollowUp()]);
     } finally {
@@ -596,7 +627,10 @@ export default function HojeScreen() {
   }, [checklist, persist, reduzirMovimento]);
 
   // ── LINHA DO TEMPO ──
-  const linha = useMemo(() => montarLinhaDoTempo(itens, agora), [itens, agora]);
+  // Só o que este usuário pode ver (técnico = as dele). Fora de equipe/própria, nada.
+  const itensVisiveis = useMemo(() => aplicarEscopo(itens, escopo), [itens, escopo]);
+  const semBaixaVisiveis = useMemo(() => aplicarEscopo(semBaixaAntigas, escopo), [semBaixaAntigas, escopo]);
+  const linha = useMemo(() => montarLinhaDoTempo(itensVisiveis, agora), [itensVisiveis, agora]);
   const resumo = useMemo(() => resumoDoDia(linha), [linha]);
   // Até onde o dia já "andou": o trilho é pintado até a última visita que já
   // começou (feita, em andamento ou que passou sem baixa).
@@ -672,19 +706,21 @@ export default function HojeScreen() {
   const maisUrgente = maisPrioritarioFollowUp(followUp);
 
   const feitos = checklist.filter(i => i.feito).length;
-  const temLembrete = followUpErro || followUp.length > 0 || aguardandoAssinatura > 0 || semBaixaAntigas.length > 0;
+  const temLembrete = followUpErro || followUp.length > 0 || aguardandoAssinatura > 0 || semBaixaVisiveis.length > 0;
   // "Nada pendente" é uma AFIRMAÇÃO: só pode aparecer quando as leituras
   // responderam de verdade. Com o radar em erro, `followUp` é [] — e sem este
   // `!followUpErro` a falha viraria a mensagem mais cara possível: dizer que não
   // há nada a cobrar quando não fazemos ideia.
-  const lembretesConferidos = !carregando && !carregandoErro && !followUpCarregando && !followUpErro;
+  // O escopo entra porque as visitas sem baixa são filtradas por ele: sem papel
+  // conhecido a lista fica vazia, e isso não pode virar "nada parado".
+  const lembretesConferidos = !carregando && !carregandoErro && !followUpCarregando && !followUpErro && escopoPronto;
 
   // Sinal SIMPLES de "semana com movimento" (sem consulta nova): agenda de hoje,
   // checklist com item concluído hoje, ou algum orçamento criado nos últimos 7
   // dias. O Pulso da semana só aparece quando há sinal de uso real — nunca numa
   // semana parada, onde a pergunta soaria deslocada.
   const houveMovimentoNaSemana =
-    itens.length > 0 || feitos > 0 || orcamentosResumo.houveRecente;
+    itensVisiveis.length > 0 || feitos > 0 || orcamentosResumo.houveRecente;
 
   // Gate do Pulso da semana: checa 1x por sessão (quando o carregamento inicial
   // termina) se já passaram 14 dias desde a última exibição — grava o carimbo NO
@@ -759,7 +795,7 @@ export default function HojeScreen() {
               <Text style={styles.title}>{saudacao()}</Text>
               <Text style={styles.date}>{capitalizeFirst(format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR }))}</Text>
               {/* Resumo do dia — só com a agenda lida de verdade. */}
-              {!carregando && !carregandoErro && resumo.total > 0 ? (
+              {!carregando && !carregandoErro && escopoPronto && resumo.total > 0 ? (
                 <Text style={styles.resumoDia}>
                   {resumo.total === 1 ? '1 visita hoje' : `${resumo.total} visitas hoje`}
                   {` · ${resumo.feitas} ${resumo.feitas === 1 ? 'feita' : 'feitas'}`}
@@ -800,10 +836,10 @@ export default function HojeScreen() {
                   </View>
                 )}
 
-                {semBaixaAntigas.length > 0 && (
+                {semBaixaVisiveis.length > 0 && (
                   <OlliPressable
                     style={styles.lembreteRow}
-                    onPress={() => abrirVisita(semBaixaAntigas[0])}
+                    onPress={() => abrirVisita(semBaixaVisiveis[0])}
                     haptic="selection"
                     accessibilityLabel="Abrir a visita sem baixa mais recente na agenda"
                   >
@@ -812,9 +848,9 @@ export default function HojeScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.lembreteText}>
-                        {semBaixaAntigas.length === 1
+                        {semBaixaVisiveis.length === 1
                           ? '1 visita de outro dia sem baixa'
-                          : `${semBaixaAntigas.length} visitas de outros dias sem baixa`}
+                          : `${semBaixaVisiveis.length} visitas de outros dias sem baixa`}
                       </Text>
                       <Text style={styles.lembreteSub}>Ninguém concluiu nem cancelou. Toque para abrir a mais recente.</Text>
                     </View>
@@ -836,7 +872,11 @@ export default function HojeScreen() {
                       <View style={{ flex: 1 }}>
                         {/* O dinheiro na frente: "R$ 2.400 esperando resposta" diz
                             muito mais que "3 orçamentos parados". */}
-                        <Text style={styles.lembreteText}>{formatCurrency(valorFollowUp)} esperando resposta</Text>
+                        <Text style={styles.lembreteText}>
+                          {podeValores
+                            ? `${formatCurrency(valorFollowUp)} esperando resposta`
+                            : followUp.length === 1 ? '1 proposta esperando resposta' : `${followUp.length} propostas esperando resposta`}
+                        </Text>
                         <Text style={styles.lembreteSub}>
                           {followUp.length === 1
                             ? `1 proposta parada há ${maisAntigoFollowUp} ${maisAntigoFollowUp === 1 ? 'dia' : 'dias'}`
@@ -892,7 +932,7 @@ export default function HojeScreen() {
               </View>
             ) : lembretesConferidos ? (
               <Text style={styles.noSub}>Nada parado por agora: nenhuma proposta esperando resposta nem assinatura pendente.</Text>
-            ) : carregando || followUpCarregando ? (
+            ) : carregando || followUpCarregando || escopo.status === 'carregando' ? (
               <Skeleton width="80%" height={13} style={{ marginTop: 6 }} />
             ) : (
               // Leitura de orçamentos/agenda falhou: não afirmamos nada.
@@ -919,7 +959,7 @@ export default function HojeScreen() {
                 <Text style={styles.seeAll}>Abrir agenda</Text>
               </TouchableOpacity>
             </View>
-            {carregando ? (
+            {carregando || escopo.status === 'carregando' ? (
               <View style={{ gap: 10, marginTop: 8 }}>
                 {[0, 1].map(i => (
                   // Skeleton no formato REAL do card da visita (hora + chip, título, cliente).
@@ -929,6 +969,22 @@ export default function HojeScreen() {
                     <Skeleton width="45%" height={12} style={{ marginTop: 6 }} />
                   </View>
                 ))}
+              </View>
+            ) : escopo.status === 'erro' ? (
+              // Não sei o papel: nem "nada agendado" (o técnico acharia que não tem
+              // visita) nem a agenda da equipe inteira (não sei se ele pode ver).
+              <View style={styles.estadoCard}>
+                <MaterialCommunityIcons name="account-lock-outline" size={20} color={cores.warning} />
+                <Text style={styles.estadoTitulo}>Não deu para confirmar seu acesso</Text>
+                <Text style={styles.estadoSub}>Sem saber se você é da gestão ou técnico, o Hoje poderia mostrar visitas erradas. Verifique a conexão e tente de novo.</Text>
+                <View style={styles.acoesRow}>
+                  <AcaoNo
+                    variante="principal"
+                    icone="refresh"
+                    rotulo="Tentar de novo"
+                    onPress={() => { void tipoConta.recarregar(); lerUsuario(); }}
+                  />
+                </View>
               </View>
             ) : carregandoErro ? (
               <View style={styles.estadoCard}>
@@ -952,7 +1008,7 @@ export default function HojeScreen() {
           </NoLinhaDoTempo>
         </Aparecer>
 
-        {!carregando && !carregandoErro && linha.map((item, k) => (
+        {!carregando && !carregandoErro && escopoPronto && linha.map((item, k) => (
           <Aparecer key={item.visita.id} indice={ordem++}>
             <NoLinhaDoTempo
               marcador={{ tipo: 'visita', fase: item.fase, pulso: gatilhoPulso }}

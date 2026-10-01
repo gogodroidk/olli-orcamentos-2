@@ -22,6 +22,7 @@ import {
   podeConcluirPeloHoje,
   resumoDoDia,
 } from '../src/utils/linhaDoTempoHoje.ts';
+import { aplicarEscopo, resolverEscopoAgenda } from '../src/utils/agendaDominio.ts';
 
 let ok = 0;
 function caso(nome: string, fn: () => void) {
@@ -154,7 +155,33 @@ caso('ordem do dia: lembretes → visitas → checklist → "Como foi seu dia?" 
   assert.match(hoje, /icone: 'weather-night' \}\} ultimo>/);
 });
 caso('a linha do tempo sai da regra pura', () => {
-  assert.match(hoje, /montarLinhaDoTempo\(itens, agora\)/);
+  assert.match(hoje, /montarLinhaDoTempo\(itensVisiveis, agora\)/);
+});
+caso('técnico vê só as visitas DELE (mesmo filtro por papel da Agenda)', () => {
+  assert.match(hoje, /podeVerEquipe: pode\('ver_agenda_equipe'\)/);
+  assert.match(hoje, /resolverEscopoAgenda\(\{/);
+  assert.match(hoje, /const itensVisiveis = useMemo\(\(\) => aplicarEscopo\(itens, escopo\)/);
+  assert.match(hoje, /const semBaixaVisiveis = useMemo\(\(\) => aplicarEscopo\(semBaixaAntigas, escopo\)/);
+  // Nenhum uso cru da lista da equipe na tela depois do filtro.
+  assert.doesNotMatch(hoje, /semBaixaAntigas\.length|semBaixaAntigas\[0\]/);
+  assert.doesNotMatch(hoje, /montarLinhaDoTempo\(itens,/);
+  // Papel desconhecido nunca vira "nada agendado" nem a agenda da equipe.
+  assert.match(hoje, /escopo\.status === 'erro' \?/);
+  assert.match(hoje, /Não deu para confirmar seu acesso/);
+  assert.match(hoje, /carregando \|\| escopo\.status === 'carregando' \?/);
+  // A regra, de verdade: técnico filtra, gestão vê tudo, sem papel não mostra nada.
+  const eq = [visita('t1', 9, { responsavelId: 'tec-1' }), visita('t2', 10, { responsavelId: 'tec-2' }), visita('t3', 11)];
+  const tec = resolverEscopoAgenda({ papelResolvido: true, papelCarregando: false, podeVerEquipe: false, usuario: { status: 'ok', id: 'tec-1' } });
+  assert.deepEqual(montarLinhaDoTempo(aplicarEscopo(eq, tec), em(8)).map(i => i.visita.id), ['t1']);
+  const gestao = resolverEscopoAgenda({ papelResolvido: true, papelCarregando: false, podeVerEquipe: true, usuario: { status: 'carregando' } });
+  assert.equal(montarLinhaDoTempo(aplicarEscopo(eq, gestao), em(8)).length, 3);
+  const semPapel = resolverEscopoAgenda({ papelResolvido: false, papelCarregando: false, podeVerEquipe: false, usuario: { status: 'ok', id: 'tec-1' } });
+  assert.equal(semPapel.status, 'erro');
+  assert.equal(aplicarEscopo(eq, semPapel).length, 0);
+});
+caso('técnico não vê a SOMA em R$ das propostas paradas (valor agregado)', () => {
+  assert.match(hoje, /const podeValores = pode\('ver_valores_agregados'\)/);
+  assert.match(hoje, /podeValores\s*\?\s*`\$\{formatCurrency\(valorFollowUp\)\} esperando resposta`/);
 });
 caso('o ponto "agora" usa o pulso finito', () => {
   assert.match(noFonte, /<PulsoAgora /);
@@ -196,7 +223,7 @@ caso('3 estados da agenda: carregando, erro com "Tentar de novo", vazio', () => 
   assert.match(hoje, /Nada agendado para hoje/);
 });
 caso('"nada parado" só com as leituras respondidas', () => {
-  assert.match(hoje, /lembretesConferidos = !carregando && !carregandoErro && !followUpCarregando && !followUpErro/);
+  assert.match(hoje, /lembretesConferidos = !carregando && !carregandoErro && !followUpCarregando && !followUpErro && escopoPronto/);
 });
 caso('"Estou a caminho" não inventa horário de chegada', () => {
   assert.match(hoje, /mensagemEstouACaminho\(a\.clienteNome, null\)/);
