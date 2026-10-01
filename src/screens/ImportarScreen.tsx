@@ -156,8 +156,15 @@ export default function ImportarScreen() {
 
   // Prévia nova → seleção inicial (contatos começam desmarcados: agenda pessoal mistura família e clientes).
   const origemSelecao: 'planilha' | 'contatos' | 'foto' = fotoIa ? 'foto' : origem === 'contatos' ? 'contatos' : 'planilha';
+  // O que JÁ foi gravado nesta tela nunca volta a ser marcado: sem isto, mexer no
+  // DDD ou numa coluna depois de importar recalculava a prévia, remarcava os
+  // mesmos "novos" e um segundo toque em Importar duplicava o cadastro.
+  const gravadosRef = useRef(gravados);
+  gravadosRef.current = gravados;
   useEffect(() => {
-    setSelecionados(selecaoInicialImportacao(previa, origemSelecao));
+    const inicial = selecaoInicialImportacao(previa, origemSelecao);
+    for (const chave of gravadosRef.current.keys()) inicial.delete(chave);
+    setSelecionados(inicial);
     setLimite(PAGINA);
   }, [previa, origemSelecao]);
 
@@ -187,7 +194,13 @@ export default function ImportarScreen() {
   async function escolherArquivo() {
     if (lendo || gravando) return;
     setErro(null);
-    const resultado = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
+    let resultado: DocumentPicker.DocumentPickerResult;
+    try {
+      resultado = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
+    } catch {
+      setErro('Não consegui abrir o seletor de arquivos. Tente de novo.');
+      return;
+    }
     if (resultado.canceled || !resultado.assets?.[0]) return;
     const asset = resultado.assets[0];
     if (asset.size && asset.size > LIMITE_ARQUIVO_BYTES) {
@@ -237,30 +250,43 @@ export default function ImportarScreen() {
     if (lendo || gravando) return;
     setErro(null);
     let alvo: { uri: string; nome: string; mime: string; bytes?: number } | null = null;
-    if (fonte === 'pdf') {
-      const r = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true, multiple: false });
-      const a = r.canceled ? null : r.assets?.[0];
-      if (a) alvo = { uri: a.uri, nome: a.name, mime: a.mimeType ?? 'application/pdf', bytes: a.size };
-    } else {
-      if (fonte === 'camera') {
-        const permissao = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permissao.granted) { setErro('Sem permissão para a câmera. Escolha uma foto da galeria.'); return; }
+    try {
+      if (fonte === 'pdf') {
+        const r = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', 'image/*'], copyToCacheDirectory: true, multiple: false });
+        const a = r.canceled ? null : r.assets?.[0];
+        if (a) alvo = { uri: a.uri, nome: a.name, mime: a.mimeType ?? 'application/pdf', bytes: a.size };
+      } else {
+        if (fonte === 'camera') {
+          const permissao = await ImagePicker.requestCameraPermissionsAsync();
+          if (!permissao.granted) { setErro('Sem permissão para a câmera. Escolha uma foto da galeria.'); return; }
+        }
+        const opcoes: ImagePicker.ImagePickerOptions = { mediaTypes: 'images', quality: 0.6, allowsEditing: false };
+        const r = fonte === 'camera' ? await ImagePicker.launchCameraAsync(opcoes) : await ImagePicker.launchImageLibraryAsync(opcoes);
+        const a = r.canceled ? null : r.assets?.[0];
+        if (a) alvo = { uri: a.uri, nome: a.fileName ?? 'orcamento-antigo.jpg', mime: a.mimeType ?? 'image/jpeg', bytes: a.fileSize };
       }
-      const opcoes: ImagePicker.ImagePickerOptions = { mediaTypes: 'images', quality: 0.6, allowsEditing: false };
-      const r = fonte === 'camera' ? await ImagePicker.launchCameraAsync(opcoes) : await ImagePicker.launchImageLibraryAsync(opcoes);
-      const a = r.canceled ? null : r.assets?.[0];
-      if (a) alvo = { uri: a.uri, nome: a.fileName ?? 'orcamento-antigo.jpg', mime: a.mimeType ?? 'image/jpeg', bytes: a.fileSize };
+    } catch {
+      setErro(fonte === 'camera' ? 'Não consegui abrir a câmera. Escolha uma foto da galeria.' : 'Não consegui abrir o arquivo escolhido. Tente de novo.');
+      return;
     }
     if (!alvo) return;
     setLendo(true);
     limparFonte();
-    const resultado = await prepararPreviaAutopilot({
-      uri: alvo.uri, nomeArquivo: alvo.nome, mimeType: alvo.mime, tamanhoBytes: alvo.bytes,
-      intencao: 'cadastro', pedidoOriginal: PEDIDO_FOTO,
-    });
-    setLendo(false);
-    if (resultado.ok) setFotoIa(resultado.previa);
-    else setErro(mensagemErroIa(resultado.erro));
+    // `prepararPreviaAutopilot` lê o arquivo do disco ANTES do try dele: uma URI
+    // ilegível lança. Sem o finally, o "Lendo a foto…" ficava girando para sempre
+    // e todos os botões travados (lendo = true).
+    try {
+      const resultado = await prepararPreviaAutopilot({
+        uri: alvo.uri, nomeArquivo: alvo.nome, mimeType: alvo.mime, tamanhoBytes: alvo.bytes,
+        intencao: 'cadastro', pedidoOriginal: PEDIDO_FOTO,
+      });
+      if (resultado.ok) setFotoIa(resultado.previa);
+      else setErro(mensagemErroIa(resultado.erro));
+    } catch {
+      setErro(mensagemErroIa('falha_leitura'));
+    } finally {
+      setLendo(false);
+    }
   }
 
   function alternar(linha: LinhaPrevia) {
@@ -286,26 +312,36 @@ export default function ImportarScreen() {
 
   async function importar() {
     if (!conferida || !selecionados.size || gravando || gravandoRef.current) return;
+    // Defesa em profundidade: o que já foi gravado nesta tela nunca grava de novo.
+    const alvo = new Set([...selecionados].filter((chave) => !gravados.has(chave)));
+    if (!alvo.size) return;
     gravandoRef.current = true;
     setGravando(true);
-    setProgresso({ feitos: 0, total: selecionados.size });
+    setProgresso({ feitos: 0, total: alvo.size });
+    let gravouAlgo = false;
     try {
-      const r = await gravarImportacao(previa, selecionados, {
+      const r = await gravarImportacao(previa, alvo, {
         saveCliente, saveProduto, saveServico, gerarId: generateId, agora: nowISO,
         permissoes: { clientes: podeClientes, catalogo: podeCatalogo },
         aoProgredir: (feitos, total) => { if (feitos % 10 === 0 || feitos === total) setProgresso({ feitos, total }); },
       });
       const novos = new Map(gravados);
       for (const item of r.itens) if (item.ok) novos.set(item.chave, item.id);
+      gravadosRef.current = novos;
       setGravados(novos);
       // Quem gravou sai da seleção; quem falhou continua marcado para tentar de novo.
       setSelecionados((atual) => new Set([...atual].filter((chave) => !novos.has(chave))));
       setRelatorio(r);
+      gravouAlgo = r.gravados > 0;
     } finally {
       gravandoRef.current = false;
       setGravando(false);
       setProgresso(null);
     }
+    // Relê o cadastro: o que acabou de entrar passa a contar como "já existe" se o
+    // usuário trocar o tipo/colunas e voltar — senão a prévia velha o mostraria
+    // como "novo" de novo e uma nova importação o duplicaria.
+    if (gravouAlgo) void carregarExistentes();
   }
 
   const paramsOrcamento = useMemo(() => {

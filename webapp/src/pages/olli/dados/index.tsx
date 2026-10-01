@@ -165,8 +165,10 @@ export default function CentralDeDadosPage() {
 				const texto = (campo: CampoImportacao, anterior?: string) => valorDa(linha, mapeamento, campo) || anterior;
 				objeto.cpf = texto("cpf", base?.cpf) || undefined; objeto.cnpj = texto("cnpj", base?.cnpj) || undefined;
 				// Rua + número + bairro viram um endereço só (o cadastro do app tem um campo de endereço).
-				const enderecoLinha = [[valorDa(linha, mapeamento, "endereco"), valorDa(linha, mapeamento, "numero")].filter(Boolean).join(", "), valorDa(linha, mapeamento, "bairro")].filter(Boolean).join(" - ");
-				objeto.endereco = enderecoLinha || base?.endereco || undefined; objeto.complemento = texto("complemento", base?.complemento) || undefined;
+				const rua = valorDa(linha, mapeamento, "endereco");
+				const enderecoLinha = [[rua, valorDa(linha, mapeamento, "numero")].filter(Boolean).join(", "), valorDa(linha, mapeamento, "bairro")].filter(Boolean).join(" - ");
+				// Sem rua na linha, número/bairro soltos ("123", "Centro") NUNCA substituem o endereço completo já cadastrado.
+				objeto.endereco = (rua ? enderecoLinha : "") || base?.endereco || enderecoLinha || undefined; objeto.complemento = texto("complemento", base?.complemento) || undefined;
 				objeto.cidade = texto("cidade", base?.cidade) || undefined;
 				objeto.estado = texto("estado", base?.estado) || undefined; objeto.cep = texto("cep", base?.cep) || undefined;
 				return { linha: numeroLinha, acao: base ? "atualizar" : "inserir", motivo: base ? "Correspondência por documento ou nome + telefone." : "Novo cliente.", objeto };

@@ -151,6 +151,25 @@ await ok('aba oculta é pulada', () => {
 	], ['Nome', 'Celular', 'Cidade', 'Ana', 'Bruno']);
 	assert.equal(lerXlsx(bytes)[0]?.[0], 'Nome');
 });
+await ok('zip bomb: tamanho declarado gigante é barrado ANTES de alocar (não vira "corrompido" nem OOM)', () => {
+	const bytes = xlsx([{ arquivo: 'sheet1.xml', nome: 'Clientes', xml: abaClientes }], ['Nome', 'Celular', 'Cidade', 'Ana', 'Bruno']);
+	// Diretório central: assinatura PK\x01\x02; tamanho descompactado no offset 24, nome no 46.
+	const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	let patch = 0;
+	for (let i = 0; i + 46 < bytes.length; i += 1) {
+		if (dv.getUint32(i, true) !== 0x02014b50) continue;
+		const nome = new TextDecoder().decode(bytes.subarray(i + 46, i + 46 + dv.getUint16(i + 28, true)));
+		if (nome === 'xl/worksheets/sheet1.xml') { dv.setUint32(i + 24, 0xfffffff0, true); patch += 1; }
+	}
+	assert.equal(patch, 1, 'o teste precisa achar a aba no diretório central');
+	// Antes da correção o fflate alocava o buffer de ~4 GB e só DEPOIS vinha o aviso
+	// (no Hermes: falta de memória). O Node aloca preguiçoso, então medimos a conta
+	// de ArrayBuffers logo após a chamada.
+	const antes = process.memoryUsage().arrayBuffers;
+	assert.throws(() => lerXlsx(bytes), /grande demais/);
+	const alocado = process.memoryUsage().arrayBuffers - antes;
+	assert.ok(alocado < 64 * 1024 * 1024, `não pode alocar o tamanho declarado (alocou ${alocado} bytes)`);
+});
 await ok('formato pelo conteúdo: PDF, XLS antigo e binário viram erro com o que fazer', () => {
 	assert.throws(() => lerArquivoImportacao('a.pdf', enc('%PDF-1.7 ...')), /Foto de orçamento antigo/);
 	assert.throws(() => lerArquivoImportacao('a.xls', Uint8Array.from([0xd0, 0xcf, 0x11, 0xe0, 1, 2])), /XLSX ou CSV/);
@@ -383,7 +402,14 @@ console.log('\n9) contrato com a tela, a navegação e o painel');
 const ler = (p: string) => readFile(new URL(`../${p}`, import.meta.url), 'utf8');
 await ok('a tela usa a prévia e os saves do banco (sync), nunca grava sem conferir', async () => {
 	const tela = await ler('src/screens/ImportarScreen.tsx');
-	for (const trecho of ['gravarImportacao(previa, selecionados', 'saveCliente, saveProduto, saveServico', 'previaConferida(', 'prepararPreviaAutopilot(', "selecaoInicialImportacao(previa", 'lerArquivoImportacao(', 'linhasDaFoto(']) {
+	// O que já foi gravado nesta tela nunca volta à seleção nem grava de novo (mexer
+	// no DDD/colunas depois de importar duplicava o cadastro), e o cadastro é relido.
+	assert.match(tela, /filter\(\(chave\) => !gravados\.has\(chave\)\)/);
+	assert.match(tela, /for \(const chave of gravadosRef\.current\.keys\(\)\) inicial\.delete\(chave\)/);
+	assert.match(tela, /if \(gravouAlgo\) void carregarExistentes\(\)/);
+	// A leitura da foto nunca deixa o "Lendo…" preso: setLendo(false) mora num finally.
+	assert.match(tela, /finally \{\s*setLendo\(false\);\s*\}/);
+	for (const trecho of ['gravarImportacao(previa, alvo', 'saveCliente, saveProduto, saveServico', 'previaConferida(', 'prepararPreviaAutopilot(', "selecaoInicialImportacao(previa", 'lerArquivoImportacao(', 'linhasDaFoto(']) {
 		assert.ok(tela.includes(trecho), `ImportarScreen deveria conter ${trecho}`);
 	}
 	assert.match(tela, /disabled=\{!conferida \|\| gravando/);

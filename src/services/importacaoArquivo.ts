@@ -129,20 +129,27 @@ function numeroCelula(v: string): string {
 
 /** Primeira aba do XLSX como matriz de texto (linhas vazias descartadas). */
 export function lerXlsx(bytes: Uint8Array): string[][] {
+	// O teto é conferido DENTRO do filtro: o fflate aloca o buffer de saída de
+	// cada entrada pelo tamanho declarado ANTES de descompactar. Conferir só
+	// depois do unzipSync deixaria uma "zip bomb" alocar gigabytes e derrubar o
+	// app por falta de memória antes do aviso aparecer.
 	let total = 0;
+	let grandeDemais = false;
 	let arquivos: Record<string, Uint8Array>;
 	try {
 		arquivos = unzipSync(bytes, {
 			filter: (f) => {
 				const util = f.name === 'xl/workbook.xml' || f.name === 'xl/_rels/workbook.xml.rels' || f.name === 'xl/sharedStrings.xml' || f.name.startsWith('xl/worksheets/');
-				if (util) total += f.originalSize;
-				return util;
+				if (!util || grandeDemais) return false;
+				total += f.originalSize;
+				if (total > LIMITE_DESCOMPACTADO) { grandeDemais = true; return false; }
+				return true;
 			},
 		});
 	} catch {
 		throw new Error('Não consegui abrir esta planilha XLSX (arquivo corrompido ou protegido por senha).');
 	}
-	if (total > LIMITE_DESCOMPACTADO) throw new Error('A planilha é grande demais para abrir no celular. Divida em arquivos menores.');
+	if (grandeDemais) throw new Error('A planilha é grande demais para abrir no celular. Divida em arquivos menores.');
 	const ler = (caminho: string): string | null => {
 		const conteudo = arquivos[caminho];
 		return conteudo ? decodificarTexto(conteudo) : null;
