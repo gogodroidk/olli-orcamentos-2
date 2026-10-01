@@ -95,7 +95,7 @@
     // DESLIGADO até a migration 20261002100000 estar aplicada; aí trocar para
     // "production". Por rodada (1/min): 5 clientes e no máximo 10 consultas ao
     // Nominatim (política: 1 req/s para o app inteiro).
-    "GEO_BACKFILL_MODE": "off",
+    "GEO_BACKFILL_MODE": "production",
     "GEO_BACKFILL_MAX_POR_RODADA": "5",
     "GEO_BACKFILL_MAX_NOMINATIM": "10",
     "AI_PROVIDER": "openrouter",
