@@ -2953,12 +2953,30 @@ export async function syncOnLogin(): Promise<void> {
     // via extras_sync, com last-write-wins. Por último: não compete com o pipeline
     // relacional e uma falha aqui não pode afetar o sync principal.
     await sincronizarExtras(geracao);
+    if (syncAbortado(geracao)) return;
+    // Link público (/o/<token>): o pull traz os orçamentos, mas a VISUALIZAÇÃO e a
+    // RESPOSTA do cliente moram em `orcamentos_publicos`. Depois de cada pull,
+    // `sincronizarStatusLinks` espelha enviado→visualizado→aprovado/recusado no
+    // SQLite e dispara "Cliente aprovou/recusou" UMA vez por orçamento; em seguida
+    // `reagendarFollowUps` reconcilia os lembretes D+2/D+5 e o aviso de rascunhos
+    // com o status novo (quem respondeu perde o lembrete). Ver followUpLembretes.ts.
+    // Import tardio pelo mesmo motivo de ciclo de carga; os dois nunca lançam.
+    await import('./clienteLink')
+      .then(m => m.sincronizarStatusLinks())
+      .catch(() => 0);
+    if (syncAbortado(geracao)) return;
     // O pull gravou agendamentos direto no SQLite sem tocar nas notificações:
     // reconcilia os lembretes locais com o estado novo (reagenda/cancela). Import
     // tardio p/ não acoplar cloudSync ao módulo de agenda no grafo estático (evita
     // ciclo de carga). Fire-and-forget: falha de notificação não afeta o sync.
+    // Os follow-ups vêm DEPOIS dela, encadeados: `resincronizarLembretes` usa
+    // `cancelAllScheduledNotificationsAsync`, que derrubaria um follow-up agendado
+    // (ou "mantido" pela reconciliação) em paralelo — e ele só voltaria no próximo sync.
     void import('./agenda')
       .then(m => m.resincronizarLembretes())
+      .catch(() => {})
+      .then(() => import('./followUpLembretes'))
+      .then(m => m.reagendarFollowUps())
       .catch(() => {});
     // Mesmo motivo, para os lembretes de vencimento PMOC: o pull grava
     // ordens_servico/pmoc_ordens_geradas direto no SQLite (localUpsert*, sem
