@@ -13,7 +13,7 @@ import {
   atualizarChecklist,
 } from '../../services/ordemServico';
 import { saveOrdemServico } from '../../database/database';
-import { listarMembros, type MembroEquipe } from '../../services/equipe';
+import { listarMembros, rotuloPapel, type MembroEquipe } from '../../services/equipe';
 import { STATUS_OS_LABELS, STATUS_OS_CORES } from '../../types';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../../types';
 import { generateId } from '../../utils/id';
@@ -581,7 +581,7 @@ function ModalAtribuirTecnico({
                     <View style={styles.membroAvatar}><Text style={styles.membroAvatarText}>{inicial}</Text></View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.membroNome} numberOfLines={1}>{nome}</Text>
-                      <Text style={styles.membroPapel}>{m.papel === 'tecnico' ? 'Técnico' : m.papel}</Text>
+                      <Text style={styles.membroPapel}>{rotuloPapel(m.papel)}</Text>
                     </View>
                     {salvandoId === m.userId ? (
                       <ActivityIndicator size="small" color={cores.accentLight} />

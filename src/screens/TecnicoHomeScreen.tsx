@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -61,21 +61,42 @@ export default function TecnicoHomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [avancandoId, setAvancandoId] = useState<string | null>(null);
 
+  // Quem é o técnico? Até saber, a tela continua CARREGANDO — antes, a leitura
+  // rodava com userId nulo e mostrava "nenhuma OS" para quem ainda nem foi
+  // identificado. Se a sessão não for lida (getCurrentUser devolve null em falha),
+  // vira ERRO com "Tentar de novo", nunca lista vazia.
+  const [identidade, setIdentidade] = useState<'resolvendo' | 'ok' | 'erro'>('resolvendo');
+  const ativoRef = useRef(true);
   useEffect(() => {
-    let ativo = true;
-    getCurrentUser()
-      .then((u) => { if (ativo) setUserId(u?.id ?? null); })
-      .catch(() => {});
-    return () => { ativo = false; };
+    ativoRef.current = true;
+    return () => { ativoRef.current = false; };
   }, []);
 
+  const resolverUsuario = useCallback(async () => {
+    setIdentidade('resolvendo');
+    try {
+      const u = await getCurrentUser();
+      if (!ativoRef.current) return;
+      if (u?.id) {
+        setUserId(u.id);
+        setIdentidade('ok');
+      } else {
+        setIdentidade('erro');
+      }
+    } catch {
+      if (ativoRef.current) setIdentidade('erro');
+    }
+  }, []);
+
+  useEffect(() => { void resolverUsuario(); }, [resolverUsuario]);
+
   const load = useCallback(async () => {
+    // Sem o id do técnico não há o que ler: segue "carregando" (ou o erro de
+    // identidade acima). Nunca resolve como lista vazia.
+    if (!userId) return;
     setCarregandoErro(false);
     try {
-      const [emp, lista] = await Promise.all([
-        getEmpresa(),
-        userId ? getMinhasOrdens(userId) : Promise.resolve([] as OrdemServico[]),
-      ]);
+      const [emp, lista] = await Promise.all([getEmpresa(), getMinhasOrdens(userId)]);
       setEmpresa(emp);
       // Mais recentes primeiro (mesma ordenação da lista completa de OS).
       lista.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
@@ -139,6 +160,23 @@ export default function TecnicoHomeScreen() {
   );
 
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'técnico';
+
+  if (identidade === 'erro') {
+    return (
+      <View style={styles.container}>
+        <View style={{ paddingTop: insets.top }}>
+          <BarraOffline />
+        </View>
+        <EmptyState
+          icon="account-alert-outline"
+          title="Não consegui identificar sua conta"
+          subtitle="Sem saber quem é você, não dá para buscar suas ordens de serviço. Tente de novo; se continuar, saia e entre de novo na conta."
+          actionLabel="Tentar de novo"
+          onAction={() => { void resolverUsuario(); }}
+        />
+      </View>
+    );
+  }
 
   if (carregando) {
     return (

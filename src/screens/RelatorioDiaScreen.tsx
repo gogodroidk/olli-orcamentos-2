@@ -134,6 +134,11 @@ function NotaDoDia({ data, inicial, onSalvo }: { data: string; inicial?: string;
   }, [inicial]);
 
   const dirty = texto !== baseRef.current;
+  // "Nota salva" só quando existe nota salva de fato: campo vazio e sem alteração
+  // não é nota nenhuma — o botão convida a escrever.
+  const temNotaSalva = baseRef.current.trim().length > 0;
+  const rotuloBotao = salvando ? 'Salvando...' : dirty ? 'Salvar nota' : temNotaSalva ? 'Nota salva' : 'Escreva algo';
+  const iconeBotao = dirty ? 'content-save-outline' : temNotaSalva ? 'check-circle-outline' : 'pencil-outline';
 
   async function salvar() {
     setSalvando(true);
@@ -166,14 +171,14 @@ function NotaDoDia({ data, inicial, onSalvo }: { data: string; inicial?: string;
         textAlignVertical="top"
       />
       <OlliButton
-        label={salvando ? 'Salvando...' : dirty ? 'Salvar nota' : 'Nota salva'}
+        label={rotuloBotao}
         onPress={salvar}
         variant={dirty ? 'gradient' : 'outline'}
         size="md"
         fullWidth
         disabled={!dirty || salvando}
         loading={salvando}
-        icon={!salvando ? <MaterialCommunityIcons name={dirty ? 'content-save-outline' : 'check-circle-outline'} size={18} color={dirty ? '#fff' : cores.accentLight} /> : undefined}
+        icon={!salvando ? <MaterialCommunityIcons name={iconeBotao} size={18} color={dirty ? '#fff' : cores.accentLight} /> : undefined}
         style={{ marginTop: 10 }}
       />
     </View>

@@ -89,6 +89,17 @@ export const CALCULOS: CalculoOficio[] = [
     ],
     calcular: (v) => {
       const area = Math.max(0, num(v.area));
+      // Sem área não há carga térmica: nada de "0 m² → 9.000 BTU/h" nem item de
+      // orçamento inventado. Mostra traço e pede a área.
+      if (area <= 0) {
+        return {
+          linhas: [
+            { label: 'Carga térmica calculada', valor: '—' },
+            { label: 'Aparelho recomendado', valor: '—', destaque: true },
+          ],
+          resumo: 'Informe a área do ambiente para calcular.',
+        };
+      }
       const porM2 = v.sol === 'sim' ? 800 : 600;
       const pessoasExtra = Math.max(0, num(v.pessoas) - 2);
       const btu = area * porM2 + pessoasExtra * 600 + Math.max(0, num(v.eletronicos)) * 600;

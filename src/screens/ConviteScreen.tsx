@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { aceitarConvite, extrairToken, PAPEL_LABEL } from '../services/equipe';
+import { aceitarConvite, extrairToken, rotuloPapel } from '../services/equipe';
 import { recarregarTipoConta } from '../hooks/useTipoConta';
 import { getCurrentUser } from '../services/supabase';
 
@@ -56,7 +56,7 @@ export default function ConviteScreen() {
         const org = await aceitarConvite(token);
         await recarregarTipoConta();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        if (vivo) setEstado({ fase: 'sucesso', nomeOrg: org.nome, papel: PAPEL_LABEL[org.papel] });
+        if (vivo) setEstado({ fase: 'sucesso', nomeOrg: org.nome, papel: rotuloPapel(org.papel) });
       } catch (e: any) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
         if (vivo) setEstado({ fase: 'erro', mensagem: e?.message ?? 'Não consegui aceitar o convite agora.' });

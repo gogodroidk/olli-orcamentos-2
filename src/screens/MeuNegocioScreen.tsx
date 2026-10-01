@@ -139,16 +139,40 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [marcaIaErro, setMarcaIaErro] = useState<string | null>(null);
   const [sugestaoMarca, setSugestaoMarca] = useState<SugestaoMarca | null>(null);
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  // 3 estados da leitura: carregando (empresa null, sem erro), erro (falhou e não há
+  // nada na tela) e pronto. Erro nunca vira formulário em branco por cima do cadastro.
+  const [erroCarga, setErroCarga] = useState(false);
+  // O foco volta à tela (ex.: depois de abrir a Conta) e recarregava tudo do banco,
+  // apagando o que o usuário digitou e ainda não salvou. Com alteração pendente, a
+  // leitura da empresa é pulada. Ref porque o callback do foco é memorizado.
+  const dirtyRef = React.useRef(false);
+  useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
+  const temEmpresaRef = React.useRef(false);
+
+  useFocusEffect(useCallback(() => { void load(); }, []));
 
   async function load() {
-    const [emp, deps] = await Promise.all([getEmpresa(), getDepoimentos()]);
+    if (dirtyRef.current) {
+      // Edição pendente: preserva o rascunho; só atualiza os depoimentos.
+      await carregarDepoimentos();
+      return;
+    }
+    let emp: Empresa | null;
+    try {
+      emp = await getEmpresa();
+    } catch {
+      // Se já há empresa na tela, ela continua valendo; sem nada, mostra o erro.
+      if (!temEmpresaRef.current) setErroCarga(true);
+      return;
+    }
+    setErroCarga(false);
     // Instalação nova ainda sem empresa: inicializa um registro em branco para
     // o formulário aparecer e poder SALVAR (saveEmpresa cria o registro de fato).
     const empresaCarregada = emp ?? empresaEmBranco();
     setEmpresa(empresaCarregada);
-    setDepoimentos(deps);
+    temEmpresaRef.current = true;
     setDirty(false);
+    await carregarDepoimentos();
     // Logo já cadastrada em instalações antigas nunca teve suas cores
     // extraídas — roda uma vez ao focar a tela, sem bloquear a UI.
     if (empresaCarregada.logoUri && !extraiuCoresRef.current) {
@@ -158,6 +182,19 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
         .then(setCoresSugeridas)
         .finally(() => setExtraindo(false));
     }
+  }
+
+  async function carregarDepoimentos() {
+    try {
+      setDepoimentos(await getDepoimentos());
+    } catch {
+      // Falha ao ler depoimentos não apaga os que já estão na tela.
+    }
+  }
+
+  function tentarDeNovo() {
+    setErroCarga(false);
+    void load();
   }
 
   function set(field: keyof Empresa, value: string) {
@@ -351,10 +388,32 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
   async function handleSaveDep() {
     if (!newDep.nomeCliente?.trim()) return;
     await saveDepoimento({ id: generateId(), nomeCliente: newDep.nomeCliente!, estrelas: newDep.estrelas ?? 5, texto: newDep.texto, criadoEm: nowISO() });
-    setShowDep(false); setNewDep({ estrelas: 5 }); load();
+    setShowDep(false); setNewDep({ estrelas: 5 }); void carregarDepoimentos();
   }
 
-  if (!empresa) return <View style={{ flex: 1, backgroundColor: cores.background }} />;
+  if (!empresa) {
+    return (
+      <View style={styles.container}>
+        <GradientHeader title="Meu Negócio" subtitle="Aparece no cabeçalho dos seus PDFs" onBack={() => goBackOrHome(nav)} />
+        <View style={styles.estadoCarga}>
+          {erroCarga ? (
+            <>
+              <MaterialCommunityIcons name="alert-circle-outline" size={28} color={cores.warning} />
+              <Text style={styles.estadoCargaTexto}>
+                Não consegui ler os dados da sua empresa agora. Nada foi apagado.
+              </Text>
+              <OlliButton label="Tentar de novo" variant="outline" onPress={tentarDeNovo} style={styles.estadoCargaCta} />
+            </>
+          ) : (
+            <>
+              <ActivityIndicator color={cores.accentLight} />
+              <Text style={styles.estadoCargaTexto}>Carregando os dados da empresa…</Text>
+            </>
+          )}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -806,6 +865,9 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+  estadoCarga: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.lg, gap: Spacing.md },
+  estadoCargaTexto: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
+  estadoCargaCta: { alignSelf: 'stretch' },
   backupCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.primaryContainer, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.primary + '40' },
   backupIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center' },
   backupTitle: { fontSize: 15, fontWeight: '800', color: c.primaryContainerText },

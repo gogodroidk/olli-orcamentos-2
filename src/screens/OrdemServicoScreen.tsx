@@ -42,7 +42,8 @@ import type { OrdemServico, StatusOS, ItemChecklist, Orcamento, Cliente } from '
 import { getOrcamentos, getCliente } from '../database/database';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
-import { listarMembros, type MembroEquipe } from '../services/equipe';
+import { mensagemEstouACaminho } from '../services/eta';
+import { listarMembros, rotuloPapel, type MembroEquipe } from '../services/equipe';
 import { getCurrentUser } from '../services/supabase';
 import {
   adicionarFotoCamera,
@@ -57,6 +58,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const STATUS_OS_ORDEM: StatusOS[] = [
   'aberta', 'agendada', 'em_execucao', 'pausada', 'concluida', 'cancelada',
 ];
+
+/** OS ainda não começou (ou parou): só aí "Estou a caminho" faz sentido. */
+const STATUS_ANTES_DE_CHEGAR: StatusOS[] = ['aberta', 'agendada', 'pausada'];
 
 /** Data ISO → "12/03 às 14:30" (curto). Vazio se não houver data. */
 function formatarDataCurta(iso?: string): string {
@@ -420,6 +424,13 @@ function DetalheOS({
 
   // Derivados do cliente para os atalhos de campo (vazio = botão não aparece).
   const telefoneCliente = cliente?.telefone?.trim() || '';
+
+  // Falha ao abrir o WhatsApp vira aviso, não promessa rejeitada sem tratamento.
+  const enviarWhatsApp = useCallback((mensagem: string) => {
+    abrirWhatsApp(telefoneCliente, mensagem).catch(() =>
+      Alert.alert('Ops', 'Não consegui abrir o WhatsApp. Confira se ele está instalado e tente de novo.'),
+    );
+  }, [telefoneCliente]);
   const enderecoCliente = cliente
     ? [cliente.endereco, cliente.cidade, cliente.estado].map((p) => (p || '').trim()).filter(Boolean).join(', ')
     : '';
@@ -631,7 +642,17 @@ function DetalheOS({
                     icon="whatsapp"
                     label="WhatsApp"
                     cor="#25D366"
-                    onPress={() => abrirWhatsApp(telefoneCliente, `Olá! Sobre o serviço "${ordem.titulo}".`)}
+                    onPress={() => enviarWhatsApp(`Olá! Sobre o serviço "${ordem.titulo}".`)}
+                  />
+                ) : null}
+                {/* "Estou a caminho" na tela onde o técnico está de fato. Sem GPS no APK
+                    ainda, vai sem horário (mensagemEstouACaminho nunca inventa um). */}
+                {telefoneCliente && STATUS_ANTES_DE_CHEGAR.includes(ordem.status) ? (
+                  <AcaoRapida
+                    icon="car-arrow-right"
+                    label="Estou a caminho"
+                    cor="#25D366"
+                    onPress={() => enviarWhatsApp(mensagemEstouACaminho(ordem.clienteNome, null))}
                   />
                 ) : null}
                 {enderecoCliente ? (
@@ -977,7 +998,7 @@ function ModalAtribuir({
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.membroNome} numberOfLines={1}>{nome}</Text>
-                      <Text style={styles.membroPapel}>{m.papel === 'tecnico' ? 'Técnico' : m.papel}</Text>
+                      <Text style={styles.membroPapel}>{rotuloPapel(m.papel)}</Text>
                     </View>
                     {salvandoId === m.userId ? (
                       <ActivityIndicator size="small" color={cores.accentLight} />

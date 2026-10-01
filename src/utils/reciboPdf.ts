@@ -5,6 +5,7 @@ import { imagemParaDataUri } from './imagemDataUri';
 import { escapeHtml, safeHexColor } from './html';
 import { footerSeloOlliHtml, DEFAULT_ACCENT } from './pdfGenerator';
 import { ajustarParaContraste } from '../theme/cores';
+import { normalizarChavePix } from './pixBrCode';
 
 /** Normaliza para #RRGGBB — `safeHexColor` aceita 3 dígitos, e `${cor}0F` (o tint
  *  do PIX) só é CSS válido com 6 dígitos (#RRGGBBAA). Sem isso o fundo do PIX some. */
@@ -71,7 +72,11 @@ export async function montarHtmlRecibo(
   const empresaCnpj = escapeHtml(empresa.cnpj);
   const empresaTelefone = escapeHtml(empresa.telefone);
   const empresaPrestador = escapeHtml(empresa.nomePrestador);
-  const empresaPix = escapeHtml(empresa.chavePix);
+  // Chave Pix normalizada (mesma regra fail-closed do resto do app): a máscara que o
+  // prestador digitou ("(11) 98888-7777", CPF com dígito errado) não vai pro papel.
+  // Chave que não reconhecemos some do recibo em vez de sair crua.
+  const chavePixNormalizada = normalizarChavePix(empresa.chavePix)?.chave ?? '';
+  const empresaPix = escapeHtml(chavePixNormalizada);
   const clienteNomeHtml = escapeHtml(r.clienteNome);
   const clienteTelefoneHtml = escapeHtml(r.clienteTelefone);
   const dataRecebimentoHtml = escapeHtml(r.dataRecebimento);
@@ -151,7 +156,7 @@ export async function montarHtmlRecibo(
     <div class="valor-num">${formatCurrency(r.valorRecebido)}</div>
   </div>
 
-  ${empresa.chavePix ? `<div class="pix-box">
+  ${chavePixNormalizada ? `<div class="pix-box">
     <div class="pix-label">PIX</div>
     <div class="pix-key">${empresaPix}</div>
   </div>` : ''}
