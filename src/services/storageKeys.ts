@@ -191,8 +191,9 @@ export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
 /**
  * Coordenada da CIDADE do cadastro (`{ chave, lat, lon }`), usada só como
  * reserva do clima do Início quando o aparelho não tem localização (services/
- * climaReserva). Guardada para geocodificar a cidade UMA vez por aparelho, não a
- * cada abertura. Diz onde a empresa fica → dado de conta, sai no logout.
+ * climaReserva). Guardada para localizar a cidade UMA vez por aparelho (CEP ou
+ * OpenStreetMap, grátis), não a cada abertura. Guarda também a fonte, para o
+ * crédito do OSM. Diz onde a empresa fica → dado de conta, sai no logout.
  */
 export const CLIMA_COORD_CIDADE_KEY = 'olli.clima.coordCidade.v1';
 

@@ -9,7 +9,10 @@
  *    sem baixa, próxima, depois); cancelada e excluída não são parada;
  *  - link do Google Maps com todas as paradas (público, sem chave, sem custo),
  *    no limite de 10 pontos do link;
- *  - consulta da cidade do cadastro para o clima de reserva.
+ *  - consulta da cidade do cadastro para o clima de reserva, SÓ por serviço
+ *    grátis (CEP/BrasilAPI e Nominatim com User-Agent e 1 req/s), nunca o
+ *    Google Geocoding pago do `/geocodificar`;
+ *  - "há quantos dias" sem "há 0 dias".
  * FIAÇÃO (lendo o fonte sem comentários): ordem da tela, clima com o crédito
  * "Previsão: MET Norway", "Traçar rota" + "Estou a caminho", atalhos de 1 toque,
  * nada de duplicata ("Abrir agenda", diagnóstico, dica do botão central), motion
@@ -20,7 +23,17 @@ import { readFileSync } from 'node:fs';
 import type { Agendamento } from '../src/types/index.ts';
 import { montarRotaDoDia } from '../src/utils/agendaDia.ts';
 import { MAX_PARADAS_LINK_MAPS, enderecosDaRota, urlRotaDoDia } from '../src/utils/rotaDoDia.ts';
-import { chaveCidadeClima, consultaCidadeClima } from '../src/utils/cidadeClima.ts';
+import {
+  ATRIBUICAO_OSM,
+  NOMINATIM_INTERVALO_MS,
+  NOMINATIM_USER_AGENT,
+  cepDoEndereco,
+  chaveCidadeClima,
+  consultaCidadeClima,
+  lerNominatimCidade,
+  urlNominatimCidade,
+} from '../src/utils/cidadeClima.ts';
+import { haQuantosDias } from '../src/utils/date.ts';
 
 let ok = 0;
 function caso(nome: string, fn: () => void) {
@@ -144,6 +157,46 @@ caso('cidade do cadastro vira consulta com UF e Brasil', () => {
   assert.equal(chaveCidadeClima('São  Paulo - SP, Brasil'), chaveCidadeClima('são paulo - sp, brasil'));
 });
 
+caso('CEP escrito no endereço do cadastro (com ou sem hífen); nada inventado', () => {
+  assert.equal(cepDoEndereco('Rua A, 10 - Centro, 01310-100, São Paulo'), '01310100');
+  assert.equal(cepDoEndereco('CEP 01310100'), '01310100');
+  assert.equal(cepDoEndereco('Rua A, 1234567890'), null, 'número longo não é CEP');
+  assert.equal(cepDoEndereco('Rua A, 10'), null);
+  assert.equal(cepDoEndereco(undefined), null);
+});
+
+caso('Nominatim: busca estruturada por cidade + estado por extenso, identificada', () => {
+  const url = urlNominatimCidade('  São   Paulo ', 'sp') ?? '';
+  const u = new URL(url);
+  assert.equal(u.origin + u.pathname, 'https://nominatim.openstreetmap.org/search');
+  assert.equal(u.searchParams.get('city'), 'São Paulo');
+  assert.equal(u.searchParams.get('state'), 'São Paulo');
+  assert.equal(u.searchParams.get('countrycodes'), 'br');
+  assert.equal(u.searchParams.get('limit'), '1');
+  assert.ok(u.searchParams.get('email'), 'identificação também no navegador (que não troca o User-Agent)');
+  assert.equal(new URL(urlNominatimCidade('Cuiabá', 'xx') ?? '').searchParams.get('state'), null, 'UF desconhecida não vira estado inventado');
+  assert.equal(urlNominatimCidade('', 'SP'), null);
+  assert.match(NOMINATIM_USER_AGENT, /^OLLI-Orcamentos\/[\d.]+ \(.+@.+\)$/, 'User-Agent próprio com contato');
+  assert.ok(NOMINATIM_INTERVALO_MS >= 1000, 'no máximo 1 requisição por segundo');
+});
+
+caso('Nominatim: 3 estados na leitura (ponto, não achou, ilegível) e só Brasil', () => {
+  assert.deepEqual(lerNominatimCidade([{ lat: '-23.55', lon: '-46.63' }]), { lat: -23.55, lon: -46.63 });
+  assert.equal(lerNominatimCidade([]), null);
+  assert.equal(lerNominatimCidade([{ lat: '40.4', lon: '-3.7' }]), null, 'homônima fora do Brasil não serve');
+  assert.equal(lerNominatimCidade([{ lat: '0', lon: '0' }]), null);
+  assert.equal(lerNominatimCidade({ erro: 'x' }), undefined, 'corpo ilegível é falha, não "não existe"');
+  assert.match(ATRIBUICAO_OSM, /OpenStreetMap/);
+});
+
+caso('"há quantos dias": nunca "há 0 dias"', () => {
+  assert.equal(haQuantosDias(0), 'desde hoje');
+  assert.equal(haQuantosDias(-2), 'desde hoje', 'relógio adiantado conta como hoje');
+  assert.equal(haQuantosDias(1), 'há 1 dia');
+  assert.equal(haQuantosDias(5), 'há 5 dias');
+  assert.equal(haQuantosDias(Number.NaN), 'desde hoje');
+});
+
 // ─── 4. Fiação do Início ─────────────────────────────────────────────────────
 const homeBruto = ler('../src/screens/HomeScreen.tsx');
 const home = semComentarios(homeBruto);
@@ -175,7 +228,13 @@ caso('clima vem do worker (useClimaDoDia) e mostra o crédito do MET Norway', ()
   assert.match(climaComp, /textoClima\(clima\)/, 'falha aparece como "Clima indisponível", nunca some');
   assert.doesNotMatch(home + climaComp + reserva, /open-meteo|openweather|api\.weather/i, 'nenhum serviço de clima novo');
   assert.doesNotMatch(reserva, /requestForegroundPermissionsAsync|requestPermissions/, 'clima nunca pede permissão');
-  assert.match(reserva, /geocodificarEndereco\(/, 'reserva usa o /geocodificar que o app já usa');
+  assert.doesNotMatch(reserva, /geocodificar|services\/eta|maps\.googleapis/i, 'nada de Google Geocoding (pago) na reserva do clima');
+  assert.match(reserva, /consultarCep\(cep\)/, '1º o CEP (BrasilAPI v2, grátis)');
+  assert.match(reserva, /nominatimNaFila\(url\)/, 'depois o Nominatim, em fila de 1 req/s');
+  assert.match(reserva, /'User-Agent'\] = NOMINATIM_USER_AGENT/, 'User-Agent próprio no app');
+  assert.match(reserva, /RECUO_RECUSA_MS/, 'recusa/limite do Nominatim segura novas tentativas');
+  assert.match(climaComp, /reserva\.atribuicao/, 'ponto do OSM mostra o crédito da ODbL junto do clima');
+  assert.match(home, /useReservaClima\(empresa\?\.cidade, empresa\?\.estado, empresa\?\.endereco, leituraCadastro\)/);
   assert.match(reserva, /AsyncStorage\.setItem\(CLIMA_COORD_CIDADE_KEY/, 'cidade geocodificada uma vez por aparelho');
   assert.match(reserva, /cadastro === 'erro'[\s\S]{0,80}estado: 'falhou'/, 'cadastro ilegível não vira "sem cidade"');
   assert.match(storageKeys, /CLIMA_COORD_CIDADE_KEY,\s*ULTIMO_PULL_KEY,\s*\];/, 'coordenada da cidade sai no logout');
@@ -213,6 +272,13 @@ caso('sem duplicata: "Abrir agenda", diagnóstico e dica do botão central uma v
   assert.equal((home.match(/<DicaContextual\b/g) ?? []).length, 1);
   assert.equal((home.match(/home\.botao-orcar/g) ?? []).length, 1);
   assert.equal((home.match(/card-search-outline/g) ?? []).length, 1);
+  assert.match(home, /\{!ehTecnico \? \(\s*<PressableAnimado style=\{styles\.maisChip\} onPress=\{\(\) => nav\.navigate\('OrdemServico'\)\}/, 'técnico não vê "Minhas OS" duas vezes');
+});
+
+caso('dinheiro parado: nunca "há 0 dias"', () => {
+  const painel = semComentarios(ler('../src/components/PainelDinheiroParado.tsx'));
+  assert.doesNotMatch(painel, /há \$?\{dias\(/, 'nada de "há ${dias(n)}" (dava "há 0 dias")');
+  assert.match(painel, /sem pagamento \$\{haQuantosDias\(maisAntigoCobranca\)\}/);
 });
 
 caso('motion: só os componentes Reanimated, sem loop e sem alerta cinza', () => {

@@ -234,10 +234,11 @@ export default function HomeScreen() {
   const [abrindoMaps, setAbrindoMaps] = useState(false);
   const [avisandoCliente, setAvisandoCliente] = useState(false);
 
-  // CLIMA — localização já concedida; sem ela, a cidade do cadastro (geocodificada
-  // uma vez por aparelho). Os 3 estados da leitura do cadastro vão inteiros.
+  // CLIMA — localização já concedida; sem ela, a cidade do cadastro (localizada
+  // UMA vez por aparelho, só por serviço grátis: CEP/BrasilAPI ou OpenStreetMap).
+  // Os 3 estados da leitura do cadastro vão inteiros.
   const leituraCadastro: LeituraCadastro = carregandoErro && !empresaLida ? 'erro' : empresaLida ? 'ok' : 'carregando';
-  const reservaClima = useReservaClima(empresa?.cidade, empresa?.estado, leituraCadastro);
+  const reservaClima = useReservaClima(empresa?.cidade, empresa?.estado, empresa?.endereco, leituraCadastro);
   const clima = useClimaDoDia(reservaClima.estado === 'ok' ? reservaClima.coord : null);
 
   // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra shimmer).
@@ -923,10 +924,13 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.maisRow}>
-          <PressableAnimado style={styles.maisChip} onPress={() => nav.navigate('OrdemServico')} haptic="selection" accessibilityLabel={`Abrir ${rotuloOS.toLowerCase()}`}>
-            <MaterialCommunityIcons name="clipboard-check-outline" size={15} color={cores.accentLight} />
-            <Text style={styles.maisChipText}>{rotuloOS}</Text>
-          </PressableAnimado>
+          {/* Para o técnico, "Minhas OS" já é atalho de 1 toque: não repete aqui. */}
+          {!ehTecnico ? (
+            <PressableAnimado style={styles.maisChip} onPress={() => nav.navigate('OrdemServico')} haptic="selection" accessibilityLabel={`Abrir ${rotuloOS.toLowerCase()}`}>
+              <MaterialCommunityIcons name="clipboard-check-outline" size={15} color={cores.accentLight} />
+              <Text style={styles.maisChipText}>{rotuloOS}</Text>
+            </PressableAnimado>
+          ) : null}
           <PressableAnimado style={styles.maisChip} onPress={() => nav.navigate('Servicos')} haptic="selection" accessibilityLabel="Abrir o catálogo de serviços">
             <MaterialCommunityIcons name="wrench-outline" size={15} color={cores.accentLight} />
             <Text style={styles.maisChipText}>Serviços</Text>

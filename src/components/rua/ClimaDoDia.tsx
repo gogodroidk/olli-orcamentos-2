@@ -3,7 +3,8 @@
  *
  * Fonte: worker `/clima` (MET Norway, grátis e de uso comercial, CC BY 4.0). A
  * licença exige crédito, então TODA vez que um dado do MET aparece, a linha
- * "Previsão: MET Norway" aparece junto (`atribuicaoClima`).
+ * "Previsão: MET Norway" aparece junto (`atribuicaoClima`). Quando o ponto da
+ * cidade veio do OpenStreetMap, o crédito da ODbL (`ATRIBUICAO_OSM`) também.
  *
  * 3 estados, nunca calado: carregando → esqueleto curto; falha → "Clima
  * indisponível" (com o motivo acionável quando o cadastro não tem cidade);
@@ -46,13 +47,16 @@ export function ClimaDoDia({ clima, reserva, onCadastrarCidade }: Props) {
 
   if (clima !== 'carregando' && clima.ok === true) {
     const credito = atribuicaoClima(clima);
+    // Ponto da cidade vindo do OpenStreetMap: a ODbL exige o crédito junto.
+    const creditoLocal = reserva.estado === 'ok' ? reserva.atribuicao : null;
     return (
-      <View style={styles.linha} accessibilityLabel={`${Math.round(clima.temperatura)} graus, ${clima.descricao}. ${clima.resumo}. ${credito ?? ''}`}>
+      <View style={styles.linha} accessibilityLabel={`${Math.round(clima.temperatura)} graus, ${clima.descricao}. ${clima.resumo}. ${credito ?? ''}${creditoLocal ? `. ${creditoLocal}` : ''}`}>
         <MaterialCommunityIcons name={iconeDoTempo(clima.simbolo, clima.ehDia)} size={20} color={cores.accentLight} />
         <Text style={styles.temp}>{Math.round(clima.temperatura)}°</Text>
         <View style={styles.textos}>
           <Text style={styles.resumo} numberOfLines={1}>{clima.resumo}</Text>
           {credito ? <Text style={styles.credito}>{credito}</Text> : null}
+          {creditoLocal ? <Text style={styles.credito} numberOfLines={1}>{creditoLocal}</Text> : null}
         </View>
       </View>
     );
