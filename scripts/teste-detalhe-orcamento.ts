@@ -163,7 +163,14 @@ checar('teto: a mais antiga sai', depois.includes('o0:aprovado'), false);
 console.log('\n5) Tela do detalhe');
 const tela = semComentarios(ler('../src/screens/VisualizarOrcamentoScreen.tsx'));
 checar('sem Alert nativo no detalhe (toast e folha)', /Alert\.alert\(/.test(tela), false);
-checar('pergunta da OS na folha de confirmação', /await confirmar\(\{[\s\S]{0,120}rotuloConfirmar: 'Criar OS'/.test(tela), true);
+checar('aprovação vira a folha "Próximos passos"', /visivel=\{folha === 'proximos'\}/.test(tela), true);
+checar('a antiga pergunta "Criar OS?" saiu', /rotuloConfirmar: 'Criar OS'/.test(tela), false);
+checar('o pad de assinatura não abre sozinho ao aprovar', /function oferecerProximosPassos\(\) \{[^}]*setAssinaturaAberta\(true\)/.test(tela), false);
+checar('próximos passos não atropela outra folha aberta', tela.includes("setFolha(atual => (atual === null ? 'proximos' : atual))"), true);
+checar('aprovação pelo link (tela aberta) também leva aos próximos passos', /motivo === 'aprovado' \? \(\) => abrirProximosRef\.current\(\)/.test(tela), true);
+checar('Realtime do link: escuta no foco e para ao sair', /const pararDeEscutar = escutarMudancasDoLink\(orcamentoId, reler\)/.test(tela) && /return pararDeEscutar;/.test(tela), true);
+checar('Realtime em rajada vira uma releitura por vez', /if \(relendo\) \{\s*deNovo = true;/.test(tela), true);
+checar('cabeçalho que encolhe: faixa compacta ligada à rolagem', tela.includes('<BarraStatusCompacta') && tela.includes('onScroll={aoRolar}'), true);
 checar('linha do tempo montada pela regra pura', tela.includes('montarLinhaDoTempo({'), true);
 checar('e desenhada pelo componente', tela.includes('<TimelineOrcamento'), true);
 checar('erro do link vira estado próprio ("erro"), não lista vazia', /\.catch\(\(\) => setLeituraLink\('erro'\)\)/.test(tela), true);
@@ -186,6 +193,13 @@ const trilhaFn = link.slice(link.indexOf('export async function trilhaDoLink('),
 checar('trilhaDoLink lança quando a leitura falhou', /FALHA_LEITURA_LINK\) throw new Error/.test(trilhaFn), true);
 checar('trilhaDoLink não engole erro em []', /catch \{\s*return \[\];/.test(trilhaFn), false);
 checar('statusDoLink segue sem lançar (cobrança não muda)', /async function lerLinkRow\([\s\S]{0,200}FALHA_LEITURA_LINK \? null : r/.test(link), true);
+const escuta = link.slice(link.indexOf('export function escutarMudancasDoLink('), link.indexOf('export function escutarMudancasDoLink(') + 1200);
+checar('escuta do link: filtra pelo orçamento', escuta.includes('filter: `orcamento_id=eq.${orcamentoId}`'), true);
+checar('escuta do link: sem nuvem não quebra (devolve um "parar" vazio)', /if \(!cliente \|\| !orcamentoId\) return \(\) => \{\};/.test(escuta), true);
+checar('escuta do link: payload do evento não vira dado (a tela relê com RLS)', /\(\) => aoMudar\(\)/.test(escuta), true);
+const migracao = ler('../supabase/migrations/20261001150000_realtime_orcamentos_publicos.sql');
+checar('migration põe orcamentos_publicos na publicação do Realtime', /alter publication supabase_realtime add table public\.orcamentos_publicos/.test(migracao), true);
+checar('migration idempotente', /if not exists \(\s*select 1 from pg_publication_tables/.test(migracao), true);
 
 console.log('\n7) Movimento: Reanimated, só transform/opacity, Reduzir movimento');
 const arquivos = {

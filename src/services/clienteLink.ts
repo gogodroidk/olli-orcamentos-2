@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, getCurrentUser } from './supabase';
 import { LINK_BASE_URL } from '../config';
 import { track, Eventos } from './analytics';
@@ -592,6 +593,46 @@ export async function trilhaDoLink(orcamentoId: string): Promise<EventoTrilhaCli
     eventos.push({ tipo: 'pagamento_informado', em: link.pagamentoInformadoEm });
   }
   return eventos;
+}
+
+/**
+ * Escuta (Supabase Realtime, plano gratuito) as mudanças na linha do link deste
+ * orçamento: o cliente abriu, aprovou, recusou ou avisou que pagou. Cada mudança
+ * chama `aoMudar` — a tela relê o status e a trilha do jeito de sempre; o payload
+ * do evento NÃO é usado como dado (a fonte continua sendo a leitura com RLS).
+ *
+ * Complemento, não dependência: sem a migration 20261001150000 (tabela fora da
+ * publicação), sem nuvem ou sem login, simplesmente não chega evento e a tela
+ * segue atualizando no foco e no "puxar para atualizar". Por isso nenhum texto
+ * do app promete "ao vivo". Devolve a função que cancela a escuta. NUNCA lança.
+ */
+let escutasDoLink = 0;
+
+export function escutarMudancasDoLink(orcamentoId: string, aoMudar: () => void): () => void {
+  const cliente = supabase;
+  if (!cliente || !orcamentoId) return () => {};
+  let canal: ReturnType<SupabaseClient['channel']> | null = null;
+  try {
+    // Tópico único por escuta: o mesmo orçamento aberto duas vezes na pilha não
+    // reaproveita (nem derruba, ao sair) o canal da outra tela.
+    escutasDoLink += 1;
+    canal = cliente
+      .channel(`orcamento-link-${orcamentoId}-${escutasDoLink}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: TABLE, filter: `orcamento_id=eq.${orcamentoId}` },
+        () => aoMudar(),
+      )
+      .subscribe();
+  } catch {
+    canal = null;
+  }
+  return () => {
+    if (!canal) return;
+    const c = canal;
+    canal = null;
+    cliente.removeChannel(c).catch(() => {});
+  };
 }
 
 /**

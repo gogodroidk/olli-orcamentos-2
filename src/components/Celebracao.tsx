@@ -162,7 +162,7 @@ function PecaConfete({ particula, progresso, estilo }: {
       opacity: interpolate(p, [0, 0.15, 0.75, 1], [0, 1, 1, 0], Extrapolation.CLAMP),
       transform: [
         { translateX: dx * p },
-        { translateY: dy * p + 28 * p * p },
+        { translateY: dy * p + DISTANCIA.deslize * p * p },
         { rotate: `${rotacaoFinal * p}deg` },
       ],
     };

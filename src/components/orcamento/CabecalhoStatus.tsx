@@ -1,9 +1,19 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, {
+  Extrapolation,
+  cancelAnimation,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { BorderRadius, Spacing, Typography, corStatusOrcamento, sombrasDe, useCores, useEstilos, type Cores } from '../../theme';
-import { DURACAO, MOLA, useReduzirMovimento } from '../../theme/motion';
+import { DISTANCIA, DURACAO, MOLA, useReduzirMovimento } from '../../theme/motion';
+import { formatCurrency } from '../../utils/currency';
 import { STATUS_COLORS, STATUS_LABELS, type StatusOrcamento } from '../../types';
 import { ContadorAnimado } from '../motion/ContadorAnimado';
 import { PressableAnimado } from '../motion/PressableAnimado';
@@ -90,6 +100,60 @@ export function CabecalhoStatus({ status, quando, total, proximoPasso, aoTocarSt
   );
 }
 
+/**
+ * O CABEÇALHO QUE ENCOLHE (item 2.10): quando o card do cabeçalho sai da tela
+ * na rolagem, esta faixa fina (status + total) aparece colada no topo, para o
+ * prestador nunca perder de vista em que pé o orçamento está.
+ *
+ * Ligada à rolagem na UI thread (`rolagem`, de `useAnimatedScrollHandler`): só
+ * `opacity` e `translateY`, com a distância do token `DISTANCIA.sutil`. Com
+ * "Reduzir movimento" ela só aparece/some, sem deslizar nem esmaecer aos poucos.
+ *
+ * É informativa (sem toque): a troca de status continua no chip do card e no ⋯.
+ * Escondida do leitor de tela — repete o que o card já anuncia.
+ */
+export function BarraStatusCompacta({ status, total, rolagem, limiar }: {
+  status: StatusOrcamento;
+  /** `null` = quem vê não pode ver valores. */
+  total: number | null;
+  /** Deslocamento vertical da rolagem (dp). */
+  rolagem: SharedValue<number>;
+  /** A partir de quanto rolado o card do cabeçalho já saiu da tela (dp). */
+  limiar: SharedValue<number>;
+}) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const reduzir = useReduzirMovimento();
+  const corBase = STATUS_COLORS[status];
+  const corTexto = corStatusOrcamento(corBase, cores.surface);
+
+  const estilo = useAnimatedStyle(() => {
+    const fim = limiar.get();
+    const y = rolagem.get();
+    // Antes de medir o card (limiar 0), a faixa fica escondida.
+    if (fim <= 0) return { opacity: 0, transform: [{ translateY: -DISTANCIA.sutil }] };
+    if (reduzir) return { opacity: y >= fim ? 1 : 0, transform: [{ translateY: 0 }] };
+    const inicio = fim - DISTANCIA.deslize;
+    return {
+      opacity: interpolate(y, [inicio, fim], [0, 1], Extrapolation.CLAMP),
+      transform: [{ translateY: interpolate(y, [inicio, fim], [-DISTANCIA.sutil, 0], Extrapolation.CLAMP) }],
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.barra, estilo]}
+    >
+      <View style={[styles.ponto, { backgroundColor: corBase }]} />
+      <Text style={[styles.barraStatus, { color: corTexto }]} numberOfLines={1}>{STATUS_LABELS[status]}</Text>
+      {total !== null ? <Text style={styles.barraTotal} numberOfLines={1}>{formatCurrency(total)}</Text> : null}
+    </Animated.View>
+  );
+}
+
 const criarEstilos = (c: Cores) =>
   StyleSheet.create({
     card: {
@@ -121,4 +185,21 @@ const criarEstilos = (c: Cores) =>
     totalRotulo: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600' },
     totalValor: { ...Typography.valueLarge, color: c.accentLight },
     proximo: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 8, lineHeight: 18 },
+    barra: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: Spacing.base,
+      paddingVertical: Spacing.sm,
+      backgroundColor: c.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: c.outline,
+      ...sombrasDe(c).sm,
+    },
+    barraStatus: { flex: 1, fontSize: 13, fontWeight: '800' },
+    barraTotal: { fontSize: 14, fontWeight: '800', color: c.accentLight },
   });
