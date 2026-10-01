@@ -81,6 +81,8 @@ export function LinhaAjuste({
       escala={0.985}
       disabled={desabilitado || carregando}
       accessibilityLabel={accessibilityLabel ?? titulo}
+      // O rótulo cobre os filhos: sem a dica, o leitor de tela nunca lê a descrição.
+      accessibilityHint={descricao}
       accessibilityState={{ busy: carregando }}
     >
       {conteudo}

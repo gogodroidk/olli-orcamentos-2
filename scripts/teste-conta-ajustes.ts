@@ -123,6 +123,9 @@ checar('ferramentas entram na busca e no filtro', /id: `ferramenta:\$\{f\.key\}`
 checar('Lixeira continua fora para o técnico', /papel !== 'tecnico' \? \[\{ id: 'lixeira'/.test(conta), true);
 checar('Sessão só existe com sessão ativa', /\.\.\.\(sessaoAtiva\s*\?\s*\[\s*\{ id: 'sessaoConta'/.test(conta), true);
 checar('não promete "Conectado à nuvem" (a sessão é local)', /Conectado à nuvem/.test(conta), false);
+checar('...nem a Conta do desktop (paridade)', /Conectado à nuvem/.test(semComentarios(ler('../src/screens/desktop/ContaDesktopScreen.tsx'))), false);
+checar('status do backup só no catálogo quando a tela o desenha', /\.\.\.\(sessaoAtiva \|\| !configured \? \[\{ id: 'backupStatus'/.test(conta), true);
+checar('erro de restaurar leva a lista ao topo (o aviso mora lá)', /listaBackupsRef\.current\?\.scrollTo\(\{ y: 0/.test(conta) && /ref=\{listaBackupsRef\}/.test(conta), true);
 checar('sem Animated antigo na Conta', /Animated\.timing\(|new Animated\.Value/.test(conta), false);
 checar('entradas usam Aparecer (fundação de motion)', /<Aparecer indice=\{ind\(0\)\}>/.test(conta) && !/AnimatedEntrance/.test(conta), true);
 
@@ -135,6 +138,7 @@ checar('linha tocável usa PressableAnimado', /<PressableAnimado/.test(linha), t
 checar('linha tocável vibra seleção (destrutiva não: a folha já vibra aviso)', /haptic=\{destrutivo \? false : 'selection'\}/.test(linha), true);
 checar('linha mostra carregando e bloqueia novo toque', /disabled=\{desabilitado \|\| carregando\}/.test(linha) && /<ActivityIndicator/.test(linha), true);
 checar('linha só de leitura não é tocável', /if \(!onPress\) return <View/.test(linha), true);
+checar('leitor de tela lê a descrição da linha tocável', /accessibilityHint=\{descricao\}/.test(linha), true);
 checar('ícone com o mesmo quadradinho em toda linha', /width: LADO_ICONE_AJUSTE/.test(linha), true);
 checar('grupo vazio não desenha nada (nem título)', /if \(filhos\.length === 0\) return null;/.test(grupo), true);
 checar('grupo entra com Aparecer', /<Aparecer indice=\{indice\}>/.test(grupo), true);

@@ -328,6 +328,10 @@ export default function ContaScreen() {
   // cópia de segurança ainda" mesmo quando havia cópias e a busca só falhou.
   const [backupsErro, setBackupsErro] = useState(false);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
+  // Lista de cópias: o erro de restaurar aparece no TOPO dela. Quem tocou numa
+  // cópia lá embaixo não veria o aviso — a lista volta ao topo quando ele surge.
+  const listaBackupsRef = useRef<ScrollView>(null);
+  const reduzirMovimento = useReduzirMovimento();
   // Falha ao restaurar, mostrada DENTRO da lista de cópias (o toast ficaria por baixo do Modal).
   const [erroRestaurar, setErroRestaurar] = useState<string | null>(null);
   // Falha ao excluir a conta, mostrada dentro do modal de exclusão, pelo mesmo motivo.
@@ -564,6 +568,7 @@ export default function ContaScreen() {
       // das cópias, até a próxima tentativa.
       vibrar('erro');
       setErroRestaurar(mensagemDeErro(e, SEM_INTERNET, 'Não foi possível restaurar essa cópia agora. Tente de novo em instantes.'));
+      listaBackupsRef.current?.scrollTo({ y: 0, animated: !reduzirMovimento });
     }
     setRestaurandoId(null);
   }
@@ -804,7 +809,9 @@ export default function ContaScreen() {
     { id: 'notifFecharDia', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifFecharDia },
     { id: 'notifResumoEmail', secao: SECAO_AJUSTES.notificacoes, titulo: ROTULO_RESUMO_EMAIL },
     { id: 'notifDomingo', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifDomingo },
-    { id: 'backupStatus', secao: SECAO_AJUSTES.backup, titulo: 'Backup na nuvem' },
+    // Mesma condição da tela: a linha de status só existe com sessão; sem nuvem
+    // configurada aparece o cartão "Backup ainda não ativado" no lugar dela.
+    ...(sessaoAtiva || !configured ? [{ id: 'backupStatus', secao: SECAO_AJUSTES.backup, titulo: 'Backup na nuvem' }] : []),
     ...(sessaoAtiva && motivoBackup !== 'somente_dono'
       ? [
         { id: 'backupAuto', secao: SECAO_AJUSTES.backup, ...TEXTO_AJUSTE.backupAuto },
@@ -1432,7 +1439,7 @@ export default function ContaScreen() {
               <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>
-          <ScrollView contentContainerStyle={{ padding: Spacing.base }}>
+          <ScrollView ref={listaBackupsRef} contentContainerStyle={{ padding: Spacing.base }}>
             {erroRestaurar ? (
               <View style={styles.erroInline} accessibilityLiveRegion="polite" accessibilityRole="alert">
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.danger} />
