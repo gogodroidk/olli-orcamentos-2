@@ -9,8 +9,9 @@
  * nada do prestador entra no HTML sem escape.
  */
 import assert from 'node:assert/strict';
-import { pixDaPagina, renderLinkPage, responderLink } from '../src/link.js';
+import { pixDaPagina, renderLinkPage, responderLink, validadeVencida, valorDoPix } from '../src/link.js';
 import { pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
+import { cobrancaDoLink, prepararCobranca } from '../../src/utils/cobrancaCliente.ts';
 
 const TOKEN = 'AbCdEfGhIjKlMnOpQrStUv';
 const ENV = Object.freeze({
@@ -51,7 +52,21 @@ function supabaseFalso(linha, { semColuna = false } = {}) {
       if (metodo === 'PATCH') {
         const patch = JSON.parse(init.body);
         if ('pagamento_informado_em' in patch) {
-          const aceita = linha && linha.status === 'aprovado' && !linha.pagamento_informado_em;
+          // Respeita o filtro da QUERY (como o PostgREST): aprovado pelo cliente, ou
+          // fechado pelo prestador (dados->>cobrarAgora) sem recusa.
+          const porStatus = u.includes('status=eq.aprovado') && linha?.status === 'aprovado';
+          const porPrestador =
+            u.includes('dados->>cobrarAgora=eq.true') &&
+            u.includes('status=neq.recusado') &&
+            linha?.dados?.cobrarAgora === true &&
+            linha?.status !== 'recusado';
+          const aceita = linha && (porStatus || porPrestador) && !linha.pagamento_informado_em;
+          if (!aceita) return Response.json([]);
+          Object.assign(linha, patch);
+          return Response.json([linha]);
+        }
+        if ('status' in patch) {
+          const aceita = linha && linha.status !== 'aprovado' && linha.status !== 'recusado';
           if (!aceita) return Response.json([]);
           Object.assign(linha, patch);
           return Response.json([linha]);
@@ -207,6 +222,250 @@ await caso('nome do prestador com HTML é escapado no bloco do Pix', async () =>
   const { html } = await pagina(linha);
   assert.doesNotMatch(html, /<img src=x/);
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+/* ═══════════ 1.9 — Pix estático funcionando no fluxo real ═══════════ */
+
+/** O valor embutido no BR Code (campo 54, logo depois da moeda 5303986). */
+function valorDoCodigo(codigo) {
+  const m = /530398654(\d{2})/.exec(codigo || '');
+  if (!m) return null;
+  const inicio = m.index + m[0].length;
+  return codigo.slice(inicio, inicio + Number(m[1]));
+}
+
+await caso('fechado pelo PRESTADOR no app (cobrarAgora): Pix sem o cliente aprovar de novo', async () => {
+  const linha = linhaBase({ status: 'enviado' });
+  Object.assign(linha.dados, { statusApp: 'aprovado', cobrarAgora: true, valorACobrar: 350, cobrancaTipo: 'total' });
+  const { html } = await pagina(linha);
+  assert.match(html, />Pagar com Pix</);
+  assert.match(html, /Orçamento aprovado/);
+  assert.match(html, /Frio Bom confirmou este serviço com você/);
+  assert.doesNotMatch(html, /id="btnAprovar"/, 'não pede aprovação de novo');
+  assert.ok(pixCopiaEColaValido(codigoDaPagina(html)));
+});
+
+await caso('recusa registrada vence o cobrarAgora: nada de Pix para quem recusou', async () => {
+  const linha = linhaBase({ status: 'recusado' });
+  Object.assign(linha.dados, { cobrarAgora: true, valorACobrar: 350 });
+  const { html } = await pagina(linha);
+  assert.doesNotMatch(html, />Pagar com Pix</);
+  assert.match(html, /Orçamento recusado/);
+});
+
+await caso('saldo: cliente que pagou parte vê o Pix SÓ do que falta', async () => {
+  const linha = linhaBase();
+  Object.assign(linha.dados, { statusApp: 'aprovado', cobrarAgora: true, valorACobrar: 150, cobrancaTipo: 'saldo' });
+  const { html } = await pagina(linha);
+  assert.match(html, /<div class="pix-valor">R\$ 150,00<\/div>/);
+  assert.match(html, /Saldo em aberto/);
+  assert.match(html, /Total do orçamento: R\$ 350,00/);
+  const codigo = codigoDaPagina(html);
+  assert.ok(pixCopiaEColaValido(codigo));
+  assert.equal(valorDoCodigo(codigo), '150.00');
+});
+
+await caso('entrada (sinal): cobra a entrada e diz que é a entrada', async () => {
+  const linha = linhaBase();
+  Object.assign(linha.dados, { valorACobrar: 105, cobrancaTipo: 'sinal', sinal: { valor: 105, percentual: 30, data: '' } });
+  const { html } = await pagina(linha);
+  assert.match(html, /<div class="pix-valor">R\$ 105,00<\/div>/);
+  assert.match(html, /<strong>Entrada<\/strong>/);
+  assert.equal(valorDoCodigo(codigoDaPagina(html)), '105.00');
+});
+
+await caso('valorACobrar acima do total: teto no total (nunca cobra a mais)', async () => {
+  const linha = linhaBase();
+  linha.dados.valorACobrar = 9999;
+  const { html } = await pagina(linha);
+  assert.equal(valorDoCodigo(codigoDaPagina(html)), '350.00');
+});
+
+await caso('valorACobrar null (app não soube quanto já foi pago): sem Pix, nunca o total', async () => {
+  const linha = linhaBase();
+  linha.dados.valorACobrar = null;
+  const { html } = await pagina(linha);
+  assert.doesNotMatch(html, />Pagar com Pix</);
+  assert.match(html, /Combine a forma de pagamento diretamente com Frio Bom/);
+  assert.equal(valorDoPix({ valorACobrar: null }, 350), null);
+  assert.equal(valorDoPix({ valorACobrar: 'abc' }, 350), null);
+});
+
+await caso('snapshot antigo (sem valorACobrar): continua cobrando o total', async () => {
+  assert.equal(valorDoPix({}, 350), 350);
+  assert.equal(valorDoPix({ pix: {} }, '350.004'), 350);
+});
+
+await caso('quitado (valorACobrar 0): diz que o pagamento já foi registrado, sem Pix', async () => {
+  const linha = linhaBase();
+  linha.dados.valorACobrar = 0;
+  const { html } = await pagina(linha);
+  assert.doesNotMatch(html, />Pagar com Pix</);
+  assert.match(html, /Frio Bom já registrou o pagamento deste orçamento/);
+  assert.doesNotMatch(html, /id="btnPaguei"/);
+});
+
+await caso('fechado no app sem valor a cobrar (quitado ou recebido ilegível): NÃO pede "Aprovar" de novo', async () => {
+  for (const valorACobrar of [0, null]) {
+    const linha = linhaBase({ status: 'enviado' });
+    Object.assign(linha.dados, { statusApp: 'aprovado', cobrarAgora: false, valorACobrar });
+    const { html } = await pagina(linha);
+    assert.doesNotMatch(html, /id="btnAprovar"/, `valorACobrar ${valorACobrar}: sem botão de aprovar`);
+    assert.match(html, /Orçamento aprovado/);
+    assert.doesNotMatch(html, />Pagar com Pix</);
+    assert.doesNotMatch(html, /id="btnPaguei"/);
+  }
+  // Recusa registrada continua vencendo, mesmo com o app marcado como aprovado.
+  const recusada = linhaBase({ status: 'recusado' });
+  Object.assign(recusada.dados, { statusApp: 'convertido', cobrarAgora: false, valorACobrar: 0 });
+  assert.match((await pagina(recusada)).html, /Orçamento recusado/);
+  // "Já paguei" sem cobrarAgora (nada a cobrar) continua recusado (409).
+  const semValor = linhaBase({ status: 'enviado' });
+  Object.assign(semValor.dados, { statusApp: 'aprovado', cobrarAgora: false, valorACobrar: 0 });
+  supabaseFalso(semValor);
+  const r = await responderLink(TOKEN, req('POST', { acao: 'informar_pagamento' }), ENV);
+  assert.equal(r.status, 409);
+});
+
+await caso('PARIDADE app ↔ página: o Pix do link cobra o MESMO valor do WhatsApp', async () => {
+  const orcamento = {
+    id: 'o1', numero: '2026-0012', status: 'aprovado', valorTotal: 350, clienteNome: 'Maria', itens: [],
+  };
+  const empresa = { nome: 'Frio Bom', cidade: 'Campinas', chavePix: '52998224725' };
+  for (const recebido of [0, 100, 349.99]) {
+    const doLink = cobrancaDoLink(orcamento, recebido);
+    const doWhats = prepararCobranca({ orcamento, empresa, diasParado: 1, valorEmAberto: 350 - recebido });
+    const linha = linhaBase({ status: 'enviado' });
+    Object.assign(linha.dados, doLink);
+    const { html } = await pagina(linha);
+    const codigo = codigoDaPagina(html);
+    assert.ok(codigo, `recebido ${recebido}: página mostra o Pix (cobrarAgora)`);
+    assert.equal(valorDoCodigo(codigo), valorDoCodigo(doWhats.pixCopiaECola), `recebido ${recebido}`);
+  }
+  // Leitura dos recebimentos falhou: o link não cobra (3 estados).
+  const desconhecido = cobrancaDoLink(orcamento, null);
+  assert.equal(desconhecido.valorACobrar, null);
+  assert.equal(desconhecido.cobrarAgora, false);
+  // Entrada configurada e nada pago: cobra a entrada (mesmo cálculo do PDF).
+  const comSinal = cobrancaDoLink({ ...orcamento, sinalPercentual: 30 }, 0);
+  assert.equal(comSinal.valorACobrar, 105);
+  assert.equal(comSinal.cobrancaTipo, 'sinal');
+  // Já pagou a entrada: o saldo.
+  const depoisDoSinal = cobrancaDoLink({ ...orcamento, sinalPercentual: 30 }, 105);
+  assert.equal(depoisDoSinal.valorACobrar, 245);
+  assert.equal(depoisDoSinal.cobrancaTipo, 'saldo');
+  // Ainda não fechado no app: não força o Pix (o cliente aprova primeiro).
+  assert.equal(cobrancaDoLink({ ...orcamento, status: 'enviado' }, 0).cobrarAgora, false);
+  // Tudo pago: nada a cobrar.
+  const quitado = cobrancaDoLink(orcamento, 350);
+  assert.equal(quitado.valorACobrar, 0);
+  assert.equal(quitado.cobrarAgora, false);
+});
+
+await caso('"Já paguei" com cobrarAgora: grava com o filtro do prestador NA QUERY', async () => {
+  const linha = linhaBase({ status: 'visualizado' });
+  Object.assign(linha.dados, { cobrarAgora: true, valorACobrar: 350 });
+  const { chamadas } = supabaseFalso(linha);
+  const r = await responderLink(TOKEN, req('POST', { acao: 'informar_pagamento' }), ENV);
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).pagamentoInformado, true);
+  const patch = chamadas.find(c => c.metodo === 'PATCH');
+  assert.match(patch.url, /status=neq\.recusado/);
+  assert.match(patch.url, /dados->>cobrarAgora=eq\.true/);
+  assert.equal(linha.status, 'visualizado', 'status intacto');
+});
+
+await caso('âncora #pagar: bloco com id="pagar", "Copiar código Pix" acima do QR', async () => {
+  const { html } = await pagina(linhaBase());
+  assert.match(html, /<div class="pix-box" id="pagar">/);
+  assert.match(html, /location\.hash !== '#pagar'/);
+  assert.ok(html.indexOf('id="btnCopiar"') < html.indexOf('aria-label="QR code do Pix"'), 'copiar vem antes do QR');
+  // Sem Pix (não aprovado), o #pagar cai nas ações — o script procura as duas âncoras.
+  assert.match(html, /getElementById\('pagar'\) \|\| document\.getElementById\('actions'\)/);
+});
+
+await caso('proposta vencida: GET diz "vencida" e não oferece aprovar', async () => {
+  const linha = linhaBase({ status: 'enviado' });
+  linha.dados.validade = '01/01/2020';
+  const { html } = await pagina(linha);
+  assert.match(html, /Proposta vencida/);
+  assert.match(html, /terminou em 01\/01\/2020/);
+  assert.match(html, /Venceu em 01\/01\/2020/);
+  assert.doesNotMatch(html, /id="btnAprovar"/);
+  assert.match(html, /Pedir proposta atualizada/);
+});
+
+await caso('proposta vencida: POST aprovar devolve 409 e não grava nada', async () => {
+  const linha = linhaBase({ status: 'enviado' });
+  linha.dados.validade = '2020-01-01T10:00:00Z';
+  const { chamadas } = supabaseFalso(linha);
+  const r = await responderLink(TOKEN, req('POST', { acao: 'aprovar' }), ENV);
+  assert.equal(r.status, 409);
+  assert.equal((await r.json()).erro, 'proposta_vencida');
+  assert.equal(chamadas.filter(c => c.metodo === 'PATCH').length, 0);
+  assert.equal(linha.status, 'enviado');
+});
+
+await caso('proposta no prazo: aprovar continua funcionando', async () => {
+  const linha = linhaBase({ status: 'enviado' });
+  linha.dados.validade = '31/12/2099';
+  supabaseFalso(linha);
+  const r = await responderLink(TOKEN, req('POST', { acao: 'aprovar' }), ENV);
+  assert.equal(r.status, 200);
+  assert.equal((await r.json()).status, 'aprovado');
+  assert.equal(linha.status, 'aprovado');
+});
+
+await caso('validade vale até o fim do dia em Brasília', async () => {
+  // 30/09/2026 23:59 em Brasília = 01/10/2026 02:59 UTC → ainda no prazo.
+  assert.equal(validadeVencida('30/09/2026', new Date('2026-10-01T02:59:00Z')), false);
+  // 01/10/2026 00:00:01 em Brasília → venceu.
+  assert.equal(validadeVencida('30/09/2026', new Date('2026-10-01T03:00:01Z')), true);
+  assert.equal(validadeVencida('2026-09-30', new Date('2026-10-01T03:00:01Z')), true);
+  // Sem validade ou ilegível: não bloqueia o cliente por um dado que não existe.
+  assert.equal(validadeVencida('', new Date('2099-01-01')), false);
+  assert.equal(validadeVencida('12/05/20', new Date('2099-01-01')), false);
+  assert.equal(validadeVencida(undefined, new Date('2099-01-01')), false);
+});
+
+await caso('texto honesto: nada de "avisado na hora" (não existe aviso instantâneo)', async () => {
+  for (const status of ['enviado', 'aprovado']) {
+    const { html } = await pagina(linhaBase({ status }));
+    assert.doesNotMatch(html, /avisado na hora/);
+    assert.doesNotMatch(html, /já (foi|é) avisado/);
+  }
+  const { html } = await pagina(linhaBase({ status: 'aprovado' }));
+  assert.match(html, /Sua aprovação foi registrada e aparece para Frio Bom no OLLI/);
+});
+
+await caso('"Falar no WhatsApp" com DDD 55 vai para o número certo', async () => {
+  const linha = linhaBase({ status: 'enviado', prestador_whatsapp: '' });
+  linha.dados.prestador.whatsapp = '(55) 99876-5432';
+  const { html } = await pagina(linha);
+  assert.match(html, /href="https:\/\/wa\.me\/5555998765432\?text=/);
+  // Número torto: sem botão (nunca um wa.me para um desconhecido).
+  const torta = linhaBase({ status: 'enviado', prestador_whatsapp: '' });
+  torta.dados.prestador.whatsapp = '123';
+  const r = await pagina(torta);
+  assert.doesNotMatch(r.html, /wa\.me/);
+});
+
+await caso('app: republicar o link NÃO volta o status para "enviado" (leitura do código)', async () => {
+  // clienteLink.ts importa supabase/react-native e não carrega no node: a rede aqui é
+  // ler o código. O caminho "reusado" tem de ser UPDATE do conteúdo, sem o status.
+  const { readFileSync } = await import('node:fs');
+  const fonte = readFileSync(new URL('../../src/services/clienteLink.ts', import.meta.url), 'utf8');
+  const conteudo = /const conteudo = \{([\s\S]*?)\r?\n {2}\};/.exec(fonte);
+  assert.ok(conteudo, 'bloco `conteudo` existe');
+  assert.doesNotMatch(conteudo[1], /status/, 'conteúdo republicado não leva status');
+  assert.match(fonte, /\.update\(conteudo\)\s*\.eq\('token', reusado\)/);
+  assert.doesNotMatch(fonte, /upsert\(\{ token, \.\.\.baseRow \}/, 'o upsert com status enviado saiu');
+  // O snapshot leva o que a página precisa para cobrar certo.
+  for (const campo of ['statusApp', 'cobrarAgora', 'valorACobrar', 'cobrancaTipo', 'sinal']) {
+    assert.match(fonte, new RegExp(`${campo}: cobranca\\.${campo}`), campo);
+  }
+  // Erro ao ler o token existente não vira "não tem" (senão nasce um 2º link).
+  assert.match(fonte, /if \(error\) throw error;\r?\n {2}return \(data as any\)\?\.token \?\? null;/);
 });
 
 console.log(`\nteste-link-pix: ${ok} casos OK`);
