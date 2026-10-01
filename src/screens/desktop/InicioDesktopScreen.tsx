@@ -121,7 +121,8 @@ export default function InicioDesktopScreen() {
   const [aprovadosResumo, setAprovadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
   const [enviadosResumo, setEnviadosResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
   const [emAbertoResumo, setEmAbertoResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
-  const [contasAReceberResumo, setContasAReceberResumo] = useState<ResumoOrcamentos>(RESUMO_VAZIO);
+  // `semValor`: ganhos sem valor legível — ficam fora da soma, mas não viram "tudo recebido".
+  const [contasAReceberResumo, setContasAReceberResumo] = useState<ResumoOrcamentos & { semValor?: number }>(RESUMO_VAZIO);
   const [ultimosOito, setUltimosOito] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -493,7 +494,13 @@ export default function InicioDesktopScreen() {
           valor={carregando ? '—' : formatCurrency(valorAReceber)}
           icone="cash-clock"
           corIcone={cores.accentLight}
-          rodape={contasAReceberResumo.contagem ? `${contasAReceberResumo.contagem} aprovado${contasAReceberResumo.contagem === 1 ? '' : 's'} sem recibo` : 'tudo recebido'}
+          rodape={
+            contasAReceberResumo.contagem
+              ? `${contasAReceberResumo.contagem} orçamento${contasAReceberResumo.contagem === 1 ? '' : 's'} com saldo a receber`
+              : contasAReceberResumo.semValor
+                ? `${contasAReceberResumo.semValor} sem valor informado`
+                : 'tudo recebido'
+          }
           onPress={() => irParaOrcamentos('a_receber')}
           style={kpiDuasColunas && styles.kpiCardDuasColunas}
         />
