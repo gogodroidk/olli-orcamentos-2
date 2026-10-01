@@ -227,12 +227,25 @@ export function validadeVencida(validade, agora = new Date()) {
 }
 
 /**
- * O PRESTADOR já fechou o serviço no app (`dados.cobrarAgora`) e a página pode cobrar
- * mesmo sem o cliente ter tocado "Aprovar". Uma recusa registrada aqui vence: a página
- * nunca mostra Pix para quem recusou.
+ * O PRESTADOR já fechou o serviço no app e há valor a cobrar (`dados.cobrarAgora`): a
+ * página pode cobrar mesmo sem o cliente ter tocado "Aprovar". É a MESMA condição do
+ * filtro do PATCH de "Já paguei" (`patchPagamentoInformado`). Uma recusa registrada
+ * aqui vence: a página nunca mostra Pix para quem recusou.
+ */
+function cobravelPeloPrestador(row, dados) {
+  return !!dados && dados.cobrarAgora === true && row.status !== 'recusado';
+}
+
+/**
+ * O PRESTADOR já fechou o serviço no app (status aprovado/convertido no snapshot), com
+ * ou sem valor a cobrar. Sem isto, o orçamento fechado e QUITADO (`valorACobrar` 0) ou
+ * cujo recebido o app não conseguiu ler (`valorACobrar` null → `cobrarAgora` false)
+ * voltava a pedir "Aprovar" ao cliente — justamente o que o `statusApp` veio evitar.
+ * O Pix continua decidido por `valorDoPix`; a recusa registrada aqui vence.
  */
 function fechadoPeloPrestador(row, dados) {
-  return !!dados && dados.cobrarAgora === true && row.status !== 'recusado';
+  if (!dados || row.status === 'recusado') return false;
+  return cobravelPeloPrestador(row, dados) || dados.statusApp === 'aprovado' || dados.statusApp === 'convertido';
 }
 
 /**
@@ -500,7 +513,8 @@ async function informarPagamento(token, request, env) {
   // Banco sem a coluna (migration não aplicada): o recurso está DESLIGADO — diz isso.
   if (row._semPagamentoInformado) return json({ ok: false, erro: 'recurso_desligado' }, 503);
   const dados = row && typeof row.dados === 'object' && row.dados ? row.dados : {};
-  const peloPrestador = row.status !== 'aprovado' && fechadoPeloPrestador(row, dados);
+  // Só "fechado COM valor a cobrar" (cobrarAgora): é o que o filtro do PATCH confere.
+  const peloPrestador = row.status !== 'aprovado' && cobravelPeloPrestador(row, dados);
   if (row.status !== 'aprovado' && !peloPrestador) return json({ ok: false, erro: 'nao_aprovado' }, 409);
   if (row[COL_PAGAMENTO]) return json({ ok: true, pagamentoInformado: true, jaInformado: true });
 

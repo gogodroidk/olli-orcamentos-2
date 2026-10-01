@@ -305,6 +305,28 @@ await caso('quitado (valorACobrar 0): diz que o pagamento já foi registrado, se
   assert.doesNotMatch(html, /id="btnPaguei"/);
 });
 
+await caso('fechado no app sem valor a cobrar (quitado ou recebido ilegível): NÃO pede "Aprovar" de novo', async () => {
+  for (const valorACobrar of [0, null]) {
+    const linha = linhaBase({ status: 'enviado' });
+    Object.assign(linha.dados, { statusApp: 'aprovado', cobrarAgora: false, valorACobrar });
+    const { html } = await pagina(linha);
+    assert.doesNotMatch(html, /id="btnAprovar"/, `valorACobrar ${valorACobrar}: sem botão de aprovar`);
+    assert.match(html, /Orçamento aprovado/);
+    assert.doesNotMatch(html, />Pagar com Pix</);
+    assert.doesNotMatch(html, /id="btnPaguei"/);
+  }
+  // Recusa registrada continua vencendo, mesmo com o app marcado como aprovado.
+  const recusada = linhaBase({ status: 'recusado' });
+  Object.assign(recusada.dados, { statusApp: 'convertido', cobrarAgora: false, valorACobrar: 0 });
+  assert.match((await pagina(recusada)).html, /Orçamento recusado/);
+  // "Já paguei" sem cobrarAgora (nada a cobrar) continua recusado (409).
+  const semValor = linhaBase({ status: 'enviado' });
+  Object.assign(semValor.dados, { statusApp: 'aprovado', cobrarAgora: false, valorACobrar: 0 });
+  supabaseFalso(semValor);
+  const r = await responderLink(TOKEN, req('POST', { acao: 'informar_pagamento' }), ENV);
+  assert.equal(r.status, 409);
+});
+
 await caso('PARIDADE app ↔ página: o Pix do link cobra o MESMO valor do WhatsApp', async () => {
   const orcamento = {
     id: 'o1', numero: '2026-0012', status: 'aprovado', valorTotal: 350, clienteNome: 'Maria', itens: [],
