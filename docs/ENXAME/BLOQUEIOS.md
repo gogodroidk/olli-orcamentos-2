@@ -113,6 +113,10 @@ select indexname from pg_indexes where schemaname='public'
 4. **`20260731_exclusoes_contadores_equipe.sql`** — aplicar **inteira**, agora que
    o furo foi fechado nesta leva (ver a seguir).
 5. **`20260727_numero_unico_por_tenant.sql.pendente`** — **NÃO aplicar.**
+   *(Atualização 01/10/2026: os handlers de 23505 existem desde 04/09 e a auditoria
+   de duplicatas deu zero em 30/09; o arquivo virou
+   `20261001090000_numero_unico_por_tenant.sql`, pronto para o dono aplicar.
+   O texto abaixo é o histórico de julho.)*
    Confirmado não-aplicável: o pré-requisito declarado no cabeçalho dela (o push
    renumerar no 23505) não existe — `cloudSync.ts:699` faz o upsert sem olhar
    `error.code` e o `catch` de `pushRowUnchecked` engole tudo. Aplicar hoje troca
