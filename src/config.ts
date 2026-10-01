@@ -102,6 +102,13 @@ export const REVENUECAT_GOOGLE_KEY: string = (process.env.EXPO_PUBLIC_REVENUECAT
  */
 export const APP_VERSION: string = (appJson as { expo?: { version?: string } }).expo?.version ?? '';
 
+/** versionCode do Android (o número que a Play e o suporte usam para saber QUAL
+ *  build é), do mesmo app.json. `null` se não houver. */
+export const APP_VERSION_CODE: number | null = (() => {
+  const v = (appJson as { expo?: { android?: { versionCode?: unknown } } }).expo?.android?.versionCode;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+})();
+
 /** Pacote Android (o id do app na Google Play), lido do mesmo app.json. Usado para
  *  abrir a página de assinaturas da Play Store direto no OLLI. */
 export const ANDROID_PACKAGE: string =

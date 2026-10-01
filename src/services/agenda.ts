@@ -77,6 +77,21 @@ async function garantirCanalAndroid(): Promise<void> {
   } catch {}
 }
 
+/**
+ * Estado da permissão de notificação SEM pedir nada: 'concedida', 'negada' (o
+ * sistema bloqueia — só os ajustes do aparelho resolvem) ou 'nao_perguntada'.
+ * `null` = não deu para ler — "não sei" não vira "bloqueada" nem "liberada".
+ */
+export async function estadoPermissaoNotificacao(): Promise<'concedida' | 'negada' | 'nao_perguntada' | null> {
+  try {
+    const permissao = await Notifications.getPermissionsAsync();
+    if (permissao.granted === true) return 'concedida';
+    return permissao.status === 'denied' ? 'negada' : 'nao_perguntada';
+  } catch {
+    return null;
+  }
+}
+
 /** true se a permissão de notificação já está concedida (sem pedir de novo). */
 export async function temPermissaoNotificacao(): Promise<boolean> {
   try {

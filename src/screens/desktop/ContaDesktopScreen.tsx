@@ -429,6 +429,7 @@ export default function ContaDesktopScreen() {
           : res.motivo === 'sem_login' ? 'Sua sessão expirou. Entre de novo e tente outra vez.'
           : res.motivo === 'rede' ? 'Sem conexão agora. Verifique a internet e tente novamente.'
           : res.motivo === 'falha_cancelamento' ? 'Não consegui cancelar sua assinatura agora, então não apaguei nada. Sua conta e sua cobrança seguem como estavam. Tente de novo em alguns minutos.'
+          : res.motivo === 'muitas_requisicoes' ? 'Muitas tentativas seguidas. Aguarde 1 minuto e tente de novo — nada foi apagado.'
           : 'Não foi possível excluir a conta agora. Tente novamente em instantes.';
         avisar('Não deu', msg);
         setExcluindoConta(false);

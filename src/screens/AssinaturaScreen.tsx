@@ -21,16 +21,25 @@ import { ESTADO_PLAY_BILLING } from '../services/playBilling';
 import { urlGerenciarNaPlay } from '../services/playBillingRegras';
 import { ANDROID_PACKAGE } from '../config';
 import {
-  getResumoAssinatura,
+  lerResumoAssinatura,
   getFaturas,
   getMetodoPagamento,
   getAssinaturaNaPlay,
   abrirPortalAssinatura,
   type AssinaturaNaPlay,
-  type ResumoAssinatura,
+  type LeituraAssinatura,
   type Fatura,
   type MetodoPagamento,
 } from '../services/assinatura';
+import {
+  linhaValidade,
+  mostraPortalStripe,
+  pilulaAssinatura,
+  rotuloMetodo,
+  temCobranca,
+  type TomPilula,
+} from '../services/assinaturaTextos';
+import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -50,12 +59,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * planos" (ainda navega para dentro do app — não é link-out).
  */
 const ANUNCIA_TROCA_PLANO = Platform.OS !== 'ios';
-/** Mesmo interruptor de PlanosScreen/ContaScreen — sem StoreKit, o card de
- * upsell do Grátis (abaixo) não pode oferecer assinar o Pro no iOS. */
-const COMPRA_NO_APP = Platform.OS !== 'ios';
-/** Flag explícita desta branch: no Android da Play não há portal externo capaz de
- * trocar plano/cartão nem upsell de assinatura. Status e recibos seguem visíveis. */
-const BUILD_PLAY_SEM_COMPRA_EXTERNA = Platform.OS === 'android';
+// `COMPRA_NO_APP` (iOS sem StoreKit: o upsell do Grátis não oferece assinar) e
+// `BUILD_PLAY_SEM_COMPRA_EXTERNA` (Android da Play: sem portal externo nem upsell;
+// status e recibos seguem visíveis) vêm de config/loja.ts — flag única do app.
 /** Venda pela própria Google Play ligada neste build (mesmo interruptor da
  * PlanosScreen). Só muda o upsell do Grátis: em vez de "não disponível", leva à
  * tela de Planos, onde a compra é feita pela Play. */
@@ -69,17 +75,14 @@ const PLANO_ICONE: Record<PlanoId, string> = {
   empresa: 'office-building-outline',
 };
 
-/** Rótulo + cor de um status bruto da Stripe, em pt-BR. */
-function statusInfo(status: string | undefined, c: Cores): { label: string; cor: string } {
-  switch (status) {
-    case 'active': return { label: 'Ativa', cor: c.success };
-    case 'trialing': return { label: 'Em teste', cor: c.accentLight };
-    case 'past_due': return { label: 'Pagamento pendente', cor: c.warning };
-    case 'canceled': return { label: 'Cancelada', cor: c.onSurfaceMuted };
-    case 'unpaid': return { label: 'Não paga', cor: c.danger };
-    case 'incomplete':
-    case 'incomplete_expired': return { label: 'Incompleta', cor: c.warning };
-    default: return { label: status ? status : 'Sem assinatura', cor: c.onSurfaceMuted };
+/** Cor do tema para o tom da pílula (o texto vem de `pilulaAssinatura`). */
+function corDoTom(tom: TomPilula, c: Cores): string {
+  switch (tom) {
+    case 'sucesso': return c.success;
+    case 'destaque': return c.accentLight;
+    case 'aviso': return c.warning;
+    case 'perigo': return c.danger;
+    default: return c.onSurfaceMuted;
   }
 }
 
@@ -146,7 +149,8 @@ function nomeBandeira(brand: string | null): string {
  * o invalida ao abrir o Portal, porque o usuário pode voltar de lá com o estado
  * da assinatura realmente mudado (cancelou, trocou de plano).
  */
-let cacheAssinatura: { resumo: ResumoAssinatura; faturas: Fatura[]; metodo: MetodoPagamento | null; play: AssinaturaNaPlay; ts: number } | null = null;
+// Só leitura `ok` entra no cache: um erro não pode ficar 30 s "valendo" sem nova tentativa.
+let cacheAssinatura: { leitura: LeituraAssinatura; faturas: Fatura[]; metodo: MetodoPagamento | null; play: AssinaturaNaPlay; ts: number } | null = null;
 const CACHE_TTL_MS = 30_000;
 
 export default function AssinaturaScreen() {
@@ -154,7 +158,9 @@ export default function AssinaturaScreen() {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
 
-  const [resumo, setResumo] = useState<ResumoAssinatura | null>(null);
+  // 3 estados: `null` = carregando; `ok` = resposta do servidor; `erro` = não sei
+  // (com o último estado conhecido, se houver). Erro NUNCA vira "plano Grátis".
+  const [leitura, setLeitura] = useState<LeituraAssinatura | null>(null);
   const [faturas, setFaturas] = useState<Fatura[]>([]);
   const [metodo, setMetodo] = useState<MetodoPagamento | null>(null);
   // Assinatura vendida pela Google Play? (qualquer plataforma: quem assinou no
@@ -177,27 +183,43 @@ export default function AssinaturaScreen() {
 
   const carregar = useCallback(async (opts?: { forcar?: boolean }) => {
     if (!opts?.forcar && cacheAssinatura && Date.now() - cacheAssinatura.ts < CACHE_TTL_MS) {
-      setResumo(cacheAssinatura.resumo);
+      setLeitura(cacheAssinatura.leitura);
       setFaturas(cacheAssinatura.faturas);
       setMetodo(cacheAssinatura.metodo);
       setPlay(cacheAssinatura.play);
       setCarregando(false);
       return;
     }
-    // As leituras são independentes — dispara em paralelo.
-    const [r, f, m, pl] = await Promise.all([
-      getResumoAssinatura(),
-      getFaturas(),
-      getMetodoPagamento(),
-      getAssinaturaNaPlay(),
-    ]);
-    cacheAssinatura = { resumo: r, faturas: f, metodo: m, play: pl, ts: Date.now() };
-    setResumo(r);
-    setFaturas(f);
-    setMetodo(m);
-    setPlay(pl);
-    setCarregando(false);
+    try {
+      // As leituras são independentes — dispara em paralelo.
+      const [r, f, m, pl] = await Promise.all([
+        lerResumoAssinatura(),
+        getFaturas(),
+        getMetodoPagamento(),
+        getAssinaturaNaPlay(),
+      ]);
+      cacheAssinatura = r.estado === 'ok' ? { leitura: r, faturas: f, metodo: m, play: pl, ts: Date.now() } : null;
+      setLeitura(r);
+      setFaturas(f);
+      setMetodo(m);
+      setPlay(pl);
+    } catch {
+      // Nenhuma leitura lança; o catch é cinto de segurança — e mesmo assim é erro,
+      // não Grátis. Mantém o último estado bom que a tela já mostrava.
+      setLeitura((ant) => ({
+        estado: 'erro',
+        ultimoBom: ant?.estado === 'ok' ? ant.resumo : ant?.estado === 'erro' ? ant.ultimoBom : undefined,
+      }));
+    } finally {
+      setCarregando(false);
+    }
   }, []);
+
+  const tentarDeNovo = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {});
+    setCarregando(true);
+    void carregar({ forcar: true });
+  }, [carregar]);
 
   // Recarrega ao focar — cobre a volta do Portal Stripe (usuário sai pro
   // navegador e volta pelo "voltar" do sistema). O cache acima decide se isso
@@ -275,10 +297,18 @@ export default function AssinaturaScreen() {
     }
   }
 
+  const resumo = leitura?.estado === 'ok' ? leitura.resumo : leitura?.estado === 'erro' ? leitura.ultimoBom ?? null : null;
+  const erroLeitura = leitura?.estado === 'erro';
   const planoEfetivo = resumo?.planoEfetivo ?? 'gratis';
-  const ativo = resumo?.ativo ?? false;
   const ehPagante = planoEfetivo !== 'gratis';
-  const sInfo = statusInfo(resumo?.status, cores);
+  // Sem resposta do servidor e sem um plano pago conhecido, não há o que afirmar:
+  // a tela mostra o erro com "Tentar de novo" — nunca "você está no Grátis" + upsell.
+  const semDadoConfiavel = erroLeitura && !ehPagante;
+  const pilula = resumo?.parcial
+    ? { rotulo: 'Sem atualização', tom: 'neutro' as const }
+    : pilulaAssinatura(resumo ?? { planoEfetivo });
+  const corPilula = corDoTom(pilula.tom, cores);
+  const validade = resumo ? linhaValidade(resumo) : null;
   const ultimaFatura = faturas.length > 0 ? faturas[0] : null;
   const ultimoPagamento = faturas.find(f => f.pago) ?? null;
 
@@ -297,9 +327,9 @@ export default function AssinaturaScreen() {
   const semRenovacao = !!planoPago && resumo?.origem === 'pagamento' && resumo?.renovaSozinho === false;
   const mostraRenovarPix = semRenovacao && pixLigado && COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;
   const precoPlano = planoPago === 'empresa' ? PRECO_EMPRESA : PRECO_PRO;
-  // Sem assinatura nem cliente na Stripe, o portal não tem o que mostrar. Assinatura
-  // da Google Play também não é da Stripe: ela se gerencia na Play Store (card abaixo).
-  const mostraPortal = (!semRenovacao && resumo?.renovaPelaPlay !== true) || resumo?.temClienteStripe === true;
+  // Só quem já foi cliente da Stripe tem o que ver no portal (recibos, cartão,
+  // cancelar). Concessão do admin, teste grátis, Pix e Google Play não passam por lá.
+  const mostraPortal = !!resumo && mostraPortalStripe(resumo);
   const produtoPlay = play.estado === 'ok' ? play.produto : null;
 
   const subtituloHeader = ehPagante ? `Plano ${PLANO_LABEL[planoEfetivo]}` : 'Seu plano e cobranças';
@@ -326,8 +356,36 @@ export default function AssinaturaScreen() {
               <OlliSkeleton width="70%" height={13} style={{ marginTop: 8 }} />
             </View>
           </>
+        ) : semDadoConfiavel ? (
+          <AnimatedEntrance index={0}>
+            <View style={styles.erroCard}>
+              <MaterialCommunityIcons name="cloud-alert-outline" size={36} color={cores.warning} />
+              <Text style={styles.erroTitulo}>Não deu para carregar sua assinatura</Text>
+              <Text style={styles.erroTexto}>
+                Verifique a conexão e tente de novo. Seu plano não muda por causa disso.
+              </Text>
+              <OlliButton
+                label="Tentar de novo"
+                variant="gradient"
+                fullWidth
+                onPress={tentarDeNovo}
+                icon={<MaterialCommunityIcons name="refresh" size={18} color="#fff" />}
+                style={{ marginTop: Spacing.base }}
+              />
+            </View>
+          </AnimatedEntrance>
         ) : (
           <>
+            {/* Erro com último estado conhecido: mostra o que se sabe e diz que é antigo. */}
+            {erroLeitura ? (
+              <View style={styles.avisoCard}>
+                <MaterialCommunityIcons name="cloud-alert-outline" size={20} color={cores.warning} />
+                <Text style={styles.avisoText}>
+                  Não deu para atualizar agora. Mostrando o último estado conhecido neste aparelho.{' '}
+                  <Text style={styles.avisoLink} onPress={tentarDeNovo}>Tentar de novo</Text>
+                </Text>
+              </View>
+            ) : null}
             {/* CARTÃO DO PLANO */}
             <AnimatedEntrance index={0}>
               <View style={styles.planCard}>
@@ -339,9 +397,9 @@ export default function AssinaturaScreen() {
                     <Text style={styles.planLabel}>Seu plano</Text>
                     <Text style={styles.planName}>{PLANO_LABEL[planoEfetivo]}</Text>
                   </View>
-                  <View style={[styles.statusPill, { backgroundColor: sInfo.cor + '22', borderColor: sInfo.cor + '55' }]}>
-                    <View style={[styles.statusDot, { backgroundColor: sInfo.cor }]} />
-                    <Text style={[styles.statusText, { color: sInfo.cor }]}>{sInfo.label}</Text>
+                  <View style={[styles.statusPill, { backgroundColor: corPilula + '22', borderColor: corPilula + '55' }]}>
+                    <View style={[styles.statusDot, { backgroundColor: corPilula }]} />
+                    <Text style={[styles.statusText, { color: corPilula }]}>{pilula.rotulo}</Text>
                   </View>
                 </View>
 
@@ -355,28 +413,42 @@ export default function AssinaturaScreen() {
             {/* PAGANTE: detalhes de cobrança + gerenciar + histórico */}
             {ehPagante ? (
               <>
+                {/* Piso do cache local: só o plano é conhecido — sem inventar validade nem método. */}
+                {resumo && !resumo.parcial && validade ? (
                 <AnimatedEntrance index={1}>
                   <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Cobrança</Text>
+                    <Text style={styles.cardTitle}>{temCobranca(resumo) ? 'Cobrança' : 'Acesso'}</Text>
 
                     <LinhaDetalhe
                       icon="calendar-clock"
-                      label={ativo && ultimaFatura && ultimaFatura.intervalo ? 'Próxima cobrança' : 'Acesso até'}
-                      valor={resumo?.proximaCobranca ? formatDate(resumo.proximaCobranca) : '—'}
+                      label={validade.rotulo}
+                      valor={validade.semFim ? 'Sem data de término' : validade.valorIso ? formatDate(validade.valorIso) : '—'}
+                      semDivisor={!temCobranca(resumo)}
                     />
-                    <LinhaDetalhe
-                      icon="cash-check"
-                      label="Último pagamento"
-                      valor={ultimoPagamento && ultimoPagamento.dataMs ? formatarDataMs(ultimoPagamento.dataMs) : '—'}
-                    />
-                    <LinhaDetalhe
-                      icon="credit-card-outline"
-                      label="Método de pagamento"
-                      valor={metodo && metodo.last4 ? `${nomeBandeira(metodo.brand)} •••• ${metodo.last4}` : 'Não informado'}
-                      semDivisor
-                    />
+                    {temCobranca(resumo) ? (
+                      <>
+                        <LinhaDetalhe
+                          icon="cash-check"
+                          label="Último pagamento"
+                          valor={ultimoPagamento && ultimoPagamento.dataMs ? formatarDataMs(ultimoPagamento.dataMs) : '—'}
+                        />
+                        <LinhaDetalhe
+                          icon="credit-card-outline"
+                          label="Método de pagamento"
+                          valor={rotuloMetodo(resumo, metodo && metodo.last4 ? `${nomeBandeira(metodo.brand)} •••• ${metodo.last4}` : null)}
+                          semDivisor
+                        />
+                      </>
+                    ) : (
+                      <Text style={styles.gerenciarHint}>
+                        {resumo.origem === 'trial'
+                          ? 'O teste não cobra nada e não vira assinatura sozinho. Quando acabar, você volta ao Grátis sem perder dados.'
+                          : 'Este plano foi liberado pela equipe OLLI.'}
+                      </Text>
+                    )}
                   </View>
                 </AnimatedEntrance>
+                ) : null}
 
                 {mostraRenovarPix && planoPago ? (
                   <AnimatedEntrance index={2}>
@@ -630,6 +702,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderColor: 'rgba(247,178,59,0.35)', padding: Spacing.base, marginBottom: Spacing.base,
   },
   avisoText: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 19 },
+  avisoLink: { fontWeight: '800', color: c.accentLight },
+  erroCard: {
+    alignItems: 'center', backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1,
+    borderColor: c.strokeGlow, padding: Spacing.lg, ...sombrasDe(c).sm,
+  },
+  erroTitulo: { fontSize: 17, fontWeight: '800', color: c.onSurface, marginTop: 12, textAlign: 'center' },
+  erroTexto: { fontSize: 13.5, color: c.onSurfaceVariant, marginTop: 6, lineHeight: 19, textAlign: 'center' },
   upsellCard: {
     backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1,
     borderColor: c.strokeGlow, padding: Spacing.base, ...sombrasDe(c).sm,

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Switch, Platform, AccessibilityInfo } from 'rea
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   BorderRadius, Spacing, useCores, useEstilos, useTema, sombrasDe, comAlfa,
-  textoSobre, COR_MARCA_PADRAO, type Cores,
+  textoSobre, COR_MARCA_PADRAO, PADRAO_MODO, type Cores,
 } from '../theme';
 import { OlliPressable } from './OlliPressable';
 
@@ -17,8 +17,8 @@ import { OlliPressable } from './OlliPressable';
  * nova só entra nesta lista depois de passar pela mesma medição: o seletor não
  * pode oferecer uma marca que apague o texto do app.
  *
- * O app abre SEMPRE no claro (ver TemaProvider — de propósito não lê
- * `useColorScheme()`), e esta é a única porta para o escuro.
+ * O app abre no ESCURO (`PADRAO_MODO` no TemaProvider — de propósito não lê
+ * `useColorScheme()`), e esta é a única porta para o claro.
  */
 const CORES_MARCA: ReadonlyArray<{ nome: string; hex: string }> = [
   { nome: 'Azul OLLI', hex: COR_MARCA_PADRAO },
@@ -41,7 +41,7 @@ export function SeletorTema() {
   const styles = useEstilos(criarEstilos);
   const sombras = sombrasDe(cores);
   const escuro = modo === 'escuro';
-  const padrao = modo === 'claro' && corMarca.toUpperCase() === COR_MARCA_PADRAO;
+  const padrao = modo === PADRAO_MODO && corMarca.toUpperCase() === COR_MARCA_PADRAO.toUpperCase();
 
   const trocarModo = () => {
     alternarModo();
@@ -123,7 +123,7 @@ export function SeletorTema() {
           style={styles.restaurar}
         >
           <MaterialCommunityIcons name="restore" size={16} color={cores.accentLight} />
-          <Text style={styles.restaurarTexto}>Voltar ao padrão (claro, azul OLLI)</Text>
+          <Text style={styles.restaurarTexto}>Voltar ao padrão ({PADRAO_MODO === 'escuro' ? 'escuro' : 'claro'}, azul OLLI)</Text>
         </OlliPressable>
       ) : null}
     </View>

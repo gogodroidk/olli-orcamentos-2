@@ -29,6 +29,11 @@ import {
 
 const CHAVE = 'olli.tema.v1';
 
+/** Modo PADRÃO do app (abre nele e é para onde "Voltar ao padrão" leva). Exportado
+ *  para o SeletorTema calcular "já está no padrão?" com a MESMA regra daqui — antes
+ *  ele comparava com o claro, mostrava "Voltar ao padrão (claro…)" e gravava escuro. */
+export const PADRAO_MODO: ModoTema = 'escuro';
+
 interface EstadoSalvo {
   modo?: ModoTema;
   corMarca?: string;
@@ -56,7 +61,7 @@ function corValida(hex: unknown): hex is string {
 }
 
 export function TemaProvider({ children }: { children: React.ReactNode }) {
-  const [modo, setModo] = useState<ModoTema>('escuro');
+  const [modo, setModo] = useState<ModoTema>(PADRAO_MODO);
   const [corMarca, setCorMarca] = useState<string>(COR_MARCA_PADRAO);
   const [carregando, setCarregando] = useState(true);
 
@@ -104,9 +109,9 @@ export function TemaProvider({ children }: { children: React.ReactNode }) {
   }, [persistir]);
 
   const restaurarPadrao = useCallback(() => {
-    setModo('escuro');
+    setModo(PADRAO_MODO);
     setCorMarca(COR_MARCA_PADRAO);
-    persistir({ modo: 'escuro', corMarca: COR_MARCA_PADRAO });
+    persistir({ modo: PADRAO_MODO, corMarca: COR_MARCA_PADRAO });
   }, [persistir]);
 
   // A paleta inteira é recalculada só quando modo ou cor mudam. Cada tela a

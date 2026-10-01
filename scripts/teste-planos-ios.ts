@@ -41,9 +41,17 @@ function ler(caminho: string): string {
   return readFileSync(new URL(caminho, import.meta.url), 'utf8');
 }
 
+console.log('\n0) config/lojaRegras.ts — a flag ÚNICA de loja');
+const lojaSrc = ler('../src/config/lojaRegras.ts');
+checar('COMPRA_NO_APP = não-iOS (na fonte única)', lojaSrc.includes("const compraNoApp = os !== 'ios';"), true);
+checar('Android da Play sem compra externa (na fonte única)', lojaSrc.includes("const buildPlaySemCompraExterna = os === 'android';"), true);
+checar('compra externa exige não-iOS e não-Android Play (na fonte única)', lojaSrc.includes('compraExternaHabilitada: compraNoApp && !buildPlaySemCompraExterna'), true);
+const lojaApp = ler('../src/config/loja.ts');
+checar('config/loja.ts aplica Platform.OS às regras', lojaApp.includes('regrasDaLoja(Platform.OS)'), true);
+
 console.log('\n1) PlanosScreen.tsx — venda escondida por completo no iOS');
 const planosSrc = ler('../src/screens/PlanosScreen.tsx');
-checar('COMPRA_NO_APP está definido', planosSrc.includes("const COMPRA_NO_APP = Platform.OS !== 'ios';"), true);
+checar('COMPRA_NO_APP vem de config/loja', /import \{[^}]*\bCOMPRA_NO_APP\b[^}]*\} from '\.\.\/config\/loja';/.test(planosSrc), true);
 checar('assinarPlano tem o early-return de defesa em profundidade', (() => {
   const inicio = planosSrc.indexOf('async function assinarPlano(');
   const corpo = planosSrc.slice(inicio, planosSrc.indexOf('\n  }', inicio));
@@ -77,7 +85,7 @@ for (const frase of ['Assinando o Pro', 'Assine direto no app']) {
 console.log('\n2) AssinaturaScreen.tsx — portal tolerado, upsell de compra nova escondido');
 const assinaturaSrc = ler('../src/screens/AssinaturaScreen.tsx');
 checar('ANUNCIA_TROCA_PLANO está definido (hint do portal)', assinaturaSrc.includes("const ANUNCIA_TROCA_PLANO = Platform.OS !== 'ios';"), true);
-checar('COMPRA_NO_APP está definido (upsell do Grátis)', assinaturaSrc.includes("const COMPRA_NO_APP = Platform.OS !== 'ios';"), true);
+checar('COMPRA_NO_APP vem de config/loja (upsell do Grátis)', /import \{[^}]*\bCOMPRA_NO_APP\b[^}]*\} from '\.\.\/config\/loja';/.test(assinaturaSrc), true);
 checar('gerenciar assinatura é bloqueado em profundidade no Android Play', (() => {
   const inicio = assinaturaSrc.indexOf('async function gerenciar()');
   const corpo = assinaturaSrc.slice(inicio, assinaturaSrc.indexOf('\n  }', inicio));
@@ -95,7 +103,7 @@ checar('o rótulo de compra só existe fora do Android Play', assinaturaSrc.incl
 
 console.log('\n3) ContaScreen.tsx — mesmo interruptor, mesmo tratamento (regressão do achado 4 da rodada 1)');
 const contaSrc = ler('../src/screens/ContaScreen.tsx');
-checar('COMPRA_NO_APP está definido', contaSrc.includes("const COMPRA_NO_APP = Platform.OS !== 'ios';"), true);
+checar('COMPRA_NO_APP vem de config/loja', /import \{[^}]*\bCOMPRA_NO_APP\b[^}]*\} from '\.\.\/config\/loja';/.test(contaSrc), true);
 checar('"Assine direto no app" é condicionado a COMPRA_NO_APP', (() => {
   // `indexOf` pegaria a menção no docblock (comentário, não código) lá em cima
   // — a ocorrência real no JSX é a ÚLTIMA no arquivo.
@@ -108,7 +116,7 @@ checar('o rótulo do botão de upsell exige compra permitida e não-Android Play
 
 console.log('\n4) CreditosScreen.tsx — Pix externo ausente nos builds nativos');
 const creditosSrc = ler('../src/screens/CreditosScreen.tsx');
-checar('compra externa exige não-iOS e não-Android Play', creditosSrc.includes('const COMPRA_EXTERNA_HABILITADA = COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;'), true);
+checar('compra externa vem da flag única (não-iOS e não-Android Play)', creditosSrc.includes("import { COMPRA_EXTERNA_HABILITADA } from '../config/loja';"), true);
 checar('comprar tem early-return de defesa em profundidade', (() => {
   const inicio = creditosSrc.indexOf('async function comprar(');
   const corpo = creditosSrc.slice(inicio, creditosSrc.indexOf('\n  }', inicio));
