@@ -145,6 +145,15 @@ const cobrancaParcial = montarMensagemCobrancaLink(original, 8, 'https://l/o/x#p
 assert.match(cobrancaParcial, /Falta R\$\s?100,00/, 'pagamento parcial cita o saldo');
 assert.doesNotMatch(cobrancaParcial, /paga por Pix/, 'sem chave Pix a mensagem não promete Pix');
 assert.match(telaDetalhe, /#pagar/, 'o detalhe cobra com o link #pagar');
+// A página pública só mostra o Pix (do TOTAL) quando o cliente aprovou pelo link:
+// o link só vai na cobrança nesse caso e nunca com pagamento parcial + Pix.
+assert.match(telaDetalhe, /link\?\.status !== 'aprovado' \|\| \(comPix && saldo !== undefined\)/, 'cobrança só manda o link quando a página mostra o Pix certo');
+// Republicar o link de um orçamento que o cliente já aprovou não pode voltar o
+// status público para 'enviado' (a página pediria "Aprovar" de novo e sumiria o Pix).
+const clienteLinkSrc = ler('../src/services/clienteLink.ts');
+assert.match(clienteLinkSrc, /reusado\.status === 'aprovado' \? \{ token, \.\.\.semStatus \}/, 'reenvio preserva o aprovado do link');
+// Lista: "Criar revisão" do card (recusado/expirado/cancelado) cria a revisão de fato.
+assert.match(telaMobile, /label: 'Criar revisão', cor: cores\.primary, onPress: \(\) => onRevisar\(o\)/, 'Criar revisão do card não pode abrir o original no editor');
 assert.match(telaDetalhe, /montarMensagemCobrancaLink/, 'o detalhe usa a mensagem com link');
 
 // Envio: WhatsApp no número do cliente com o link de aprovação, e "Conseguiu enviar?".

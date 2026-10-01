@@ -139,16 +139,17 @@ function pixPublico(orc: Orcamento, empresa: Empresa | null): { chave: string; n
   };
 }
 
-async function tokenExistente(orcamentoId: string, userId: string): Promise<string | null> {
+async function tokenExistente(orcamentoId: string, userId: string): Promise<{ token: string; status: string } | null> {
   if (!supabase) return null;
   const { data } = await supabase
     .from(TABLE)
-    .select('token')
+    .select('token, status')
     .eq('orcamento_id', orcamentoId)
     .eq('user_id', userId)
     .limit(1)
     .maybeSingle();
-  return (data as any)?.token ?? null;
+  const token = (data as any)?.token;
+  return token ? { token, status: String((data as any)?.status ?? '') } : null;
 }
 
 /**
@@ -178,8 +179,14 @@ export async function gerarLinkOrcamento(orc: Orcamento, empresa: Empresa | null
 
   if (reusado) {
     // Token já existe para este orçamento: atualiza o snapshot (link não muda).
-    token = reusado;
-    const { error } = await supabase.from(TABLE).upsert({ token, ...baseRow }, { onConflict: 'token' });
+    // Se o cliente JÁ APROVOU pelo link, o status não volta para 'enviado': senão
+    // a página dele voltaria a pedir "Aprovar/Recusar", sumiria com o bloco de Pix
+    // e o "Já paguei" passaria a ser recusado (o worker exige 'aprovado'). Reenviar
+    // ou cobrar um orçamento aprovado só atualiza o snapshot.
+    token = reusado.token;
+    const { status: statusNovo, ...semStatus } = baseRow;
+    const linha = reusado.status === 'aprovado' ? { token, ...semStatus } : { token, ...semStatus, status: statusNovo };
+    const { error } = await supabase.from(TABLE).upsert(linha, { onConflict: 'token' });
     if (error) throw error;
   } else {
     // Token NOVO: insere e, na colisão de PK (token já usado por outro registro),

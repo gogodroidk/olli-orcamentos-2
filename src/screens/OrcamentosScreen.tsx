@@ -97,6 +97,7 @@ interface LinhaOrcamentoProps {
   marcado: boolean;
   onPress: (item: Orcamento) => void;
   onEditar: (item: Orcamento) => void;
+  onRevisar: (item: Orcamento) => void;
   onCobrarResposta: (item: Orcamento) => void;
   onRecibo: (item: Orcamento) => void;
   onMenu: (item: Orcamento) => void;
@@ -117,6 +118,7 @@ function LinhaOrcamentoBase({
   marcado,
   onPress,
   onEditar,
+  onRevisar,
   onCobrarResposta,
   onRecibo,
   onMenu,
@@ -172,7 +174,7 @@ function LinhaOrcamentoBase({
               cobrar_resposta: { icon: 'whatsapp', label: 'Cobrar resposta', cor: cores.success, onPress: () => onCobrarResposta(o) },
               cobrar: { icon: 'cash-clock', label: 'Cobrar', cor: cores.success, onPress: () => onPress(o) },
               recibo: { icon: 'receipt', label: 'Recibo', cor: cores.success, onPress: () => onRecibo(o) },
-              revisar: { icon: 'file-document-edit-outline', label: 'Criar revisão', cor: cores.primary, onPress: () => onEditar(o) },
+              revisar: { icon: 'file-document-edit-outline', label: 'Criar revisão', cor: cores.primary, onPress: () => onRevisar(o) },
             }[acao] as { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; cor: string; onPress: () => void };
             return (
               <TouchableOpacity key={acao} style={styles.actionBtn} onPress={meta.onPress} accessibilityRole="button">
@@ -537,6 +539,10 @@ export default function OrcamentosScreen() {
     nav.navigate('EditarOrcamento', { orcamentoId: o.id });
   }, [handleRevision, nav]);
 
+  // Recusado/expirado/cancelado não são edicaoBloqueada: o botão "Criar revisão"
+  // do card precisa criar a revisão de fato, não abrir o original no editor.
+  const onRevisarLinha = useCallback((o: Orcamento) => { void handleRevision(o); }, [handleRevision]);
+
   const onCobrarRespostaLinha = useCallback((o: Orcamento) => { void handleCobrarResposta(o); }, [handleCobrarResposta]);
 
   const onMenuLinha = useCallback((o: Orcamento) => { setMenuDe(o); }, []);
@@ -552,7 +558,9 @@ export default function OrcamentosScreen() {
     if (!o) return;
     if (acao === 'duplicar') void handleClone(o);
     else if (acao === 'editar') onEditarLinha(o);
-    else void handleDelete(o);
+    // A confirmação (Alert) espera o menu terminar de fechar: no iOS, um Alert
+    // aberto enquanto o Modal sai some junto com ele.
+    else setTimeout(() => { void handleDelete(o); }, 350);
   }
 
   const renderItem = useCallback(({ item: o, index }: { item: Orcamento; index: number }) => {
@@ -566,6 +574,7 @@ export default function OrcamentosScreen() {
         marcado={marcado}
         onPress={onPressLinha}
         onEditar={onEditarLinha}
+        onRevisar={onRevisarLinha}
         onCobrarResposta={onCobrarRespostaLinha}
         onRecibo={onReciboLinha}
         onMenu={onMenuLinha}
@@ -573,7 +582,7 @@ export default function OrcamentosScreen() {
         podeFinanceiro={podeFinanceiro}
       />
     );
-  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onCobrarRespostaLinha, onReciboLinha, onMenuLinha, recibos, podeFinanceiro]);
+  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onRevisarLinha, onCobrarRespostaLinha, onReciboLinha, onMenuLinha, recibos, podeFinanceiro]);
 
   const keyExtractor = useCallback((o: Orcamento) => o.id, []);
 

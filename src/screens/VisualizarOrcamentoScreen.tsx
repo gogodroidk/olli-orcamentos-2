@@ -32,7 +32,7 @@ import {
   montarMensagemPedidoAvaliacao,
 } from '../utils/mensagensOrcamento';
 import { PixCobrancaModal } from '../components/PixCobrancaModal';
-import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
+import { gerarLinkOrcamento, linkConfigurado, sincronizarStatusLinks, statusDoLink, trilhaDoLink, puxarVersoesNuvemParaOrcamento } from '../services/clienteLink';
 import { criarOSDeOrcamento } from '../services/ordemServico';
 import { estornarPagamento, getStatusFinanceiro, registrarPagamento, totalRecebidoDoOrcamento } from '../services/pagamentos';
 import { lerCobrancasEnviadas, registrarCobrancaEnviada } from '../services/registroEnvios';
@@ -398,7 +398,9 @@ export default function VisualizarOrcamentoScreen() {
       Alert.alert('Não consegui registrar a cobrança', 'A mensagem saiu, mas o registro de "cobrado hoje" não foi gravado agora.');
     }
     // Sem link de pagamento, o código Pix vai numa SEGUNDA mensagem, sozinho.
-    if (pendente.ofertarCodigo) setQrAberto(true);
+    // Espera a folha terminar de fechar: no iOS, abrir um Modal enquanto outro
+    // ainda está saindo faz o segundo simplesmente não aparecer.
+    if (pendente.ofertarCodigo) setTimeout(() => setQrAberto(true), 450);
   }
 
   async function handleLinkCliente() {
@@ -770,6 +772,13 @@ export default function VisualizarOrcamentoScreen() {
     if (linkConfigurado()) {
       setOverlayInfo({ titulo: 'Preparando a cobrança...', subtitulo: 'Gerando o link de pagamento...' });
       try {
+        // A página pública só mostra o Pix quando o CLIENTE aprovou pelo link
+        // (status 'aprovado' lá), e o QR dela é do TOTAL. Então o link só vai
+        // quando o cliente aprovou por ele e, com Pix, quando não há pagamento
+        // parcial — senão o cliente veria "Aprovar" de novo ou pagaria a mais.
+        // Fora disso: texto sem código + o código sozinho na mensagem seguinte.
+        const link = await statusDoLink(orc.id);
+        if (link?.status !== 'aprovado' || (comPix && saldo !== undefined)) throw new Error('link_nao_serve');
         const url = await gerarLinkOrcamento(orc, empresa);
         mensagem = montarMensagemCobrancaLink(orc, dias, `${url}#pagar`, { comPix, valorEmAberto: saldo });
         semLink = false;
@@ -1349,8 +1358,8 @@ function textoConfirmacaoEnvio(pendente: EnvioPendente | null, orc: Orcamento): 
   const efeito = 'Confirmando, fica registrado que você cobrou hoje.';
   if (!pendente.semLink) return efeito;
   return pendente.ofertarCodigo
-    ? `${efeito} A mensagem foi sem o link de pagamento (não consegui gerá-lo agora). Em seguida, envie o código Pix sozinho numa segunda mensagem.`
-    : `${efeito} A mensagem foi sem o link de pagamento (não consegui gerá-lo agora).`;
+    ? `${efeito} A mensagem foi sem o link de pagamento. Em seguida, envie o código Pix sozinho numa segunda mensagem.`
+    : `${efeito} A mensagem foi sem o link de pagamento.`;
 }
 
 /**
