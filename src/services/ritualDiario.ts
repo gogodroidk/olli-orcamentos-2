@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getAgendamentosDoDia, getProximoAgendamento, temPermissaoNotificacao } from './agenda';
+import { getAgendamentosDoDia, getProximaSaida, temPermissaoNotificacao } from './agenda';
 import { getClientes, getEmpresa } from '../database/database';
 import { reagendarAvisoSaida } from './avisoSaida';
 import { calcularSaida } from './etaSaida';
@@ -32,7 +32,7 @@ import {
  * se o usuário reabrir o app de novo antes do disparo, o retrato é atualizado.
  *
  * REAPROVEITAMENTO — nada aqui reimplementa leitura já existente:
- *  - `getProximoAgendamento` (agenda.ts), `orcamentosParaCobrar`
+ *  - `getProximaSaida` (agenda.ts), `orcamentosParaCobrar`
  *    (radarCobranca.ts), `clientesParaReconquistar` (radarClientes.ts) — os
  *    MESMOS 3 loaders que a Home já roda no primeiro card do dia.
  *  - `gerarRelatorioDia`/`relatorioParaTexto` (relatorioDia.ts) — a MESMA
@@ -203,7 +203,9 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | nu
  */
 export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
   try {
-    const proxima = await getProximoAgendamento().catch(() => null);
+    // Próxima SAÍDA, não Próxima parada: a visita em andamento (14h–16h) é a
+    // parada do Início, mas o aviso de sair tem que ser o da visita seguinte.
+    const proxima = await getProximaSaida().catch(() => null);
     const inicio = proxima ? new Date(proxima.inicio) : null;
     const [empresa, clientes, doDia, temPermissao] = await Promise.all([
       getEmpresa().catch(() => null),
@@ -233,7 +235,7 @@ export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
  */
 async function montarBomDia(alvo: Date): Promise<{ titulo: string; corpo: string } | null> {
   const [proxima, cobranca, radar] = await Promise.all([
-    getProximoAgendamento().catch(() => null),
+    getProximaSaida().catch(() => null),
     orcamentosParaCobrar().catch(() => []),
     clientesParaReconquistar().catch(() => []),
   ]);

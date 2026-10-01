@@ -8,7 +8,7 @@ import { cancelarAvisoSaida } from './avisoSaida';
 import { LEMBRETE_MAP_KEY } from './storageKeys';
 import { expandirRecorrencia, type OcorrenciaAgendamento } from '../utils/contratoRecorrente';
 import {
-  escolherProximaParada, filtrarVisitasSemBaixa, limitesDoDiaLocal,
+  escolherProximaParada, escolherProximaSaida, filtrarVisitasSemBaixa, limitesDoDiaLocal,
   JANELA_EM_ANDAMENTO_DIAS, JANELA_PROXIMA_PARADA_DIAS, JANELA_SEM_BAIXA_DIAS,
 } from '../utils/agendaDia';
 
@@ -318,7 +318,7 @@ export async function getAgendamentosDoDia(dia: Date = new Date()): Promise<Ocor
 }
 
 /**
- * Próxima parada (Início, aviso "saia às", "Bom dia"): a primeira visita ativa
+ * Próxima parada (card do Início, no celular e no desktop): a primeira visita ativa
  * dos próximos 60 dias, já com as séries recorrentes, cujo fim
  * (COALESCE(fim, inicio + 1h)) ainda não passou. Cancelada e concluída não
  * contam. A visita EM ANDAMENTO continua sendo a próxima parada até terminar
@@ -330,6 +330,18 @@ export async function getProximoAgendamento(agora: Date = new Date()): Promise<O
   // LIXEIRA: getAgendamentosExpandidos já exclui soft-deletados.
   const ocorrencias = await getAgendamentosExpandidos(desde.toISOString(), ate.toISOString());
   return escolherProximaParada(ocorrencias, agora);
+}
+
+/**
+ * Próxima SAÍDA (aviso "saia às" e "Bom dia"): a primeira visita ativa dos
+ * próximos 60 dias, já com as séries recorrentes, que ainda NÃO começou. A visita
+ * em andamento fica de fora de propósito: ela é a Próxima parada do Início, mas o
+ * aviso de saída tem que mirar a SEGUINTE (ver `escolherProximaSaida`).
+ */
+export async function getProximaSaida(agora: Date = new Date()): Promise<OcorrenciaAgendamento | null> {
+  const ate = new Date(agora.getTime() + JANELA_PROXIMA_PARADA_DIAS * MS_DIA);
+  const ocorrencias = await getAgendamentosExpandidos(agora.toISOString(), ate.toISOString());
+  return escolherProximaSaida(ocorrencias, agora);
 }
 
 /**

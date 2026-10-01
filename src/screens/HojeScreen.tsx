@@ -25,7 +25,6 @@ import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { maisPrioritarioFollowUp } from '../utils/prioridadeFollowUp';
-import { idBaseDaOcorrencia } from '../utils/contratoRecorrente';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import {
@@ -685,9 +684,11 @@ export default function HojeScreen() {
                 <AnimatedEntrance key={a.id} index={i}>
                   <OlliPressable
                     style={styles.agendaCard}
-                    // Abre ESTA visita na Agenda. Repetição de série (id `<base>@<dia>`)
-                    // abre a base, como o toque na própria Agenda.
-                    onPress={() => (nav as any).navigate('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId: idBaseDaOcorrencia(a.id) } })}
+                    // Abre ESTA visita na Agenda. Repetição de série vai com o id
+                    // inteiro (`<base>@<dia>`), o mesmo formato da notificação: a
+                    // Agenda abre a base e foca o DIA da repetição. Mandar só a base
+                    // focaria a semana em que a série começou.
+                    onPress={() => (nav as any).navigate('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId: a.id } })}
                     haptic="selection"
                     accessibilityLabel={`Abrir visita — ${a.titulo}`}
                   >

@@ -76,6 +76,29 @@ export function escolherProximaParada<T extends Agendamento>(itens: readonly T[]
 }
 
 /**
+ * Próxima SAÍDA: a primeira visita ativa que ainda NÃO começou (`inicio` >= agora).
+ * É o alvo do aviso "saia às HH:MM" e do "Bom dia". Diferente da Próxima parada,
+ * a visita em andamento NÃO conta: o prestador já está nela, e quem precisa do
+ * aviso de saída é a visita SEGUINTE. Sem isto, das 14h às 16h o aviso da visita
+ * das 17h nunca era calculado (e o que havia era cancelado). `null` = nenhuma.
+ */
+export function escolherProximaSaida<T extends Agendamento>(itens: readonly T[], agora: Date = new Date()): T | null {
+  const t = agora.getTime();
+  let melhor: T | null = null;
+  let melhorInicio = Number.POSITIVE_INFINITY;
+  for (const a of itens) {
+    if (!visitaAtiva(a)) continue;
+    const ini = new Date(a.inicio).getTime();
+    if (!Number.isFinite(ini) || ini < t) continue;
+    if (ini < melhorInicio) {
+      melhor = a;
+      melhorInicio = ini;
+    }
+  }
+  return melhor;
+}
+
+/**
  * Visitas que já terminaram nos últimos `dias` e continuam com status
  * "agendado": ninguém concluiu, cancelou nem remarcou. Mais recente primeiro.
  *

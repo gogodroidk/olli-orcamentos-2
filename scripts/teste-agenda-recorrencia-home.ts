@@ -2,6 +2,7 @@
  * Agenda certa fora da tela Agenda (itens 1.5 e 1.6 da onda 1):
  *  - séries recorrentes aparecem no dia (Hoje, Relatório, "Bom dia") e na Próxima parada;
  *  - a visita em andamento continua sendo a Próxima parada, com rótulo "AGORA";
+ *  - mas o aviso "saia às" e o "Bom dia" miram a visita SEGUINTE (Próxima saída);
  *  - cancelada/concluída não viram Próxima parada;
  *  - visitas passadas sem baixa (60 dias), sem contar repetições de série;
  *  - o botão de 1 toque do Hoje mira a proposta de maior prioridade, não a mais fria;
@@ -16,6 +17,7 @@ import { expandirRecorrencia, idBaseDaOcorrencia } from "../src/utils/contratoRe
 import {
 	emAndamento,
 	escolherProximaParada,
+	escolherProximaSaida,
 	filtrarVisitasSemBaixa,
 	fimEfetivoMs,
 	limitesDoDiaLocal,
@@ -86,6 +88,19 @@ caso("visita em andamento continua sendo a Próxima parada e vira AGORA", () => 
 	assert.equal(rotuloQuandoVisita(andamento, agora), "AGORA · em atendimento");
 	// terminou: passa para a seguinte
 	assert.equal(escolherProximaParada([depois, andamento], new Date("2026-09-30T19:00:01.000Z"))?.id, "b");
+});
+
+caso("aviso de saída mira a visita SEGUINTE enquanto uma está em andamento", () => {
+	const andamento = visita({ id: "a", inicio: "2026-09-30T17:00:00.000Z", fim: "2026-09-30T19:00:00.000Z" });
+	const depois = visita({ id: "b", inicio: "2026-09-30T20:00:00.000Z" });
+	const concluida = visita({ id: "c", inicio: "2026-09-30T19:30:00.000Z", status: "concluido" });
+	const agora = new Date("2026-09-30T17:30:00.000Z");
+	assert.equal(escolherProximaParada([depois, andamento, concluida], agora)?.id, "a");
+	assert.equal(escolherProximaSaida([depois, andamento, concluida], agora)?.id, "b");
+	assert.equal(escolherProximaSaida([andamento], agora), null);
+	// série recorrente: a próxima saída é a repetição seguinte
+	const lista = expandir([semanal], agora, new Date(agora.getTime() + 60 * MS_DIA));
+	assert.equal(escolherProximaSaida(lista, agora)?.id, "serie-1@2026-10-06");
 });
 
 caso("sem fim gravado, a visita dura 1h (COALESCE(fim, inicio + 1h))", () => {
@@ -161,6 +176,14 @@ caso("agenda.ts: dia e Próxima parada saem da agenda expandida", () => {
 	assert.match(prox.slice(0, 600), /escolherProximaParada\(/);
 	assert.doesNotMatch(agendaTs, /inicio >= \? AND status != 'cancelado'/);
 	assert.match(agendaTs, /export async function getVisitasSemBaixa\(/);
+	const saida = agendaTs.slice(agendaTs.indexOf("export async function getProximaSaida"));
+	assert.match(saida.slice(0, 400), /escolherProximaSaida\(/);
+});
+
+caso("ritualDiario: aviso de saída e Bom dia usam a Próxima saída", () => {
+	const ritual = readFileSync(new URL("../src/services/ritualDiario.ts", import.meta.url), "utf8");
+	assert.doesNotMatch(ritual, /getProximoAgendamento\(/);
+	assert.equal((ritual.match(/getProximaSaida\(\)/g) ?? []).length, 2);
 });
 
 caso("HojeScreen: Pulso grava a nota, dia local, 1 toque priorizado, toque abre a visita", () => {
@@ -169,7 +192,8 @@ caso("HojeScreen: Pulso grava a nota, dia local, 1 toque priorizado, toque abre 
 	assert.match(hojeTs, /format\(new Date\(\), 'yyyy-MM-dd'\)/);
 	assert.match(hojeTs, /maisPrioritarioFollowUp\(followUp\)/);
 	assert.doesNotMatch(hojeTs, /followUp\[0\]/);
-	assert.match(hojeTs, /abrirAgendamentoId: idBaseDaOcorrencia\(a\.id\)/);
+	// id inteiro (`<base>@<dia>`): a Agenda abre a base e foca o dia da repetição
+	assert.match(hojeTs, /abrirAgendamentoId: a\.id \}/);
 });
 
 console.log(`\n${ok} casos ok`);
