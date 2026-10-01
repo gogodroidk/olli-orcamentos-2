@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Modal, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -255,7 +256,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={styles.cardNome} numberOfLines={1}>{item.clienteNome}</Text>
                     <Text style={styles.cardMeta} numberOfLines={1}>
-                      Nº {item.numero} · {formatCurrency(item.valorTotal)} · {formatDate(item.criadoEm)}
+                      Nº {formatarNumeroExibicao(item.numero)} · {formatCurrency(item.valorTotal)} · {formatDate(item.criadoEm)}
                     </Text>
                   </View>
                   <MaterialCommunityIcons
@@ -312,7 +313,7 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
       <AssinaturaClienteModal
         visivel={assinando}
         clienteNome={escolhido?.clienteNome ?? ''}
-        referencia={escolhido ? `${TITULOS_DOCUMENTO[tipo]} · Nº ${escolhido.numero}` : undefined}
+        referencia={escolhido ? `${TITULOS_DOCUMENTO[tipo]} · Nº ${formatarNumeroExibicao(escolhido.numero)}` : undefined}
         aoConfirmar={gravarAssinatura}
         aoCancelar={() => setAssinando(false)}
       />

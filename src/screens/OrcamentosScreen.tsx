@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
@@ -150,9 +151,9 @@ function LinhaOrcamentoBase({
         )}
         <View style={{ flex: 1 }}>
           <Text style={styles.itemNome} numberOfLines={1}>{o.clienteNome}</Text>
-          <Text style={styles.itemMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
+          <Text style={styles.itemMeta}>Nº {formatarNumeroExibicao(o.numero)} · {formatDate(o.criadoEm)}</Text>
           {o.revisaoDeNumero ? (
-            <Text style={styles.revisaoMeta}>Revisão do nº {o.revisaoDeNumero}</Text>
+            <Text style={styles.revisaoMeta}>Revisão do nº {formatarNumeroExibicao(o.revisaoDeNumero)}</Text>
           ) : o.editadoEm ? (
             <Text style={styles.revisaoMeta}>Editado em {formatDate(o.editadoEm)}</Text>
           ) : null}
@@ -187,7 +188,7 @@ function LinhaOrcamentoBase({
             style={[styles.actionBtn, styles.actionMenu]}
             onPress={() => onMenu(o)}
             accessibilityRole="button"
-            accessibilityLabel={`Mais ações do orçamento nº ${o.numero}`}
+            accessibilityLabel={`Mais ações do orçamento nº ${formatarNumeroExibicao(o.numero)}`}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
             <MaterialCommunityIcons name="dots-horizontal" size={20} color={cores.onSurfaceVariant} />
@@ -399,7 +400,7 @@ export default function OrcamentosScreen() {
   const handleDelete = useCallback(async (o: Orcamento) => {
     Alert.alert(
       'Excluir orçamento',
-      `O orçamento nº ${o.numero} de ${o.clienteNome} vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`,
+      `O orçamento nº ${formatarNumeroExibicao(o.numero)} de ${o.clienteNome} vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
@@ -756,7 +757,7 @@ export default function OrcamentosScreen() {
             {menuDe ? (
               <>
                 <Text style={styles.menuTitulo} numberOfLines={1}>
-                  Orçamento nº {menuDe.numero} · {menuDe.clienteNome}
+                  Orçamento nº {formatarNumeroExibicao(menuDe.numero)} · {menuDe.clienteNome}
                 </Text>
                 <TouchableOpacity style={styles.menuItem} onPress={() => escolherNoMenu('duplicar')} accessibilityRole="button">
                   <MaterialCommunityIcons name="content-copy" size={20} color={cores.onSurface} />
