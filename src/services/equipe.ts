@@ -38,6 +38,16 @@ export const PAPEL_LABEL: Record<Papel, string> = {
   tecnico: 'Técnico',
 };
 
+/**
+ * Rótulo do papel à prova de valor inesperado: o papel vem do banco como texto,
+ * então um valor fora de `Papel` (ou vazio) nunca vaza cru para a tela ("owner")
+ * nem vira "undefined" — cai em "Membro".
+ */
+export function rotuloPapel(papel: string | null | undefined): string {
+  if (papel && Object.prototype.hasOwnProperty.call(PAPEL_LABEL, papel)) return PAPEL_LABEL[papel as Papel];
+  return 'Membro';
+}
+
 /** Descrição curta do que cada papel pode fazer — mostrada ao convidar. */
 export const PAPEL_DESCRICAO: Record<Exclude<Papel, 'owner'>, string> = {
   admin: 'Gerencia tudo, menos cobrança e exclusão da empresa',
