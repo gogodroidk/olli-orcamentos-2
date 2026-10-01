@@ -26,6 +26,7 @@ import ModelosDocumentoScreen from '../screens/ModelosDocumentoScreen';
 import CentralDocumentosScreen from '../screens/CentralDocumentosScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
 import ClientesScreen from '../screens/ClientesScreen';
+import ClienteDetalheScreen from '../screens/ClienteDetalheScreen';
 import ServicosScreen from '../screens/ServicosScreen';
 import ProdutosScreen from '../screens/ProdutosScreen';
 import EmitirReciboScreen from '../screens/EmitirReciboScreen';
@@ -127,6 +128,7 @@ export type RootStackParamList = {
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
   Orcamentos: { clienteId?: string; clienteNome?: string } | undefined;
   Clientes: undefined;
+  ClienteDetalhe: { clienteId: string };
   Servicos: undefined;
   Produtos: undefined;
   EmitirRecibo: { orcamentoId?: string };
@@ -250,6 +252,7 @@ const VisualizarOrcamentoCentro = comCentroDesktop(VisualizarOrcamentoScreen);
 const OrcamentosCentro = comCentroDesktop(OrcamentosScreen);
 const DiagnosticoCentro = comCentroDesktop(CodigosErroScreen);
 const ClientesCentro = comCentroDesktop(ClientesScreen);
+const ClienteDetalheCentro = comCentroDesktop(ClienteDetalheScreen);
 const ServicosCentro = comCentroDesktop(ServicosScreen);
 const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
@@ -701,6 +704,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Diagnóstico (OLLI Técnica) — chegável pela Home e pela Conta → Ferramentas. */}
       <Stack.Screen name="Diagnostico" component={DiagnosticoCentro} />
       <Stack.Screen name="Clientes" component={ClientesCentro} />
+      <Stack.Screen name="ClienteDetalhe" component={ClienteDetalheCentro} />
       <Stack.Screen name="Servicos" component={ServicosCentro} />
       <Stack.Screen name="Produtos" component={ProdutosCentro} />
       <Stack.Screen name="EmitirRecibo" component={EmitirReciboCentro} />
