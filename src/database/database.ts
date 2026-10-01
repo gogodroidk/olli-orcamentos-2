@@ -1738,9 +1738,9 @@ async function maiorSequenciaDocumento(tabela: TabelaNumerada): Promise<number> 
  *
  * O QUE ISTO **NÃO** RESOLVE sozinho: dois aparelhos criando ao mesmo tempo, um
  * deles offline. O handler de 23505 já vive em `cloudSync.ts`, mas quem arbitra
- * é o índice de `20260727_numero_unico_por_tenant.sql.pendente`. Ele continua
- * pendente até a auditoria humana de duplicatas em produção; renomear/aplicar é
- * mudança de banco, não efeito automático de ter o cliente preparado.
+ * é o índice de `20261001090000_numero_unico_por_tenant.sql` (auditoria de
+ * duplicatas em produção = zero em 30/09/2026). A colisão chega aqui como 23505 e
+ * `tentarRenumerarDocumento` renumera e reenvia — nunca fica preso sem subir.
  */
 async function proximoNaSequencia(chave: string, tabela: TabelaNumerada): Promise<number> {
   const db = await getDb();

@@ -80,6 +80,7 @@
     "test:chat-creditos": "node scripts/teste-chat-creditos.ts",
     "test:identidade-portatil": "node scripts/teste-identidade-portatil.ts",
     "test:numero-web": "node scripts/teste-numero-web.ts",
+    "test:numero-unico-sql": "node scripts/teste-numero-unico-sql.ts",
     "test:webhook-events": "node scripts/teste-webhook-events.ts",
     "test:rate-limit": "node scripts/teste-rate-limit.ts",
     "test:entitlement-equipe": "node scripts/teste-entitlement-equipe.ts",

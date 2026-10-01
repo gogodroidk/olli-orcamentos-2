@@ -199,27 +199,34 @@ checar(
   true,
 );
 
-// (f) A migration que arbitra a colisão real (dois aparelhos, um offline) é um
-//     arquivo NÃO APLICADO — some num `rm` distraído e ninguém nota. Aqui ela vira
-//     falha de teste, com o pré-requisito junto. E a proteção é ESTRUTURAL, não só
-//     o comentário no cabeçalho: a extensão `.sql.pendente` tira o arquivo do glob
-//     `migrations/*.sql`, porque um "aplica tudo que é novo" não lê comentário —
-//     aplicaria o índice sem auditar duplicatas e sem uma janela controlada.
-const migracao = ler('../supabase/migrations/20260727_numero_unico_por_tenant.sql.pendente');
-checar('migration do número único continua no repo', migracao.length > 0, true);
-checar(
-  'e NÃO voltou a ser `.sql` solto em migrations/ (reativar é decisão, não descuido)',
-  readdirSync(new URL('../supabase/migrations/', import.meta.url)).some(
-    (f) => f.endsWith('.sql') && f.includes('numero_unico_por_tenant'),
-  ),
-  false,
+// (f) A migration que arbitra a colisão real (dois aparelhos, um offline). Ficou
+//     meses como `.sql.pendente` (fora do glob `migrations/*.sql`) até os gates
+//     humanos: auditoria de duplicatas em produção (zero em 30/09/2026) e os
+//     handlers de 23505 distribuídos. Em 01/10 virou migration de verdade, com
+//     timestamp NOVO. Aqui ela continua presa: uma cópia só, sem `.pendente`
+//     sobrando, e com a trava que ABORTA sobre duplicatas (ninguém quer que o banco
+//     escolha qual orçamento perde o número). O comportamento num Postgres de
+//     verdade está em `scripts/teste-numero-unico-sql.ts`.
+const migracoesNumero = readdirSync(new URL('../supabase/migrations/', import.meta.url)).filter((f) =>
+  f.includes('numero_unico_por_tenant'),
 );
+checar(
+  'migration do número único existe UMA vez, como .sql ativo (sem .pendente sobrando)',
+  JSON.stringify(migracoesNumero),
+  JSON.stringify(['20261001090000_numero_unico_por_tenant.sql']),
+);
+const migracao = ler('../supabase/migrations/20261001090000_numero_unico_por_tenant.sql');
 checar('com o índice de orcamentos por tenant', migracao.includes('orcamentos_numero_por_tenant_uidx'), true);
 checar('e o de recibos', migracao.includes('recibos_numero_por_tenant_uidx'), true);
 checar('grão (user_id, numero) — numeração é do prestador, não global', migracao.includes('(user_id, numero)'), true);
 checar(
-  'e o aviso de NÃO APLICAR automaticamente antes dos gates humanos',
-  migracao.includes('NÃO APLIQUE') && migracao.includes('23505'),
+  'e a trava que aborta sobre duplicatas vem ANTES de criar o índice',
+  migracao.includes('raise exception') && migracao.indexOf('raise exception') < migracao.indexOf('create unique index'),
+  true,
+);
+checar(
+  'com rollback documentado',
+  migracao.includes('drop index if exists public.orcamentos_numero_por_tenant_uidx'),
   true,
 );
 
