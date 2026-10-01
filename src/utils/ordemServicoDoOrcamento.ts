@@ -77,9 +77,9 @@ export function descricaoDaOSDoOrcamento(orc: Pick<Orcamento, 'itens' | 'cliente
 /**
  * Data da OS: o "Agendamento do serviço" do orçamento e, sem ele, a "Data de
  * prestação". O formulário grava DD/MM/AAAA; o painel pode gravar ISO. Data sem
- * hora vira meio-dia UTC (`dataBrParaIsoSeguro` — convenção do app para dia civil),
- * e a tela mostra só o dia (`ehDiaSemHora`). Texto inválido = sem data, nunca uma
- * data inventada.
+ * hora vira o SENTINELA de dia (`isoDoDiaSemHora`: meio-dia UTC + 1 s) e a tela
+ * mostra só o dia (`ehDiaSemHora`). Texto inválido = sem data, nunca uma data
+ * inventada.
  */
 export function dataAgendadaDoOrcamento(
   orc: Pick<Orcamento, 'agendamentoServico' | 'dataPrestacaoServico'>,
@@ -88,12 +88,12 @@ export function dataAgendadaDoOrcamento(
     const texto = (bruto || '').trim();
     if (!texto) continue;
     if (texto.includes('/')) {
-      const iso = dataBrParaIsoSeguro(texto);
+      const iso = isoDoDiaSemHora(dataBrParaIsoSeguro(texto));
       if (iso) return iso;
       continue;
     }
     if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
-      const iso = dataBrParaIsoSeguro(texto.split('-').reverse().join('/'));
+      const iso = isoDoDiaSemHora(dataBrParaIsoSeguro(texto.split('-').reverse().join('/')));
       if (iso) return iso;
       continue;
     }
@@ -103,9 +103,31 @@ export function dataAgendadaDoOrcamento(
   return undefined;
 }
 
-/** A OS guarda um DIA sem hora (convenção meio-dia UTC de `dataBrParaIsoSeguro`)? */
+/**
+ * Sentinela de "só o DIA, sem hora": meio-dia UTC + 1 SEGUNDO (09:00:01 em Brasília).
+ *
+ * Por que não o meio-dia UTC puro de `dataBrParaIsoSeguro`: 12:00:00Z é exatamente
+ * 09:00 em Brasília — o horário que o técnico mais agenda (contrato com
+ * `horarioVisita` 09:00, agenda do painel, form de OS do webapp). Tratar 12:00:00Z
+ * como "sem hora" escondia o "às 09:00" de OS agendadas de verdade. Nenhum seletor
+ * do app grava segundos, então o `:01` só nasce aqui.
+ */
+export function isoDoDiaSemHora(isoMeioDia: string | null | undefined): string | null {
+  if (!isoMeioDia) return null;
+  const m = /^(\d{4}-\d{2}-\d{2})T12:00:00(?:\.000)?Z$/.exec(isoMeioDia);
+  return m ? `${m[1]}T12:00:01.000Z` : null;
+}
+
+/**
+ * A OS guarda um DIA sem hora (sentinela de `isoDoDiaSemHora`)? Compara o INSTANTE,
+ * não o texto: a nuvem devolve `+00:00` em vez de `Z` e pode omitir os milissegundos.
+ */
 export function ehDiaSemHora(iso: string | undefined): boolean {
-  return typeof iso === 'string' && /T12:00:00(\.000)?Z$/.test(iso);
+  if (typeof iso !== 'string' || !iso) return false;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return false;
+  return d.getUTCHours() === 12 && d.getUTCMinutes() === 0
+    && d.getUTCSeconds() === 1 && d.getUTCMilliseconds() === 0;
 }
 
 /** Checklist do ofício como itens desmarcados (ids vêm de fora: UUID estável). */

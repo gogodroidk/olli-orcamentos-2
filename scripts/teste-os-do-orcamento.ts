@@ -79,21 +79,35 @@ ok('sem itens e sem endereço = sem descrição', () => {
   assert.equal(descricaoDaOSDoOrcamento({ itens: [], clienteEndereco: '  ' }), undefined);
 });
 
-ok('data: agendamento do serviço tem prioridade, como dia civil (meio-dia UTC)', () => {
+ok('data: agendamento do serviço tem prioridade, como dia civil (sentinela meio-dia UTC + 1 s)', () => {
   const iso = dataAgendadaDoOrcamento(orcamentoBase);
-  assert.equal(iso, '2026-10-05T12:00:00.000Z');
+  assert.equal(iso, '2026-10-05T12:00:01.000Z');
   assert.equal(ehDiaSemHora(iso), true);
 });
 
 ok('data: sem agendamento, cai na data de prestação', () => {
-  assert.equal(dataAgendadaDoOrcamento({ agendamentoServico: '', dataPrestacaoServico: '07/10/2026' }), '2026-10-07T12:00:00.000Z');
+  assert.equal(dataAgendadaDoOrcamento({ agendamentoServico: '', dataPrestacaoServico: '07/10/2026' }), '2026-10-07T12:00:01.000Z');
 });
 
 ok('data: AAAA-MM-DD e ISO com hora são aceitos; hora real é preservada', () => {
-  assert.equal(dataAgendadaDoOrcamento({ agendamentoServico: '2026-10-09' }), '2026-10-09T12:00:00.000Z');
+  assert.equal(dataAgendadaDoOrcamento({ agendamentoServico: '2026-10-09' }), '2026-10-09T12:00:01.000Z');
   const comHora = dataAgendadaDoOrcamento({ agendamentoServico: '2026-10-09T17:30:00.000Z' });
   assert.equal(comHora, '2026-10-09T17:30:00.000Z');
   assert.equal(ehDiaSemHora(comHora), false);
+});
+
+ok('OS agendada de verdade às 09:00 de Brasília (12:00Z) NÃO perde a hora', () => {
+  // contrato com horarioVisita 09:00, agenda do painel, form do webapp: todos gravam 12:00:00Z.
+  assert.equal(ehDiaSemHora('2026-10-05T12:00:00.000Z'), false);
+  assert.equal(ehDiaSemHora('2026-10-05T12:00:00Z'), false);
+  assert.equal(ehDiaSemHora('2026-10-05T12:00:00+00:00'), false);
+});
+
+ok('dia sem hora sobrevive à volta da nuvem (+00:00, sem milissegundos)', () => {
+  assert.equal(ehDiaSemHora('2026-10-05T12:00:01+00:00'), true);
+  assert.equal(ehDiaSemHora('2026-10-05T09:00:01-03:00'), true);
+  assert.equal(ehDiaSemHora(undefined), false);
+  assert.equal(ehDiaSemHora('lixo'), false);
 });
 
 ok('data inválida não vira data inventada', () => {
@@ -128,7 +142,7 @@ ok('montarOSDoOrcamento junta tudo e mantém cliente/título/valor', () => {
   assert.equal(os.titulo, 'Orçamento 01226');
   assert.equal(os.valor, 635);
   assert.equal(os.status, 'aberta');
-  assert.equal(os.dataAgendada, '2026-10-05T12:00:00.000Z');
+  assert.equal(os.dataAgendada, '2026-10-05T12:00:01.000Z');
   assert.equal(os.checklist.length, 2);
   assert.deepEqual(os.fotos, ['file:///a.jpg', 'file:///b.jpg']);
   assert.match(os.descricao ?? '', /Limpeza de split/);
