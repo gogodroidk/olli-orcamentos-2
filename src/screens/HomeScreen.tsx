@@ -1,6 +1,32 @@
+/**
+ * INÍCIO = PAINEL DA RUA (item 2.6 da Onda 2).
+ *
+ * Feito para o prestador que está NA RUA, com o celular numa mão. Ordem fixa,
+ * do mais urgente para o resto:
+ *   1. cumprimento + clima do dia (MET Norway, com o crédito exigido);
+ *   2. AGORA / PRÓXIMA PARADA: hora, cliente, endereço, "Traçar rota" e
+ *      "Estou a caminho" (WhatsApp ao cliente, sem precisar de GPS);
+ *   3. ROTA DE HOJE: as visitas do dia em sequência, com "Rota no Maps";
+ *   4. DINHEIRO: a receber e esperando resposta (o palco de sempre) + números do mês;
+ *   5. ATALHOS DE 1 TOQUE: Orçar, Recibo, Agendar, Clientes;
+ *   6. o resto (clientes para lembrar, diagnóstico do ofício, orçamentos recentes).
+ *
+ * Sem duplicidade: "Abrir agenda" e "Diagnóstico" apareciam 3 vezes cada, e o
+ * menu de atalhos repetia as ações rápidas. Cada ação tem UM lugar.
+ *
+ * Movimento (Reanimated 4, UI thread): entrada escalonada com `Aparecer`,
+ * números com `ContadorAnimado`, toque com `PressableAnimado`. Só transform e
+ * opacity; "Reduzir movimento" respeitado em todos; nenhum loop fora do
+ * esqueleto de carregamento (o mascote do topo não flutua aqui).
+ *
+ * Honestidade (P0): cada bloco tem os seus 3 estados — carregando, erro e
+ * dado. "Não consegui ler" nunca vira "não tem".
+ */
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Alert, Animated } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, Pressable } from 'react-native';
+import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,16 +34,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, textoSobre, achatarVeu, sobreSecundario, ajustarParaContraste, corCategoria, comAlfa, type Cores } from '../theme';
+import { DURACAO, useReduzirMovimento } from '../theme/motion';
 import {
   getEmpresa, getClientes,
   getOrcamentosTotalAtivos, getOrcamentosAgregadoPorStatus, getOrcamentosAgregadoPorStatusNoPeriodo,
   getUltimosOrcamentos,
 } from '../database/database';
-import { getProximoAgendamento } from '../services/agenda';
-import { abrirRotaGoogleMaps } from '../services/rotas';
-import { rotuloQuandoVisita } from '../utils/agendaDia';
+import { getAgendamentosDoDia, getProximoAgendamento } from '../services/agenda';
+import { abrirRotaDoDia, abrirRotaGoogleMaps } from '../services/rotas';
+import { emAndamento, montarRotaDoDia, rotuloQuandoVisita, type ParadaDoDia } from '../utils/agendaDia';
+import { enderecosDaRota } from '../utils/rotaDoDia';
+import type { OcorrenciaAgendamento } from '../utils/contratoRecorrente';
 import { onSyncAplicado } from '../services/cloudSync';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
+import { useClimaDoDia } from '../services/clima';
+import { useReservaClima, type LeituraCadastro } from '../services/climaReserva';
 import { clientesParaReconquistar, lembrarNoWhatsApp, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
 import { orcamentosParaCobrar, cobrarNoWhatsApp as cobrarItemNoWhatsApp, OrcamentoParaCobrar } from '../services/radarCobranca';
 import { orcamentosParaFollowUp, mensagemFollowUp, type OrcamentoParaFollowUp } from '../services/radarFollowUp';
@@ -33,16 +64,17 @@ import { EtaChip } from '../components/EtaChip';
 import { AvisoSaidaCard } from '../components/AvisoSaidaCard';
 import { lerAvisoSaida, type AvisoSaida } from '../services/avisoSaida';
 import { reagendarAvisoSaidaDoDia } from '../services/ritualDiario';
-import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
-import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
-import { OlliSkeleton } from '../components/OlliSkeleton';
-import { CountUp } from '../components/CountUp';
 import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
 import { LembreteAssinaturaFaixa } from '../components/LembreteAssinaturaFaixa';
 import { AtivacaoInicio } from '../components/AtivacaoInicio';
+import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton, curvas } from '../components/motion';
+import { toast } from '../components/feedback';
+import { ClimaDoDia } from '../components/rua/ClimaDoDia';
+import { RotaDeHoje, type EstadoRota } from '../components/rua/RotaDeHoje';
+import { AtalhosRua, type Atalho } from '../components/rua/AtalhosRua';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
 import { useSyncInicial } from '../hooks/useSyncInicial';
@@ -53,28 +85,42 @@ import { track, Eventos } from '../services/analytics';
 /** Quantos clientes do radar o plano Grátis mostra completos (o resto vira teaser bloqueado). */
 const RADAR_GRATIS_QTD = 1;
 
+/** Quanto tempo o aviso "Sincronizando..." fica parado na tela (não é duração de animação). */
+const PILL_SYNC_VISIVEL_MS = 900;
+
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
- * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
- * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
+ * Pill discreto "Sincronizando..." — aparece e some sozinho (só opacidade, na UI
+ * thread). Dá feedback de que a tela está ligada à nuvem quando o
  * `onSyncAplicado` recarrega os dados em segundo plano.
  */
 function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const opacity = useRef(new Animated.Value(0)).current;
+  const reduzir = useReduzirMovimento();
+  const opacidade = useSharedValue(reduzir ? 1 : 0);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roda uma vez por aparição; onDone só fecha a pill.
   useEffect(() => {
-    Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-      Animated.delay(900),
-      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
-    ]).start(({ finished }) => { if (finished) onDone(); });
-  }, [opacity]);
+    if (reduzir) {
+      opacidade.set(1);
+      const t = setTimeout(onDone, PILL_SYNC_VISIVEL_MS + DURACAO.slow);
+      return () => clearTimeout(t);
+    }
+    opacidade.set(withSequence(
+      withTiming(1, { duration: DURACAO.fast, easing: curvas.standard }),
+      withDelay(PILL_SYNC_VISIVEL_MS, withTiming(0, { duration: DURACAO.slow, easing: curvas.standard }, (fim) => {
+        if (fim) scheduleOnRN(onDone);
+      })),
+    ));
+    return () => cancelAnimation(opacidade);
+  }, []);
+
+  const estilo = useAnimatedStyle(() => ({ opacity: opacidade.get() }));
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { top }, estilo]}>
       <MaterialCommunityIcons
         name="cloud-sync-outline"
         size={13}
@@ -90,6 +136,11 @@ function saudacao(): string {
   if (h < 12) return 'Bom dia,';
   if (h < 18) return 'Boa tarde,';
   return 'Boa noite,';
+}
+
+function horaMinuto(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 /** Início do mês local e início do próximo, em YYYY-MM-DD para o agregado SQL. */
@@ -119,41 +170,32 @@ export default function HomeScreen() {
 
   /**
    * Cores do hero, derivadas do fundo EFETIVO (véu achatado sobre `background`).
-   *
-   * O hero nasceu num app dark-only: título `#fff`, legendas `rgba(226,232,240,…)`,
-   * acentos `accentLight`. No modo claro o composto vira #9CC3E9 → #E6F3F7 (quase
-   * branco) e TODOS os oito elementos reprovavam — o título ficava branco no branco
-   * (1.13:1). No escuro os mesmos oito passavam, e por isso ninguém viu.
+   * No modo claro o composto vira quase branco: título e acento precisam ceder
+   * (ver `textoSobre`/`ajustarParaContraste`).
    */
   const heroPontas = useMemo(
     () => [achatarVeu(cores.background, VEU_HERO[0]), achatarVeu(cores.background, VEU_HERO[1])] as const,
     [cores.background],
   );
-  // Âncora na ponta mais difícil (a primeira): tinta escura no claro, branco no escuro.
   const heroTexto = textoSobre(heroPontas[0]);
   const heroTextoSec = sobreSecundario(heroTexto, heroPontas);
-  // O acento da marca também precisa ceder: `accentLight` media 2.81:1 sobre o hero claro.
   const heroAcento = ajustarParaContraste(cores.accentLight, heroPontas[0], 4.5);
   const { temAcesso } = usePlano();
   const { papel, pode, carregando: papelCarregando } = usePermissao();
   // O cartão "Seu primeiro orçamento" da AtivacaoInicio é do DONO (mesma régua
   // que ela usa). Para ele, o StarterCard seria um 2º convite igual na mesma tela.
   const ativacaoDoDono = !papelCarregando && pode('gerenciar_faturamento');
-  // Cards e atalhos de ar-condicionado (códigos de erro, diagnóstico) só para
-  // quem é do ofício — sem ofício definido, vê tudo (regra de useVerticais).
+  // Cards de ar-condicionado (códigos de erro) só para quem é do ofício — sem
+  // ofício definido, vê tudo (regra de useVerticais).
   const { mostraHvac } = useVerticais();
   // SQLite vazio antes do 1º download da nuvem NÃO é "conta sem orçamento".
   const { estado: download, tentarDeNovo: tentarDownload } = useSyncInicial();
   const scrollRef = useRef<ScrollView>(null);
   const radarLiberado = temAcesso('radar_clientes');
-  // Onda 4 — entrada mobile das Ordens de serviço. O técnico (público-alvo do
-  // APK) vê "Minhas OS" (só as dele) e ganha destaque no 1º atalho, pois é o
-  // fluxo principal dele; gestão/pessoal vê "Ordens". Rótulo role-aware igual
-  // ao da SidebarNav — a mesma rota do stack raiz decide o que listar.
+  // Técnico (no desktop; no celular ele tem a TecnicoHome) vê "Minhas OS".
   const ehTecnico = papel === 'tecnico';
-  const rotuloOS = ehTecnico ? 'Minhas OS' : 'Ordens';
-  // dashboard-agg: KPIs comerciais chegam PRONTOS do SQLite (agregados) — não
-  // mais o histórico inteiro de orçamentos pra reduzir aqui a cada foco.
+  const rotuloOS = ehTecnico ? 'Minhas OS' : 'Ordens de serviço';
+  // KPIs comerciais chegam PRONTOS do SQLite (agregados) — não o histórico inteiro.
   const [totalOrcamentos, setTotalOrcamentos] = useState(0);
   const [aprovadosResumo, setAprovadosResumo] = useState({ contagem: 0, valorTotal: 0 });
   const [recusadosMesResumo, setRecusadosMesResumo] = useState({ contagem: 0, valorTotal: 0 });
@@ -161,13 +203,14 @@ export default function HomeScreen() {
   const [recentes, setRecentes] = useState<Orcamento[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  // `true` só depois de UMA leitura bem-sucedida do cadastro: até lá, "sem
+  // empresa" é "ainda não li", não "o cadastro não tem cidade".
+  const [empresaLida, setEmpresaLida] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [olliMenu, setOlliMenu] = useState(false);
   const [proxima, setProxima] = useState<Agendamento | null>(null);
   const [carregando, setCarregando] = useState(true);
-  // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
-  // vira `true` se o Promise.all de load() de fato falhar — sem isso o
-  // skeleton ficava preso pra sempre (setCarregando(false) nunca rodava).
+  // 3 estados explícitos (nunca colapsar erro em vazio).
   const [carregandoErro, setCarregandoErro] = useState(false);
   const [radarTotal, setRadarTotal] = useState<ClienteParaReconquistar[]>([]);
   const [radarCarregando, setRadarCarregando] = useState(true);
@@ -176,30 +219,33 @@ export default function HomeScreen() {
   const [sincronizando, setSincronizando] = useState(false);
 
   // RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
-  // 3 estados explícitos (nunca colapsar erro em vazio): `cobrancaErro` só vira
-  // `true` se a leitura de fato falhar; lista vazia com sucesso é "tudo recebido".
   const [cobranca, setCobranca] = useState<OrcamentoParaCobrar[]>([]);
   const [cobrancaCarregando, setCobrancaCarregando] = useState(true);
   const [cobrancaErro, setCobrancaErro] = useState(false);
 
-  // RADAR DE FOLLOW-UP — propostas enviadas/visualizadas que o cliente não
-  // respondeu, paradas há >= 3 dias (o passo ANTES do radar de cobrança).
-  // 3 estados explícitos (nunca colapsar erro em vazio): `followUpErro` só
-  // vira `true` se a leitura de fato falhar; lista vazia com sucesso é
-  // "nenhuma proposta parada".
+  // RADAR DE FOLLOW-UP — propostas sem resposta há >= 3 dias.
   const [followUp, setFollowUp] = useState<OrcamentoParaFollowUp[]>([]);
   const [followUpCarregando, setFollowUpCarregando] = useState(true);
   const [followUpErro, setFollowUpErro] = useState(false);
 
-  // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra
-  // shimmer). O destino vem de coordenada salva OU do endereço (o serviço
-  // geocodifica sob demanda, cacheado); `temEta` é o gate síncrono de exibição.
+  // ROTA DE HOJE — visitas do dia (com as repetições das séries), em sequência.
+  const [rota, setRota] = useState<ParadaDoDia<OcorrenciaAgendamento>[]>([]);
+  const [rotaEstado, setRotaEstado] = useState<EstadoRota>('carregando');
+  const [abrindoMaps, setAbrindoMaps] = useState(false);
+  const [avisandoCliente, setAvisandoCliente] = useState(false);
+
+  // CLIMA — localização já concedida; sem ela, a cidade do cadastro (geocodificada
+  // uma vez por aparelho). Os 3 estados da leitura do cadastro vão inteiros.
+  const leituraCadastro: LeituraCadastro = carregandoErro && !empresaLida ? 'erro' : empresaLida ? 'ok' : 'carregando';
+  const reservaClima = useReservaClima(empresa?.cidade, empresa?.estado, leituraCadastro);
+  const clima = useClimaDoDia(reservaClima.estado === 'ok' ? reservaClima.coord : null);
+
+  // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra shimmer).
   const [etaResultado, setEtaResultado] = useState<ResultadoEta | null>(null);
   const ultimaBuscaEtaRef = useRef(0);
   const paradaKeyRef = useRef('');
   const temEta = useMemo(() => temDestinoEta(proxima), [proxima]);
-  // Identidade da parada: id + endereço. Muda quando a próxima parada troca (ou
-  // seu endereço é editado) — força re-busca mesmo dentro da janela de 5 min.
+  // Identidade da parada: id + endereço. Muda quando a próxima parada troca.
   const paradaKey = useMemo(
     () => (proxima ? `${proxima.id}|${(proxima.endereco ?? '').trim().toLowerCase()}` : ''),
     [proxima],
@@ -207,14 +253,12 @@ export default function HomeScreen() {
 
   const buscarEta = useCallback(async () => {
     ultimaBuscaEtaRef.current = Date.now();
-    setEtaResultado(null); // shimmer enquanto busca (inclui o geocoding, se preciso)
+    setEtaResultado(null);
     const r = await getEtaAgendamento(proxima);
     setEtaResultado(r);
   }, [proxima]);
 
-  // Dispara ao focar a tela (com destino disponível); re-busca no máximo a cada
-  // 5 min — reabrir a Home logo em seguida não bate o worker de novo. Exceção:
-  // se a parada mudou, busca já (a estimativa antiga é de outro endereço).
+  // Re-busca no máximo a cada 5 min, ou já se a parada mudou.
   useFocusEffect(
     useCallback(() => {
       if (!temEta) return;
@@ -232,16 +276,9 @@ export default function HomeScreen() {
   }, [temEta, buscarEta]);
 
   // ─── "SAIA ÀS 14:23 PARA CHEGAR ÀS 15:00" ────────────────────────────────
-  // Diferente do EtaChip acima, isto NÃO busca nada ao focar a tela: só LÊ o
-  // que `services/avisoSaida.ts` já calculou e guardou (o cálculo roda no
-  // reagendamento do ritual diário, 1× por parada). O motivo é custo — cada
-  // cálculo é uma chamada da Routes API no SKU Pro, e recalcular a cada foco
-  // de Home viraria centenas de chamadas por mês por prestador.
-  //
-  // `null` tem dois significados diferentes e o card sabe distingui-los: aqui,
-  // "não há registro para esta parada" (nada foi tentado → o card não aparece).
-  // Um registro de FALHA existe e aparece, com o motivo — porque aí a tentativa
-  // aconteceu, e sumir com o card seria "não sei" virando "não tem".
+  // Só LÊ o que `services/avisoSaida.ts` já calculou (1× por parada, no ritual
+  // diário): cada cálculo é uma chamada paga da Routes API. `null` = nada foi
+  // tentado; um registro de FALHA aparece com o motivo.
   const [avisoSaida, setAvisoSaida] = useState<AvisoSaida | null>(null);
   const [recalculandoSaida, setRecalculandoSaida] = useState(false);
 
@@ -286,14 +323,26 @@ export default function HomeScreen() {
       setEmAbertoResumo(aberto);
       setRecentes(recentesLista);
       setEmpresa(emp);
+      setEmpresaLida(true);
       setProxima(prox);
       setClientes(cli);
     } catch {
       // erro de verdade (leitura falhou) — NUNCA vira skeleton infinito nem
-      // colapsa em telas "vazias" enganosas (StarterCard, hero sem visita etc.).
+      // telas "vazias" enganosas (StarterCard, hero sem visita etc.).
       setCarregandoErro(true);
     } finally {
       setCarregando(false);
+    }
+  }, []);
+
+  const loadRota = useCallback(async () => {
+    try {
+      const doDia = await getAgendamentosDoDia();
+      setRota(montarRotaDoDia(doDia, new Date()));
+      setRotaEstado('ok');
+    } catch {
+      // "Não consegui ler a agenda" nunca vira "nada hoje".
+      setRotaEstado('erro');
     }
   }, []);
 
@@ -301,11 +350,9 @@ export default function HomeScreen() {
     setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
-      // Grátis só precisa saber "tem mais 1 no radar" pra desenhar o teaser —
-      // busca até 4 (1 mostrado + até 3 contados no "+N"); Pro vê os 3 de sempre.
+      // Grátis só precisa saber "tem mais 1 no radar" pra desenhar o teaser.
       setRadarTotal(lista.slice(0, 4));
     } catch {
-      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
       setRadarErro(true);
     } finally {
       setRadarCarregando(false);
@@ -318,7 +365,6 @@ export default function HomeScreen() {
       const lista = await orcamentosParaCobrar();
       setCobranca(lista);
     } catch {
-      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
       setCobrancaErro(true);
     } finally {
       setCobrancaCarregando(false);
@@ -331,44 +377,44 @@ export default function HomeScreen() {
       const lista = await orcamentosParaFollowUp();
       setFollowUp(lista);
     } catch {
-      // erro de verdade (leitura falhou) — NUNCA vira lista vazia silenciosa.
       setFollowUpErro(true);
     } finally {
       setFollowUpCarregando(false);
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); loadFollowUp(); }, [load, loadRadar, loadCobranca, loadFollowUp]));
+  const carregarTudo = useCallback(
+    () => Promise.all([load(), loadRota(), loadRadar(), loadCobranca(), loadFollowUp()]),
+    [load, loadRota, loadRadar, loadCobranca, loadFollowUp],
+  );
 
-  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
-  // trazendo orçamentos/agendamentos que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); loadRadar(); loadCobranca(); loadFollowUp(); }), [load, loadRadar, loadCobranca, loadFollowUp]);
+  useFocusEffect(useCallback(() => { void carregarTudo(); }, [carregarTudo]));
+
+  // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito).
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); void carregarTudo(); }), [carregarTudo]);
 
   const refresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([load(), loadRadar(), loadCobranca(), loadFollowUp()]);
+      await carregarTudo();
     } finally {
-      // finally garante que o pull-to-refresh nunca fica preso, mesmo se algo
-      // além das 4 chamadas (que já se protegem com try/catch) rejeitar.
       setRefreshing(false);
     }
   };
 
   async function chamarNoWhatsApp(item: ClienteParaReconquistar) {
     if (!item.cliente.telefone?.trim()) {
-      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.cliente.nome} em Clientes para chamar por aqui.`);
+      toast.info(`Cadastre o WhatsApp de ${item.cliente.nome} em Clientes para chamar por aqui.`, { titulo: 'Sem telefone' });
       return;
     }
     vibrar('selecao');
     try {
-      // Abre o WhatsApp com o lembrete do ofício e registra: o cliente sai da lista
-      // por 30 dias (não insiste). Some da tela na hora, igual ao "Adiar".
+      // Abre o WhatsApp com o lembrete do ofício; o cliente sai da lista por 30 dias.
       if (await lembrarNoWhatsApp(item)) {
         setRadarTotal(prev => prev.filter(r => r.cliente.id !== item.cliente.id));
       }
     } catch {
-      // silencioso: mesmo padrão de outras chamadas de WhatsApp no app
+      toast.erro('Não deu para abrir o WhatsApp agora.');
     }
   }
 
@@ -378,69 +424,66 @@ export default function HomeScreen() {
     try {
       await adiarClienteRadar(item.cliente.id, 30);
       setRadarTotal(prev => prev.filter(r => r.cliente.id !== item.cliente.id));
+    } catch {
+      toast.erro('Não deu para adiar agora. Tente de novo.');
     } finally {
       setAdiandoId(null);
     }
   }
 
   async function cobrarNoWhatsApp(item: OrcamentoParaCobrar) {
-    // O orçamento já guarda o telefone denormalizado — funciona mesmo se o
-    // cadastro do cliente tiver sido excluído depois da aprovação.
+    // O orçamento guarda o telefone denormalizado — vale mesmo sem o cadastro.
     const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
     if (!telefone?.trim()) {
-      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para cobrar por aqui.`);
+      toast.info(`Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para cobrar por aqui.`, { titulo: 'Sem telefone' });
       return;
     }
     vibrar('selecao');
     try {
-      // Mensagem + Pix do prestador já montados pelo radar; o envio fica registrado
-      // e o item desce com "cobrado hoje" (o radar não insiste no mesmo dia).
       if (await cobrarItemNoWhatsApp(item)) {
         const agora = new Date().toISOString();
         setCobranca(prev => ordenarParaCobrar(prev.map(c =>
           c.orcamento.id === item.orcamento.id ? { ...c, cobradoEm: agora, cobradoHoje: true } : c)));
       }
     } catch {
-      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+      toast.erro('Não deu para abrir o WhatsApp agora.');
     }
   }
 
   async function followUpNoWhatsApp(item: OrcamentoParaFollowUp) {
-    // O orçamento já guarda o telefone denormalizado — funciona mesmo se o
-    // cadastro do cliente tiver sido excluído depois do envio.
     const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
     if (!telefone?.trim()) {
-      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
+      toast.info(`Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`, { titulo: 'Sem telefone' });
       return;
     }
     vibrar('selecao');
     try {
       await abrirWhatsApp(telefone, mensagemFollowUp(item));
     } catch {
-      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+      toast.erro('Não deu para abrir o WhatsApp agora.');
     }
   }
 
   // "ESTOU A CAMINHO" — aparece sempre que a próxima parada tem telefone do
-  // cliente (resolvido pelo clienteId no cadastro ativo). NÃO depende de GPS:
-  // com ETA disponível reaproveita o MESMO `etaResultado` do EtaChip (sem 2ª
-  // chamada de rede); sem ETA, a mensagem sai sem horário ("estou a caminho!")
-  // — nunca um horário inventado.
+  // cliente. NÃO depende de GPS: com ETA reaproveita o MESMO `etaResultado` do
+  // EtaChip; sem ETA, a mensagem sai sem horário — nunca um horário inventado.
   const telefoneProxima = useMemo(() => {
     if (!proxima?.clienteId) return undefined;
     return clientes.find(c => c.id === proxima.clienteId)?.telefone?.trim() || undefined;
   }, [proxima, clientes]);
 
   const estouACaminho = useCallback(async () => {
-    if (!proxima || !telefoneProxima) return;
-    vibrar('selecao');
+    if (!proxima || !telefoneProxima || avisandoCliente) return;
+    setAvisandoCliente(true);
     const mensagem = mensagemEstouACaminho(proxima.clienteNome, temEta ? etaResultado : null);
     try {
       await abrirWhatsApp(telefoneProxima, mensagem);
     } catch {
-      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+      toast.erro('Não deu para abrir o WhatsApp. Confira se ele está instalado.');
+    } finally {
+      setAvisandoCliente(false);
     }
-  }, [proxima, telefoneProxima, etaResultado, temEta]);
+  }, [proxima, telefoneProxima, etaResultado, temEta, avisandoCliente]);
 
   // Grátis vê 1 cliente sumido de verdade; o resto vira teaser "+N no Pro".
   const radar = radarLiberado ? radarTotal.slice(0, 3) : radarTotal.slice(0, RADAR_GRATIS_QTD);
@@ -461,10 +504,6 @@ export default function HomeScreen() {
 
   // ── métricas reais (já agregadas em SQL — ver load()) ──
   const valorAprovadoMes = aprovadosResumo.valorTotal;
-  // "Em aberto" = proposta já entregue ao cliente e ainda sem desfecho — cobre
-  // enviado/visualizado/em_negociacao/aguardando_assinatura (STATUS_PROPOSTA_
-  // ENVIADA), não só os dois estados antigos. Sem isso as propostas mais
-  // quentes (visualizado/em_negociação) sumiam do funil e do radar de parados.
   const decisoesMes = aprovadosResumo.contagem + recusadosMesResumo.contagem;
   const conversao = decisoesMes ? Math.round((aprovadosResumo.contagem / decisoesMes) * 100) : 0;
   const conversaoDetalhe = decisoesMes
@@ -472,33 +511,68 @@ export default function HomeScreen() {
     : 'sem decisões neste mês';
   /**
    * `false` SÓ quando a leitura terminou e disse que não existe nenhum orçamento.
-   * Enquanto carrega — ou quando a leitura falhou — vale `null` (não sabemos), e
-   * o palco NÃO se esconde por causa disso: "não sei" nunca pode ser lido como
-   * "não tem" (o mesmo P0 dos radares, aplicado ao gate de exibição).
+   * Enquanto carrega — ou quando a leitura falhou — vale `null` (não sabemos).
    */
   const temHistorico = carregando || carregandoErro ? null : totalOrcamentos > 0;
   /**
    * Local vazio e o 1º download da nuvem ainda não confirmado: o zero aqui é
-   * "ainda não baixei" (ou "não consegui baixar"), não "a conta não tem". Nesse
-   * estado a Home não afirma nada sobre dinheiro, agenda ou orçamentos — mostra
-   * que está baixando, ou oferece tentar de novo.
+   * "ainda não baixei" (ou "não consegui baixar"), não "a conta não tem".
    */
   const esperandoDownload = download !== 'pronto' && !carregando && !carregandoErro && totalOrcamentos === 0;
   /**
-   * "Pedem follow-up" = o MESMO radar do palco (`orcamentosParaFollowUp`: 3+ dias
-   * sem resposta, sem pagamento). Antes o KPI e o selo do robô contavam outra
-   * regra (5 dias desde a criação) e podiam discordar do palco na mesma tela.
+   * "Pedem follow-up" = o MESMO radar do palco (3+ dias sem resposta).
    * `null` = o radar ainda carrega ou falhou (não sei ≠ zero).
    */
   const pedemFollowUp = followUpCarregando || followUpErro ? null : followUp.length;
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
 
+  // ── ROTA DE HOJE: estado exibido ──
+  // Agenda local vazia antes do 1º download confirmado é "ainda não chegou", não
+  // "nada hoje".
+  const rotaAguardandoNuvem = rotaEstado === 'ok' && rota.length === 0 && download !== 'pronto';
+  const rotaEstadoExibido: EstadoRota = rotaAguardandoNuvem ? (download === 'falhou' ? 'erro' : 'carregando') : rotaEstado;
+  const enderecosPendentes = useMemo(
+    () => enderecosDaRota(rota.filter(p => p.estado === 'proxima' || p.estado === 'depois').map(p => p.visita.endereco)),
+    [rota],
+  );
+
+  const abrirVisitaNaAgenda = useCallback((id: string) => {
+    nav.navigate('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId: id } } as any);
+  }, [nav]);
+
+  const agendar = useCallback(() => {
+    nav.navigate('Tabs', { screen: 'Agenda', params: { novo: true } } as any);
+  }, [nav]);
+
+  const verAgenda = useCallback(() => {
+    nav.navigate('Tabs', { screen: 'Agenda' } as any);
+  }, [nav]);
+
+  const rotaNoMaps = useCallback(async () => {
+    if (abrindoMaps) return;
+    setAbrindoMaps(true);
+    try {
+      if (!(await abrirRotaDoDia(enderecosPendentes))) {
+        toast.erro('Não deu para abrir o Google Maps agora.');
+      }
+    } finally {
+      setAbrindoMaps(false);
+    }
+  }, [abrindoMaps, enderecosPendentes]);
+
+  const atalhos: Atalho[] = [
+    ...(ehTecnico ? [{ chave: 'os', icone: 'clipboard-check-outline' as const, rotulo: rotuloOS, descricao: 'Abrir minhas ordens de serviço', cor: cores.accentLight, onPress: () => nav.navigate('OrdemServico') }] : []),
+    { chave: 'orcar', icone: 'file-document-edit-outline', rotulo: 'Orçar', descricao: 'Criar um orçamento novo', cor: cores.accentLight, onPress: () => nav.navigate('NovoOrcamento', {}) },
+    { chave: 'recibo', icone: 'receipt', rotulo: 'Recibo', descricao: 'Emitir um recibo', cor: cores.success, onPress: () => nav.navigate('EmitirRecibo', {}) },
+    { chave: 'agendar', icone: 'calendar-plus', rotulo: 'Agendar', descricao: 'Agendar uma visita', cor: cores.primaryLight, onPress: agendar },
+    { chave: 'clientes', icone: 'account-group', rotulo: 'Clientes', descricao: 'Abrir a lista de clientes', cor: corCategoria('#A78BFA', cores.surface), onPress: () => nav.navigate('Clientes') },
+  ];
+
   const abrirOlli = () => {
-    vibrar('selecao');
     setOlliMenu(true);
   };
 
-  /** Do menu da OLLI até o palco: as propostas que pedem retorno ficam no topo. */
+  /** Do menu da OLLI até o palco do dinheiro: as propostas que pedem retorno. */
   const verFollowUps = () => {
     setOlliMenu(false);
     vibrar('selecao');
@@ -511,6 +585,8 @@ export default function HomeScreen() {
     nav.navigate(rota);
   };
 
+  const atendendo = proxima ? emAndamento(proxima) : false;
+
   return (
     <View style={styles.container}>
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} top={insets.top + 8} />}
@@ -520,7 +596,7 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >
-        {/* TOP BAR */}
+        {/* 1. CUMPRIMENTO + CLIMA */}
         <View style={styles.topbar}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{saudacao()}</Text>
@@ -529,25 +605,31 @@ export default function HomeScreen() {
               {empresa?.nome ? <Text style={styles.company}>  ·  {empresa.nome}</Text> : null}
             </Text>
           </View>
-          <TouchableOpacity
+          <PressableAnimado
             style={styles.olliBtn}
             onPress={abrirOlli}
-            activeOpacity={0.8}
-            accessibilityRole="button"
+            haptic="selection"
             accessibilityLabel={pedemFollowUp
               ? `Abrir menu da OLLI. ${pedemFollowUp} ${pedemFollowUp === 1 ? 'proposta pede' : 'propostas pedem'} retorno do cliente`
               : 'Abrir menu da OLLI'}
           >
-            <OlliMascot size={34} onDark />
+            <OlliMascot size={34} onDark float={false} pulse={false} />
             {pedemFollowUp ? (
               <View style={styles.olliBadge}><Text style={styles.olliBadgeText}>{pedemFollowUp}</Text></View>
             ) : null}
-          </TouchableOpacity>
+          </PressableAnimado>
         </View>
 
-        {/* LEMBRETE DE ASSINATURA — logo abaixo do cumprimento. Some sozinho quando
-            não há nada a lembrar (inclusive conta nova sem orçamento); fora da web
-            não oferece compra (regra das lojas em services/lembreteAssinaturaLoja.ts). */}
+        <Aparecer indice={0}>
+          <ClimaDoDia
+            clima={clima}
+            reserva={reservaClima}
+            onCadastrarCidade={() => nav.navigate('MeuNegocio')}
+          />
+        </Aparecer>
+
+        {/* LEMBRETE DE ASSINATURA — some sozinho quando não há nada a lembrar; fora
+            da web não oferece compra (regra das lojas). */}
         <LembreteAssinaturaFaixa
           lembrete={lembreteAssinatura.lembrete}
           onAcao={lembreteAssinatura.executar}
@@ -556,42 +638,11 @@ export default function HomeScreen() {
           style={styles.lembreteAssinatura}
         />
 
-        {/* ATIVAÇÃO — "Seu primeiro orçamento em 1 minuto" (conta sem orçamento) e o
-            checklist curto até o OLLI estar pronto. Some sozinho quando conclui e
-            não aparece enquanto lê ou se a leitura falhar (services/ativacao.ts). */}
+        {/* ATIVAÇÃO — "Seu primeiro orçamento" e o checklist curto (services/ativacao.ts). */}
         <AtivacaoInicio style={styles.lembreteAssinatura} />
 
-        {/* PALCO DO DINHEIRO PARADO — a PRIMEIRA coisa depois do cumprimento.
-            Os radares de cobrança e de follow-up já existiam e acertavam; o que
-            faltava era hierarquia: "R$ 800 parados há 12 dias" estava desenhado
-            como mais um card no meio da rolagem, com o mesmo peso de um atalho
-            de menu. A lógica continua nos services — aqui só muda o palco e a
-            distância até a ação (cobrar no WhatsApp sem navegar).
-            Os 3 estados de cada radar vão INTEIROS para o componente: é ele que
-            garante que "não deu para verificar" nunca vire "você não tem nada a
-            receber". */}
-        {!esperandoDownload && (
-        <AnimatedEntrance index={0}>
-          <PainelDinheiroParado
-            cobranca={cobranca}
-            cobrancaCarregando={cobrancaCarregando}
-            cobrancaErro={cobrancaErro}
-            onRecarregarCobranca={loadCobranca}
-            onCobrar={cobrarNoWhatsApp}
-            onCadastrarPix={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }}
-            followUp={followUp}
-            followUpCarregando={followUpCarregando}
-            followUpErro={followUpErro}
-            onRecarregarFollowUp={loadFollowUp}
-            onFollowUp={followUpNoWhatsApp}
-            temHistorico={temHistorico}
-            onVerTodos={() => { vibrar('selecao'); nav.navigate('Orcamentos'); }}
-          />
-        </AnimatedEntrance>
-        )}
-
-        {/* HERO — AO VIVO · próxima parada (empty-state até existir agenda) */}
-        <AnimatedEntrance index={0}>
+        {/* 2. AGORA / PRÓXIMA PARADA */}
+        <Aparecer indice={1}>
           <LinearGradient
             colors={VEU_HERO}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -599,24 +650,35 @@ export default function HomeScreen() {
           >
             <View style={styles.heroTopRow}>
               <View style={styles.liveRow}>
-                <View style={styles.liveDot} />
-                <Text style={[styles.liveLabel, { color: heroAcento }]}>AO VIVO · PRÓXIMA PARADA</Text>
+                <View style={[styles.liveDot, atendendo && { backgroundColor: cores.warning }]} />
+                <Text style={[styles.liveLabel, { color: heroAcento }]}>{atendendo ? 'AGORA · EM ATENDIMENTO' : 'PRÓXIMA PARADA'}</Text>
               </View>
+              {proxima && !carregando && !carregandoErro ? (
+                <PressableAnimado
+                  onPress={() => abrirVisitaNaAgenda(proxima.id)}
+                  haptic="selection"
+                  hitSlop={10}
+                  accessibilityLabel="Ver os detalhes desta visita na Agenda"
+                >
+                  <Text style={[styles.heroLink, { color: heroAcento }]}>Detalhes</Text>
+                </PressableAnimado>
+              ) : null}
             </View>
             {carregando ? (
-              <View style={styles.heroEmpty}>
-                <MaterialCommunityIcons name="dots-horizontal" size={30} color={heroAcento} />
-                <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Carregando…</Text>
+              <View style={styles.heroCarregando} accessibilityLabel="Carregando a próxima parada">
+                <Skeleton width="30%" height={12} />
+                <Skeleton width="65%" height={20} />
+                <Skeleton width="80%" height={12} />
               </View>
             ) : carregandoErro ? (
               <View style={styles.heroEmpty}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={30} color={heroAcento} />
                 <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Não deu para carregar</Text>
                 <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Não conseguimos buscar seus dados agora. Verifique a conexão e tente de novo.</Text>
-                <TouchableOpacity style={styles.heroBtn} onPress={() => { vibrar('selecao'); load(); }} activeOpacity={0.85}>
+                <PressableAnimado style={styles.heroBtn} onPress={() => { void carregarTudo(); }} haptic="light" accessibilityLabel="Tentar carregar de novo">
                   <MaterialCommunityIcons name="refresh" size={18} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.heroBtnText}>Tentar de novo</Text>
-                </TouchableOpacity>
+                </PressableAnimado>
               </View>
             ) : !proxima && esperandoDownload ? (
               <View style={styles.heroEmpty}>
@@ -630,26 +692,28 @@ export default function HomeScreen() {
                     : 'Sua agenda e seus orçamentos aparecem aqui assim que o download terminar.'}
                 </Text>
                 {download === 'falhou' ? (
-                  <TouchableOpacity style={styles.heroBtn} onPress={() => { vibrar('selecao'); tentarDownload(); }} activeOpacity={0.85}>
+                  <PressableAnimado style={styles.heroBtn} onPress={tentarDownload} haptic="light" accessibilityLabel="Tentar baixar os dados de novo">
                     <MaterialCommunityIcons name="refresh" size={18} color={textoSobre(cores.accentLight)} />
                     <Text style={styles.heroBtnText}>Tentar de novo</Text>
-                  </TouchableOpacity>
+                  </PressableAnimado>
                 ) : null}
               </View>
             ) : proxima ? (
               <View style={styles.heroFilled}>
-                <Text style={[styles.heroWhen, { color: heroAcento }]}>{rotuloQuandoVisita(proxima)}</Text>
+                <Text style={[styles.heroWhen, { color: heroAcento }]}>
+                  {atendendo ? `Começou às ${horaMinuto(proxima.inicio)}` : rotuloQuandoVisita(proxima)}
+                </Text>
                 <Text style={[styles.heroClient, { color: heroTexto }]} numberOfLines={1}>{proxima.clienteNome || proxima.titulo}</Text>
                 <Text style={[styles.heroType, { color: heroTextoSec }]} numberOfLines={1}>
                   {TIPO_AGENDAMENTO_LABELS[proxima.tipo]}{proxima.titulo && proxima.clienteNome ? ` · ${proxima.titulo}` : ''}
                 </Text>
-                {proxima.endereco ? (
-                  <View style={styles.heroAddr}>
-                    <MaterialCommunityIcons name="map-marker" size={14} color={heroAcento} />
-                    <Text style={[styles.heroAddrText, { color: heroTextoSec }]} numberOfLines={1}>{proxima.endereco}</Text>
-                  </View>
-                ) : null}
-                {temEta ? (
+                <View style={styles.heroAddr}>
+                  <MaterialCommunityIcons name="map-marker" size={15} color={heroAcento} />
+                  <Text style={[styles.heroAddrText, { color: heroTextoSec }]} numberOfLines={2}>
+                    {proxima.endereco?.trim() || 'Sem endereço nesta visita'}
+                  </Text>
+                </View>
+                {temEta && !atendendo ? (
                   <View style={styles.heroEta}>
                     <EtaChip
                       resultado={etaResultado}
@@ -658,12 +722,9 @@ export default function HomeScreen() {
                     />
                   </View>
                 ) : null}
-                {/* "A que horas eu preciso sair" — a única estimativa do hero que
-                    aparece TAMBÉM no APK: não depende de localização (a origem
-                    vem do cadastro), ao contrário do EtaChip acima, que o
-                    `temEta` esconde no nativo. Renderiza sozinho quando não há
-                    registro para esta parada. */}
-                {avisoSaida ? (
+                {/* "A que horas eu preciso sair" — não depende de localização (a
+                    origem vem do cadastro). Renderiza só quando há registro. */}
+                {avisoSaida && !atendendo ? (
                   <View style={styles.heroSaida}>
                     <AvisoSaidaCard
                       aviso={avisoSaida}
@@ -672,69 +733,122 @@ export default function HomeScreen() {
                     />
                   </View>
                 ) : null}
-                {/* "Estou a caminho" — aparece sempre que há telefone do
-                    cliente. O WhatsApp não precisa de GPS: sem ETA (APK sem
-                    localização), a mensagem sai sem horário em vez de o botão
-                    sumir; com ETA, leva a janela de chegada. */}
-                {telefoneProxima ? (
-                  <TouchableOpacity style={styles.heroWhatsBtn} onPress={estouACaminho} activeOpacity={0.85}>
-                    <MaterialCommunityIcons
-                      name="whatsapp"
-                      size={16}
-                      color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
-                    />
-                    <Text style={styles.heroWhatsBtnText}>Estou a caminho</Text>
-                  </TouchableOpacity>
-                ) : null}
                 <View style={styles.heroActions}>
-                  {proxima.endereco ? (
-                    <TouchableOpacity
-                      style={[styles.heroBtn, { marginTop: 0 }]}
-                      onPress={() => { vibrar('selecao'); void abrirRotaGoogleMaps(proxima.endereco ?? ''); }}
-                      activeOpacity={0.85}
-                      accessibilityRole="button"
+                  {proxima.endereco?.trim() ? (
+                    <PressableAnimado
+                      style={[styles.heroBtn, styles.heroBtnFlex]}
+                      onPress={() => { void abrirRotaGoogleMaps(proxima.endereco ?? ''); }}
+                      haptic="light"
                       accessibilityLabel={`Traçar rota até ${proxima.endereco}`}
                     >
-                      <MaterialCommunityIcons name="navigation-variant" size={16} color={textoSobre(cores.accentLight)} />
+                      <MaterialCommunityIcons name="navigation-variant" size={17} color={textoSobre(cores.accentLight)} />
                       <Text style={styles.heroBtnText}>Traçar rota</Text>
-                    </TouchableOpacity>
+                    </PressableAnimado>
                   ) : null}
-                  <TouchableOpacity style={styles.heroBtnGhost} onPress={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
-                    <Text style={[styles.heroBtnGhostText, { color: heroAcento }]}>Ver agenda</Text>
-                  </TouchableOpacity>
+                  {atendendo ? (
+                    <PressableAnimado
+                      style={[styles.heroBtnGhost, styles.heroBtnFlex]}
+                      onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: proxima.orcamentoId })}
+                      haptic="light"
+                      accessibilityLabel={`Emitir recibo para ${proxima.clienteNome || 'este cliente'}`}
+                    >
+                      <MaterialCommunityIcons name="receipt" size={17} color={heroAcento} />
+                      <Text style={[styles.heroBtnGhostText, { color: heroAcento }]}>Emitir recibo</Text>
+                    </PressableAnimado>
+                  ) : telefoneProxima ? (
+                    // "Estou a caminho": com telefone do cliente, sempre — o WhatsApp não precisa de GPS.
+                    <PressableAnimado
+                      style={[styles.heroWhatsBtn, styles.heroBtnFlex]}
+                      onPress={estouACaminho}
+                      disabled={avisandoCliente}
+                      haptic="light"
+                      accessibilityLabel={`Avisar ${proxima.clienteNome || 'o cliente'} no WhatsApp que você está a caminho`}
+                      accessibilityState={{ busy: avisandoCliente }}
+                    >
+                      <MaterialCommunityIcons
+                        name="whatsapp"
+                        size={17}
+                        color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                      />
+                      <Text style={styles.heroWhatsBtnText}>{avisandoCliente ? 'Abrindo…' : 'Estou a caminho'}</Text>
+                    </PressableAnimado>
+                  ) : null}
                 </View>
+                {!atendendo && !telefoneProxima ? (
+                  <Text style={[styles.heroNota, { color: heroTextoSec }]}>
+                    Sem WhatsApp do cliente nesta visita: cadastre o telefone para avisar que está a caminho.
+                  </Text>
+                ) : null}
               </View>
             ) : (
               <View style={styles.heroEmpty}>
                 <MaterialCommunityIcons name="calendar-blank-outline" size={30} color={heroAcento} />
-                <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Nenhuma visita agendada</Text>
-                <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Agende seus serviços e organize o seu dia. A próxima parada aparece aqui.</Text>
-                <TouchableOpacity style={styles.heroBtn} onPress={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
+                <Text style={[styles.heroEmptyTitle, { color: heroTexto }]}>Nenhuma visita marcada</Text>
+                <Text style={[styles.heroEmptySub, { color: heroTextoSec }]}>Agende seus serviços e a próxima parada aparece aqui, com rota e aviso ao cliente.</Text>
+                <PressableAnimado style={styles.heroBtn} onPress={agendar} haptic="light" accessibilityLabel="Agendar uma visita">
                   <MaterialCommunityIcons name="calendar-plus" size={18} color={textoSobre(cores.accentLight)} />
-                  <Text style={styles.heroBtnText}>Abrir agenda</Text>
-                </TouchableOpacity>
+                  <Text style={styles.heroBtnText}>Agendar visita</Text>
+                </PressableAnimado>
               </View>
             )}
           </LinearGradient>
-        </AnimatedEntrance>
+        </Aparecer>
 
-        {/* DICA (1º uso) — de onde sai um orçamento. O botão central "Orçar" da
-            tab bar abre NovoOrcamento (ver CenterButton no AppNavigator). */}
-        <View style={{ paddingHorizontal: Spacing.base }}>
-          <DicaContextual
-            id="home.botao-orcar"
-            icon="plus-circle-outline"
-            texto="O botão central da barra de baixo (Orçar) cria um novo orçamento. É por ali que começa toda proposta."
-          />
-        </View>
+        {/* 3. ROTA DE HOJE — some só enquanto o hero já explica que os dados
+            ainda estão vindo da nuvem (não dá para afirmar "nada hoje"). */}
+        {!(esperandoDownload && !proxima) && !carregandoErro && (
+          <Aparecer indice={2}>
+            <RotaDeHoje
+              estado={rotaEstadoExibido}
+              paradas={rota}
+              textoErro={rotaAguardandoNuvem ? 'Sua agenda ainda não chegou da nuvem.' : undefined}
+              onTentarDeNovo={() => {
+                if (rotaAguardandoNuvem) { tentarDownload(); return; }
+                setRotaEstado('carregando');
+                void loadRota();
+              }}
+              onAbrirVisita={abrirVisitaNaAgenda}
+              onAgendar={agendar}
+              onVerAgenda={verAgenda}
+              onRotaNoMaps={enderecosPendentes.length >= 2 ? () => { void rotaNoMaps(); } : null}
+              abrindoMaps={abrindoMaps}
+            />
+          </Aparecer>
+        )}
 
-        {/* KPIs */}
+        {/* 4. DINHEIRO — a receber (aprovado sem pagamento) e esperando resposta.
+            Os 3 estados de cada radar vão INTEIROS para o palco: é ele que
+            garante que "não deu para verificar" nunca vire "nada a receber". */}
+        {!esperandoDownload && (
+          <>
+            <Text style={styles.sectionTitle} accessibilityRole="header">Dinheiro</Text>
+            <Aparecer indice={3}>
+              <PainelDinheiroParado
+                cobranca={cobranca}
+                cobrancaCarregando={cobrancaCarregando}
+                cobrancaErro={cobrancaErro}
+                onRecarregarCobranca={loadCobranca}
+                onCobrar={cobrarNoWhatsApp}
+                onCadastrarPix={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }}
+                followUp={followUp}
+                followUpCarregando={followUpCarregando}
+                followUpErro={followUpErro}
+                onRecarregarFollowUp={loadFollowUp}
+                onFollowUp={followUpNoWhatsApp}
+                temHistorico={temHistorico}
+                onVerTodos={() => { vibrar('selecao'); nav.navigate('Orcamentos'); }}
+              />
+            </Aparecer>
+          </>
+        )}
+
+        {/* Números do mês */}
         {carregando || (esperandoDownload && download === 'baixando') ? (
           <View style={styles.kpis}>
             {[0, 1, 2, 3].map(i => (
               <View key={i} style={[styles.kpi, { height: 96, justifyContent: 'center', gap: 8 }]}>
-                <OlliSkeleton width="70%" height={19} />
-                <OlliSkeleton width="50%" height={11} />
+                <Skeleton width="70%" height={19} />
+                <Skeleton width="50%" height={11} />
               </View>
             ))}
           </View>
@@ -745,22 +859,22 @@ export default function HomeScreen() {
               <Text style={styles.avisoLinhaTexto}>
                 {carregandoErro ? 'Não deu para carregar seus números agora.' : 'Seus números ainda não chegaram da nuvem.'}
               </Text>
-              <TouchableOpacity onPress={carregandoErro ? load : tentarDownload} activeOpacity={0.8}>
+              <PressableAnimado onPress={carregandoErro ? load : tentarDownload} haptic="selection" hitSlop={8} accessibilityLabel="Tentar carregar os números de novo">
                 <Text style={styles.avisoLinhaAcao}>Tentar de novo</Text>
-              </TouchableOpacity>
+              </PressableAnimado>
             </View>
           </View>
         ) : (
-          <AnimatedEntrance index={1}>
+          <Aparecer indice={4}>
             <View style={styles.kpis}>
               <View style={styles.kpi}>
                 <Text style={styles.kpiLabel}>Aprovado neste mês</Text>
-                <CountUp value={valorAprovadoMes} format="currency" style={[styles.kpiValue, { color: cores.onSurface }]} />
+                <ContadorAnimado valor={valorAprovadoMes} formato="brl" style={[styles.kpiValue, { color: cores.onSurface }]} />
                 <Text style={styles.kpiHint}>{aprovadosResumo.contagem} {aprovadosResumo.contagem === 1 ? 'orçamento' : 'orçamentos'}</Text>
               </View>
               <View style={styles.kpi}>
                 <Text style={styles.kpiLabel}>Aguardando cliente</Text>
-                <CountUp value={emAbertoResumo.contagem} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={500} />
+                <ContadorAnimado valor={emAbertoResumo.contagem} style={[styles.kpiValue, { color: cores.onSurface }]} />
                 <Text style={styles.kpiHint}>enviados sem resposta</Text>
               </View>
               <View style={styles.kpi}>
@@ -769,10 +883,10 @@ export default function HomeScreen() {
                   followUpErro ? (
                     <Text style={[styles.kpiValue, { color: cores.onSurfaceVariant }]} accessibilityLabel="Não deu para verificar">—</Text>
                   ) : (
-                    <OlliSkeleton width="40%" height={19} style={{ marginTop: 4 }} />
+                    <Skeleton width="40%" height={19} style={{ marginTop: 4 }} />
                   )
                 ) : (
-                  <CountUp value={pedemFollowUp} format="int" style={[styles.kpiValue, { color: pedemFollowUp > 0 ? cores.warning : cores.onSurface }]} duration={500} />
+                  <ContadorAnimado valor={pedemFollowUp} style={[styles.kpiValue, { color: pedemFollowUp > 0 ? cores.warning : cores.onSurface }]} />
                 )}
                 <Text style={[styles.kpiHint, (pedemFollowUp ?? 0) > 0 && styles.kpiHintWarn]}>
                   {followUpErro ? 'não deu para verificar' : `sem resposta há ${LIMIAR_PROPOSTA_PARADA_DIAS}+ dias`}
@@ -781,25 +895,72 @@ export default function HomeScreen() {
               <View style={styles.kpi}>
                 <Text style={styles.kpiLabel}>Conversão do mês</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                  <CountUp value={conversao} format="int" style={[styles.kpiValue, { color: cores.onSurface }]} duration={600} />
+                  <ContadorAnimado valor={conversao} style={[styles.kpiValue, { color: cores.onSurface }]} />
                   <Text style={[styles.kpiValue, { color: cores.onSurface }]}>%</Text>
                 </View>
                 <Text style={styles.kpiHint}>{conversaoDetalhe}</Text>
               </View>
             </View>
-          </AnimatedEntrance>
+          </Aparecer>
         )}
 
-        {/* CLIENTES PARA LEMBRAR (pós-venda) — serviço concluído há o intervalo do
-            ofício (ex.: ar-condicionado 6 meses). Regra em utils/posVenda.ts. */}
+        {/* 5. ATALHOS DE 1 TOQUE */}
+        <Text style={styles.sectionTitle} accessibilityRole="header">Atalhos</Text>
+        <Aparecer indice={5}>
+          <AtalhosRua atalhos={atalhos} />
+        </Aparecer>
+
+        {/* A dica do botão central aparece UMA vez (some no "Entendi") e só
+            depois de a tela carregar — nunca junto do esqueleto. */}
+        {!carregando && (
+          <View style={{ paddingHorizontal: Spacing.base }}>
+            <DicaContextual
+              id="home.botao-orcar"
+              icon="plus-circle-outline"
+              texto="Dica: o botão central da barra de baixo (Orçar) também cria um orçamento, de qualquer tela."
+            />
+          </View>
+        )}
+
+        <View style={styles.maisRow}>
+          <PressableAnimado style={styles.maisChip} onPress={() => nav.navigate('OrdemServico')} haptic="selection" accessibilityLabel={`Abrir ${rotuloOS.toLowerCase()}`}>
+            <MaterialCommunityIcons name="clipboard-check-outline" size={15} color={cores.accentLight} />
+            <Text style={styles.maisChipText}>{rotuloOS}</Text>
+          </PressableAnimado>
+          <PressableAnimado style={styles.maisChip} onPress={() => nav.navigate('Servicos')} haptic="selection" accessibilityLabel="Abrir o catálogo de serviços">
+            <MaterialCommunityIcons name="wrench-outline" size={15} color={cores.accentLight} />
+            <Text style={styles.maisChipText}>Serviços</Text>
+          </PressableAnimado>
+          <PressableAnimado style={styles.maisChip} onPress={() => nav.navigate('MeuNegocio')} haptic="selection" accessibilityLabel="Abrir Meu negócio">
+            <MaterialCommunityIcons name="storefront-outline" size={15} color={cores.accentLight} />
+            <Text style={styles.maisChipText}>Meu negócio</Text>
+          </PressableAnimado>
+        </View>
+
+        {/* Convite de "primeiro orçamento" — UM só na tela. O dono já vê o da
+            AtivacaoInicio; o StarterCard fica para quem não é dono. E só depois
+            que o 1º download confirmou o zero. */}
+        {!carregando && !carregandoErro && totalOrcamentos === 0 && download === 'pronto' && !papelCarregando && !ativacaoDoDono && (
+          <Aparecer indice={6}>
+            <StarterCard
+              onCreate={() => nav.navigate('NovoOrcamento', {})}
+              onVoice={() => nav.navigate('OlliVoz')}
+              onSetup={() => nav.navigate('MeuNegocio')}
+            />
+          </Aparecer>
+        )}
+
+        {/* CLIENTES PARA LEMBRAR (pós-venda) — regra em utils/posVenda.ts. */}
         {radarCarregando ? (
           <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
-            <OlliSkeleton width="45%" height={16} />
+            <Skeleton width="45%" height={16} />
             <View style={styles.radarCard}>
-              <OlliSkeleton width={42} height={42} radius={21} />
-              <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                <OlliSkeleton width="55%" height={14} />
-                <OlliSkeleton width="35%" height={12} />
+              <View style={styles.radarTop}>
+                <Skeleton width={42} height={42} radius={21} />
+                <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
+                  <Skeleton width="55%" height={14} />
+                  <Skeleton width="35%" height={12} />
+                </View>
               </View>
             </View>
           </View>
@@ -810,9 +971,9 @@ export default function HomeScreen() {
               <View style={styles.avisoLinha}>
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
                 <Text style={styles.avisoLinhaTexto}>Não deu para ver quem está na hora de lembrar agora.</Text>
-                <TouchableOpacity onPress={loadRadar} activeOpacity={0.8}>
+                <PressableAnimado onPress={loadRadar} haptic="selection" hitSlop={8} accessibilityLabel="Tentar de novo">
                   <Text style={styles.avisoLinhaAcao}>Tentar de novo</Text>
-                </TouchableOpacity>
+                </PressableAnimado>
               </View>
             </View>
           </>
@@ -821,7 +982,7 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>Clientes para lembrar</Text>
             <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
               {radar.map((item, i) => (
-                <AnimatedEntrance key={item.cliente.id} index={2 + i}>
+                <Aparecer key={item.cliente.id} indice={i}>
                   <View style={styles.radarCard}>
                     <View style={styles.radarTop}>
                       <View style={styles.radarAvatar}>
@@ -836,10 +997,9 @@ export default function HomeScreen() {
                       </View>
                     </View>
                     <View style={styles.radarActions}>
-                      <OlliPressable
+                      <PressableAnimado
                         style={styles.radarBtnPrimary}
                         onPress={() => chamarNoWhatsApp(item)}
-                        haptic={false}
                         accessibilityLabel={`Lembrar ${item.cliente.nome} no WhatsApp — último serviço há ${item.mesesSemContato} ${item.mesesSemContato === 1 ? 'mês' : 'meses'}`}
                       >
                         <MaterialCommunityIcons
@@ -848,18 +1008,24 @@ export default function HomeScreen() {
                           color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
                         />
                         <Text style={styles.radarBtnPrimaryText}>Lembrar no WhatsApp</Text>
-                      </OlliPressable>
-                      <OlliPressable style={styles.radarBtnGhost} onPress={() => adiarRadar(item)} disabled={adiandoId === item.cliente.id} haptic={false}>
-                        <Text style={styles.radarBtnGhostText}>Adiar 30 dias</Text>
-                      </OlliPressable>
+                      </PressableAnimado>
+                      <PressableAnimado
+                        style={styles.radarBtnGhost}
+                        onPress={() => adiarRadar(item)}
+                        disabled={adiandoId === item.cliente.id}
+                        accessibilityLabel={`Adiar ${item.cliente.nome} por 30 dias`}
+                        accessibilityState={{ busy: adiandoId === item.cliente.id }}
+                      >
+                        <Text style={styles.radarBtnGhostText}>{adiandoId === item.cliente.id ? 'Adiando…' : 'Adiar 30 dias'}</Text>
+                      </PressableAnimado>
                     </View>
                   </View>
-                </AnimatedEntrance>
+                </Aparecer>
               ))}
 
               {radarBloqueados > 0 && (
-                <AnimatedEntrance index={2 + radar.length}>
-                  <OlliPressable style={styles.radarTeaser} onPress={() => irParaPlanos('radar_card')} haptic="selection">
+                <Aparecer indice={radar.length}>
+                  <PressableAnimado style={styles.radarTeaser} onPress={() => irParaPlanos('radar_card')} escala={0.98}>
                     <View style={styles.radarTeaserIcon}>
                       <MaterialCommunityIcons name="lock-outline" size={18} color={cores.plan} />
                     </View>
@@ -870,137 +1036,58 @@ export default function HomeScreen() {
                       <Text style={styles.radarTeaserSub}>Veja todos e lembre com 1 toque no Pro</Text>
                     </View>
                     <MaterialCommunityIcons name="chevron-right" size={20} color={cores.plan} />
-                  </OlliPressable>
-                </AnimatedEntrance>
+                  </PressableAnimado>
+                </Aparecer>
               )}
             </View>
           </>
         ) : null}
 
-        {/* RADAR DE COBRANÇA e PROPOSTAS PARADAS subiram para o PALCO no topo
-            (PainelDinheiroParado). Ficavam aqui, no meio da rolagem, com o mesmo
-            peso visual de um atalho — dinheiro parado não pode ser mais um card
-            entre cards. Os 3 estados de cada um continuam intactos: agora vivem
-            dentro do palco, não sumiram. */}
-
-        {/* ANZOL — Diagnóstico por código de erro (offline, único no BR). Só para
-            quem é do ofício de ar-condicionado (ou ainda sem ofício definido):
-            "698 códigos de ar-condicionado" na tela de um pintor é ruído. */}
+        {/* DIAGNÓSTICO — só para quem é do ofício de ar-condicionado (ou ainda sem
+            ofício): "698 códigos de ar-condicionado" na tela de um pintor é ruído.
+            Aparece UMA vez na tela (antes eram três). */}
         {mostraHvac && (
-        <AnimatedEntrance index={2}>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => { vibrar('selecao'); nav.navigate('Diagnostico'); }}
-          >
-            <LinearGradient
-              colors={['rgba(11,111,206,0.30)', 'rgba(52,198,217,0.10)']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={styles.anzol}
+          <Aparecer indice={7}>
+            <PressableAnimado
+              escala={0.98}
+              onPress={() => nav.navigate('Diagnostico')}
+              haptic="selection"
+              accessibilityLabel="Diagnóstico de erro: 698 códigos de ar-condicionado, funciona offline"
             >
-              <View style={styles.anzolIcon}>
-                <MaterialCommunityIcons name="card-search-outline" size={26} color={cores.accentLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.anzolTitle}>Diagnóstico de erro</Text>
-                <Text style={styles.anzolSub}>698 códigos de ar-condicionado · ache a falha em segundos, offline</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={24} color={cores.accentLight} />
-            </LinearGradient>
-          </TouchableOpacity>
-        </AnimatedEntrance>
+              <LinearGradient
+                colors={['rgba(11,111,206,0.30)', 'rgba(52,198,217,0.10)']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={styles.anzol}
+              >
+                <View style={styles.anzolIcon}>
+                  <MaterialCommunityIcons name="card-search-outline" size={26} color={cores.accentLight} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.anzolTitle}>Diagnóstico de erro</Text>
+                  <Text style={styles.anzolSub}>698 códigos de ar-condicionado · ache a falha em segundos, offline</Text>
+                </View>
+                <MaterialCommunityIcons name="chevron-right" size={24} color={cores.accentLight} />
+              </LinearGradient>
+            </PressableAnimado>
+          </Aparecer>
         )}
 
-        {/* O antigo "LEMBRETE DA OLLI — N orçamentos parados há +5 dias" saiu:
-            era a MESMA população do radar de follow-up (STATUS_PROPOSTA_ENVIADA
-            sem movimentação), dita com menos informação — só a contagem — e com
-            uma ação que apenas NAVEGAVA para a lista. O palco no topo já mostra
-            o valor, o tempo e o botão que abre o WhatsApp com a mensagem pronta.
-            Dois cards para o mesmo dinheiro é exatamente o ruído que apagava o
-            aviso. O contador do robô (badge) conta a MESMA lista do palco. */}
-
-        <Text style={styles.sectionTitle}>Mais atalhos</Text>
-        <AnimatedEntrance index={3}>
-          <View style={styles.processCard}>
-            <View style={styles.processGrid}>
-              <ShortcutTile
-                icon="format-list-bulleted"
-                label="Todos os orçamentos"
-                tone={cores.accentLight}
-                onPress={() => { vibrar('selecao'); nav.navigate('Orcamentos'); }}
-              />
-              <ShortcutTile
-                icon="cube-outline"
-                label="Produtos"
-                tone={cores.primaryLight}
-                onPress={() => { vibrar('selecao'); nav.navigate('Produtos'); }}
-              />
-              {mostraHvac && (
-                <ShortcutTile
-                  icon="card-search-outline"
-                  label="Diagnóstico IA"
-                  tone={cores.accentLight}
-                  onPress={() => { vibrar('selecao'); nav.navigate('DiagnosticoIA', {}); }}
-                />
-              )}
-            </View>
-
-            <View style={styles.processActions}>
-              <TouchableOpacity style={styles.processPrimary} onPress={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }} activeOpacity={0.85}>
-                <Text style={styles.processPrimaryText}>Abrir agenda</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.processGhost} onPress={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }} activeOpacity={0.85}>
-                <Text style={styles.processGhostText}>Meu negócio</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </AnimatedEntrance>
-
-        {/* Convite de "primeiro orçamento" — UM só na tela. O dono já vê o da
-            AtivacaoInicio (com o exemplo do ofício); o StarterCard fica para quem
-            não é dono. E só depois que o 1º download confirmou o zero. */}
-        {!carregando && !carregandoErro && totalOrcamentos === 0 && download === 'pronto' && !papelCarregando && !ativacaoDoDono && (
-          <AnimatedEntrance index={3}>
-            <StarterCard
-              onCreate={() => nav.navigate('NovoOrcamento', {})}
-              onVoice={() => nav.navigate('OlliVoz')}
-              onSetup={() => nav.navigate('MeuNegocio')}
-            />
-          </AnimatedEntrance>
-        )}
-
-        {/* AÇÕES RÁPIDAS */}
-        <Text style={styles.sectionTitle}>Ações rápidas</Text>
-        <AnimatedEntrance index={4}>
-          <View style={styles.actions}>
-            {ehTecnico && (
-              <Action icon="clipboard-check-outline" label={rotuloOS} color={cores.accentLight} onPress={() => nav.navigate('OrdemServico')} />
-            )}
-            <Action icon="file-plus" label="Orçar" color={cores.accentLight} onPress={() => nav.navigate('NovoOrcamento', {})} />
-            <Action icon="receipt" label="Recibo" color={cores.success} onPress={() => nav.navigate('EmitirRecibo', {})} />
-            <Action icon="account-group" label="Clientes" color={corCategoria('#A78BFA', cores.surface)} onPress={() => nav.navigate('Clientes')} />
-            {!ehTecnico && (
-              <Action icon="clipboard-check-outline" label={rotuloOS} color={cores.accentLight} onPress={() => nav.navigate('OrdemServico')} />
-            )}
-            <Action icon="wrench" label="Serviços" color={cores.primaryLight} onPress={() => nav.navigate('Servicos')} />
-          </View>
-        </AnimatedEntrance>
-
-        {/* RESTO DO DIA / ATIVIDADE RECENTE */}
+        {/* ORÇAMENTOS RECENTES */}
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Orçamentos recentes</Text>
-          <TouchableOpacity onPress={() => nav.navigate('Orcamentos')}>
+          <PressableAnimado onPress={() => nav.navigate('Orcamentos')} haptic="selection" hitSlop={8} accessibilityLabel="Ver todos os orçamentos">
             <Text style={styles.seeAll}>ver todos</Text>
-          </TouchableOpacity>
+          </PressableAnimado>
         </View>
 
         {carregando || (esperandoDownload && download === 'baixando') ? (
           <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
             {[0, 1].map(i => (
               <View key={i} style={styles.recentCard}>
-                <OlliSkeleton width={42} height={42} radius={21} />
+                <Skeleton width={42} height={42} radius={21} />
                 <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
-                  <OlliSkeleton width="55%" height={14} />
-                  <OlliSkeleton width="35%" height={12} />
+                  <Skeleton width="55%" height={14} />
+                  <Skeleton width="35%" height={12} />
                 </View>
               </View>
             ))}
@@ -1027,9 +1114,7 @@ export default function HomeScreen() {
           </View>
         ) : recentes.length === 0 ? (
           <View style={styles.emptyRecent}>
-            {/* Sem botão aqui: o convite para o primeiro orçamento já está mais
-                acima (ativação do dono ou StarterCard) — dois convites iguais na
-                mesma tela era ruído. */}
+            {/* Sem botão aqui: o convite para o primeiro orçamento já está mais acima. */}
             <EmptyState
               icon="file-document-outline"
               title="Nenhum orçamento ainda"
@@ -1039,8 +1124,13 @@ export default function HomeScreen() {
         ) : (
           <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
             {recentes.map((o, i) => (
-              <AnimatedEntrance key={o.id} index={4 + i}>
-                <TouchableOpacity style={styles.recentCard} onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })} activeOpacity={0.85}>
+              <Aparecer key={o.id} indice={i}>
+                <PressableAnimado
+                  style={styles.recentCard}
+                  escala={0.98}
+                  onPress={() => nav.navigate('VisualizarOrcamento', { orcamentoId: o.id })}
+                  accessibilityLabel={`Orçamento de ${o.clienteNome}, ${formatCurrency(o.valorTotal)}`}
+                >
                   <View style={styles.recentAvatar}><Text style={styles.recentAvatarText}>{o.clienteNome.charAt(0).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.recentName} numberOfLines={1}>{o.clienteNome}</Text>
@@ -1048,15 +1138,12 @@ export default function HomeScreen() {
                     <View style={{ marginTop: 5 }}><StatusBadge status={o.status} size="sm" /></View>
                   </View>
                   <Text style={styles.recentValue}>{formatCurrency(o.valorTotal)}</Text>
-                </TouchableOpacity>
-              </AnimatedEntrance>
+                </PressableAnimado>
+              </Aparecer>
             ))}
           </View>
         )}
       </ScrollView>
-
-      {/* Home limpa (design 01): OLLI fica no robô do topo-direito (abre voz+chat)
-          e o Orçamento é o botão central elevado da tab bar. Sem FABs sobrepostos. */}
 
       {/* MENU RÁPIDO DA OLLI (robô no topo) */}
       <Modal visible={olliMenu} transparent animationType="fade" onRequestClose={() => setOlliMenu(false)}>
@@ -1064,7 +1151,7 @@ export default function HomeScreen() {
           <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => {}}>
             <View style={styles.sheetHandle} />
             <View style={styles.sheetHead}>
-              <View style={styles.sheetMascot}><OlliMascot size={34} onDark float={false} /></View>
+              <View style={styles.sheetMascot}><OlliMascot size={34} onDark float={false} pulse={false} /></View>
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.sheetTitle}>Oi, eu sou a OLLI</Text>
                 <Text style={styles.sheetSub}>Como posso te ajudar agora?</Text>
@@ -1072,7 +1159,7 @@ export default function HomeScreen() {
             </View>
 
             {pedemFollowUp ? (
-              <TouchableOpacity style={styles.sheetItem} onPress={verFollowUps} activeOpacity={0.8} accessibilityRole="button">
+              <PressableAnimado style={styles.sheetItem} escala={0.98} onPress={verFollowUps} accessibilityLabel={`${pedemFollowUp} ${pedemFollowUp === 1 ? 'proposta pede retorno' : 'propostas pedem retorno'}. Ver no Início`}>
                 <View style={[styles.sheetIcon, { backgroundColor: comAlfa(cores.warning, 0.14), borderColor: comAlfa(cores.warning, 0.34) }]}>
                   <MaterialCommunityIcons name="message-reply-text-outline" size={22} color={cores.warning} />
                 </View>
@@ -1083,10 +1170,10 @@ export default function HomeScreen() {
                   <Text style={styles.sheetItemDesc}>Sem resposta do cliente há {LIMIAR_PROPOSTA_PARADA_DIAS} dias ou mais</Text>
                 </View>
                 <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
-              </TouchableOpacity>
+              </PressableAnimado>
             ) : null}
 
-            <TouchableOpacity style={styles.sheetItem} onPress={() => irPara('OlliVoz')} activeOpacity={0.8}>
+            <PressableAnimado style={styles.sheetItem} escala={0.98} onPress={() => irPara('OlliVoz')} accessibilityLabel="Montar orçamento por voz">
               <View style={[styles.sheetIcon, { backgroundColor: 'rgba(52,198,217,0.14)', borderColor: 'rgba(52,198,217,0.34)' }]}>
                 <MaterialCommunityIcons name="microphone" size={22} color={cores.accentLight} />
               </View>
@@ -1095,9 +1182,9 @@ export default function HomeScreen() {
                 <Text style={styles.sheetItemDesc}>Fale o serviço e eu monto pra você</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
-            </TouchableOpacity>
+            </PressableAnimado>
 
-            <TouchableOpacity style={styles.sheetItem} onPress={() => irPara('OlliChat')} activeOpacity={0.8}>
+            <PressableAnimado style={styles.sheetItem} escala={0.98} onPress={() => irPara('OlliChat')} accessibilityLabel="Conversar com a OLLI">
               <View style={[styles.sheetIcon, { backgroundColor: 'rgba(11,111,206,0.18)', borderColor: 'rgba(11,111,206,0.36)' }]}>
                 <MaterialCommunityIcons name="chat-processing-outline" size={22} color={cores.primaryLight} />
               </View>
@@ -1106,7 +1193,7 @@ export default function HomeScreen() {
                 <Text style={styles.sheetItemDesc}>Tire dúvidas técnicas, preços e diagnóstico</Text>
               </View>
               <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
-            </TouchableOpacity>
+            </PressableAnimado>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1134,18 +1221,18 @@ function StarterCard({ onCreate, onVoice, onSetup }: { onCreate: () => void; onV
         <MiniStep n="3" text="PDF/link" />
       </View>
       <View style={styles.starterActions}>
-        <TouchableOpacity style={styles.starterPrimary} onPress={onVoice} activeOpacity={0.86}>
+        <PressableAnimado style={styles.starterPrimary} onPress={onVoice} haptic="light" accessibilityLabel="Criar o primeiro orçamento por voz">
           <MaterialCommunityIcons name="microphone" size={17} color={textoSobre(cores.accentLight)} />
           <Text style={styles.starterPrimaryText}>Criar por voz</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.starterGhost} onPress={onCreate} activeOpacity={0.86}>
+        </PressableAnimado>
+        <PressableAnimado style={styles.starterGhost} onPress={onCreate} haptic="selection" accessibilityLabel="Criar o primeiro orçamento digitando">
           <Text style={styles.starterGhostText}>Manual</Text>
-        </TouchableOpacity>
+        </PressableAnimado>
       </View>
-      <TouchableOpacity style={styles.starterSetup} onPress={onSetup} activeOpacity={0.8}>
+      <PressableAnimado style={styles.starterSetup} onPress={onSetup} haptic="selection" accessibilityLabel="Configurar logo, Pix e assinatura">
         <MaterialCommunityIcons name="storefront-outline" size={15} color={cores.onSurfaceVariant} />
         <Text style={styles.starterSetupText}>Configurar logo, PIX e assinatura</Text>
-      </TouchableOpacity>
+      </PressableAnimado>
     </View>
   );
 }
@@ -1160,37 +1247,13 @@ function MiniStep({ n, text }: { n: string; text: string }) {
   );
 }
 
-function ShortcutTile({ icon, label, tone, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; tone: string; onPress: () => void }) {
-  const styles = useEstilos(criarEstilos);
-  return (
-    <TouchableOpacity style={styles.processMetric} onPress={onPress} activeOpacity={0.8}>
-      <MaterialCommunityIcons name={icon} size={20} color={tone} />
-      <Text style={styles.processMetricValue} numberOfLines={2}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function Action({ icon, label, color, onPress }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; color: string; onPress: () => void }) {
-  const styles = useEstilos(criarEstilos);
-  return (
-    <TouchableOpacity style={styles.action} onPress={() => { vibrar('selecao'); onPress(); }} activeOpacity={0.8}>
-      <View style={[styles.actionIcon, { backgroundColor: color + '22', borderColor: color + '44' }]}>
-        <MaterialCommunityIcons name={icon} size={24} color={color} />
-      </View>
-      <Text style={styles.actionLabel}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    // Pill sempre escura de propósito (como um toast), nos dois modos — sem chave
-    // que represente "fundo escuro fixo" (ver rule 7 da migração). Por ser fundo
-    // escuro fixo, o primeiro plano usa o ciano vivo (accent): accentLight aqui
-    // vira #197884 no claro e cai a ~3.5:1 sobre a pill (texto reprova AA).
+    // Pill sempre escura de propósito (como um toast), nos dois modos; por isso
+    // o primeiro plano usa o ciano vivo (accent).
     backgroundColor: 'rgba(10,22,38,0.92)', borderWidth: 1, borderColor: c.strokeGlow,
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
@@ -1201,81 +1264,64 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   greeting: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '500' },
   name: { fontSize: 21, fontWeight: '800', color: c.onBackground, marginTop: 1 },
   company: { fontSize: 13, fontWeight: '600', color: c.onSurfaceMuted },
-  // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
+  // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo.
   olliBtn: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
   olliBadge: { position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: c.danger, borderWidth: 2, borderColor: c.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
-  // Branco fixo: convenção universal de badge de notificação sobre uma cor de
-  // status saturada — sem chave "onDanger" na paleta (ver rule 7).
+  // Branco fixo: convenção universal de badge sobre cor de status saturada.
   olliBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#fff' },
 
-  // HERO: gradiente translúcido inline (não um dos `Gradients` do tema) por cima
-  // do fundo da tela — em claro isso vira um azul bem claro, não um "sempre
-  // escuro" como o GradientHeader. Os textos abaixo (branco/rgba claros) foram
-  // desenhados para o cockpit escuro original e NÃO foram redesenhados para
-  // manter contraste no modo claro; corrigir isso é uma decisão de design (não
-  // uma troca mecânica de chave) e fica fora do escopo desta migração — ver
-  // resumo da tarefa. O mesmo vale para `anzol` e `lembrete` abaixo (mesmo
-  // padrão de tinta translúcida sobre o fundo da tela).
-  hero: { margin: Spacing.base, borderRadius: BorderRadius.xl, padding: Spacing.lg, borderWidth: 1, borderColor: c.strokeGlow, ...sombrasDe(c).md },
+  // HERO: véu translúcido por cima do fundo; as cores de texto vêm de
+  // heroTexto/heroAcento (derivadas do fundo EFETIVO), não deste objeto.
+  hero: { marginHorizontal: Spacing.base, marginTop: Spacing.md, borderRadius: BorderRadius.xl, padding: Spacing.lg, borderWidth: 1, borderColor: c.strokeGlow, ...sombrasDe(c).md },
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.success },
-  // Sem cor: o hero deriva a sua do fundo EFETIVO (véu achatado). Ver VEU_HERO.
   liveLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0 },
+  heroLink: { fontSize: 12.5, fontWeight: '800' },
+  heroCarregando: { marginTop: 14, gap: 10 },
   heroEmpty: { alignItems: 'center', paddingVertical: 14 },
   heroEmptyTitle: { fontSize: 16, fontWeight: '800', marginTop: 8 },
   heroEmptySub: { fontSize: 12.5, textAlign: 'center', marginTop: 4, lineHeight: 18, paddingHorizontal: 10 },
-  heroBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 17, paddingVertical: 11, marginTop: 14 },
-  heroBtnText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.accentLight) },
+  heroBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 17, minHeight: 46, marginTop: 14 },
+  heroBtnText: { fontSize: 14, fontWeight: '800', color: textoSobre(c.accentLight) },
+  heroBtnFlex: { flex: 1, marginTop: 0 },
 
-  // Próxima parada preenchida (próximo agendamento real)
+  // Próxima parada preenchida
   heroFilled: { marginTop: 12 },
-  heroWhen: { fontSize: 12, fontWeight: '800', letterSpacing: 0 },
-  heroClient: { fontSize: 19, fontWeight: '800', marginTop: 4 },
+  heroWhen: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
+  heroClient: { fontSize: 21, fontWeight: '800', marginTop: 4 },
   heroType: { fontSize: 13, marginTop: 2 },
-  heroAddr: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
-  heroAddrText: { flex: 1, fontSize: 12.5 },
-  heroEta: { marginTop: 8, alignItems: 'flex-start' },
-  heroSaida: { marginTop: 8, alignSelf: 'stretch' },
-  // "Estou a caminho" (item 1.3): mesmo verde/contraste do botão de WhatsApp
-  // do Radar de clientes (radarBtnPrimary) — convenção única pra "ação de
-  // WhatsApp" no app inteiro.
-  heroWhatsBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, paddingVertical: 11, marginTop: 10 },
-  heroWhatsBtnText: { fontSize: 13.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366 (9.16:1)
-  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
-  heroBtnGhost: { borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, paddingVertical: 10 },
-  heroBtnGhostText: { fontSize: 13, fontWeight: '800' },
+  heroAddr: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 10 },
+  heroAddrText: { flex: 1, fontSize: 13, lineHeight: 18 },
+  heroEta: { marginTop: 10, alignItems: 'flex-start' },
+  heroSaida: { marginTop: 10, alignSelf: 'stretch' },
+  // Verde do WhatsApp com tinta escura: convenção única de "ação de WhatsApp" no app.
+  heroWhatsBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, minHeight: 46, paddingHorizontal: 14 },
+  heroWhatsBtnText: { fontSize: 14, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366 (9.16:1)
+  heroActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
+  heroBtnGhost: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, minHeight: 46 },
+  heroBtnGhostText: { fontSize: 14, fontWeight: '800' },
+  heroNota: { fontSize: 12, marginTop: 10, lineHeight: 17 },
 
-  kpis: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, padding: 8 },
+  kpis: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, marginTop: Spacing.md, padding: 8 },
   kpi: { flexGrow: 1, flexBasis: '45%', minHeight: 94, alignItems: 'flex-start', justifyContent: 'center', backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.lg, paddingHorizontal: 12, paddingVertical: 10 },
   kpiValue: { ...Typography.value, fontSize: 19, color: c.onSurface, marginTop: 4 },
   kpiLabel: { fontSize: 11.5, color: c.onSurfaceVariant, fontWeight: '800' },
   kpiHint: { fontSize: 10.5, color: c.onSurfaceMuted, marginTop: 3, fontWeight: '600' },
   kpiHintWarn: { color: c.warning },
 
-  anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: 12, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow },
+  anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow },
   anzolIcon: { width: 46, height: 46, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
-  anzolTitle: { fontSize: 15.5, fontWeight: '800', color: '#fff' },
+  anzolTitle: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
   anzolSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
 
-  processCard: { marginHorizontal: Spacing.base, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.base, ...sombrasDe(c).sm },
-  processGrid: { flexDirection: 'row', gap: 8 },
-  processMetric: { flex: 1, minHeight: 74, backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.md, padding: 10, justifyContent: 'center', alignItems: 'center', gap: 6 },
-  processMetricValue: { fontSize: 11.5, color: c.onSurface, fontWeight: '800', textAlign: 'center' },
-  processActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  processPrimary: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingVertical: 11 },
-  processPrimaryText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.accentLight) },
-  processGhost: { minWidth: 112, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 11 },
-  processGhostText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
+  maisRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: Spacing.base, marginTop: Spacing.md },
+  maisChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outlineDark, backgroundColor: c.surfaceGlass },
+  maisChipText: { fontSize: 12.5, fontWeight: '700', color: c.onSurface },
 
   sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: Spacing.base },
   seeAll: { fontSize: 12.5, color: c.accentLight, fontWeight: '700', marginTop: Spacing.xl, marginBottom: Spacing.sm },
-
-  actions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.base },
-  action: { alignItems: 'center', flex: 1 },
-  actionIcon: { width: 58, height: 58, borderRadius: BorderRadius.lg, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
-  actionLabel: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
 
   starterCard: {
     marginHorizontal: Spacing.base,
@@ -1296,11 +1342,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   miniStepN: { width: 18, height: 18, borderRadius: 9, overflow: 'hidden', backgroundColor: c.accentLight, textAlign: 'center', color: textoSobre(c.accentLight), fontSize: 11, fontWeight: '800', lineHeight: 18 },
   miniStepText: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
   starterActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  starterPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingVertical: 12 },
+  starterPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, minHeight: 44 },
   starterPrimaryText: { fontSize: 13.5, fontWeight: '800', color: textoSobre(c.accentLight) },
-  starterGhost: { minWidth: 88, justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed },
+  starterGhost: { minWidth: 88, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed },
   starterGhostText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
-  starterSetup: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12 },
+  starterSetup: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 12, minHeight: 40 },
   starterSetupText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
 
   emptyRecent: { paddingHorizontal: Spacing.base, minHeight: 220 },
@@ -1312,21 +1358,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   radarName: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   radarMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   radarActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  radarBtnPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, paddingVertical: 10 },
+  radarBtnPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, minHeight: 44 },
   radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
-  radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, paddingHorizontal: 14, paddingVertical: 10 },
+  radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, paddingHorizontal: 14, minHeight: 44 },
   radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
-  // Linha de "não deu para carregar X" + retry. Genérica de propósito: serve os
-  // KPIs e o radar de clientes (o radar de cobrança levou a sua para o palco).
-  // Um erro NUNCA vira ausência silenciosa em nenhum desses três lugares.
+  // Linha de "não deu para carregar X" + retry. Um erro NUNCA vira ausência silenciosa.
   avisoLinha: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md },
   avisoLinhaTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
   avisoLinhaAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   radarTeaser: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(124,58,237,0.10)', borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: 'rgba(124,58,237,0.32)', padding: Spacing.md, gap: 12 },
   radarTeaserIcon: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(124,58,237,0.16)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.34)', justifyContent: 'center', alignItems: 'center' },
-  radarTeaserTitle: { fontSize: 13.5, fontWeight: '800', color: '#fff' },
+  radarTeaserTitle: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
   radarTeaserSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
 
   recentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, padding: Spacing.md },
@@ -1336,11 +1380,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   recentMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   recentValue: { fontSize: 15, fontWeight: '800', color: c.accentLight, marginLeft: 8 },
 
-  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos (convenção
-  // padrão de overlay de modal — sem chave "scrim" na paleta).
+  // Scrim do bottom sheet: escurece o fundo sempre, nos dois modos.
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(5,12,22,0.72)', justifyContent: 'flex-end' },
-  // paddingBottom vem do JSX (insets.bottom + 16): fixo em 32, o 2º item encostava
-  // na barra de navegação do Android edge-to-edge.
+  // paddingBottom vem do JSX (insets.bottom + 16): o 2º item não encosta na barra do Android.
   sheet: { backgroundColor: c.surface, borderTopLeftRadius: BorderRadius.xl, borderTopRightRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 10 },
   sheetHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: c.outlineDark, marginBottom: Spacing.base },
   sheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.base },

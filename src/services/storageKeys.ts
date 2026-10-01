@@ -189,6 +189,14 @@ export const PULL_INICIAL_OK_PREFIX = 'olli.sync.pull_inicial_ok_';
 export const ULTIMO_PULL_KEY = 'olli.sync.ultimoPull';
 
 /**
+ * Coordenada da CIDADE do cadastro (`{ chave, lat, lon }`), usada só como
+ * reserva do clima do Início quando o aparelho não tem localização (services/
+ * climaReserva). Guardada para geocodificar a cidade UMA vez por aparelho, não a
+ * cada abertura. Diz onde a empresa fica → dado de conta, sai no logout.
+ */
+export const CLIMA_COORD_CIDADE_KEY = 'olli.clima.coordCidade.v1';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -220,5 +228,6 @@ export const APP_DATA_STORAGE_KEYS = [
   COBRANCAS_ENVIADAS_STAMP_KEY,
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
+  CLIMA_COORD_CIDADE_KEY,
   ULTIMO_PULL_KEY,
 ];
