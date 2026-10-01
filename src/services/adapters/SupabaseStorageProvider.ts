@@ -5,6 +5,7 @@ import type {
   StorageProvider,
 } from '../ports/StorageProvider';
 import type { MotivoFalhaPorta, ResultadoPorta } from '../ports/comum';
+import * as Crypto from 'expo-crypto';
 import { supabase } from '../supabase';
 
 const BUCKET: Record<CategoriaArquivo, string> = {
@@ -94,7 +95,10 @@ export class SupabaseStorageProvider implements StorageProvider {
     if (!/^[0-9a-f-]{36}$/i.test(tenantId)) return falha('invalido', 'Tenant inválido.');
 
     const bucket = BUCKET[input.categoria];
-    const caminho = `${tenantId}/${input.categoria}/${crypto.randomUUID()}.${EXTENSAO[input.mimeType] ?? 'bin'}`;
+    // `Crypto.randomUUID()` do expo-crypto, e não o `crypto` global: o Hermes do
+    // APK não tem `globalThis.crypto` — o global lançava ReferenceError e TODO
+    // upload nativo (fotos da OS, comprovantes) falhava em silêncio.
+    const caminho = `${tenantId}/${input.categoria}/${Crypto.randomUUID()}.${EXTENSAO[input.mimeType] ?? 'bin'}`;
     const { error } = await supabase.storage.from(bucket).upload(caminho, conteudo, {
       contentType: input.mimeType,
       cacheControl: '3600',
@@ -103,7 +107,13 @@ export class SupabaseStorageProvider implements StorageProvider {
     if (error) return falha(error.message.toLowerCase().includes('unauthorized') ? 'auth' : 'servidor');
 
     const url = await this.urlDe(`${bucket}/${caminho}`);
-    if (!url.ok) return url;
+    if (!url.ok) {
+      // O arquivo subiu mas a URL falhou: quem chamou vai tentar de novo (a fila
+      // de fotos repete sozinha) e subiria uma SEGUNDA cópia com outro nome.
+      // Remove esta antes de devolver a falha — sem órfão ocupando o bucket.
+      await this.remover(`${bucket}/${caminho}`).catch(() => {});
+      return url;
+    }
     return {
       ok: true,
       dados: { chave: `${bucket}/${caminho}`, url: url.dados.url, tamanhoBytes: conteudo.byteLength },

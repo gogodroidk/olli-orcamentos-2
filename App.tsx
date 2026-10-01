@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StatusBar, View, Text, StyleSheet, Platform, Dimensions } from 'react-native';
+import { StatusBar, View, Text, StyleSheet, Platform, Dimensions, Alert } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -39,6 +39,7 @@ import { supabase, sessaoAtiva } from './src/services/supabase';
 import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
 import { iniciarAuthAutoRefreshNativo } from './src/services/authAutoRefresh';
+import { retomarCapturaOSInterrompida } from './src/services/capturaFotoOSNativa';
 import { sincronizarPagamentosPendentes } from './src/services/pagamentos';
 import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
@@ -471,8 +472,22 @@ function AppConteudo() {
       // !session), reseta para a porta. Fecha o buraco sem tocar no fluxo OAuth:
       // o retorno ?code= dispara SIGNED_IN (não INITIAL_SESSION), então não cai
       // aqui. No nativo, onde não há deep link de URL de página, é inócuo.
+      //
+      // SEM INTERNET (I0 · sessão que não cai): com o token vencido e sem rede,
+      // o INITIAL_SESSION chega com `session: null` embora a sessão continue
+      // guardada no aparelho (o auth-js só apaga quando o SERVIDOR recusa). Antes
+      // de expulsar alguém para a porta, confere a sessão guardada — senão o
+      // técnico sem sinal caía no "Entrar" uma hora depois de abrir o app.
       if (event === 'INITIAL_SESSION' && !session && navigationRef.isReady()) {
-        navigationRef.reset({ index: 0, routes: [{ name: ROTA_DESLOGADO }] });
+        // setTimeout: nada de chamar o auth DENTRO do callback do auth (o lock
+        // interno ainda está com quem emitiu o evento).
+        setTimeout(() => {
+          void sessaoAtiva().then((guardada) => {
+            if (!guardada && navigationRef.isReady()) {
+              navigationRef.reset({ index: 0, routes: [{ name: ROTA_DESLOGADO }] });
+            }
+          });
+        }, 0);
       }
       // Sair da conta (em qualquer tela) volta SEMPRE para a porta: reset central
       // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
@@ -587,6 +602,27 @@ function AppConteudo() {
                     notificacaoPendenteRef.current = null;
                     try { abrirDestinoDaNotificacao(pendente); } catch { /* best-effort */ }
                   }
+                  // I0 · "a câmera mata o app e a OS volta igual": se o Android
+                  // matou o app enquanto a pessoa fotografava para uma OS, recupera
+                  // a foto pendente do picker, anexa e REABRE aquela OS. Sem o
+                  // marcador gravado pela OS, não faz nada (services/capturaFotoOS).
+                  // Só com a porta aberta: na porta (Entrar/Landing, rotas públicas
+                  // que passam pelo guard acima) ou no Onboarding, reabrir a OS
+                  // empurraria alguém sem sessão para DENTRO do app e gravaria a foto
+                  // num banco sem dono. O marcador vence sozinho (30 min).
+                  if (precisaDePorta) return;
+                  void retomarCapturaOSInterrompida().then((retomada) => {
+                    if (retomada.tipo !== 'reabrir' || !navigationRef.isReady()) return;
+                    navigationRef.navigate('OrdemServico', { ordemId: retomada.ordemId });
+                    if (retomada.fotosPerdidas > 0) {
+                      Alert.alert(
+                        'Foto não recuperada',
+                        retomada.fotosPerdidas === 1
+                          ? 'O celular fechou o app durante a câmera e não consegui recuperar a última foto. Tire de novo, por favor.'
+                          : `O celular fechou o app durante a câmera e não consegui recuperar ${retomada.fotosPerdidas} fotos. Tire de novo, por favor.`,
+                      );
+                    }
+                  });
                 }}
               >
                 {/* Boundary de topo (item 1.12): envolve só o navegador de telas —
