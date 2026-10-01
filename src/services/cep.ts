@@ -48,6 +48,14 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { DIAGNOSTICO_URL } from '../config';
+import {
+  type EnderecoGeo,
+  type GeoPrecisao,
+  coordenadaValida as coordenadaGeoValida,
+  enderecoGeocodificavel,
+  lerGeoPrecisao,
+  normalizarIbge,
+} from '../utils/geoCliente.ts';
 import { supabase } from './supabase';
 
 export interface EnderecoCEP {
@@ -65,6 +73,8 @@ export interface EnderecoCEP {
    */
   lat?: number;
   lng?: number;
+  /** Código IBGE do município (7 dígitos), quando o ViaCEP respondeu. A BrasilAPI v2 não manda. */
+  ibge?: string;
 }
 
 /**
@@ -139,6 +149,8 @@ function normalizarEndereco(e: any, cep: string): EnderecoCEP | null {
     endereco.lat = lat;
     endereco.lng = lng;
   }
+  const ibge = normalizarIbge(e?.ibge);
+  if (ibge) endereco.ibge = ibge;
   return endereco;
 }
 
@@ -212,7 +224,7 @@ async function consultarViaCepDireto(cep: string): Promise<ResultadoCep> {
     if (!d || typeof d !== 'object') return { estado: 'indisponivel' };
     if (d.erro === true || d.erro === 'true') return { estado: 'nao_encontrado' };
     const endereco = normalizarEndereco(
-      { cep: d.cep, logradouro: d.logradouro, bairro: d.bairro, cidade: d.localidade, uf: d.uf },
+      { cep: d.cep, logradouro: d.logradouro, bairro: d.bairro, cidade: d.localidade, uf: d.uf, ibge: d.ibge },
       cep,
     );
     if (!endereco) return { estado: 'indisponivel' };
@@ -494,4 +506,89 @@ export function useCepLookup(
   }, [divergencias, enderecoCep]);
 
   return { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GEO DO CLIENTE (Onda I1) — "onde fica", ao salvar o cliente
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Quem chama é `database.ts`, DEPOIS de gravar o cliente (nunca antes: salvar não
+// espera rede). O worker (`POST /geo`, `worker/src/geoClientes.js`) junta
+// BrasilAPI CEP v2 + ViaCEP (IBGE) + Nominatim/OpenStreetMap — todos grátis e
+// com uso comercial permitido; Google Geocoding NÃO entra (pago fora da cota).
+//
+// Por que NÃO há segunda porta direto do aparelho, como no CEP: a política do
+// Nominatim é 1 requisição por segundo PARA O APP INTEIRO, com User-Agent próprio.
+// Cada celular chamando por conta própria não tem como respeitar isso. Se o worker
+// não respondeu, o cliente fica sem ponto e o backfill do cron (em fila, dentro
+// da política) completa depois. Nada se perde; só demora.
+
+/** Os QUATRO estados. `sem_resultado` (todos responderam, ninguém achou) ≠ `indisponivel` (não deu para perguntar). */
+export type ResultadoGeo =
+  | { estado: 'ok'; lat: number; lon: number; precisao: GeoPrecisao; ibge?: string; fonte: string; atribuicao?: string }
+  | { estado: 'sem_resultado'; ibge?: string }
+  | { estado: 'invalido' }
+  | { estado: 'indisponivel'; ibge?: string };
+
+const TIMEOUT_GEO_MS = 12000; // o worker pode esperar a fila de 1 req/s do Nominatim
+
+/**
+ * Lê a resposta do worker no domínio do app. Corpo fora do contrato é
+ * `indisponivel` ("não sei"), nunca `sem_resultado` ("não tem").
+ */
+export function lerRespostaGeo(data: any): ResultadoGeo {
+  if (!data || typeof data !== 'object') return { estado: 'indisponivel' };
+  const ibge = normalizarIbge(data.ibge) ?? undefined;
+  if (data.estado === 'ok' && data.ok === true) {
+    const coord = coordenadaGeoValida(data.lat, data.lon);
+    const precisao = lerGeoPrecisao(data.precisao);
+    // "ok" sem ponto legível não é sucesso: é resposta quebrada.
+    if (!coord || !precisao) return { estado: 'indisponivel', ibge };
+    return {
+      estado: 'ok',
+      lat: coord.lat,
+      lon: coord.lon,
+      precisao,
+      ibge,
+      fonte: typeof data.fonte === 'string' ? data.fonte : 'worker',
+      atribuicao: typeof data.atribuicao === 'string' ? data.atribuicao : undefined,
+    };
+  }
+  if (data.estado === 'sem_resultado') return { estado: 'sem_resultado', ibge };
+  if (data.estado === 'invalido') return { estado: 'invalido' };
+  return { estado: 'indisponivel', ibge };
+}
+
+/**
+ * Endereço → ponto + IBGE, pelo worker. NUNCA lança; sempre resolve um dos
+ * quatro estados. Sem URL do worker ou sem sessão = `indisponivel` (o backfill
+ * cobre), nunca `sem_resultado`.
+ */
+export async function geocodificarEndereco(e: EnderecoGeo): Promise<ResultadoGeo> {
+  if (!enderecoGeocodificavel(e)) return { estado: 'invalido' };
+  if (!DIAGNOSTICO_URL) return { estado: 'indisponivel' };
+  const token = await tokenAtual();
+  if (!token) return { estado: 'indisponivel' };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_GEO_MS);
+  try {
+    const r = await fetch(`${DIAGNOSTICO_URL}/geo`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cep: apenasDigitosCep(e.cep ?? ''),
+        endereco: e.endereco ?? '',
+        cidade: e.cidade ?? '',
+        uf: e.estado ?? '',
+      }),
+      signal: controller.signal,
+    });
+    const data: any = await r.json().catch(() => null);
+    return lerRespostaGeo(data);
+  } catch {
+    return { estado: 'indisponivel' };
+  } finally {
+    clearTimeout(timer);
+  }
 }

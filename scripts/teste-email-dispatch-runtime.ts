@@ -46,7 +46,10 @@ checar('consumer usa adapter Resend testado', /criarResendTransactionalAdapter/.
 checar('consumer usa renderer testado', /renderizarEmailBoasVindas/.test(consumer));
 checar('respostas externas têm leitura limitada', /lerJsonLimitado/.test(consumer) && /EMAIL_RPC_MAX_RESPONSE_BYTES/.test(rpc) && /reader\.cancel/.test(rpc));
 checar('scheduled registra a Promise no contexto', /ctx\.waitUntil\(processarWelcomeOutbox\(env\)\)/.test(index));
-checar('cron está configurado', /"crons"\s*:\s*\["\* \* \* \* \*"\]/.test(wrangler));
+// O cron de minuto da outbox continua sendo o PRIMEIRO; os demais (alertas
+// oficiais, 20/20 min) são invocações próprias que o scheduled() desvia antes
+// da outbox — ver teste-alertas.js.
+checar('cron está configurado', /"crons"\s*:\s*\[\s*"\* \* \* \* \*"\s*[,\]]/.test(wrangler));
 checar('produção envia de verdade (dono autorizou em 29/09)', /"WELCOME_DISPATCH_MODE"\s*:\s*"production"/.test(varsProducao));
 checar('staging continua sem envio', /"WELCOME_DISPATCH_MODE"\s*:\s*"off"/.test(varsStaging) && !/"WELCOME_DISPATCH_MODE"\s*:\s*"production"/.test(varsStaging));
 checar('lembretes ligados só na produção', /"EMAIL_LEMBRETES_MODE"\s*:\s*"production"/.test(varsProducao) && /"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsStaging));
