@@ -60,8 +60,15 @@ checar(!/#FFFFFF/i.test(guard), 'guard sem cor cravada');
 // ── Notificação ──────────────────────────────────────────────────────────────
 checar(!/navigate\(\s*'Agenda'/.test(app), "App.tsx não navega mais para 'Agenda' direto pelo ref raiz");
 checar(
-  /\('Tabs',\s*\{\s*screen:\s*'Agenda',\s*params:\s*\{\s*abrirAgendamentoId:\s*data\.agendamentoId\s*\}/.test(app),
+  /\(\s*'Tabs',\s*\{\s*screen:\s*'Agenda',\s*params:\s*\{\s*abrirAgendamentoId:\s*data\.agendamentoId\s*\}/.test(app),
   "toque na notificação abre 'Tabs' > 'Agenda' com abrirAgendamentoId",
+);
+// React Navigation 7: navigate('Tabs') com tela do stack por cima EMPILHA outro
+// 'Tabs' (TabNavigator + guard duplicados). Toda ida a 'Tabs' pelo ref usa pop.
+const idasTabs = app.match(/\(\s*'Tabs',[\s\S]*?\);/g) ?? [];
+checar(
+  idasTabs.length >= 2 && idasTabs.every((t) => /\{\s*pop:\s*true\s*\}\s*,?\s*\);$/.test(t)),
+  "ida a 'Tabs' pelo ref volta ao 'Tabs' existente ({ pop: true }), sem empilhar outro",
 );
 const usosHelper = app.match(/abrirDestinoDaNotificacao\(/g) ?? [];
 checar(usosHelper.length >= 3, 'app quente e app frio usam o MESMO helper de destino');

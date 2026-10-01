@@ -141,18 +141,24 @@ type NotificacaoPendente = { ordemId?: string; agendamentoId?: string; ritual?: 
  * o guard de perfil ainda verificando (app frio), o toque morria em silêncio.
  * Navegar por 'Tabs' com a aba aninhada funciona nos dois casos, e o
  * `abrirAgendamentoId` diz à Agenda qual compromisso abrir.
+ *
+ * `{ pop: true }`: no React Navigation 7, `navigate('Tabs')` com outra tela do
+ * stack por cima (ex.: detalhe de orçamento aberto quando o lembrete chega)
+ * EMPILHA um segundo 'Tabs' — outro TabNavigator e outro guard de perfil em cima
+ * do primeiro. Com `pop` ele volta ao 'Tabs' que já existe.
  */
 function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
   // `as never`/`as any`: navigate com nome de rota dinâmico (e, no caso de
   // 'Tabs', com params de rota aninhada) não casa os overloads do ref.
   if (data.ordemId) navigationRef.navigate('OrdemServico' as never);
   else if (data.agendamentoId) {
-    (navigationRef.navigate as any)('Tabs', {
-      screen: 'Agenda',
-      params: { abrirAgendamentoId: data.agendamentoId },
-    });
+    (navigationRef.navigate as any)(
+      'Tabs',
+      { screen: 'Agenda', params: { abrirAgendamentoId: data.agendamentoId } },
+      { pop: true },
+    );
   } else if (data.ritual === 'fecharDia') navigationRef.navigate('RelatorioDia' as never);
-  else if (data.ritual === 'bomDia') (navigationRef.navigate as any)('Tabs', { screen: 'Home' });
+  else if (data.ritual === 'bomDia') (navigationRef.navigate as any)('Tabs', { screen: 'Home' }, { pop: true });
 }
 
 const useNativeAnimations = Platform.OS !== 'web';
