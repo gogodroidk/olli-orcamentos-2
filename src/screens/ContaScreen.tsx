@@ -215,6 +215,16 @@ export default function ContaScreen() {
   );
   // Frente 2 — plano atual: pagante não vê propaganda; vê "Sua assinatura".
   const { plano, carregando: carregandoPlano, temAcesso } = usePlano();
+  // Enquanto plano ou conta carregam PELA PRIMEIRA VEZ, o card não se decide: o hook
+  // nasce em 'gratis' e o pagante via o anúncio do PRO piscar antes do "Sua
+  // assinatura". Só a 1ª leitura: usePlano/useTipoConta voltam a `carregando` a cada
+  // volta do segundo plano e pull-to-refresh — sem esta trava, o card virava
+  // esqueleto toda vez que o app voltava à frente (o último estado bom fica).
+  const carregandoCardAgora = carregandoPlano || (configured && carregandoConta);
+  const [cardPlanoDecidido, setCardPlanoDecidido] = useState(!carregandoCardAgora);
+  useEffect(() => {
+    if (!carregandoCardAgora) setCardPlanoDecidido(true);
+  }, [carregandoCardAgora]);
   const [showCriarEmpresa, setShowCriarEmpresa] = useState(false);
   const [showEntrarEquipe, setShowEntrarEquipe] = useState(false);
 
@@ -740,9 +750,7 @@ export default function ContaScreen() {
   // Membro (não dono) de conta empresa: o plano que vale é o da empresa, pago pelo
   // dono. Vender o PRO ao técnico seria cobrar dele o que o patrão já paga.
   const membroDeEmpresa = tipo === 'empresa' && !!org && org.papel !== 'owner';
-  // Enquanto plano ou conta carregam, o card não se decide: o hook nasce em
-  // 'gratis' e o pagante via o anúncio do PRO piscar antes do "Sua assinatura".
-  const cardPlanoCarregando = carregandoPlano || (configured && carregandoConta);
+  const cardPlanoCarregando = carregandoCardAgora && !cardPlanoDecidido;
   // Convidar técnicos é recurso do Empresa (GateEquipe). Uma org criada agora não
   // é grandfathered, então o plano decide.
   const podeConvidarEquipe = temAcesso('equipe');

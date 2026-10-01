@@ -1,6 +1,7 @@
 /**
  * O que a tela de Assinatura MOSTRA para um resumo — regra pura (sem import nativo)
- * para o teste rodar no Node (`scripts/teste-assinatura-honesta.ts`).
+ * para o teste rodar no Node (`scripts/teste-roteamento-pagamento.ts`, seção
+ * "Assinatura: cada origem com o seu texto").
  *
  * Por que existe: a tela misturava a ORIGEM do acesso com o status da Stripe. A
  * conta demo (Empresa concedido pelo admin) aparecia como "Empresa" + pílula "Sem
