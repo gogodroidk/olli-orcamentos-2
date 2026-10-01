@@ -1,45 +1,45 @@
 /**
- * Localização da equipe (Onda 2 — "equipe ao vivo" sem billing).
+ * Localização da equipe ("equipe ao vivo").
+ *
+ * ESTADO REAL (2026-09-30, auditoria B10): DESLIGADO de ponta a ponta.
+ *  - `expo-location` (e task-manager/mapas) NÃO está instalado e o manifest Android
+ *    não pede permissão de localização → `LOCALIZACAO_DISPONIVEL = false` e o celular
+ *    nunca envia posição;
+ *  - o caminho web (`navigator.geolocation`, abaixo) só existe no build RN-web, que
+ *    NÃO está mais publicado — o painel de produção é o webapp Vite, sem esta página;
+ *  - por isso a tabela `localizacoes_equipe` está vazia em produção, e as entradas da
+ *    tela Equipe mostram o selo "Em breve — localização desligada";
+ *  - não é tempo real: a tela lê a última posição ao abrir/puxar para atualizar.
+ * O que vem depois (decisão do dono, plano "só em rota"): captura só entre "Estou a
+ * caminho" e "Cheguei", com expo-location num APK novo.
  *
  * Este service tem DUAS responsabilidades bem separadas:
  *
  *  1) LER a última localização conhecida de cada membro da equipe
- *     (`localizacoesEquipe()`), consumida pela `EquipeAoVivoScreen`.
+ *     (`localizacoesEquipe()`), consumida pela `EquipeAoVivoScreen`. Devolve três
+ *     estados — `ok` | `sem_org` | `erro` — porque "não consegui ler" NÃO é "ninguém
+ *     compartilhou" (erro nunca vira vazio).
  *  2) ENVIAR a localização do próprio usuário logado
- *     (`enviarMinhaLocalizacao()`), chamada pelo técnico em campo.
+ *     (`enviarMinhaLocalizacao()`). Hoje só faz algo no RN-web.
  *
- * Tabela `localizacoes_equipe` (PK composta org_id+user_id, lat, lng,
- * precisao, capturado_em) e RLS são da frente "Schema multi-tenant + RLS"
- * desta onda (ver `supabase/migrations/20260707_multitenant.sql`): SELECT é
- * "própria linha OU gestão da org"; INSERT/UPDATE é só a própria linha, e
- * exige ser membro ATIVO da org (`eh_membro_ativo`). Este service só lê/
- * escreve — a RLS é quem garante o isolamento entre organizações.
+ * Tabela `localizacoes_equipe` (PK composta org_id+user_id, lat, lng, precisao,
+ * capturado_em) e RLS em `supabase/migrations/20260707_multitenant.sql`: SELECT é
+ * "própria linha OU gestão da org"; INSERT/UPDATE é só a própria linha, e exige ser
+ * membro ATIVO da org (`eh_membro_ativo`). Este service só lê/escreve — a RLS é quem
+ * garante o isolamento entre organizações.
  *
- * `services/equipe.ts` (frente "Convites + papéis") já resolve org/papéis —
- * reusamos `getMinhaOrganizacao()` (para o org_id do upsert) e
- * `listarMembros()` (para nome/papel de cada membro) em vez de duplicar esse
- * conhecimento aqui. Se o usuário ainda não pertence a nenhuma organização
- * (conta pessoal, sem equipe), toda função aqui devolve vazio/no-op — nunca
- * lança para a tela.
+ * `services/equipe.ts` já resolve org/papéis — reusamos `carregarMinhaOrganizacao()`
+ * (3 estados) e `listarMembros()` (nome/papel de cada membro).
  *
- * CAPTURA PERIÓDICA EM BACKGROUND (expo-location + expo-task-manager) é da
- * Onda 8 (prebuild único do dono — ver AGENTS.md/roadmap). Por isso
- * `enviarMinhaLocalizacao()` faz um import DINÂMICO de 'expo-location' dentro
- * da função, protegido por try/catch: hoje o pacote não está instalado, então
- * a chamada é um no-op silencioso (só loga um aviso uma vez). Quando a Onda 8
- * instalar o módulo e ligar `LOCALIZACAO_DISPONIVEL`, esta mesma função passa
- * a funcionar sem precisar reescrever a tela que já a chama. NADA de
- * `import 'expo-location'` no topo do arquivo — módulo nativo em
- * module-scope quebra o bundle Hermes mesmo sem uso (lição do release v6).
- *
- * Web: sem módulo nativo nenhum, `enviarMinhaLocalizacaoWeb()` usa
- * `navigator.geolocation` (padrão do browser, funciona hoje) — é o que dá
- * vida à feature imediatamente na versão desktop/web, sem esperar a Onda 8.
+ * `enviarMinhaLocalizacao()` faz import DINÂMICO de 'expo-location' dentro da função,
+ * protegido por try/catch e só quando `LOCALIZACAO_DISPONIVEL` for `true`. NADA de
+ * `import 'expo-location'` no topo do arquivo — módulo nativo em module-scope quebra
+ * o bundle Hermes mesmo sem uso (lição do release v6).
  */
 import { Platform } from 'react-native';
 import { supabase, getCurrentUser } from './supabase';
 import { EXPO_PUBLIC_MAPS_KEY } from '../config';
-import { getMinhaOrganizacao, listarMembros, type Papel } from './equipe';
+import { carregarMinhaOrganizacao, getMinhaOrganizacao, listarMembros, type Papel } from './equipe';
 
 export interface LocalizacaoMembro {
   userId: string;
@@ -52,12 +52,11 @@ export interface LocalizacaoMembro {
 }
 
 /**
- * `true` quando o app tem os módulos nativos de localização instalados e a
- * captura periódica em background pode ligar de verdade. Fica `false` até a
- * Onda 8 (prebuild único) — hoje é sempre `false` porque expo-location nem
- * está no package.json. Não é uma env var: é uma constante de código que o
- * dono muda quando o prebuild acontecer, para não depender de configurar
- * mais uma variável de ambiente só para isto.
+ * `true` quando o app tem os módulos nativos de localização instalados e a captura
+ * pode ligar de verdade. Hoje é `false` porque expo-location nem está no
+ * package.json. Enquanto for `false`, as entradas "Equipe ao vivo" mostram o selo
+ * "Em breve — localização desligada" (EquipeScreen e EquipeDesktopScreen). Não é env
+ * var: é uma constante de código que muda junto com o APK que instalar o módulo.
  */
 export const LOCALIZACAO_DISPONIVEL = false;
 
@@ -65,9 +64,9 @@ export const LOCALIZACAO_DISPONIVEL = false;
  * Decide se um dia mostramos um mapa EMBUTIDO (Google Maps SDK) em vez da
  * lista + deep-link. Depende de billing no Google Cloud (Maps SDK) — por
  * isso é uma flag de env, não uma constante: liga sozinha quando
- * EXPO_PUBLIC_MAPS_KEY existir, sem precisar editar código. Hoje sempre
- * `false` (a env não está setada em nenhum ambiente), então a tela usa
- * SEMPRE lista + "abrir no mapa" — que já funciona hoje, sem chave nenhuma.
+ * EXPO_PUBLIC_MAPS_KEY existir. Hoje sempre `false` (a env não está setada em
+ * nenhum ambiente) e nenhum componente de mapa embutido existe ainda: a tela usa
+ * lista + "Abrir no mapa" (deep-link do Google Maps, sem chave).
  */
 export function mapaEmbutidoDisponivel(): boolean {
   return !!EXPO_PUBLIC_MAPS_KEY;
@@ -82,13 +81,12 @@ let avisouIndisponivel = false;
  * organização (`getMinhaOrganizacao`); sem org, é no-op (não há "equipe" para
  * compartilhar localização).
  *
- * Nativo (Android/iOS): tenta importar `expo-location` dinamicamente. Como o
- * pacote não está instalado até a Onda 8, o import falha e a função vira
- * no-op silencioso (loga um aviso UMA vez por processo, nunca lança e nunca
- * mostra Alert — o chamador não deve tratar isso como erro visível ao
- * usuário, é uma feature ainda não ligada).
+ * Nativo (Android/iOS): com `LOCALIZACAO_DISPONIVEL = false` (hoje) é no-op e
+ * devolve `false` (loga um aviso UMA vez por processo, nunca lança). A tela não
+ * oferece o botão no nativo, então ninguém chega aqui por engano.
  *
- * Web: delega para `enviarMinhaLocalizacaoWeb()` (navigator.geolocation).
+ * Web (só o build RN-web, que não está publicado hoje): delega para
+ * `enviarMinhaLocalizacaoWeb()` (navigator.geolocation).
  *
  * Retorna `true` só quando de fato gravou uma localização nova.
  */
@@ -98,15 +96,15 @@ export async function enviarMinhaLocalizacao(): Promise<boolean> {
   if (!LOCALIZACAO_DISPONIVEL) {
     if (!avisouIndisponivel) {
       avisouIndisponivel = true;
-      console.log('[localizacaoEquipe] captura nativa ainda não ligada (chega na Onda 8) — no-op.');
+      console.log('[localizacaoEquipe] captura nativa desligada (expo-location não instalado) — no-op.');
     }
     return false;
   }
 
   try {
-    // Import dinâmico de propósito: expo-location só entra no bundle quando
-    // o prebuild da Onda 8 o instalar. Em module-scope quebraria o Hermes
-    // mesmo sem uso (lição do release v6 — ver AGENTS.md).
+    // Import dinâmico de propósito: expo-location só entra no bundle quando um
+    // APK novo o instalar. Em module-scope quebraria o Hermes mesmo sem uso
+    // (lição do release v6 — ver AGENTS.md).
     const Location = await import('expo-location' as any);
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return false;
@@ -121,8 +119,9 @@ export async function enviarMinhaLocalizacao(): Promise<boolean> {
 }
 
 /**
- * Web: usa a Geolocation API do próprio navegador (sem módulo nativo, sem
- * billing, funciona hoje). Pede a localização uma vez e grava.
+ * Web (build RN-web): usa a Geolocation API do navegador (sem módulo nativo, sem
+ * billing). Pede a localização uma vez e grava. O painel de produção (webapp
+ * Vite) não usa esta função.
  */
 export async function enviarMinhaLocalizacaoWeb(): Promise<boolean> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return false;
@@ -167,20 +166,35 @@ async function gravarLocalizacao(lat: number, lng: number, precisao: number | nu
 }
 
 /**
- * Última localização conhecida de cada membro da equipe do usuário logado.
- * A RLS de `localizacoes_equipe` já resolve quem pode ver o quê (gestão vê
- * a org toda; técnico só a própria linha) — aqui só buscamos as linhas da
- * org atual e enriquecemos com nome/papel via `listarMembros` (mesma fonte
- * que a tela de Equipe usa, com o fallback dela para quando a view de
- * nome/e-mail ainda não existir). [] quando o usuário não tem organização
- * (conta pessoal) ou em qualquer falha — nunca lança para a tela.
+ * Resultado da leitura da equipe ao vivo — três estados, nunca colapsados:
+ *  - `ok`: li a tabela (lista pode vir vazia = ninguém compartilhou de verdade);
+ *  - `sem_org`: conta pessoal, sem equipe (não há de quem mostrar posição);
+ *  - `erro`: não consegui ler (rede, RLS, app sem nuvem) — a tela mostra erro com
+ *    "Tentar de novo", nunca "ninguém compartilhou".
  */
-export async function localizacoesEquipe(): Promise<LocalizacaoMembro[]> {
-  if (!supabase) return [];
+export type LeituraLocalizacoesEquipe =
+  | { estado: 'ok'; itens: LocalizacaoMembro[] }
+  | { estado: 'sem_org' }
+  | { estado: 'erro'; mensagem: string };
+
+const MENSAGEM_ERRO_LEITURA = 'Confira sua conexão e tente de novo.';
+
+/**
+ * Última localização conhecida de cada membro da equipe do usuário logado. A RLS de
+ * `localizacoes_equipe` resolve quem pode ver o quê (gestão vê a org toda; técnico
+ * só a própria linha) — aqui só buscamos as linhas da org atual e enriquecemos com
+ * nome/papel via `listarMembros`. Nunca lança: falha vira `{ estado: 'erro' }`.
+ */
+export async function localizacoesEquipe(): Promise<LeituraLocalizacoesEquipe> {
+  if (!supabase) {
+    return { estado: 'erro', mensagem: 'O app está sem conexão com a nuvem. Entre de novo e tente outra vez.' };
+  }
 
   try {
-    const org = await getMinhaOrganizacao();
-    if (!org) return [];
+    const leituraOrg = await carregarMinhaOrganizacao();
+    if (leituraOrg.status === 'erro') return { estado: 'erro', mensagem: MENSAGEM_ERRO_LEITURA };
+    const org = leituraOrg.org;
+    if (!org) return { estado: 'sem_org' };
 
     const [locRes, membros] = await Promise.all([
       supabase
@@ -191,10 +205,12 @@ export async function localizacoesEquipe(): Promise<LocalizacaoMembro[]> {
       listarMembros(org.id),
     ]);
 
-    if (locRes.error || !locRes.data) return [];
+    if (locRes.error || !Array.isArray(locRes.data)) return { estado: 'erro', mensagem: MENSAGEM_ERRO_LEITURA };
 
+    // `listarMembros` falhar só tira o NOME (cai no rótulo genérico) — a posição
+    // lida é real, então não vira erro da tela inteira.
     const membroPorId = new Map(membros.map((m) => [m.userId, m]));
-    return locRes.data.map((linha: any) => {
+    const itens = locRes.data.map((linha: any) => {
       const membro = membroPorId.get(linha.user_id);
       return {
         userId: linha.user_id,
@@ -206,8 +222,9 @@ export async function localizacoesEquipe(): Promise<LocalizacaoMembro[]> {
         capturadoEm: linha.capturado_em,
       } satisfies LocalizacaoMembro;
     });
+    return { estado: 'ok', itens };
   } catch {
-    return [];
+    return { estado: 'erro', mensagem: MENSAGEM_ERRO_LEITURA };
   }
 }
 

@@ -21,6 +21,7 @@ import { useTipoConta } from '../hooks/useTipoConta';
 import { usePermissao } from '../hooks/usePermissao';
 import { useVerticais } from '../hooks/useVerticais';
 import { modeloChecklistVertical } from '../services/checklistVertical';
+import { ehDiaSemHora } from '../utils/ordemServicoDoOrcamento';
 // Contrato da ONDA 4 — ÚNICA superfície de import da frente B (além de types).
 import {
   getOrdens,
@@ -66,6 +67,8 @@ function formatarDataCurta(iso?: string): string {
   const mes = String(d.getMonth() + 1).padStart(2, '0');
   const hora = String(d.getHours()).padStart(2, '0');
   const min = String(d.getMinutes()).padStart(2, '0');
+  // OS criada do orçamento com só o DIA (DD/MM/AAAA): sem hora inventada.
+  if (ehDiaSemHora(iso)) return `${dia}/${mes}`;
   return `${dia}/${mes} às ${hora}:${min}`;
 }
 

@@ -12,7 +12,7 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { GuardaPapel } from '../components/GuardaPapel';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
-import { listarContratos, gerarVisitasAgora, type LeituraContratos } from '../services/contratos';
+import { listarContratos, gerarVisitasAgora, lerStatusMotorContratos, type LeituraContratos } from '../services/contratos';
 import { getClientes, getEmpresa } from '../database/database';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { formatCurrency } from '../utils/currency';
@@ -21,6 +21,7 @@ import {
   proximasVisitas, resumirContratos, rotuloPeriodicidade, situacaoEfetiva,
 } from '../utils/contratoRecorrente';
 import { resumoDaGeracao } from '../utils/contratoRecorrenteGeracao';
+import { convitePrimeiroContrato, fraseMotorContratos, type StatusMotorContratos } from '../utils/contratosMotorStatus';
 import type { ContratoRecorrente, SituacaoContrato } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -34,6 +35,11 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * Quatro estados, nunca colapsados: carregando | erro (com "Tentar de novo") |
  * desligado (servidor sem o recurso — diz que está desligado, não finge) | valor.
  * Gate de papel: contrato é dinheiro → só quem vê valores (dono/admin/gestor).
+ *
+ * Geração AUTOMÁTICA (motor do servidor, CONTRATOS_MOTOR_MODE): a tela lê o modo no
+ * worker (`lerStatusMotorContratos`) e diz se está ligada, desligada ou não
+ * confirmada — nunca promete visita "sozinha" com o motor desligado (B09). Ligar o
+ * motor em produção é decisão do dono; até lá o aviso manda agendar manualmente.
  */
 export default function ContratosScreen() {
   return (
@@ -64,8 +70,12 @@ function ContratosConteudo() {
   const [refreshing, setRefreshing] = useState(false);
   const [gerando, setGerando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  // null = ainda conferindo; o aviso só aparece com a resposta (ou o "não confirmei").
+  const [motor, setMotor] = useState<StatusMotorContratos | null>(null);
 
   const load = useCallback(async () => {
+    // O status do motor corre em paralelo e nunca segura a lista (nunca lança).
+    void lerStatusMotorContratos().then(setMotor);
     setLeitura(await listarContratos());
   }, []);
 
@@ -205,7 +215,7 @@ function ContratosConteudo() {
         <EmptyState
           icon="calendar-sync-outline"
           title="Nenhum contrato ainda"
-          subtitle="Feche a manutenção mensal do seu cliente uma vez: o OLLI coloca cada visita na agenda, lembra o técnico e prepara a cobrança do mês."
+          subtitle={convitePrimeiroContrato(motor ?? 'desconhecido')}
           actionLabel="Criar primeiro contrato"
           onAction={() => nav.navigate('Contrato', undefined)}
         />
@@ -233,11 +243,34 @@ function ContratosConteudo() {
                 <Text style={styles.gerarTexto}>{gerando ? 'Conferindo…' : 'Conferir visitas agora'}</Text>
               </TouchableOpacity>
               {aviso ? <Text style={styles.aviso}>{aviso}</Text> : null}
+              {motor ? <AvisoMotor status={motor} /> : null}
             </View>
           }
           showsVerticalScrollIndicator={false}
         />
       )}
+    </View>
+  );
+}
+
+/** Aviso honesto sobre a geração automática de visitas (motor do servidor). */
+function AvisoMotor({ status }: { status: StatusMotorContratos }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const frase = fraseMotorContratos(status);
+  const ligado = status === 'ligado';
+  return (
+    <View style={styles.motor} accessibilityRole="text">
+      <MaterialCommunityIcons
+        name={ligado ? 'calendar-check-outline' : 'calendar-alert'}
+        size={16}
+        color={ligado ? corCategoriaEmChip(cores.success, cores.surface) : cores.onSurfaceVariant}
+        style={{ marginTop: 1 }}
+      />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.motorTitulo}>{frase.titulo}</Text>
+        <Text style={styles.motorTexto}>{frase.texto}</Text>
+      </View>
     </View>
   );
 }
@@ -272,6 +305,12 @@ const criarEstilos = (c: Cores) =>
     gerarBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4 },
     gerarTexto: { fontSize: 13, fontWeight: '700', color: c.accentLight },
     aviso: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 4 },
+    motor: {
+      flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 8,
+      backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, padding: Spacing.sm,
+    },
+    motorTitulo: { fontSize: 13, fontWeight: '700', color: c.onSurface },
+    motorTexto: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 17 },
     card: {
       backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline,
       padding: Spacing.base, gap: 10, ...sombrasDe(c).sm,
