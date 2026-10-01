@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../../utils/numeroDocumento';
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, LayoutChangeEvent, Linking, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -433,7 +434,7 @@ export default function InicioDesktopScreen() {
   const maiorValor = Math.max(1, ...dadosGrafico.map(d => d.value));
 
   const colunasOrcamentos: Coluna<Orcamento>[] = [
-    { chave: 'numero', titulo: 'Número', largura: 100, render: (o) => <Text style={styles.celulaTexto}>{o.numero}</Text> },
+    { chave: 'numero', titulo: 'Número', largura: 100, render: (o) => <Text style={styles.celulaTexto}>{formatarNumeroExibicao(o.numero)}</Text> },
     { chave: 'cliente', titulo: 'Cliente', largura: '30%', render: (o) => <Text style={styles.celulaTexto} numberOfLines={1}>{o.clienteNome}</Text>, tituloCompleto: (o) => o.clienteNome },
     { chave: 'valor', titulo: 'Valor', largura: 130, alinhamento: 'direita', render: (o) => <Text style={styles.celulaValor}>{formatCurrency(o.valorTotal)}</Text> },
     { chave: 'status', titulo: 'Status', largura: 150, render: (o) => <StatusBadge status={o.status} size="sm" /> },

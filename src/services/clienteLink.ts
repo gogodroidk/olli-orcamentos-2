@@ -413,7 +413,13 @@ export async function sincronizarStatusLinks(): Promise<number> {
         // para a nuvem/painel). Bump em atualizadoEm como no fluxo manual. Mudar
         // SÓ o status (mesmo conteúdo comercial) NÃO gera versão — a regra de ouro
         // do saveOrcamento compara a impressão comercial, imune à troca de status.
-        await saveOrcamento({ ...orc, status: alvo, atualizadoEm: nowISO() });
+        // A decisão do cliente tem hora: `respondido_em` do link. Informada aqui, o
+        // `carimbarDecisao` do save a respeita (sem ela, valeria a hora deste sync).
+        const decididoEm =
+          (alvo === 'aprovado' || alvo === 'recusado') && row.respondidoEm && Number.isFinite(new Date(row.respondidoEm).getTime())
+            ? new Date(row.respondidoEm).toISOString()
+            : undefined;
+        await saveOrcamento({ ...orc, status: alvo, atualizadoEm: nowISO(), ...(decididoEm ? { decididoEm } : {}) });
         mudaram++;
       } catch {
         // pula linha problemática, segue o resto

@@ -6,7 +6,7 @@ import { Cliente, ServicoItem, ProdutoItem, Orcamento, Recibo, Empresa, ModeloOr
 // seed já rodou (achado da re-auditoria: "APK não incha" / peso do boot).
 import { pushRow, removeRow, pushTombstone, pushAllLocal, limparTombstonesNuvem, garantirContextoEquipe, esquecerDownloadInicial } from '../services/cloudSync';
 import { restaurePodeTocarNaNuvem } from '../services/contextoEquipe';
-import { cancelarTodosLembretes, resincronizarLembretes } from '../services/agenda';
+import { cancelarTodosLembretes, concluirVisitasDaOS, resincronizarLembretes } from '../services/agenda';
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 import { cancelarRitualDiario } from '../services/ritualDiario';
 import { cancelarFollowUpLembretes } from '../services/followUpLembretes';
@@ -20,6 +20,16 @@ import {
 } from './particao';
 import { criarGerenciadorDeConexao } from './conexao';
 import { SQL_CONTAS_A_RECEBER } from './contasAReceberSql';
+import {
+  escaparLike,
+  paramsBuscaCatalogo,
+  semAcentoLower,
+  semAcentoLowerSql,
+  sqlAgregadoPorStatusNoPeriodo,
+  sqlBuscaCatalogo,
+} from './consultasSql';
+import { carimbarDecisao } from '../utils/orcamentoDecisao';
+import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { generateId } from '../utils/id';
 
 /**
@@ -432,7 +442,9 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       responsavel_nome TEXT,
       recorrencia TEXT,
       recorrencia_ate TEXT,
-      contrato_id TEXT
+      contrato_id TEXT,
+      excecoes TEXT,
+      ordem_servico_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
 
@@ -571,6 +583,10 @@ async function initDb(database: SQLite.SQLiteDatabase) {
   await database.execAsync(
     'CREATE INDEX IF NOT EXISTS idx_orcamento_versoes_pendente ON orcamento_versoes (espelho_pendente, criado_em)',
   );
+  // Depende da coluna da migration v8 (mesmo motivo do índice acima).
+  await database.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_agendamentos_ordem_servico ON agendamentos (ordem_servico_id) WHERE ordem_servico_id IS NOT NULL',
+  );
   await database.execAsync(
     'CREATE INDEX IF NOT EXISTS idx_ordens_servico_concluido ON ordens_servico (concluido_em) WHERE status = \'concluida\' AND concluido_em IS NOT NULL',
   );
@@ -585,7 +601,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -675,6 +691,15 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
     for (const coluna of ['responsavel_id', 'responsavel_nome', 'recorrencia', 'recorrencia_ate', 'contrato_id']) {
       await addColumnIfMissing(database, 'agendamentos', coluna, 'TEXT');
     }
+  }
+
+  // v < 8 — exceções por ocorrência da série (cancelada/movida/concluída só ela,
+  // TEXT JSON chaveado pelo dia original) e a OS ligada à visita (espelha a
+  // migration da nuvem 20261001120000). Sem backfill: nulo = "série sem exceção"
+  // e "visita sem OS ligada", a verdade de todo agendamento anterior.
+  if (v < 8) {
+    await addColumnIfMissing(database, 'agendamentos', 'excecoes', 'TEXT');
+    await addColumnIfMissing(database, 'agendamentos', 'ordem_servico_id', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -869,12 +894,14 @@ export async function getServicos(): Promise<ServicoItem[]> {
   return rows.map(rowToServico);
 }
 
+/**
+ * Busca do catálogo: sem acento, no nome ou na descrição, os MAIS USADOS em
+ * orçamento primeiro (ver `sqlBuscaCatalogo`). Erro de leitura propaga: "não
+ * consegui buscar" não pode virar "catálogo vazio".
+ */
 export async function searchServicos(q: string): Promise<ServicoItem[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>(
-    'SELECT * FROM servicos WHERE excluido_em IS NULL AND nome LIKE ? ORDER BY nome ASC',
-    [`%${q}%`]
-  );
+  const rows = await db.getAllAsync<any>(sqlBuscaCatalogo('servicos'), paramsBuscaCatalogo(q));
   return rows.map(rowToServico);
 }
 
@@ -946,12 +973,10 @@ export async function getProdutos(): Promise<ProdutoItem[]> {
   return rows.map(rowToProduto);
 }
 
+/** Mesma regra de `searchServicos` (sem acento, mais usados primeiro). */
 export async function searchProdutos(q: string): Promise<ProdutoItem[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<any>(
-    'SELECT * FROM produtos WHERE excluido_em IS NULL AND nome LIKE ? ORDER BY nome ASC',
-    [`%${q}%`]
-  );
+  const rows = await db.getAllAsync<any>(sqlBuscaCatalogo('produtos'), paramsBuscaCatalogo(q));
   return rows.map(rowToProduto);
 }
 
@@ -1060,8 +1085,10 @@ export async function getOrcamentosAgregadoPorStatus(
 }
 
 /**
- * Mesmo agregado acima, limitado por `dataEmissao` (ou `criadoEm` em registros
- * antigos). `fimExclusivoYmd` evita conta de horário/fuso: [início, fim).
+ * Mesmo agregado acima, limitado ao MÊS DA DECISÃO: COALESCE(decididoEm,
+ * dataEmissao, criadoEm) — aprovar em outubro um orçamento emitido em setembro é
+ * venda de outubro (ver `EXPR_DIA_KPI_ORCAMENTO`). `fimExclusivoYmd` evita conta de
+ * horário/fuso: [início, fim).
  */
 export async function getOrcamentosAgregadoPorStatusNoPeriodo(
   statuses: readonly StatusOrcamento[],
@@ -1070,14 +1097,8 @@ export async function getOrcamentosAgregadoPorStatusNoPeriodo(
 ): Promise<{ contagem: number; valorTotal: number }> {
   if (statuses.length === 0) return { contagem: 0, valorTotal: 0 };
   const db = await getDb();
-  const placeholders = statuses.map(() => '?').join(',');
   const row = await db.getFirstAsync<{ contagem: number; soma: number | null }>(
-    `SELECT COUNT(*) as contagem, COALESCE(SUM(json_extract(data, '$.valorTotal')), 0) as soma
-     FROM orcamentos
-     WHERE json_extract(data, '$.excluidoEm') IS NULL
-       AND json_extract(data, '$.status') IN (${placeholders})
-       AND substr(COALESCE(json_extract(data, '$.dataEmissao'), json_extract(data, '$.criadoEm')), 1, 10) >= ?
-       AND substr(COALESCE(json_extract(data, '$.dataEmissao'), json_extract(data, '$.criadoEm')), 1, 10) < ?`,
+    sqlAgregadoPorStatusNoPeriodo(statuses.length),
     [...statuses, inicioYmd, fimExclusivoYmd],
   );
   return { contagem: row?.contagem ?? 0, valorTotal: row?.soma ?? 0 };
@@ -1194,40 +1215,8 @@ export interface FiltroOrcamentos {
   busca?: string;
 }
 
-/**
- * Busca por nome tem que ser acento-insensível como o `normalizarBusca` do app
- * (JS, Unicode). O `LOWER()` do SQLite só cobre ASCII — "JOSÉ" não casava com
- * "josé" (regressão real ao trocar filter/reduce em JS por SQL). Solução: tirar
- * acento + minúsculo dos DOIS lados — na coluna via REPLACE aninhado (SQL), na
- * query via NFD-strip (JS) — para o LIKE comparar `jose` com `jose`.
- */
-const PARES_ACENTO: [string, string][] = [
-  ['á', 'a'], ['à', 'a'], ['â', 'a'], ['ã', 'a'], ['ä', 'a'], ['Á', 'a'], ['À', 'a'], ['Â', 'a'], ['Ã', 'a'], ['Ä', 'a'],
-  ['é', 'e'], ['è', 'e'], ['ê', 'e'], ['ë', 'e'], ['É', 'e'], ['È', 'e'], ['Ê', 'e'], ['Ë', 'e'],
-  ['í', 'i'], ['ì', 'i'], ['î', 'i'], ['ï', 'i'], ['Í', 'i'], ['Ì', 'i'], ['Î', 'i'], ['Ï', 'i'],
-  ['ó', 'o'], ['ò', 'o'], ['ô', 'o'], ['õ', 'o'], ['ö', 'o'], ['Ó', 'o'], ['Ò', 'o'], ['Ô', 'o'], ['Õ', 'o'], ['Ö', 'o'],
-  ['ú', 'u'], ['ù', 'u'], ['û', 'u'], ['ü', 'u'], ['Ú', 'u'], ['Ù', 'u'], ['Û', 'u'], ['Ü', 'u'],
-  ['ç', 'c'], ['Ç', 'c'], ['ñ', 'n'], ['Ñ', 'n'],
-];
-
-/** Expressão SQL "sem acento + minúsculo" de `expr` (REPLACE aninhado sobre LOWER). */
-function semAcentoLowerSql(expr: string): string {
-  let s = `LOWER(${expr})`;
-  for (const [de, para] of PARES_ACENTO) s = `REPLACE(${s}, '${de}', '${para}')`;
-  return s;
-}
-
-/** Versão JS equivalente (para o lado da query) — mesmo resultado do REPLACE do SQL. */
-function semAcentoLower(s: string): string {
-  let r = s.toLowerCase();
-  for (const [de, para] of PARES_ACENTO) r = r.split(de).join(para);
-  return r;
-}
-
-/** Escapa os curingas do LIKE (%, _, \) para que o texto digitado seja literal. Usar com `ESCAPE '\\'`. */
-function escaparLike(s: string): string {
-  return s.replace(/[\\%_]/g, (ch) => '\\' + ch);
-}
+// Acento/LIKE: `semAcentoLowerSql`, `semAcentoLower` e `escaparLike` moram em
+// `consultasSql.ts` (testáveis no Node) — a regra continua uma só.
 
 /** Monta a cláusula WHERE + params compartilhada por paginação/resumo/ids — uma única fonte da regra de filtro. */
 function whereOrcamentosFiltro(filtro: FiltroOrcamentos): { clausula: string; params: (string | number)[] } {
@@ -1244,10 +1233,12 @@ function whereOrcamentosFiltro(filtro: FiltroOrcamentos): { clausula: string; pa
   if (filtro.busca && filtro.busca.trim()) {
     // Nome: sem-acento+minúsculo dos dois lados (acento-insensível como o app).
     // Número: minúsculo (dígitos não mudam). Curingas do usuário escapados.
+    // A lista MOSTRA `011/26` mas grava `01126` (item 2.16): a barra sai dos dois
+    // lados para quem digita o que vê achar o orçamento.
     const nomeSql = semAcentoLowerSql("json_extract(data, '$.clienteNome')");
-    condicoes.push(`(${nomeSql} LIKE ? ESCAPE '\\' OR LOWER(numero) LIKE ? ESCAPE '\\')`);
-    const like = `%${escaparLike(semAcentoLower(filtro.busca.trim()))}%`;
-    params.push(like, like);
+    condicoes.push(`(${nomeSql} LIKE ? ESCAPE '\\' OR REPLACE(LOWER(numero), '/', '') LIKE ? ESCAPE '\\')`);
+    const termo = semAcentoLower(filtro.busca.trim());
+    params.push(`%${escaparLike(termo)}%`, `%${escaparLike(termo.replace(/\//g, '') || termo)}%`);
   }
   return { clausula: condicoes.join(' AND '), params };
 }
@@ -1331,6 +1322,10 @@ const CAMPOS_VOLATEIS_ORCAMENTO: ReadonlySet<string> = new Set([
   // LIXEIRA: mandar para a lixeira / restaurar NÃO é mudança comercial da proposta
   // — nunca deve congelar uma versão falsa se algum save passar por aqui.
   'excluidoEm',
+  // Marcos de decisão/interação (`carimbarDecisao`): trilha, não conteúdo — o
+  // cliente aprovar não pode esbarrar na trava de "enviado não se reescreve".
+  'decididoEm',
+  'ultimaInteracaoEm',
 ]);
 
 /**
@@ -1462,11 +1457,13 @@ export async function saveOrcamento(o: Orcamento): Promise<void> {
     throw new OrcamentoProtegidoError(anterior.status);
   }
 
+  // Decisão (aprovado/recusado/convertido) e última interação carimbadas no blob.
+  const salvo = carimbarDecisao(anterior, o, new Date());
   await db.runAsync(
     'INSERT OR REPLACE INTO orcamentos (id, numero, data) VALUES (?,?,?)',
-    [o.id, o.numero, JSON.stringify(o)]
+    [salvo.id, salvo.numero, JSON.stringify(salvo)]
   );
-  mirrorPush('orcamentos', o);
+  mirrorPush('orcamentos', salvo);
 }
 
 /**
@@ -1875,6 +1872,10 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
   // de primeira classe: push/pull-no-login/tombstone/guard de timestamp + injeção
   // team-tenant do owner já tratados lá). Fire-and-forget, nunca afeta o save local.
   mirrorPush('ordens_servico', os);
+  // OS concluída → a visita ligada a ela vira concluída (e para de lembrar). AWAIT de
+  // propósito: se falhar, quem salvou fica sabendo — a OS já está gravada e salvar de
+  // novo é idempotente; engolir deixaria a agenda dizendo "agendado" para sempre.
+  if (os.status === 'concluida' && !os.excluidoEm) await concluirVisitasDaOS(os);
 }
 
 /** SOFT DELETE → LIXEIRA (mantém o nome). Bump atualizado_em p/ o guard de sync. */
@@ -2574,6 +2575,8 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     recorrencia: r.recorrencia ?? undefined,
     recorrenciaAte: r.recorrencia_ate ?? undefined,
     contratoId: r.contrato_id ?? undefined,
+    excecoes: lerExcecoes(r.excecoes),
+    ordemServicoId: r.ordem_servico_id ?? undefined,
   };
 }
 
@@ -2901,13 +2904,16 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       await db.runAsync(
         `INSERT OR REPLACE INTO agendamentos
            (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em,
-            responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
          a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
          a.observacao ?? null, a.criadoEm, a.atualizadoEm,
          a.responsavelId ?? null, a.responsavelNome ?? null, a.recorrencia ?? null,
-         a.recorrenciaAte ?? null, a.contratoId ?? null],
+         a.recorrenciaAte ?? null, a.contratoId ?? null,
+         // Backup é JSON: as exceções chegam como objeto (lerExcecoes valida e lança
+         // se vierem ilegíveis — restore com série corrompida falha alto).
+         excecoesParaTexto(lerExcecoes(a.excecoes)), a.ordemServicoId ?? null],
       );
     }
     for (const os of ordensServico) {

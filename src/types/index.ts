@@ -366,6 +366,19 @@ export interface Orcamento {
    */
   editadoEm?: string;
   /**
+   * ISO do momento em que o orçamento foi DECIDIDO (aprovado, recusado ou
+   * convertido direto). Carimbado por `carimbarDecisao` no save; volta a ficar
+   * ausente se o orçamento for reaberto. Os KPIs do mês contam pela decisão
+   * (COALESCE(decididoEm, dataEmissao)): aprovar em outubro um orçamento emitido em
+   * setembro é venda de outubro. Vive no blob (`dados`), sem coluna.
+   */
+  decididoEm?: string;
+  /**
+   * ISO da última interação com o cliente sobre este orçamento (criação, envio,
+   * visualização, decisão — toda troca de status). Vive no blob, sem coluna.
+   */
+  ultimaInteracaoEm?: string;
+  /**
    * Relação entre uma revisão e o orçamento original. Documentos já enviados ou
    * aceitos não são sobrescritos: "Criar revisão" nasce como outro rascunho,
    * preserva o original e registra de onde veio. Campos aditivos no blob JSON,
@@ -584,7 +597,57 @@ export interface Agendamento {
   recorrenciaAte?: string;
   /** Visita nascida de um contrato recorrente (`ContratoRecorrente.id`). */
   contratoId?: string;
+  /**
+   * Exceções da SÉRIE, por ocorrência: a chave é o dia ORIGINAL da ocorrência
+   * ('YYYY-MM-DD', fuso do Brasil) e o valor diz o que mudou só nela (cancelada,
+   * movida, concluída…). Só vale para agendamento com `recorrencia`. Ausente = a
+   * série inteira segue a regra. Aplicadas por `expandirRecorrencia`.
+   */
+  excecoes?: ExcecoesAgendamento;
+  /**
+   * Ordem de serviço desta visita. Quando a OS é concluída, a visita ligada vira
+   * concluída sozinha (`visitaConcluidaPelaOS`). Visitas de contrato recorrente se
+   * ligam à OS pelo id determinístico (`ag_cv_…` ↔ `os_cv_…`), mesmo sem este campo.
+   */
+  ordemServicoId?: string;
 }
+
+/**
+ * O que mudou numa ÚNICA ocorrência de uma série recorrente. Tudo opcional: só o
+ * que difere da série é gravado.
+ */
+export interface ExcecaoOcorrencia {
+  /** A ocorrência não acontece (as outras da série continuam). */
+  cancelada?: true;
+  /** Ocorrência MOVIDA: novo início (ISO). */
+  inicio?: string;
+  /** Novo fim (ISO) da ocorrência movida/encurtada. */
+  fim?: string;
+  /** Status só desta ocorrência (ex.: concluída enquanto a série segue agendada). */
+  status?: StatusAgendamento;
+  titulo?: string;
+  observacao?: string;
+  /** Outro técnico só nesta ocorrência. */
+  responsavelId?: string;
+  responsavelNome?: string;
+}
+
+/** Exceções de uma série, chave = dia original da ocorrência ('YYYY-MM-DD'). */
+export type ExcecoesAgendamento = Record<string, ExcecaoOcorrencia>;
+
+/**
+ * Duração assumida (minutos) quando o agendamento não tem `fim` — o técnico sabe
+ * quando começa, raramente quando acaba. Usada na detecção de conflito por técnico
+ * (`encontrarConflitosPorTecnico`) e espelha a estimativa do calendário do painel.
+ */
+export const DURACAO_PADRAO_AGENDAMENTO_MIN: Record<TipoAgendamento, number> = {
+  orcamento: 30,
+  visita: 60,
+  limpeza: 60,
+  manutencao: 60,
+  instalacao: 180,
+  outro: 60,
+};
 
 /** Repetições que a agenda sabe projetar. As mensais em diante são as mesmas do contrato. */
 export type RecorrenciaAgendamento =

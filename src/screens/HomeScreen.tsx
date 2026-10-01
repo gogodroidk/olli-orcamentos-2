@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Modal, Pressable, Alert, Animated } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -1043,7 +1044,7 @@ export default function HomeScreen() {
                   <View style={styles.recentAvatar}><Text style={styles.recentAvatarText}>{o.clienteNome.charAt(0).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={styles.recentName} numberOfLines={1}>{o.clienteNome}</Text>
-                    <Text style={styles.recentMeta}>Nº {o.numero} · {formatDate(o.criadoEm)}</Text>
+                    <Text style={styles.recentMeta}>Nº {formatarNumeroExibicao(o.numero)} · {formatDate(o.criadoEm)}</Text>
                     <View style={{ marginTop: 5 }}><StatusBadge status={o.status} size="sm" /></View>
                   </View>
                   <Text style={styles.recentValue}>{formatCurrency(o.valorTotal)}</Text>

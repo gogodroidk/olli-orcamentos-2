@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -86,7 +87,7 @@ export default function OrcamentosDesktopScreen() {
     if (statusFiltro !== 'todos') r = r.filter((o) => o.status === statusFiltro);
     if (busca.trim()) {
       const q = normalizarBusca(busca);
-      r = r.filter((o) => normalizarBusca(o.clienteNome).includes(q) || o.numero.includes(q));
+      r = r.filter((o) => normalizarBusca(o.clienteNome).includes(q) || o.numero.includes(q) || formatarNumeroExibicao(o.numero).includes(q));
     }
     return r;
   }, [todos, clienteId, statusFiltro, busca, recorteInicial, recibos]);
@@ -98,7 +99,7 @@ export default function OrcamentosDesktopScreen() {
       largura: 110,
       ordenavel: true,
       valorOrdenacao: (o) => o.numero,
-      render: (o) => <Text style={styles.celulaTexto}>Nº {o.numero}</Text>,
+      render: (o) => <Text style={styles.celulaTexto}>Nº {formatarNumeroExibicao(o.numero)}</Text>,
     },
     {
       chave: 'cliente',

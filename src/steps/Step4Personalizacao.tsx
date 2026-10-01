@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -113,7 +114,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
         {orc.revisaoDeNumero ? (
           <View style={styles.revisionPill}>
             <MaterialCommunityIcons name="file-document-edit-outline" size={14} color={cores.primary} />
-            <Text style={styles.revisionPillText}>Revisão do orçamento nº {orc.revisaoDeNumero}</Text>
+            <Text style={styles.revisionPillText}>Revisão do orçamento nº {formatarNumeroExibicao(orc.revisaoDeNumero)}</Text>
           </View>
         ) : null}
         <SummaryRow label="Cliente" value={orc.clienteNome || 'Não informado'} />

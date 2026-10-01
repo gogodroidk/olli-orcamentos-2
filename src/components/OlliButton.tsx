@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, ActivityIndicator, StyleSheet, ViewStyle, TextStyle, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BorderRadius, useCores, useGradientes, sombrasDe, textoSobre } from '../theme';
-import { OlliPressable } from './OlliPressable';
+import { PressableAnimado } from './motion/PressableAnimado';
 
 interface Props {
   label: string;
@@ -76,7 +76,7 @@ export function OlliButton({
   // Variante gradiente premium
   if (variant === 'gradient' && !disabled) {
     return (
-      <OlliPressable
+      <PressableAnimado
         onPress={onPress}
         disabled={loading}
         accessibilityLabel={loading ? `${accessibilityLabel ?? label}, carregando` : (accessibilityLabel ?? label)}
@@ -92,14 +92,14 @@ export function OlliButton({
         >
           {content}
         </LinearGradient>
-      </OlliPressable>
+      </PressableAnimado>
     );
   }
 
   const border = variant === 'outline' ? { borderWidth: 1.5, borderColor: cores.strokeGlow } : {};
 
   return (
-    <OlliPressable
+    <PressableAnimado
       onPress={onPress}
       disabled={disabled || loading}
       accessibilityLabel={loading ? `${accessibilityLabel ?? label}, carregando` : (accessibilityLabel ?? label)}
@@ -117,7 +117,7 @@ export function OlliButton({
       ]}
     >
       {content}
-    </OlliPressable>
+    </PressableAnimado>
   );
 }
 

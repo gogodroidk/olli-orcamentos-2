@@ -5,6 +5,7 @@ import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
 import { escapeHtml, safeHexColor } from './html';
 import { DEFAULT_ACCENT, monogramSvg } from './marcaOlli';
+import { formatarNumeroExibicao } from './numeroDocumento';
 
 // Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
 export { abrirWhatsApp } from './exportarDocumento';
@@ -298,7 +299,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
   const contatoEmpresa = [empresa.telefone, empresa.site].filter(Boolean).join('  ·  ');
   const logoSrc = img(empresa.logoUri);
   const revisaoLinha = o.revisaoDeNumero
-    ? `<div class="cover-num">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>`
+    ? `<div class="cover-num">Revisão do nº ${escapeHtml(formatarNumeroExibicao(o.revisaoDeNumero))}</div>`
     : '';
 
   if (plano.tipo === 'foto') {
@@ -311,7 +312,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
           ? `<img src="${logoSrc}" class="cover-logo cover-logo-onphoto" />`
           : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
         <div class="cover-kicker">ORÇAMENTO</div>
-        <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        <div class="cover-num">Nº ${escapeHtml(formatarNumeroExibicao(o.numero))} · ${emitidoEm}</div>
         ${revisaoLinha}
         <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
         ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
@@ -330,7 +331,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
             : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
         </div>
         <div class="cover-kicker">ORÇAMENTO</div>
-        <div class="cover-num">Nº ${escapeHtml(o.numero)} · ${emitidoEm}</div>
+        <div class="cover-num">Nº ${escapeHtml(formatarNumeroExibicao(o.numero))} · ${emitidoEm}</div>
         ${revisaoLinha}
         <div class="cover-cliente">${escapeHtml(o.clienteNome)}</div>
         ${contatoEmpresa ? `<div class="cover-footer">${escapeHtml(contatoEmpresa)}</div>` : ''}
@@ -738,7 +739,7 @@ export function gerarHtmlOrcamento(
 <body>
 ${renderCapa(o, empresa, planoCapa)}
 <div class="sheet ${modelClass}">
-  <div class="spine">${o.modeloPdf === 'faixa_lateral' ? `<span class="spine-label">${escapeHtml(empresa.nome)} · Nº ${escapeHtml(o.numero)}</span>` : ''}</div>
+  <div class="spine">${o.modeloPdf === 'faixa_lateral' ? `<span class="spine-label">${escapeHtml(empresa.nome)} · Nº ${escapeHtml(formatarNumeroExibicao(o.numero))}</span>` : ''}</div>
   <div class="watermark">${monogramSvg(accent, 360, 0.05)}</div>
 
   <div class="page">
@@ -752,8 +753,8 @@ ${renderCapa(o, empresa, planoCapa)}
       </div>
       <div class="header-right">
         <div class="doc-title">Orçamento</div>
-        <div class="doc-num">Nº ${escapeHtml(o.numero)}</div>
-        ${o.revisaoDeNumero ? `<div class="doc-date">Revisão do nº ${escapeHtml(o.revisaoDeNumero)}</div>` : ''}
+        <div class="doc-num">Nº ${escapeHtml(formatarNumeroExibicao(o.numero))}</div>
+        ${o.revisaoDeNumero ? `<div class="doc-date">Revisão do nº ${escapeHtml(formatarNumeroExibicao(o.revisaoDeNumero))}</div>` : ''}
         <div class="doc-date">Emitido em ${emitidoEm}</div>
         ${o.validadeOrcamento ? `<div class="pill">Válido até ${formatDateBR(o.validadeOrcamento)}</div>` : `<div class="pill">Válido por 15 dias</div>`}
       </div>
@@ -915,6 +916,6 @@ export async function compartilharPdfOrcamento(
   const html = await montarHtmlOrcamentoCompleto(o, empresa, depoimentos, accent, comLink);
   const fileName = `Orcamento-${safeFileName(o.clienteNome)}-${o.numero}`;
   await exportarHtmlComoPdf(html, fileName, {
-    dialogTitle: `Orçamento ${o.numero} - ${o.clienteNome}`,
+    dialogTitle: `Orçamento ${formatarNumeroExibicao(o.numero)} - ${o.clienteNome}`,
   });
 }

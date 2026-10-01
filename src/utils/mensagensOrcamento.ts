@@ -3,6 +3,7 @@
 import type { Empresa, Orcamento } from '../types';
 import { formatCurrency } from './currency.ts';
 import { formatarDataBR } from './formatarData.ts';
+import { formatarNumeroExibicao } from './numeroDocumento.ts';
 
 function primeiroNome(nome?: string): string {
   return (nome ?? '').trim().split(/\s+/)[0] || 'tudo bem';
@@ -33,8 +34,8 @@ export function montarMensagemEnvioOrcamento(orc: Orcamento, empresa?: Empresa |
     `Olá, ${primeiroNome(orc.clienteNome)}!`,
     '',
     orc.revisaoDeNumero
-      ? `Preparei o orçamento atualizado nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}, revisão do nº ${orc.revisaoDeNumero}.`
-      : `Preparei o orçamento nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}.`,
+      ? `Preparei o orçamento atualizado nº ${formatarNumeroExibicao(orc.numero)}${empresa?.nome ? ` da ${empresa.nome}` : ''}, revisão do nº ${formatarNumeroExibicao(orc.revisaoDeNumero)}.`
+      : `Preparei o orçamento nº ${formatarNumeroExibicao(orc.numero)}${empresa?.nome ? ` da ${empresa.nome}` : ''}.`,
     itens ? `Inclui: ${itens}.` : '',
     ...dadosComerciais(orc),
     '',
@@ -49,8 +50,8 @@ export function montarMensagemLinkOrcamento(orc: Orcamento, empresa: Empresa | n
     `Olá, ${primeiroNome(orc.clienteNome)}!`,
     '',
     orc.revisaoDeNumero
-      ? `Segue o orçamento atualizado nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}, revisão do nº ${orc.revisaoDeNumero}:`
-      : `Segue o orçamento nº ${orc.numero}${empresa?.nome ? ` da ${empresa.nome}` : ''}:`,
+      ? `Segue o orçamento atualizado nº ${formatarNumeroExibicao(orc.numero)}${empresa?.nome ? ` da ${empresa.nome}` : ''}, revisão do nº ${formatarNumeroExibicao(orc.revisaoDeNumero)}:`
+      : `Segue o orçamento nº ${formatarNumeroExibicao(orc.numero)}${empresa?.nome ? ` da ${empresa.nome}` : ''}:`,
     url,
     '',
     ...dadosComerciais(orc),
@@ -62,7 +63,7 @@ export function montarMensagemLinkOrcamento(orc: Orcamento, empresa: Empresa | n
 
 export function montarMensagemFollowUpOrcamento(orc: Orcamento, empresa?: Empresa | null): string {
   const linhas = [
-    `Olá, ${primeiroNome(orc.clienteNome)}! Passando para saber se posso te ajudar com o orçamento nº ${orc.numero}.`,
+    `Olá, ${primeiroNome(orc.clienteNome)}! Passando para saber se posso te ajudar com o orçamento nº ${formatarNumeroExibicao(orc.numero)}.`,
     `Ele está em ${formatCurrency(orc.valorTotal)}${orc.validadeOrcamento ? ` e vale até ${formatarDataBR(orc.validadeOrcamento)}` : ''}.`,
     'Se estiver tudo certo, posso deixar aprovado e combinar o próximo passo.',
     empresa?.telefone || empresa?.whatsapp ? `Contato: ${empresa.telefone || empresa.whatsapp}` : '',
@@ -168,8 +169,8 @@ function aberturaCobranca(orc: Orcamento, valorEmAberto?: number): string {
   const parcial =
     typeof valorEmAberto === 'number' && valorEmAberto > 0 && valorEmAberto + 0.005 < orc.valorTotal;
   return parcial
-    ? `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}. Falta ${formatCurrency(valorEmAberto)} para fechar.`
-    : `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${orc.numero}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`;
+    ? `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${formatarNumeroExibicao(orc.numero)}, aprovado no valor de ${formatCurrency(orc.valorTotal)}. Falta ${formatCurrency(valorEmAberto)} para fechar.`
+    : `Olá, ${primeiroNome(orc.clienteNome)}! Tudo certo com o orçamento nº ${formatarNumeroExibicao(orc.numero)}, aprovado no valor de ${formatCurrency(orc.valorTotal)}.`;
 }
 
 /**

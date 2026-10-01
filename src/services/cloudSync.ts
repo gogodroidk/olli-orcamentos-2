@@ -58,6 +58,7 @@ import type {
   DocumentoBibliotecaVersao,
 } from '../types';
 import { dataBrParaIsoSeguro } from '../utils/date';
+import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import {
   erroEhColisaoNumero,
   numeroDocumentoAposColisao,
@@ -259,6 +260,16 @@ function depoimentoToRow(d: Depoimento): Record<string, unknown> {
 const COLUNAS_AGENDA_EQUIPE = ['responsavel_id', 'responsavel_nome', 'recorrencia', 'recorrencia_ate', 'contrato_id'] as const;
 let agendaSemColunasEquipe = false;
 
+/**
+ * Exceções por ocorrência e OS ligada (migration 20261001120000). Mesma escada da
+ * equipe, um degrau ACIMA: servidor sem esta migration recusa só estas duas colunas,
+ * então elas caem primeiro e o resto segue sincronizando. Enquanto o flag estiver
+ * ligado (ou o pull vier sem a coluna), o pull PRESERVA o valor local delas em vez de
+ * apagar — senão o próximo pull desfazia o cancelamento de uma ocorrência.
+ */
+const COLUNAS_AGENDA_EXCECOES = ['excecoes', 'ordem_servico_id'] as const;
+let agendaSemColunasExcecoes = false;
+
 function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): boolean {
   return error?.code === '42703' || error?.code === 'PGRST204';
 }
@@ -287,6 +298,11 @@ function agendamentoToRow(a: Agendamento): Record<string, unknown> {
     row.recorrencia = a.recorrencia ?? null;
     row.recorrencia_ate = a.recorrencia ? (a.recorrenciaAte ?? null) : null;
     row.contrato_id = a.contratoId ?? null;
+  }
+  if (!agendaSemColunasExcecoes) {
+    // Objeto (vira jsonb). Sem recorrência não há exceção: manda {} (o default da coluna).
+    row.excecoes = a.recorrencia && a.excecoes ? a.excecoes : {};
+    row.ordem_servico_id = a.ordemServicoId ?? null;
   }
   return row;
 }
@@ -440,6 +456,9 @@ function rowToDepoimento(row: any): Depoimento {
 }
 
 function rowToAgendamento(row: any): Agendamento {
+  // `select('*')` sem a coluna = servidor ainda sem a migration 20261001120000: o
+  // upsert local passa a preservar exceções/OS deste aparelho (ver localUpsertAgendamento).
+  if (row && typeof row === 'object' && !('excecoes' in row)) agendaSemColunasExcecoes = true;
   return {
     id: row.id,
     clienteId: row.cliente_id ?? undefined,
@@ -461,6 +480,8 @@ function rowToAgendamento(row: any): Agendamento {
     recorrencia: row.recorrencia ?? undefined,
     recorrenciaAte: row.recorrencia_ate ?? undefined,
     contratoId: row.contrato_id ?? undefined,
+    excecoes: lerExcecoes(row.excecoes),
+    ordemServicoId: row.ordem_servico_id ?? undefined,
   };
 }
 
@@ -991,6 +1012,12 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
     let { error } = await supabase
       .from(remoteNome(table))
       .upsert(row, { onConflict: ON_CONFLICT[table] });
+    if (error && table === 'agendamentos' && !agendaSemColunasExcecoes && erroDeColunaDesconhecida(error)) {
+      // Servidor sem a migration de exceções: reenvia sem elas (ver COLUNAS_AGENDA_EXCECOES).
+      agendaSemColunasExcecoes = true;
+      for (const c of COLUNAS_AGENDA_EXCECOES) delete (row as Record<string, unknown>)[c];
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
     if (error && table === 'agendamentos' && !agendaSemColunasEquipe && erroDeColunaDesconhecida(error)) {
       // Servidor ainda sem a migration da agenda por técnico: reenvia sem as colunas
       // novas e segue assim até o próximo boot (ver COLUNAS_AGENDA_EQUIPE).
@@ -1381,17 +1408,31 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   const db = await getDb();
   // Anti-perda: se o agendamento local for mais novo, preserva a edição local.
   if (await localMaisNovoAgendamento(a.id, a.atualizadoEm)) return;
+  let excecoes = a.recorrencia ? excecoesParaTexto(a.excecoes) : null;
+  let ordemServicoId = a.ordemServicoId ?? null;
+  if (agendaSemColunasExcecoes) {
+    // A nuvem não tem as colunas: o que veio vazio é "não sei", não "apagou".
+    // Mantém o que este aparelho tem (lerExcecoes valida; ilegível lança e o pull
+    // pula a linha em vez de apagar).
+    const local = await db.getFirstAsync<{ excecoes: string | null; ordem_servico_id: string | null }>(
+      'SELECT excecoes, ordem_servico_id FROM agendamentos WHERE id = ?', [a.id],
+    );
+    if (local) {
+      excecoes = a.recorrencia ? excecoesParaTexto(lerExcecoes(local.excecoes)) : null;
+      ordemServicoId = local.ordem_servico_id ?? null;
+    }
+  }
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO agendamentos
        (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em,
-        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
      a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
      a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null,
      a.responsavelId ?? null, a.responsavelNome ?? null, a.recorrencia ?? null,
-     a.recorrenciaAte ?? null, a.contratoId ?? null],
+     a.recorrenciaAte ?? null, a.contratoId ?? null, excecoes, ordemServicoId],
   );
 }
 
@@ -2430,6 +2471,9 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     recorrencia: r.recorrencia ?? undefined,
     recorrenciaAte: r.recorrencia_ate ?? undefined,
     contratoId: r.contrato_id ?? undefined,
+    // Idem: sem estes, o push apagaria na nuvem as exceções da série e a OS ligada.
+    excecoes: lerExcecoes(r.excecoes),
+    ordemServicoId: r.ordem_servico_id ?? undefined,
   };
 }
 
