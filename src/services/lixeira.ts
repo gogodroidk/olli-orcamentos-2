@@ -9,6 +9,7 @@
  * Local-first: tudo opera no SQLite (as funções de database.ts já espelham na nuvem).
  * Nada aqui lança para a UI sem tratamento — a tela decide o feedback.
  */
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import {
   // clientes
   getLixeiraClientes, restaurarCliente, excluirClienteDefinitivo,
@@ -143,14 +144,14 @@ export async function getItensNaLixeira(): Promise<ItemLixeira[]> {
   }
   for (const o of orcamentos) {
     itens.push({
-      tipo: 'orcamento', id: o.id, titulo: `Nº ${o.numero} · ${o.clienteNome}`,
+      tipo: 'orcamento', id: o.id, titulo: `Nº ${formatarNumeroExibicao(o.numero)} · ${o.clienteNome}`,
       subtitulo: formatCurrency(o.valorTotal),
       excluidoEm: o.excluidoEm ?? '',
     });
   }
   for (const r of recibos) {
     itens.push({
-      tipo: 'recibo', id: r.id, titulo: `Recibo Nº ${r.numero}`,
+      tipo: 'recibo', id: r.id, titulo: `Recibo Nº ${formatarNumeroExibicao(r.numero)}`,
       subtitulo: r.clienteNome || undefined,
       excluidoEm: r.excluidoEm ?? '',
     });

@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity,
@@ -1203,7 +1204,7 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.orcCliente} numberOfLines={1}>{o.clienteNome}</Text>
-                <Text style={styles.orcMeta}>Nº {o.numero} · {STATUS_LABELS[o.status]}</Text>
+                <Text style={styles.orcMeta}>Nº {formatarNumeroExibicao(o.numero)} · {STATUS_LABELS[o.status]}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text style={styles.orcValor}>{formatarValor(o.valorTotal)}</Text>

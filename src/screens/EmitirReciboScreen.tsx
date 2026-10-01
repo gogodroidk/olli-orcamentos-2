@@ -1,3 +1,4 @@
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
@@ -328,7 +329,7 @@ function EmitirReciboConteudo() {
     );
     try {
       const html = await buildHtml(r);
-      const uri = await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${r.numero}` });
+      const uri = await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${formatarNumeroExibicao(r.numero)}` });
       try {
         const registro = await garantirDocumentoRecibo(r);
         await registrarArtefatoDocumentoBiblioteca(registro.id, uri);
@@ -404,7 +405,7 @@ function EmitirReciboConteudo() {
     <View style={styles.container}>
       <GradientHeader
         title="Emitir recibo"
-        subtitle={numero ? `Nº ${numero}` : reciboPendente ? `Nº ${reciboPendente.numero} · pagamento registrado` : 'Número gerado ao emitir'}
+        subtitle={numero ? `Nº ${formatarNumeroExibicao(numero)}` : reciboPendente ? `Nº ${formatarNumeroExibicao(reciboPendente.numero)} · pagamento registrado` : 'Número gerado ao emitir'}
         onBack={() => goBackOrHome(nav)}
       />
 
@@ -452,7 +453,7 @@ function EmitirReciboConteudo() {
             <View style={styles.orcCard}>
               <MaterialCommunityIcons name="file-document-check-outline" size={22} color={cores.success} />
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.orcLabel}>Referente ao orçamento nº {orc.numero}</Text>
+                <Text style={styles.orcLabel}>Referente ao orçamento nº {formatarNumeroExibicao(orc.numero)}</Text>
                 <Text style={styles.orcTotal}>{formatCurrency(orc.valorTotal)}</Text>
               </View>
             </View>
@@ -464,7 +465,7 @@ function EmitirReciboConteudo() {
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text style={styles.pendenteTitle}>Pagamento já registrado</Text>
                 <Text style={styles.pendenteText}>
-                  Recibo Nº {reciboPendente.numero} · confira os dados abaixo e gere o PDF para entregar ao cliente.
+                  Recibo Nº {formatarNumeroExibicao(reciboPendente.numero)} · confira os dados abaixo e gere o PDF para entregar ao cliente.
                 </Text>
               </View>
             </View>
@@ -574,7 +575,7 @@ function EmitirReciboConteudo() {
             <OlliCard style={{ padding: Spacing.base, marginBottom: 10 }}>
               <View style={styles.reciboRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.reciboNumero}>Recibo Nº {item.numero}</Text>
+                  <Text style={styles.reciboNumero}>Recibo Nº {formatarNumeroExibicao(item.numero)}</Text>
                   <Text style={styles.reciboCliente} numberOfLines={1}>{item.clienteNome}</Text>
                   <Text style={styles.reciboMeta}>{formatDateTime(item.criadoEm)} · {item.formaPagamento}</Text>
                   {item.pdfEmitido === false && (

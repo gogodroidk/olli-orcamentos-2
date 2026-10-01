@@ -1,9 +1,7 @@
 import React, { useCallback, useRef } from 'react';
-import { Animated, Pressable, StyleProp, StyleSheet, ViewStyle, GestureResponderEvent, Platform, AccessibilityRole, AccessibilityState } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import { Animated, Pressable, StyleProp, ViewStyle, GestureResponderEvent, Platform, AccessibilityRole, AccessibilityState } from 'react-native';
 import { Motion } from '../theme/motion';
-
-type HapticKind = 'light' | 'medium' | 'selection' | false;
+import { dispararHaptico, dividirStyle, type HapticKind } from './motion/pressionavel';
 
 interface Props {
   onPress?: (e: GestureResponderEvent) => void;
@@ -27,41 +25,11 @@ interface Props {
 
 const useNativeAnimations = Platform.OS !== 'web';
 
-function dispararHaptico(kind: HapticKind) {
-  if (kind === false) return;
-  if (kind === 'light') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); return; }
-  if (kind === 'medium') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); return; }
-  Haptics.selectionAsync().catch(() => {});
-}
-
 /**
- * Botão-base de toda a v3: press-scale + haptico consistente.
- * OlliButton/OlliCard usam por baixo; use direto para qualquer área tocável nova.
+ * Botão-base da v3 (Animated): press-scale + haptico consistente.
+ * O OlliButton já migrou para `PressableAnimado` (Reanimated, UI thread); este
+ * segue servindo OlliCard e as demais áreas tocáveis até a migração delas.
  */
-
-// Chaves que afetam o LAYOUT no container pai — precisam morar no Pressable
-// externo (flex:1 numa row nao expande nada se ficar na view interna). O resto
-// (fundo, padding, borda) fica na Animated.View para escalar junto no press.
-const LAYOUT_KEYS = new Set([
-  'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf', 'display',
-  'width', 'minWidth', 'maxWidth', 'height', 'minHeight', 'maxHeight',
-  'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
-  'marginHorizontal', 'marginVertical', 'marginStart', 'marginEnd',
-  'position', 'top', 'bottom', 'left', 'right', 'zIndex',
-]);
-
-function dividirStyle(style: StyleProp<ViewStyle>): { layoutStyle: ViewStyle; visualStyle: ViewStyle } {
-  const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
-  const layoutStyle: Record<string, unknown> = {};
-  const visualStyle: Record<string, unknown> = {};
-  for (const k of Object.keys(flat)) {
-    (LAYOUT_KEYS.has(k) ? layoutStyle : visualStyle)[k] = flat[k];
-  }
-  // altura/largura definem o tamanho do no externo; a view interna preenche.
-  if ('height' in layoutStyle || 'minHeight' in layoutStyle) visualStyle['flex'] = 1;
-  return { layoutStyle: layoutStyle as ViewStyle, visualStyle: visualStyle as ViewStyle };
-}
-
 export function OlliPressable({
   onPress,
   onLongPress,

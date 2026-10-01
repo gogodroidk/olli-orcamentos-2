@@ -20,6 +20,7 @@
 import type { Cliente, Orcamento, Recibo } from '../types/index.ts';
 import { propostaJaEnviada } from '../types/index.ts';
 import { parseDateBR } from '../utils/date.ts';
+import { formatarNumeroExibicao } from '../utils/numeroDocumento.ts';
 
 const MS_POR_DIA = 86_400_000;
 
@@ -166,7 +167,7 @@ export function montarMensagemPropostaVencida(
   const nome = (item.orcamento.clienteNome ?? '').trim().split(/\s+/)[0] || 'tudo bem';
   const quando = item.validaAte ? ` venceu em ${ymdParaBr(item.validaAte)}` : ' venceu';
   const linhas = [
-    `Olá, ${nome}! O orçamento nº ${item.orcamento.numero} (${valorFormatado})${quando}.`,
+    `Olá, ${nome}! O orçamento nº ${formatarNumeroExibicao(item.orcamento.numero)} (${valorFormatado})${quando}.`,
     'Se ainda tiver interesse, eu atualizo e te mando de novo.',
     contatoEmpresa ? `Contato: ${contatoEmpresa}` : '',
   ];

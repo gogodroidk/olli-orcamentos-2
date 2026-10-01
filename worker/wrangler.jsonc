@@ -177,7 +177,8 @@
         { "name": "ABACATE_RL", "namespace_id": "2012", "simple": { "limit": 12, "period": 60 } },
         { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } },
         { "name": "RCHOOK_RL", "namespace_id": "2014", "simple": { "limit": 60, "period": 60 } },
-        { "name": "AUTH_EMAIL_RL", "namespace_id": "2021", "simple": { "limit": 5, "period": 60 } }
+        { "name": "AUTH_EMAIL_RL", "namespace_id": "2021", "simple": { "limit": 5, "period": 60 } },
+        { "name": "CLIMA_RL", "namespace_id": "2030", "simple": { "limit": 30, "period": 60 } }
       ]
     }
   },
@@ -247,6 +248,12 @@
     // 1 pedido/min por usuário; 5/min aqui é folga para as duas pontas da troca
     // de e-mail e reenvios. Fail-closed: sem o binding, a rota responde 503.
     // Id 1021 (faixa 102x = Auth), longe dos 101x para não colidir com PR paralelo.
-    { "name": "AUTH_EMAIL_RL", "namespace_id": "1021", "simple": { "limit": 5, "period": 60 } }
+    { "name": "AUTH_EMAIL_RL", "namespace_id": "1021", "simple": { "limit": 5, "period": 60 } },
+    // /clima por IP (rota pública, sem login). Upstream grátis (Open-Meteo, sem
+    // chave): o teto protege o fair-use dele, não fatura. Acerto de cache (30 min
+    // por geohash de ~5 km) não consome balde. Id 1030 de propósito: fora da
+    // sequência 1022+ que outras rotas da Onda 2 podem estar pegando em paralelo
+    // — dois bindings com o mesmo namespace_id DIVIDIRIAM o mesmo contador.
+    { "name": "CLIMA_RL", "namespace_id": "1030", "simple": { "limit": 30, "period": 60 } }
   ]
 }
