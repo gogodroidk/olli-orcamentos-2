@@ -1,11 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, Animated, TextInput, Image, Platform, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, TextInput, Image, Platform, Linking } from 'react-native';
+import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { confirmar, toast } from '../components/feedback';
+import { CampoBuscaAjuste, GrupoAjustes, LinhaAjuste } from '../components/ajustes';
+import { Aparecer } from '../components/motion';
+import { curvas } from '../components/motion/curvas';
+import { DURACAO, duracaoAcessivel, useReduzirMovimento } from '../theme/motion';
+import { buscarAjustes, SECAO_AJUSTES, TERMOS_AJUSTE, type ItemAjuste } from '../services/buscaAjustes';
 import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, comAlfa, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
@@ -14,7 +21,6 @@ import { useResumoEmail } from '../hooks/useResumoEmail';
 import { ROTULO_RESUMO_EMAIL } from '../services/resumoEmailPreferencia';
 import { OlliMascot } from '../components/OlliMascot';
 import { OlliPressable } from '../components/OlliPressable';
-import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { SeletorTema } from '../components/SeletorTema';
@@ -82,6 +88,9 @@ function mensagemDeErro(e: unknown, semInternet: string, generica: string): stri
 
 const SEM_INTERNET = 'Sem internet agora. Verifique a conexão e tente de novo.';
 
+/** Quanto o pill "Sincronizando..." fica legível antes de sumir (ms). Leitura, não transição. */
+const TEMPO_LEITURA_PILL = 900;
+
 /** Rótulo em PT-BR do tipo de backup versionado, para a lista de cópias. */
 const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
   diario: 'Automático (diário)',
@@ -92,6 +101,29 @@ const TIPO_BACKUP_LABEL: Record<BackupVersionadoResumo['tipo'], string> = {
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 /**
+ * Título e descrição das linhas de ajuste. Um lugar só: a linha desenha estes
+ * textos e a busca procura NELES — o que a pessoa lê é o que ela acha.
+ */
+const TEXTO_AJUSTE = {
+  notifBomDia: { titulo: 'Bom dia da OLLI', descricao: '~7h, só quando há um sinal real (visita, cobrança ou cliente para lembrar)' },
+  notifFecharDia: { titulo: 'Fechar o dia', descricao: '~18h, só nos dias com movimento — prévia do relatório falado' },
+  notifDomingo: { titulo: 'Notificar aos domingos', descricao: 'Desligado por padrão — domingo é dia mudo' },
+  backupAuto: { titulo: 'Backup automático diário', descricao: 'Guarda uma cópia por dia na nuvem, sem precisar apertar nada' },
+  backupAgora: { titulo: 'Fazer backup agora', descricao: 'Envia uma cópia manual para a nuvem' },
+  backupCopias: { titulo: 'Ver cópias de segurança', descricao: 'Veja e restaure as cópias guardadas na nuvem' },
+  lixeira: { titulo: 'Lixeira', descricao: 'Recupere itens excluídos nos últimos 30 dias' },
+  ajuda: { titulo: 'Ajuda e suporte', descricao: 'Dúvidas, tutoriais e falar com a gente' },
+  dicas: { titulo: 'Mostrar dicas contextuais', descricao: 'Balões curtos explicando elementos da tela' },
+  apresentacao: { titulo: 'Rever apresentação e dicas', descricao: 'Mostra a introdução e as dicas de novo' },
+  privacidade: { titulo: 'Política de privacidade', descricao: 'Quais dados o OLLI usa e por quê' },
+  termos: { titulo: 'Termos de uso', descricao: 'As regras de uso do OLLI' },
+  excluirWeb: { titulo: 'Excluir conta pela web', descricao: 'Pedir a exclusão pelo site, sem precisar do app' },
+  sair: { titulo: 'Sair da conta', descricao: 'Seus dados continuam guardados neste aparelho' },
+  sairApagar: { titulo: 'Sair e apagar dados deste aparelho', descricao: 'Deixa o celular limpo. Os dados na nuvem não são afetados' },
+  excluirConta: { titulo: 'Excluir minha conta', descricao: 'Apaga a conta e os dados para sempre' },
+} as const;
+
+/**
  * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
  * Dá feedback visual de que a tela está de fato conectada à nuvem quando o
  * `onSyncAplicado` recarrega os dados em segundo plano.
@@ -99,18 +131,28 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 function SincronizandoPill({ onDone, top = 8 }: { onDone: () => void; top?: number }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const opacity = useRef(new Animated.Value(0)).current;
+  const reduzir = useReduzirMovimento();
+  const opacidade = useSharedValue(0);
+  // `onDone` muda a cada render do pai; a animação só precisa da versão mais nova.
+  const aoTerminar = useRef(onDone);
+  aoTerminar.current = onDone;
 
   useEffect(() => {
-    Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-      Animated.delay(900),
-      Animated.timing(opacity, { toValue: 0, duration: 380, useNativeDriver: true }),
-    ]).start(({ finished }) => { if (finished) onDone(); });
-  }, [opacity]);
+    const terminar = () => aoTerminar.current();
+    opacidade.set(withSequence(
+      withTiming(1, { duration: duracaoAcessivel(DURACAO.fast, reduzir), easing: curvas.decelerate }),
+      // Tempo de LEITURA (não é transição): o pill fica visível o bastante para ser notado.
+      withDelay(TEMPO_LEITURA_PILL, withTiming(0, { duration: duracaoAcessivel(DURACAO.slow, reduzir), easing: curvas.standard }, (terminou) => {
+        if (terminou) scheduleOnRN(terminar);
+      })),
+    ));
+    return () => cancelAnimation(opacidade);
+  }, [opacidade, reduzir]);
+
+  const estilo = useAnimatedStyle(() => ({ opacity: opacidade.get() }));
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.syncPill, { top, opacity }]}>
+    <Animated.View pointerEvents="none" style={[styles.syncPill, { top }, estilo]}>
       <MaterialCommunityIcons name="cloud-sync-outline" size={13} color={cores.accentLight} />
       <Text style={styles.syncPillText}>Sincronizando...</Text>
     </Animated.View>
@@ -260,7 +302,8 @@ export default function ContaScreen() {
   const [motivoBackup, setMotivoBackup] = useState<MotivoBackupNuvem | null>(null);
   // Um estado por ação: com um `busy` só, "Fazer backup" fazia girar o "Sair da conta".
   const [fazendoBackup, setFazendoBackup] = useState(false);
-  const [saindo, setSaindo] = useState(false);
+  // Qual das duas saídas está rodando (cada linha mostra o próprio carregando).
+  const [saindo, setSaindo] = useState<'manter' | 'apagar' | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   // Permissão de notificação do SISTEMA (3 estados: null = não sei / web). Sem
   // isto o switch "Bom dia da OLLI" ficava ligado com o Android bloqueando tudo.
@@ -285,6 +328,12 @@ export default function ContaScreen() {
   // cópia de segurança ainda" mesmo quando havia cópias e a busca só falhou.
   const [backupsErro, setBackupsErro] = useState(false);
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
+  // Falha ao restaurar, mostrada DENTRO da lista de cópias (o toast ficaria por baixo do Modal).
+  const [erroRestaurar, setErroRestaurar] = useState<string | null>(null);
+  // Falha ao excluir a conta, mostrada dentro do modal de exclusão, pelo mesmo motivo.
+  const [erroExcluir, setErroExcluir] = useState<string | null>(null);
+  // Texto do campo "Buscar ajuste".
+  const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
   // 3 estados explícitos (nunca colapsar erro em vazio): `carregandoErro` só
   // vira `true` se a leitura de fato falhar — sem isso o load() sem try/catch
@@ -454,7 +503,6 @@ export default function ContaScreen() {
 
   /** "Rever apresentação e dicas": religa a ajuda, esquece dicas vistas e refaz o onboarding. */
   async function handleReverApresentacao() {
-    vibrar('selecao');
     await resetarAjuda();
     setAjudaAtiva(true); // resetarAjuda religa a Central de Ajuda
     toast.sucesso('A apresentação e as dicas vão aparecer de novo na próxima vez que você abrir o app.');
@@ -476,7 +524,7 @@ export default function ContaScreen() {
 
   /** Abre o modal "Ver cópias de segurança" e carrega a lista da nuvem. */
   function handleAbrirBackups() {
-    vibrar('selecao');
+    setErroRestaurar(null);
     setShowBackups(true);
     carregarBackups();
   }
@@ -503,118 +551,113 @@ export default function ContaScreen() {
       rotuloConfirmar: 'Restaurar',
     });
     if (!certeza) return;
+    setErroRestaurar(null);
     setRestaurandoId(item.id);
     try {
       const when = await restoreBackupById(item.id);
       setShowBackups(false);
       toast.sucesso(`Dados da cópia de ${formatDateTime(when)} aplicados.`, { titulo: 'Cópia restaurada' });
       await load();
-    } catch (e: any) {
-      // A lista (Modal) continua aberta: o toast ficaria por baixo dela, então o
-      // erro segue no alerta do sistema, que sempre aparece por cima.
+    } catch (e: unknown) {
+      // A lista (Modal) continua aberta e o toast ficaria por baixo dela (no
+      // Android o Modal é outra janela): o erro aparece DENTRO da lista, em cima
+      // das cópias, até a próxima tentativa.
       vibrar('erro');
-      Alert.alert('Não deu para restaurar', e?.message ?? 'Falha ao restaurar essa cópia. Tente de novo em instantes.');
+      setErroRestaurar(mensagemDeErro(e, SEM_INTERNET, 'Não foi possível restaurar essa cópia agora. Tente de novo em instantes.'));
     }
     setRestaurandoId(null);
   }
 
-  function handleLogout() {
-    vibrar('selecao');
-    Alert.alert(
-      'Sair da conta',
-      'O que você quer fazer com os dados salvos neste aparelho?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sair e manter dados neste aparelho',
-          onPress: async () => {
-            setSaindo(true);
-            try {
-              // Interrompe o sync ANTES do signOut (o "apagar dados" já fazia isso;
-              // aqui faltava): um pull em voo continuaria gravando no SQLite depois
-              // da saída, e o contexto de equipe de quem está saindo poderia
-              // carimbar linha do próximo a entrar. `abortarSyncEmAndamento` também
-              // esquece esse contexto (ver cloudSync).
-              // Os dados FICAM no aparelho, como o botão promete: eles moram na
-              // partição desta conta (database/particao.ts) e ninguém mais os abre.
-              abortarSyncEmAndamento();
-              // Cancela os lembretes locais (agenda + vencimento PMOC) ANTES do
-              // signOut: como os dados FICAM no aparelho neste fluxo, o
-              // `clearAllLocalData` (que também cancela) não roda aqui — sem esta
-              // chamada, os lembretes da conta que está saindo continuariam
-              // disparando depois, mostrando nome/endereço do cliente para quem
-              // logar em seguida no mesmo aparelho (vazamento de dado entre
-              // contas). Best-effort e nunca lança; a próxima sessão (mesma conta
-              // ou outra) reagenda os seus via resincronizarLembretes* no sync.
-              await cancelarTodosLembretes().catch(() => {});
-              await cancelarTodosLembretesPmoc().catch(() => {});
-              await cancelarRitualDiario().catch(() => {});
-              await cancelarFollowUpLembretes().catch(() => {});
-              // O que este botão promete manter são os DADOS — e eles vivem na
-              // partição SQLite desta conta, que ninguém mais abre. O AsyncStorage
-              // NÃO é particionado: a conversa com a OLLI, o checklist do dia, o
-              // e-mail pendente de confirmação e os carimbos de sync ficavam
-              // inteiros para o PRÓXIMO usuário do aparelho, que abria o chat e
-              // lia a conversa de outra pessoa. Aqui esse rastro sai, igual ao que
-              // o clearAllLocalData já fazia no caminho "apagar dados" — mesma
-              // allow-list, para os dois caminhos nunca divergirem.
-              // Custo aceito: checklist e snooze do radar voltam da nuvem no
-              // próximo login (extras_sync); o histórico do chat NÃO volta, e é
-              // exatamente por não ter como amarrá-lo à conta que ele não pode
-              // ficar. Best-effort: falhar aqui não pode impedir a saída.
-              await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS).catch(() => {});
-              // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
-              // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
-              // competir com ele (corrida de navegação).
-              await signOut();
-            } catch (e: unknown) {
-              Alert.alert('Não deu para sair', mensagemDeErro(e, SEM_INTERNET, 'Não foi possível sair agora. Tente de novo.'));
-            }
-            setSaindo(false);
-          },
-        },
-        {
-          text: 'Sair e apagar dados deste aparelho',
-          style: 'destructive',
-          onPress: () => {
-            Alert.alert(
-              'Tem certeza?',
-              'Isso vai APAGAR todos os orçamentos, clientes, produtos e serviços salvos neste aparelho. Essa ação não pode ser desfeita. Seus dados na nuvem (se houver backup) não são afetados.',
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                  text: 'Apagar e sair', style: 'destructive',
-                  onPress: async () => {
-                    setSaindo(true);
-                    try {
-                      // Interrompe qualquer sync em segundo plano ANTES de apagar:
-                      // sem isso, um pull que já buscou dados da nuvem pode gravá-los
-                      // de volta no SQLite logo depois do wipe, deixando sobras da
-                      // conta anterior num aparelho que deveria estar limpo.
-                      abortarSyncEmAndamento();
-                      // Wipe ANTES do signOut: o SIGNED_OUT reseta para a Entrar,
-                      // que checa dados locais no mount — com a ordem invertida o
-                      // banner de migracao apareceria para quem acabou de apagar.
-                      await clearAllLocalData();
-                      await signOut();
-                      setEmpresa(null);
-                      // O reset para 'Entrar' vem do listener global (SIGNED_OUT).
-                    } catch (e: unknown) {
-                      Alert.alert('Não deu para sair', mensagemDeErro(e, SEM_INTERNET, 'Não foi possível apagar os dados agora. Tente de novo.'));
-                    }
-                    setSaindo(false);
-                  },
-                },
-              ],
-            );
-          },
-        },
-      ],
-    );
+  /**
+   * "Sair da conta" — os dados FICAM no aparelho (partição desta conta). A
+   * escolha "manter ou apagar" que antes vivia num alerta de 3 botões virou duas
+   * linhas na seção Sessão, cada uma com a sua folha de confirmação.
+   */
+  async function handleSair() {
+    const sim = await confirmar({
+      titulo: 'Sair da conta?',
+      mensagem: 'Seus orçamentos, clientes e serviços continuam guardados neste aparelho para quando você entrar de novo. Os lembretes deste aparelho param até lá, e a conversa com a OLLI sai do aparelho.',
+      destrutivo: true,
+      rotuloConfirmar: 'Sair',
+    });
+    if (!sim) return;
+    setSaindo('manter');
+    try {
+      // Interrompe o sync ANTES do signOut (o "apagar dados" já fazia isso;
+      // aqui faltava): um pull em voo continuaria gravando no SQLite depois
+      // da saída, e o contexto de equipe de quem está saindo poderia
+      // carimbar linha do próximo a entrar. `abortarSyncEmAndamento` também
+      // esquece esse contexto (ver cloudSync).
+      // Os dados FICAM no aparelho, como o botão promete: eles moram na
+      // partição desta conta (database/particao.ts) e ninguém mais os abre.
+      abortarSyncEmAndamento();
+      // Cancela os lembretes locais (agenda + vencimento PMOC) ANTES do
+      // signOut: como os dados FICAM no aparelho neste fluxo, o
+      // `clearAllLocalData` (que também cancela) não roda aqui — sem esta
+      // chamada, os lembretes da conta que está saindo continuariam
+      // disparando depois, mostrando nome/endereço do cliente para quem
+      // logar em seguida no mesmo aparelho (vazamento de dado entre
+      // contas). Best-effort e nunca lança; a próxima sessão (mesma conta
+      // ou outra) reagenda os seus via resincronizarLembretes* no sync.
+      await cancelarTodosLembretes().catch(() => {});
+      await cancelarTodosLembretesPmoc().catch(() => {});
+      await cancelarRitualDiario().catch(() => {});
+      await cancelarFollowUpLembretes().catch(() => {});
+      // O que este botão promete manter são os DADOS — e eles vivem na
+      // partição SQLite desta conta, que ninguém mais abre. O AsyncStorage
+      // NÃO é particionado: a conversa com a OLLI, o checklist do dia, o
+      // e-mail pendente de confirmação e os carimbos de sync ficavam
+      // inteiros para o PRÓXIMO usuário do aparelho, que abria o chat e
+      // lia a conversa de outra pessoa. Aqui esse rastro sai, igual ao que
+      // o clearAllLocalData já fazia no caminho "apagar dados" — mesma
+      // allow-list, para os dois caminhos nunca divergirem.
+      // Custo aceito: checklist e snooze do radar voltam da nuvem no
+      // próximo login (extras_sync); o histórico do chat NÃO volta, e é
+      // exatamente por não ter como amarrá-lo à conta que ele não pode
+      // ficar. Best-effort: falhar aqui não pode impedir a saída.
+      await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS).catch(() => {});
+      // Apenas signOut: o reset da navegação para 'Entrar' vem do listener
+      // global do App.tsx (evento SIGNED_OUT). Não resetamos aqui para não
+      // competir com ele (corrida de navegação).
+      await signOut();
+    } catch (e: unknown) {
+      vibrar('erro');
+      toast.erro(mensagemDeErro(e, SEM_INTERNET, 'Não foi possível sair agora. Tente de novo.'), { titulo: 'Não deu para sair' });
+    }
+    setSaindo(null);
+  }
+
+  /** "Sair e apagar dados deste aparelho" — apaga o banco local e sai. A nuvem fica. */
+  async function handleSairApagando() {
+    const sim = await confirmar({
+      titulo: 'Apagar os dados deste aparelho e sair?',
+      mensagem: 'Isso apaga todos os orçamentos, clientes, produtos e serviços salvos neste aparelho. Não dá para desfazer. Seus dados na nuvem (se houver backup) não são afetados.',
+      destrutivo: true,
+      rotuloConfirmar: 'Apagar e sair',
+    });
+    if (!sim) return;
+    setSaindo('apagar');
+    try {
+      // Interrompe qualquer sync em segundo plano ANTES de apagar:
+      // sem isso, um pull que já buscou dados da nuvem pode gravá-los
+      // de volta no SQLite logo depois do wipe, deixando sobras da
+      // conta anterior num aparelho que deveria estar limpo.
+      abortarSyncEmAndamento();
+      // Wipe ANTES do signOut: o SIGNED_OUT reseta para a Entrar,
+      // que checa dados locais no mount — com a ordem invertida o
+      // banner de migracao apareceria para quem acabou de apagar.
+      await clearAllLocalData();
+      await signOut();
+      setEmpresa(null);
+      // O reset para 'Entrar' vem do listener global (SIGNED_OUT).
+    } catch (e: unknown) {
+      vibrar('erro');
+      toast.erro(mensagemDeErro(e, SEM_INTERNET, 'Não foi possível apagar os dados agora. Tente de novo.'), { titulo: 'Não deu para sair' });
+    }
+    setSaindo(null);
   }
 
   function abrirFerramenta(f: Ferramenta) {
-    vibrar('selecao');
     if (f.route === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
     else nav.navigate(f.route as never);
   }
@@ -633,18 +676,14 @@ export default function ContaScreen() {
         : await adicionarFotoGaleria([]);
 
       if (resultado.erro === 'PERMISSAO_NEGADA_PERMANENTE') {
-        Alert.alert(
-          fonte === 'camera' ? 'Câmera bloqueada' : 'Fotos bloqueadas',
-          'Libere o acesso nas configurações do aparelho para escolher sua foto.',
-          [
-            { text: 'Agora não', style: 'cancel' },
-            { text: 'Abrir configurações', onPress: () => { abrirConfiguracoesPermissao(); } },
-          ],
-        );
+        toast.erro('Libere o acesso nos ajustes do aparelho para escolher sua foto.', {
+          titulo: fonte === 'camera' ? 'Câmera bloqueada' : 'Fotos bloqueadas',
+          acao: { rotulo: 'Abrir ajustes', aoTocar: () => { void abrirConfiguracoesPermissao(); } },
+        });
         return;
       }
       if (resultado.erro) {
-        Alert.alert('Ops', resultado.erro);
+        toast.erro(resultado.erro);
         return;
       }
       const uri = resultado.uris[0];
@@ -679,56 +718,54 @@ export default function ContaScreen() {
 
   /**
    * Executa a exclusão da conta (já com dupla confirmação: o usuário digitou
-   * 'EXCLUIR' no modal e confirma neste Alert final). Ao concluir, o serviço faz
-   * logout local + wipe do SQLite; o reset da navegação vem do listener global.
+   * 'EXCLUIR' no modal e confirma nesta folha destrutiva final). Ao concluir, o
+   * serviço faz logout local + wipe do SQLite; o reset da navegação vem do
+   * listener global. Falha aparece DENTRO do modal de exclusão (o toast ficaria
+   * por baixo dele), dizendo que nada foi apagado.
    */
-  function confirmarExclusaoFinal() {
-    Alert.alert(
-      'Excluir a conta agora?',
-      'Esta é a última confirmação. Sua conta e todos os dados serão apagados para sempre. Não há como desfazer.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir para sempre',
-          style: 'destructive',
-          onPress: async () => {
-            setExcluindo(true);
-            try {
-              const res = await excluirConta();
-              if (!res.ok) {
-                const msg =
-                  res.motivo === 'nao_configurado'
-                    ? 'A exclusão online ainda não foi configurada. Fale com o suporte.'
-                    : res.motivo === 'sem_login'
-                      ? 'Sua sessão expirou. Entre de novo e tente outra vez.'
-                      : res.motivo === 'rede'
-                        ? 'Sem conexão agora. Verifique a internet e tente novamente.'
-                        : res.motivo === 'muitas_requisicoes'
-                          ? 'Muitas tentativas seguidas. Aguarde 1 minuto e tente de novo — nada foi apagado.'
-                        : res.motivo === 'falha_cancelamento'
-                          // O servidor não apagou NADA de propósito: apagar a conta com a
-                          // assinatura viva deixaria o cartão sendo cobrado sem nenhuma
-                          // conta pela qual cancelar. O usuário precisa saber que está
-                          // seguro para tentar de novo.
-                          ? 'Não consegui cancelar sua assinatura agora, então não apaguei nada. Sua conta e sua cobrança seguem como estavam. Tente de novo em alguns minutos.'
-                          : 'Não foi possível excluir a conta agora. Tente novamente em instantes.';
-                vibrar('erro');
-                Alert.alert('Não deu', msg);
-                setExcluindo(false);
-                return;
-              }
-              // Sucesso: o SIGNED_OUT (logout local no serviço) reseta a navegação
-              // para 'Entrar'. Fecha o modal por garantia; a tela será desmontada.
-              setShowExcluir(false);
-              vibrar('sucesso');
-            } catch (e: unknown) {
-              Alert.alert('Não deu', mensagemDeErro(e, SEM_INTERNET, 'Não foi possível excluir a conta agora. Nada foi apagado.'));
-              setExcluindo(false);
-            }
-          },
-        },
-      ],
-    );
+  async function confirmarExclusaoFinal() {
+    const sim = await confirmar({
+      titulo: 'Excluir a conta agora?',
+      mensagem: 'Esta é a última confirmação. Sua conta e todos os dados serão apagados para sempre. Não há como desfazer.',
+      destrutivo: true,
+      rotuloConfirmar: 'Excluir para sempre',
+    });
+    if (!sim) return;
+    setErroExcluir(null);
+    setExcluindo(true);
+    try {
+      const res = await excluirConta();
+      if (!res.ok) {
+        const msg =
+          res.motivo === 'nao_configurado'
+            ? 'A exclusão online ainda não foi configurada. Fale com o suporte.'
+            : res.motivo === 'sem_login'
+              ? 'Sua sessão expirou. Entre de novo e tente outra vez.'
+              : res.motivo === 'rede'
+                ? 'Sem conexão agora. Verifique a internet e tente novamente.'
+                : res.motivo === 'muitas_requisicoes'
+                  ? 'Muitas tentativas seguidas. Aguarde 1 minuto e tente de novo — nada foi apagado.'
+                : res.motivo === 'falha_cancelamento'
+                  // O servidor não apagou NADA de propósito: apagar a conta com a
+                  // assinatura viva deixaria o cartão sendo cobrado sem nenhuma
+                  // conta pela qual cancelar. O usuário precisa saber que está
+                  // seguro para tentar de novo.
+                  ? 'Não consegui cancelar sua assinatura agora, então não apaguei nada. Sua conta e sua cobrança seguem como estavam. Tente de novo em alguns minutos.'
+                  : 'Não foi possível excluir a conta agora. Tente novamente em instantes.';
+        vibrar('erro');
+        setErroExcluir(msg);
+        setExcluindo(false);
+        return;
+      }
+      // Sucesso: o SIGNED_OUT (logout local no serviço) reseta a navegação
+      // para 'Entrar'. Fecha o modal por garantia; a tela será desmontada.
+      setShowExcluir(false);
+      vibrar('sucesso');
+    } catch (e: unknown) {
+      vibrar('erro');
+      setErroExcluir(mensagemDeErro(e, SEM_INTERNET, 'Não foi possível excluir a conta agora. Nada foi apagado.'));
+      setExcluindo(false);
+    }
   }
 
   const primeiroNome = user?.nome?.split(' ')[0] || empresa?.nomePrestador?.split(' ')[0] || 'prestador';
@@ -750,6 +787,55 @@ export default function ContaScreen() {
   const rotuloVersao = APP_VERSION
     ? `OLLI ${APP_VERSION}${Platform.OS === 'android' && APP_VERSION_CODE !== null ? ` (${APP_VERSION_CODE})` : ''}`
     : 'OLLI';
+
+  // ─── AJUSTES: catálogo da busca ────────────────────────────────────────────
+  // Cada linha que a tela PODE desenhar entra aqui, já com as condições de
+  // visibilidade (papel, sessão, ofício). A linha só checa `mostra(id)`: a regra
+  // de "existe para esta pessoa" mora num lugar só, e a busca nunca acha algo
+  // que a tela não desenharia.
+  const sessaoAtiva = configured && !!user;
+  const itensAjuste: ItemAjuste[] = [
+    { id: 'perfil', secao: SECAO_AJUSTES.conta, titulo: 'Seu perfil', descricao: nomeExibido },
+    { id: 'assinatura', secao: SECAO_AJUSTES.conta, titulo: 'Assinatura e planos' },
+    ...(configured && !carregandoConta ? [{ id: 'equipe', secao: SECAO_AJUSTES.conta, titulo: 'Empresa e equipe' }] : []),
+    ...ferramentasVisiveis.map(f => ({ id: `ferramenta:${f.key}`, secao: SECAO_AJUSTES.ferramentas, titulo: f.label, descricao: f.desc })),
+    { id: 'aparencia', secao: SECAO_AJUSTES.aparencia, titulo: 'Tema e cor da marca' },
+    { id: 'notifBomDia', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifBomDia },
+    { id: 'notifFecharDia', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifFecharDia },
+    { id: 'notifResumoEmail', secao: SECAO_AJUSTES.notificacoes, titulo: ROTULO_RESUMO_EMAIL },
+    { id: 'notifDomingo', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifDomingo },
+    { id: 'backupStatus', secao: SECAO_AJUSTES.backup, titulo: 'Backup na nuvem' },
+    ...(sessaoAtiva && motivoBackup !== 'somente_dono'
+      ? [
+        { id: 'backupAuto', secao: SECAO_AJUSTES.backup, ...TEXTO_AJUSTE.backupAuto },
+        { id: 'backupAgora', secao: SECAO_AJUSTES.backup, ...TEXTO_AJUSTE.backupAgora },
+      ]
+      : []),
+    ...(sessaoAtiva ? [{ id: 'backupCopias', secao: SECAO_AJUSTES.backup, ...TEXTO_AJUSTE.backupCopias }] : []),
+    // Lixeira é ação de GESTÃO: o técnico não vê.
+    ...(papel !== 'tecnico' ? [{ id: 'lixeira', secao: SECAO_AJUSTES.backup, ...TEXTO_AJUSTE.lixeira }] : []),
+    { id: 'ajuda', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.ajuda },
+    { id: 'dicas', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.dicas },
+    { id: 'apresentacao', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.apresentacao },
+    { id: 'privacidade', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.privacidade },
+    { id: 'termos', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.termos },
+    { id: 'excluirWeb', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.excluirWeb },
+    ...(sessaoAtiva
+      ? [
+        { id: 'sessaoConta', secao: SECAO_AJUSTES.sessao, titulo: user?.email ?? 'Sua conta' },
+        { id: 'sair', secao: SECAO_AJUSTES.sessao, ...TEXTO_AJUSTE.sair },
+        { id: 'sairApagar', secao: SECAO_AJUSTES.sessao, ...TEXTO_AJUSTE.sairApagar },
+        { id: 'excluirConta', secao: SECAO_AJUSTES.sessao, ...TEXTO_AJUSTE.excluirConta },
+      ]
+      : []),
+  ].map(i => ({ ...i, termos: TERMOS_AJUSTE[i.id] }));
+  const resultadoBusca = buscarAjustes(itensAjuste, busca);
+  const mostra = (id: string) => resultadoBusca.ids.has(id);
+  // Durante a busca nada espera na fila de entrada: o que aparece, aparece já.
+  const ind = (n: number) => (resultadoBusca.ativa ? 0 : n);
+  const resumoBackup = resumoBackupNuvem(motivoBackup, autoBackupAtivo, lastBackup);
+  const corResumoBackup = resumoBackup.tom === 'success' ? cores.success : resumoBackup.tom === 'warning' ? cores.warning : cores.onSurfaceMuted;
+  const switchTrilho = { false: cores.outline, true: comAlfa(cores.primary, 0.5) };
 
   // GUARDA DEFENSIVO: sessão expirada dentro das Tabs → botão para voltar à porta.
   if (sessaoPerdida) {
@@ -784,9 +870,11 @@ export default function ContaScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >
         <View style={styles.headRow}>
-          <Text style={styles.screenTitle}>Conta</Text>
+          <Text style={styles.screenTitle} accessibilityRole="header">Conta</Text>
           <OlliMascot size={34} onDark />
         </View>
+
+        {!carregando && !carregandoErro ? <CampoBuscaAjuste valor={busca} aoMudar={setBusca} /> : null}
 
         {carregando ? (
           // Skeleton coerente com o layout real: cartão de perfil + faixa PRO +
@@ -808,7 +896,7 @@ export default function ContaScreen() {
             <View style={[styles.toolsCard, { marginTop: Spacing.lg }]}>
               {[0, 1, 2].map(i => (
                 <View key={i} style={[styles.toolRow, i < 2 && styles.toolDivider]}>
-                  <OlliSkeleton width={40} height={40} radius={12} />
+                  <OlliSkeleton width={32} height={32} radius={8} />
                   <View style={{ flex: 1, marginLeft: 12, gap: 6 }}>
                     <OlliSkeleton width="50%" height={14} />
                     <OlliSkeleton width="72%" height={12} />
@@ -829,8 +917,21 @@ export default function ContaScreen() {
           </View>
         ) : (
         <>
+        {/* BUSCA SEM RESULTADO — diz o que procurou e devolve a tela com um toque. */}
+        {resultadoBusca.ativa && resultadoBusca.total === 0 ? (
+          <Aparecer>
+            <View style={styles.buscaVazia}>
+              <MaterialCommunityIcons name="text-search" size={30} color={cores.onSurfaceMuted} />
+              <Text style={styles.buscaVaziaTitulo}>Nenhum ajuste encontrado para “{busca.trim()}”</Text>
+              <Text style={styles.buscaVaziaTexto}>Tente outra palavra, como tema, backup, notificação ou sair.</Text>
+              <OlliButton label="Limpar busca" variant="ghost" size="sm" haptic={false} onPress={() => setBusca('')} />
+            </View>
+          </Aparecer>
+        ) : null}
+
         {/* CARD DE PERFIL (nome/e-mail/telefone do usuário logado) */}
-        <AnimatedEntrance index={0}>
+        {mostra('perfil') ? (
+        <Aparecer indice={ind(0)}>
           <OlliPressable style={styles.profileCard} scaleTo={0.98} accessibilityLabel="Editar perfil e negócio" onPress={() => nav.navigate('MeuNegocio')}>
             <TouchableOpacity
               style={styles.avatar}
@@ -878,11 +979,13 @@ export default function ContaScreen() {
             Toque na foto para trocar a <Text style={styles.identidadeHintForte}>sua foto de perfil</Text>. A logo e a identidade visual da empresa (que aparecem nos PDFs) ficam em{' '}
             <Text style={styles.identidadeLink} onPress={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }}>Meu Negócio</Text>.
           </Text>
-        </AnimatedEntrance>
+        </Aparecer>
+        ) : null}
 
         {/* ASSINATURA — pagante vê um card discreto "Sua assinatura"; grátis vê o
             convite para conhecer os planos (sem propaganda para quem já paga). */}
-        <AnimatedEntrance index={1}>
+        {mostra('assinatura') ? (
+        <Aparecer indice={ind(1)}>
           {cardPlanoCarregando ? (
             <View style={styles.assinaturaCard}>
               <OlliSkeleton width={40} height={40} radius={12} />
@@ -947,11 +1050,12 @@ export default function ContaScreen() {
               </OlliPressable>
             </View>
           )}
-        </AnimatedEntrance>
+        </Aparecer>
+        ) : null}
 
         {/* EMPRESA / EQUIPE (Onda 2) — só quando a nuvem está configurada. */}
-        {configured && !carregandoConta && (
-          <AnimatedEntrance index={2}>
+        {mostra('equipe') ? (
+          <Aparecer indice={ind(2)}>
             {tipo === 'empresa' && org ? (
               <View style={styles.empresaCard}>
                 <View style={styles.empresaHead}>
@@ -1013,195 +1117,40 @@ export default function ContaScreen() {
                 </OlliPressable>
               </View>
             )}
-          </AnimatedEntrance>
-        )}
+          </Aparecer>
+        ) : null}
 
         {/* FERRAMENTAS */}
-        <AnimatedEntrance index={3}>
-          <Text style={styles.sectionTitle}>Ferramentas</Text>
-          <View style={styles.toolsCard}>
-            {ferramentasVisiveis.map((f, i) => (
-              <OlliPressable
-                key={f.key}
-                style={[styles.toolRow, i < ferramentasVisiveis.length - 1 && styles.toolDivider]}
-                onPress={() => abrirFerramenta(f)}
-                haptic={false}
-                scaleTo={0.985}
-                accessibilityLabel={f.label}
-              >
-                <View style={[styles.toolIcon, { backgroundColor: f.color + '1E', borderColor: f.color + '3A' }]}>
-                  <MaterialCommunityIcons name={f.icon as any} size={20} color={f.color === cores.accent ? cores.accentLight : f.color} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.toolLabel}>{f.label}</Text>
-                  <Text style={styles.toolDesc}>{f.desc}</Text>
-                </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-              </OlliPressable>
-            ))}
-          </View>
-        </AnimatedEntrance>
+        <GrupoAjustes titulo={SECAO_AJUSTES.ferramentas} indice={ind(3)}>
+          {ferramentasVisiveis.filter(f => mostra(`ferramenta:${f.key}`)).map(f => (
+            <LinhaAjuste
+              key={f.key}
+              icone={f.icon as never}
+              cor={f.color === cores.accent ? cores.accentLight : f.color}
+              titulo={f.label}
+              descricao={f.desc}
+              onPress={() => abrirFerramenta(f)}
+            />
+          ))}
+        </GrupoAjustes>
 
         {/* APARÊNCIA — modo claro/escuro e cor da marca. O app abre no ESCURO
             (PADRAO_MODO no TemaProvider, que não lê `useColorScheme()` de propósito);
             esta é a única porta para o claro. As 12 cores oferecidas passam pelo gate
             `check:contraste`. */}
-        <AnimatedEntrance index={4}>
-          <Text style={styles.sectionTitle}>Aparência</Text>
-          <View style={styles.blocoAparencia}>
-            <SeletorTema />
-          </View>
-        </AnimatedEntrance>
-
-        {/* AJUDA E PREFERÊNCIAS — suporte, lixeira (gestão) e controle das dicas. */}
-        <AnimatedEntrance index={5}>
-          <Text style={styles.sectionTitle}>Ajuda e preferências</Text>
-          <View style={styles.toolsCard}>
-            {/* Ajuda e suporte — disponível para todos os papéis. */}
-            <OlliPressable
-              style={[styles.toolRow, styles.toolDivider]}
-              onPress={() => { vibrar('selecao'); nav.navigate('Ajuda'); }}
-              haptic={false}
-              scaleTo={0.985}
-              accessibilityLabel="Ajuda e suporte"
-            >
-              <View style={[styles.toolIcon, { backgroundColor: cores.accent + '1E', borderColor: cores.accent + '3A' }]}>
-                <MaterialCommunityIcons name="help-circle-outline" size={20} color={cores.accentLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.toolLabel}>Ajuda e suporte</Text>
-                <Text style={styles.toolDesc}>Dúvidas, tutoriais e falar com a gente</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-            </OlliPressable>
-
-            {/* Lixeira — ação de GESTÃO: o técnico não vê. */}
-            {papel !== 'tecnico' && (
-              <OlliPressable
-                style={[styles.toolRow, styles.toolDivider]}
-                onPress={() => { vibrar('selecao'); nav.navigate('Lixeira'); }}
-                haptic={false}
-                scaleTo={0.985}
-                accessibilityLabel="Lixeira"
-              >
-                <View style={[styles.toolIcon, { backgroundColor: cores.onSurfaceVariant + '1E', borderColor: cores.onSurfaceVariant + '3A' }]}>
-                  <MaterialCommunityIcons name="delete-outline" size={20} color={cores.onSurfaceVariant} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.toolLabel}>Lixeira</Text>
-                  <Text style={styles.toolDesc}>Recupere itens excluídos nos últimos 30 dias</Text>
-                </View>
-                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-              </OlliPressable>
-            )}
-
-            {/* Toggle "Mostrar dicas contextuais" — só controla DicaContextual (onboarding.ts);
-                a Central de Ajuda abaixo continua acessível independente deste switch. */}
-            <View style={[styles.toolRow, styles.toolDivider]}>
-              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
-                <MaterialCommunityIcons name="lightbulb-on-outline" size={20} color={cores.primaryLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
-                <Text style={styles.toolLabel}>Mostrar dicas contextuais</Text>
-                <Text style={styles.toolDesc}>Balões curtos explicando elementos da tela</Text>
-              </View>
-              <Switch
-                value={ajudaAtiva}
-                onValueChange={handleToggleAjuda}
-                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                thumbColor={ajudaAtiva ? cores.primary : '#fff'}
-              />
-            </View>
-
-            {/* Rever apresentação e dicas — item secundário (último, sem divisória). */}
-            <OlliPressable
-              style={styles.toolRow}
-              onPress={handleReverApresentacao}
-              haptic={false}
-              scaleTo={0.985}
-              accessibilityLabel="Rever apresentação e dicas"
-            >
-              <View style={[styles.toolIcon, { backgroundColor: '#A78BFA1E', borderColor: '#A78BFA3A' }]}>
-                <MaterialCommunityIcons name="restart" size={20} color="#A78BFA" />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.toolLabel}>Rever apresentação e dicas</Text>
-                <Text style={styles.toolDesc}>Mostra a introdução e as dicas de novo</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-            </OlliPressable>
-          </View>
-        </AnimatedEntrance>
-
-        {/* PRIVACIDADE E TERMOS — a Play exige a política acessível DENTRO do app, e a
-            exclusão de conta também fora dele (página web pública). */}
-        <AnimatedEntrance index={5}>
-          <Text style={styles.sectionTitle}>Privacidade e termos</Text>
-          <View style={styles.toolsCard}>
-            <OlliPressable
-              style={[styles.toolRow, styles.toolDivider]}
-              onPress={() => { vibrar('selecao'); nav.navigate('Privacidade'); }}
-              haptic={false}
-              scaleTo={0.985}
-              accessibilityLabel="Política de privacidade"
-            >
-              <View style={[styles.toolIcon, { backgroundColor: cores.success + '1E', borderColor: cores.success + '3A' }]}>
-                <MaterialCommunityIcons name="shield-lock-outline" size={20} color={cores.success} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.toolLabel}>Política de privacidade</Text>
-                <Text style={styles.toolDesc}>Quais dados o OLLI usa e por quê</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-            </OlliPressable>
-            <OlliPressable
-              style={[styles.toolRow, styles.toolDivider]}
-              onPress={() => { vibrar('selecao'); nav.navigate('Termos'); }}
-              haptic={false}
-              scaleTo={0.985}
-              accessibilityLabel="Termos de uso"
-            >
-              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
-                <MaterialCommunityIcons name="file-document-outline" size={20} color={cores.primaryLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.toolLabel}>Termos de uso</Text>
-                <Text style={styles.toolDesc}>As regras de uso do OLLI</Text>
-              </View>
-              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-            </OlliPressable>
-            <OlliPressable
-              style={styles.toolRow}
-              onPress={() => {
-                vibrar('selecao');
-                Linking.openURL(URL_EXCLUIR_CONTA_WEB).catch(() => {
-                  Alert.alert('Excluir conta pela web', `Não consegui abrir o navegador. Acesse ${URL_EXCLUIR_CONTA_WEB}`);
-                });
-              }}
-              haptic={false}
-              scaleTo={0.985}
-              accessibilityLabel="Excluir conta pela web"
-            >
-              <View style={[styles.toolIcon, { backgroundColor: cores.onSurfaceVariant + '1E', borderColor: cores.onSurfaceVariant + '3A' }]}>
-                <MaterialCommunityIcons name="open-in-new" size={20} color={cores.onSurfaceVariant} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.toolLabel}>Excluir conta pela web</Text>
-                <Text style={styles.toolDesc}>Pedir a exclusão pelo site, sem precisar do app</Text>
-              </View>
-              <MaterialCommunityIcons name="open-in-new" size={18} color={cores.onSurfaceMuted} />
-            </OlliPressable>
-          </View>
-        </AnimatedEntrance>
+        <GrupoAjustes titulo={SECAO_AJUSTES.aparencia} semCartao indice={ind(4)}>
+          {mostra('aparencia') ? <SeletorTema key="tema" /> : null}
+        </GrupoAjustes>
 
         {/* NOTIFICAÇÕES — Ritual diário (services/ritualDiario.ts): "Bom dia da
             OLLI" (~7h, só com sinal real) e "Fechar o dia" (~18h, só com
             movimento no dia), com domingo mudo por padrão. Cada canal é
             independente e o ritual respeita os 3 na hora (handleToggleRitual
             reagenda depois de salvar — sem esperar o próximo boot/sync). */}
-        <AnimatedEntrance index={5}>
-          <Text style={styles.sectionTitle}>Notificações</Text>
-          {notifBloqueada ? (
+        <GrupoAjustes
+          titulo={SECAO_AJUSTES.notificacoes}
+          indice={ind(5)}
+          aviso={notifBloqueada ? (
             <View style={styles.notifBloqueadaCard}>
               <MaterialCommunityIcons name="bell-off-outline" size={20} color={cores.warning} />
               <View style={{ flex: 1, marginLeft: 10 }}>
@@ -1211,185 +1160,262 @@ export default function ContaScreen() {
                 <Text style={styles.notifBloqueadaTexto}>
                   Os avisos abaixo só chegam depois que você liberar as notificações do OLLI nos ajustes do aparelho.
                 </Text>
-                <TouchableOpacity
+                <OlliPressable
+                  haptic={false}
+                  scaleTo={0.97}
                   onPress={() => { vibrar('selecao'); void abrirConfiguracoesPermissao(); }}
-                  accessibilityRole="button"
                   accessibilityLabel="Abrir ajustes do aparelho"
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.notifBloqueadaBotao}
                 >
                   <Text style={styles.notifBloqueadaLink}>Abrir ajustes</Text>
-                </TouchableOpacity>
+                </OlliPressable>
               </View>
             </View>
           ) : null}
-          <View style={styles.toolsCard}>
-            <View style={[styles.toolRow, styles.toolDivider]}>
-              <View style={[styles.toolIcon, { backgroundColor: cores.accent + '1E', borderColor: cores.accent + '3A' }]}>
-                <MaterialCommunityIcons name="weather-sunset-up" size={20} color={cores.accentLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
-                <Text style={styles.toolLabel}>Bom dia da OLLI</Text>
-                <Text style={styles.toolDesc}>~7h, só quando há um sinal real (visita, cobrança ou cliente para lembrar)</Text>
-              </View>
-              <Switch
-                value={ritualBomDia}
-                onValueChange={(v) => handleToggleRitual('bomDia', v)}
-                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                thumbColor={ritualBomDia ? cores.primary : '#fff'}
-              />
-            </View>
+        >
+          {mostra('notifBomDia') ? (
+            <LinhaAjuste
+              key="notifBomDia"
+              icone="weather-sunset-up"
+              cor={cores.accentLight}
+              {...TEXTO_AJUSTE.notifBomDia}
+              direita={
+                <Switch
+                  value={ritualBomDia}
+                  onValueChange={(v) => handleToggleRitual('bomDia', v)}
+                  trackColor={switchTrilho}
+                  thumbColor={ritualBomDia ? cores.primary : '#fff'}
+                  accessibilityLabel={TEXTO_AJUSTE.notifBomDia.titulo}
+                />
+              }
+            />
+          ) : null}
+          {mostra('notifFecharDia') ? (
+            <LinhaAjuste
+              key="notifFecharDia"
+              icone="weather-night"
+              cor={cores.primaryLight}
+              {...TEXTO_AJUSTE.notifFecharDia}
+              direita={
+                <Switch
+                  value={ritualFecharDia}
+                  onValueChange={(v) => handleToggleRitual('fecharDia', v)}
+                  trackColor={switchTrilho}
+                  thumbColor={ritualFecharDia ? cores.primary : '#fff'}
+                  accessibilityLabel={TEXTO_AJUSTE.notifFecharDia.titulo}
+                />
+              }
+            />
+          ) : null}
+          {/* Resumo diário por E-MAIL: diferente dos rituais acima (notificação local
+              deste aparelho), sai do servidor e vale para a conta — celular, desktop e
+              painel mostram a mesma preferência. */}
+          {mostra('notifResumoEmail') ? (
+            <LinhaAjuste
+              key="notifResumoEmail"
+              icone="email-fast-outline"
+              cor={cores.primary}
+              titulo={ROTULO_RESUMO_EMAIL}
+              descricao={descricaoResumoEmail(resumoEmail.situacao, resumoEmail.erroAoSalvar)}
+              direita={
+                <ResumoEmailControle
+                  situacao={resumoEmail.situacao}
+                  salvando={resumoEmail.salvando}
+                  alternar={resumoEmail.alternar}
+                  recarregar={resumoEmail.recarregar}
+                />
+              }
+            />
+          ) : null}
+          {mostra('notifDomingo') ? (
+            <LinhaAjuste
+              key="notifDomingo"
+              icone="calendar-remove-outline"
+              cor={cores.onSurfaceVariant}
+              {...TEXTO_AJUSTE.notifDomingo}
+              direita={
+                <Switch
+                  value={ritualDomingo}
+                  onValueChange={(v) => handleToggleRitual('domingo', v)}
+                  trackColor={switchTrilho}
+                  thumbColor={ritualDomingo ? cores.primary : '#fff'}
+                  accessibilityLabel={TEXTO_AJUSTE.notifDomingo.titulo}
+                />
+              }
+            />
+          ) : null}
+        </GrupoAjustes>
 
-            <View style={[styles.toolRow, styles.toolDivider]}>
-              <View style={[styles.toolIcon, { backgroundColor: cores.primaryLight + '1E', borderColor: cores.primaryLight + '3A' }]}>
-                <MaterialCommunityIcons name="weather-night" size={20} color={cores.primaryLight} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
-                <Text style={styles.toolLabel}>Fechar o dia</Text>
-                <Text style={styles.toolDesc}>~18h, só nos dias com movimento — prévia do relatório falado</Text>
-              </View>
-              <Switch
-                value={ritualFecharDia}
-                onValueChange={(v) => handleToggleRitual('fecharDia', v)}
-                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                thumbColor={ritualFecharDia ? cores.primary : '#fff'}
-              />
-            </View>
-
-            {/* Resumo diário por E-MAIL: diferente dos rituais acima (notificação local
-                deste aparelho), sai do servidor e vale para a conta — celular, desktop e
-                painel mostram a mesma preferência. */}
-            <View style={[styles.toolRow, styles.toolDivider]}>
-              <View style={[styles.toolIcon, { backgroundColor: cores.primary + '1E', borderColor: cores.primary + '3A' }]}>
-                <MaterialCommunityIcons name="email-fast-outline" size={20} color={cores.primary} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
-                <Text style={styles.toolLabel}>{ROTULO_RESUMO_EMAIL}</Text>
-                <Text style={styles.toolDesc}>{descricaoResumoEmail(resumoEmail.situacao, resumoEmail.erroAoSalvar)}</Text>
-              </View>
-              <ResumoEmailControle
-                situacao={resumoEmail.situacao}
-                salvando={resumoEmail.salvando}
-                alternar={resumoEmail.alternar}
-                recarregar={resumoEmail.recarregar}
-              />
-            </View>
-
-            <View style={styles.toolRow}>
-              <View style={[styles.toolIcon, { backgroundColor: cores.onSurfaceVariant + '1E', borderColor: cores.onSurfaceVariant + '3A' }]}>
-                <MaterialCommunityIcons name="calendar-remove-outline" size={20} color={cores.onSurfaceVariant} />
-              </View>
-              <View style={{ flex: 1, marginLeft: 12, marginRight: 10 }}>
-                <Text style={styles.toolLabel}>Notificar aos domingos</Text>
-                <Text style={styles.toolDesc}>Desligado por padrão — domingo é dia mudo</Text>
-              </View>
-              <Switch
-                value={ritualDomingo}
-                onValueChange={(v) => handleToggleRitual('domingo', v)}
-                trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                thumbColor={ritualDomingo ? cores.primary : '#fff'}
-              />
-            </View>
-          </View>
-        </AnimatedEntrance>
-
-        {/* CONTA E BACKUP */}
-        <AnimatedEntrance index={5}>
-          <Text style={styles.sectionTitle}>Conta e backup</Text>
-        </AnimatedEntrance>
-
-        {!configured && (
-          <AnimatedEntrance index={5}>
-            <View style={styles.card}>
-              <View style={styles.iconHeader}>
-                <MaterialCommunityIcons name="cloud-cog-outline" size={24} color={cores.warning} />
-                <Text style={styles.cardTitle}>Backup ainda não ativado</Text>
-              </View>
-              <Text style={styles.text}>
-                Para ativar o backup na nuvem, é preciso criar um projeto gratuito no Supabase e colar 2 chaves no app.
-                É rápido — peça ao assistente para te guiar.
-              </Text>
-              <View style={styles.stepRow}><Text style={styles.stepNum}>1</Text><Text style={styles.stepText}>Crie conta grátis em supabase.com</Text></View>
-              <View style={styles.stepRow}><Text style={styles.stepNum}>2</Text><Text style={styles.stepText}>Cole a URL e a chave no arquivo de configuração</Text></View>
-              <View style={styles.stepRow}><Text style={styles.stepNum}>3</Text><Text style={styles.stepText}>Pronto: login e backup automático</Text></View>
-            </View>
-          </AnimatedEntrance>
-        )}
-
-        {/* LOGADO (dentro das Tabs sempre há sessão) */}
-        {configured && user && (
-          <AnimatedEntrance index={5}>
-            <View style={styles.card}>
-              <View style={styles.userRow}>
-                <View style={styles.avatarSm}><MaterialCommunityIcons name="account" size={24} color={cores.primary} /></View>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={styles.userEmail}>{user.email}</Text>
-                  <View style={styles.connected}>
-                    <View style={styles.dot} />
-                    <Text style={styles.connectedText}>Conectado à nuvem</Text>
-                  </View>
+        {/* BACKUP E DADOS — com sessão, cada ação é uma linha. Sem nuvem
+            configurada (build de desenvolvimento), o cartão de aviso explica como
+            ativar.
+            MEMBRO DE EQUIPE: o toggle e o botão não fazem nada para ele — a
+            guarda de backup.ts recusa o snapshot porque o banco local
+            contém a base da empresa. Em vez de deixar dois controles
+            mentindo, a tela explica de quem é a responsabilidade (rodapé). "Ver
+            cópias de segurança" continua: as cópias dele são dele. */}
+        <GrupoAjustes
+          titulo={SECAO_AJUSTES.backup}
+          indice={ind(6)}
+          aviso={!configured && mostra('backupStatus') ? (
+              <View style={[styles.card, { marginBottom: Spacing.sm }]}>
+                <View style={styles.iconHeader}>
+                  <MaterialCommunityIcons name="cloud-cog-outline" size={24} color={cores.warning} />
+                  <Text style={styles.cardTitle}>Backup ainda não ativado</Text>
                 </View>
-              </View>
-              {(() => {
-                const r = resumoBackupNuvem(motivoBackup, autoBackupAtivo, lastBackup);
-                const corTom = r.tom === 'success' ? cores.success : r.tom === 'warning' ? cores.warning : cores.onSurfaceMuted;
-                return (
-                  <View style={styles.backupStatus}>
-                    <MaterialCommunityIcons name={r.icone} size={20} color={corTom} />
-                    <Text style={styles.backupText}>{r.texto}</Text>
-                  </View>
-                );
-              })()}
-
-              {/* MEMBRO DE EQUIPE: o toggle e o botão não fazem nada para ele — a
-                  guarda de backup.ts recusa o snapshot porque o banco local
-                  contém a base da empresa. Em vez de deixar dois controles
-                  mentindo, a tela explica de quem é a responsabilidade. "Ver
-                  cópias de segurança" continua: as cópias dele são dele. */}
-              {motivoBackup === 'somente_dono' ? (
-                <Text style={[styles.autoBackupHint, { marginBottom: Spacing.base }]}>
-                  {COPY_BACKUP_NUVEM.somente_dono.detalhe}
+                <Text style={styles.text}>
+                  Para ativar o backup na nuvem, é preciso criar um projeto gratuito no Supabase e colar 2 chaves no app.
+                  É rápido — peça ao assistente para te guiar.
                 </Text>
-              ) : (
-                <>
-                  {motivoBackup === 'indeterminado' && (
-                    <Text style={[styles.autoBackupHint, { marginBottom: Spacing.base }]}>
-                      {COPY_BACKUP_NUVEM.indeterminado.detalhe}
-                    </Text>
-                  )}
-                  <View style={styles.autoBackupRow}>
-                    <View style={{ flex: 1, marginRight: 10 }}>
-                      <Text style={styles.autoBackupLabel}>Backup automático diário</Text>
-                      <Text style={styles.autoBackupHint}>Guarda uma cópia por dia na nuvem, sem precisar apertar nada</Text>
-                    </View>
-                    <Switch
-                      value={autoBackupAtivo}
-                      onValueChange={handleToggleAutoBackup}
-                      trackColor={{ false: cores.outline, true: cores.primary + '80' }}
-                      thumbColor={autoBackupAtivo ? cores.primary : '#fff'}
-                    />
-                  </View>
+                <View style={styles.stepRow}><Text style={styles.stepNum}>1</Text><Text style={styles.stepText}>Crie conta grátis em supabase.com</Text></View>
+                <View style={styles.stepRow}><Text style={styles.stepNum}>2</Text><Text style={styles.stepText}>Cole a URL e a chave no arquivo de configuração</Text></View>
+                <View style={styles.stepRow}><Text style={styles.stepNum}>3</Text><Text style={styles.stepText}>Pronto: login e backup automático</Text></View>
+              </View>
+          ) : null}
+          rodape={
+            motivoBackup === 'somente_dono'
+              ? COPY_BACKUP_NUVEM.somente_dono.detalhe
+              : motivoBackup === 'indeterminado'
+                ? COPY_BACKUP_NUVEM.indeterminado.detalhe
+                : undefined
+          }
+        >
+          {sessaoAtiva && mostra('backupStatus') ? (
+            <LinhaAjuste key="backupStatus" icone={resumoBackup.icone} cor={corResumoBackup} titulo="Backup na nuvem" descricao={resumoBackup.texto} />
+          ) : null}
+          {mostra('backupAuto') ? (
+            <LinhaAjuste
+              key="backupAuto"
+              icone="cloud-sync-outline"
+              cor={cores.primary}
+              {...TEXTO_AJUSTE.backupAuto}
+              direita={
+                <Switch
+                  value={autoBackupAtivo}
+                  onValueChange={handleToggleAutoBackup}
+                  trackColor={switchTrilho}
+                  thumbColor={autoBackupAtivo ? cores.primary : '#fff'}
+                  accessibilityLabel={TEXTO_AJUSTE.backupAuto.titulo}
+                />
+              }
+            />
+          ) : null}
+          {mostra('backupAgora') ? (
+            <LinhaAjuste
+              key="backupAgora"
+              icone="cloud-upload-outline"
+              cor={cores.accentLight}
+              {...TEXTO_AJUSTE.backupAgora}
+              onPress={handleBackup}
+              carregando={fazendoBackup}
+              desabilitado={saindo !== null}
+            />
+          ) : null}
+          {mostra('backupCopias') ? (
+            <LinhaAjuste key="backupCopias" icone="history" cor={cores.primaryLight} {...TEXTO_AJUSTE.backupCopias} onPress={handleAbrirBackups} />
+          ) : null}
+          {mostra('lixeira') ? (
+            <LinhaAjuste key="lixeira" icone="delete-outline" cor={cores.onSurfaceVariant} {...TEXTO_AJUSTE.lixeira} onPress={() => nav.navigate('Lixeira')} />
+          ) : null}
+        </GrupoAjustes>
 
-                  <OlliButton label="Fazer backup agora" variant="gradient" size="lg" fullWidth loading={fazendoBackup} disabled={saindo} onPress={handleBackup} icon={<MaterialCommunityIcons name="cloud-upload" size={20} color="#fff" />} style={{ marginBottom: 10 }} />
-                </>
-              )}
-              <OlliButton label="Ver cópias de segurança" variant="outline" size="lg" fullWidth onPress={handleAbrirBackups} icon={<MaterialCommunityIcons name="history" size={20} color={cores.primary} />} />
-            </View>
+        {/* AJUDA — suporte e controle das dicas. */}
+        <GrupoAjustes titulo={SECAO_AJUSTES.ajuda} indice={ind(7)}>
+          {mostra('ajuda') ? (
+            <LinhaAjuste key="ajuda" icone="help-circle-outline" cor={cores.accentLight} {...TEXTO_AJUSTE.ajuda} onPress={() => nav.navigate('Ajuda')} />
+          ) : null}
+          {/* Toggle "Mostrar dicas contextuais" — só controla DicaContextual (onboarding.ts);
+              a Central de Ajuda acima continua acessível independente deste switch. */}
+          {mostra('dicas') ? (
+            <LinhaAjuste
+              key="dicas"
+              icone="lightbulb-on-outline"
+              cor={cores.primaryLight}
+              {...TEXTO_AJUSTE.dicas}
+              direita={
+                <Switch
+                  value={ajudaAtiva}
+                  onValueChange={handleToggleAjuda}
+                  trackColor={switchTrilho}
+                  thumbColor={ajudaAtiva ? cores.primary : '#fff'}
+                  accessibilityLabel={TEXTO_AJUSTE.dicas.titulo}
+                />
+              }
+            />
+          ) : null}
+          {mostra('apresentacao') ? (
+            <LinhaAjuste key="apresentacao" icone="restart" cor={cores.avatarLilac} {...TEXTO_AJUSTE.apresentacao} onPress={handleReverApresentacao} />
+          ) : null}
+        </GrupoAjustes>
 
-            <OlliButton label="Sair da conta" variant="ghost" size="md" fullWidth loading={saindo} disabled={fazendoBackup || excluindo} onPress={handleLogout} haptic={false} icon={<MaterialCommunityIcons name="logout" size={18} color={cores.danger} />} textStyle={{ color: cores.danger }} />
+        {/* PRIVACIDADE E TERMOS — a Play exige a política acessível DENTRO do app, e a
+            exclusão de conta também fora dele (página web pública). */}
+        <GrupoAjustes titulo={SECAO_AJUSTES.privacidade} indice={ind(8)}>
+          {mostra('privacidade') ? (
+            <LinhaAjuste key="privacidade" icone="shield-lock-outline" cor={cores.success} {...TEXTO_AJUSTE.privacidade} onPress={() => nav.navigate('Privacidade')} />
+          ) : null}
+          {mostra('termos') ? (
+            <LinhaAjuste key="termos" icone="file-document-outline" cor={cores.primaryLight} {...TEXTO_AJUSTE.termos} onPress={() => nav.navigate('Termos')} />
+          ) : null}
+          {mostra('excluirWeb') ? (
+            <LinhaAjuste
+              key="excluirWeb"
+              icone="web"
+              cor={cores.onSurfaceVariant}
+              {...TEXTO_AJUSTE.excluirWeb}
+              seta="externo"
+              onPress={() => {
+                Linking.openURL(URL_EXCLUIR_CONTA_WEB).catch(() => {
+                  toast.erro(`Não consegui abrir o navegador. Acesse ${URL_EXCLUIR_CONTA_WEB}`, { titulo: 'Excluir conta pela web' });
+                });
+              }}
+            />
+          ) : null}
+        </GrupoAjustes>
 
-            {/* ZONA DE PERIGO — exclusão de conta (requisito Apple + LGPD) */}
-            <TouchableOpacity
-              style={styles.excluirLink}
-              onPress={() => { vibrar('selecao'); setShowExcluir(true); }}
-              disabled={saindo || excluindo}
-              accessibilityRole="button"
-              accessibilityLabel="Excluir minha conta"
-            >
-              <MaterialCommunityIcons name="account-remove-outline" size={16} color={cores.onSurfaceMuted} />
-              <Text style={styles.excluirLinkText}>Excluir minha conta</Text>
-            </TouchableOpacity>
-          </AnimatedEntrance>
-        )}
+        {/* SESSÃO — quem está conectado, as duas saídas e a exclusão da conta
+            (requisito Apple + LGPD). Cada saída tem a SUA linha e a SUA folha de
+            confirmação; o carregando aparece na linha que foi tocada. */}
+        <GrupoAjustes titulo={SECAO_AJUSTES.sessao} indice={ind(9)}>
+          {mostra('sessaoConta') ? (
+            <LinhaAjuste key="sessaoConta" icone="account-circle-outline" cor={cores.success} titulo={user?.email ?? 'Sua conta'} descricao="Conta conectada neste aparelho" />
+          ) : null}
+          {mostra('sair') ? (
+            <LinhaAjuste
+              key="sair"
+              icone="logout"
+              cor={cores.danger}
+              {...TEXTO_AJUSTE.sair}
+              destrutivo
+              onPress={handleSair}
+              carregando={saindo === 'manter'}
+              desabilitado={saindo !== null || fazendoBackup || excluindo}
+            />
+          ) : null}
+          {mostra('sairApagar') ? (
+            <LinhaAjuste
+              key="sairApagar"
+              icone="cellphone-remove"
+              cor={cores.danger}
+              {...TEXTO_AJUSTE.sairApagar}
+              destrutivo
+              onPress={handleSairApagando}
+              carregando={saindo === 'apagar'}
+              desabilitado={saindo !== null || fazendoBackup || excluindo}
+            />
+          ) : null}
+          {mostra('excluirConta') ? (
+            <LinhaAjuste
+              key="excluirConta"
+              icone="account-remove-outline"
+              cor={cores.danger}
+              {...TEXTO_AJUSTE.excluirConta}
+              destrutivo
+              onPress={() => { vibrar('aviso'); setErroExcluir(null); setShowExcluir(true); }}
+              desabilitado={saindo !== null || excluindo}
+            />
+          ) : null}
+        </GrupoAjustes>
         </>
         )}
 
@@ -1407,6 +1433,15 @@ export default function ContaScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: Spacing.base }}>
+            {erroRestaurar ? (
+              <View style={styles.erroInline} accessibilityLiveRegion="polite" accessibilityRole="alert">
+                <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.danger} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.erroInlineTitulo}>Não deu para restaurar</Text>
+                  <Text style={styles.erroInlineTexto}>{erroRestaurar}</Text>
+                </View>
+              </View>
+            ) : null}
             {carregandoBackups ? (
               <ActivityIndicator color={cores.primary} style={{ marginTop: 24 }} />
             ) : backupsErro ? (
@@ -1514,6 +1549,7 @@ export default function ContaScreen() {
       {showExcluir && (
         <ModalExcluirConta
           busy={excluindo}
+          erro={erroExcluir}
           loginApple={loginApple}
           tipoConta={tipo}
           org={org}
@@ -1528,15 +1564,18 @@ export default function ContaScreen() {
 /**
  * Modal "Excluir minha conta": lista o que será apagado, deixa claro que é
  * irreversível e exige que o usuário digite EXCLUIR (1ª confirmação). O botão
- * dispara o Alert final do pai (2ª confirmação) que efetiva a exclusão.
+ * dispara a folha destrutiva final do pai (2ª confirmação) que efetiva a
+ * exclusão. Se o servidor recusar, o motivo aparece aqui dentro (`erro`).
  *
  * `loginApple` (true | false | null=não sei) controla o aviso de revogação do
  * "Entrar com a Apple" — ver `avisoApple` abaixo.
  */
 function ModalExcluirConta({
-  busy, loginApple, tipoConta, org, onFechar, onConfirmar,
+  busy, erro, loginApple, tipoConta, org, onFechar, onConfirmar,
 }: {
   busy: boolean;
+  /** Por que a última tentativa falhou (null = nenhuma falha a mostrar). */
+  erro: string | null;
   loginApple: boolean | null;
   tipoConta: ReturnType<typeof useTipoConta>['tipo'];
   org: Organizacao | null;
@@ -1678,9 +1717,19 @@ function ModalExcluirConta({
               style={styles.sheetInput}
             />
 
+            {erro ? (
+              <View style={[styles.erroInline, { marginTop: Spacing.base, marginBottom: 0 }]} accessibilityLiveRegion="polite" accessibilityRole="alert">
+                <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.danger} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.erroInlineTitulo}>A conta não foi excluída</Text>
+                  <Text style={styles.erroInlineTexto}>{erro}</Text>
+                </View>
+              </View>
+            ) : null}
+
             <OlliButton
               label="Excluir minha conta"
-              variant="gradient"
+              variant="danger"
               size="lg"
               fullWidth
               loading={busy}
@@ -1699,6 +1748,21 @@ function ModalExcluirConta({
   );
 }
 
+/** Erro mostrado dentro de uma folha/Modal, onde o toast não aparece por cima. */
+function ErroNaFolha({ titulo, texto }: { titulo: string; texto: string }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  return (
+    <View style={[styles.erroInline, { marginTop: Spacing.md, marginBottom: 0 }]} accessibilityLiveRegion="polite" accessibilityRole="alert">
+      <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.danger} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.erroInlineTitulo}>{titulo}</Text>
+        <Text style={styles.erroInlineTexto}>{texto}</Text>
+      </View>
+    </View>
+  );
+}
+
 /** Modal "Criar conta empresa": pede o nome e cria a org com o user como owner. */
 function ModalCriarEmpresa({
   nomeSugerido, podeConvidar, onFechar, onCriada,
@@ -1707,24 +1771,27 @@ function ModalCriarEmpresa({
   const styles = useEstilos(criarEstilos);
   const [nome, setNome] = useState(nomeSugerido);
   const [criando, setCriando] = useState(false);
+  // Falha fica DENTRO da folha (o toast ficaria por baixo do Modal no Android).
+  const [erro, setErro] = useState<string | null>(null);
 
   async function criar() {
+    setErro(null);
     setCriando(true);
     try {
       await criarOrganizacao(nome);
-      vibrar('sucesso');
+      // Fecha a folha primeiro: o toast de sucesso aparece na Conta, por cima.
+      onCriada();
       // Só promete convite a quem o plano libera: sem o Empresa, a tela Equipe mostra
       // o muro do plano, e "agora você pode convidar" seria mentira.
-      Alert.alert(
-        'Empresa criada!',
+      toast.sucesso(
         podeConvidar
           ? 'Agora você pode convidar sua equipe pela tela Equipe.'
           : 'Convidar técnicos é um recurso do plano Empresa. Veja os planos para saber como liberar.',
+        { titulo: 'Empresa criada' },
       );
-      onCriada();
-    } catch (e: any) {
+    } catch (e: unknown) {
       vibrar('erro');
-      Alert.alert('Não deu', e?.message ?? 'Não consegui criar a empresa agora.');
+      setErro(mensagemDeErro(e, SEM_INTERNET, 'Não consegui criar a empresa agora. Tente de novo.'));
       setCriando(false);
     }
   }
@@ -1753,6 +1820,7 @@ function ModalCriarEmpresa({
               style={styles.sheetInput}
               autoFocus
             />
+            {erro ? <ErroNaFolha titulo="A empresa não foi criada" texto={erro} /> : null}
             <OlliButton
               label="Criar empresa"
               variant="gradient"
@@ -1776,22 +1844,26 @@ function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAce
   const styles = useEstilos(criarEstilos);
   const [codigo, setCodigo] = useState('');
   const [aceitando, setAceitando] = useState(false);
+  // Erro dentro da folha (o toast ficaria por baixo do Modal no Android).
+  const [erro, setErro] = useState<{ titulo: string; texto: string } | null>(null);
 
   async function aceitar() {
     const token = extrairToken(codigo);
     if (!token) {
-      Alert.alert('Código inválido', 'Cole o código ou o link completo do convite que você recebeu.');
+      vibrar('aviso');
+      setErro({ titulo: 'Código inválido', texto: 'Cole o código ou o link completo do convite que você recebeu.' });
       return;
     }
+    setErro(null);
     setAceitando(true);
     try {
       const org = await aceitarConvite(token);
-      vibrar('sucesso');
-      Alert.alert('Bem-vindo à equipe!', `Você entrou em ${org.nome} como ${PAPEL_LABEL[org.papel]}.`);
+      // Fecha a folha primeiro: o toast de boas-vindas aparece na Conta, por cima.
       onAceito();
-    } catch (e: any) {
+      toast.sucesso(`Você entrou em ${org.nome} como ${PAPEL_LABEL[org.papel]}.`, { titulo: 'Bem-vindo à equipe!' });
+    } catch (e: unknown) {
       vibrar('erro');
-      Alert.alert('Não deu', e?.message ?? 'Não consegui aceitar o convite agora.');
+      setErro({ titulo: 'Não deu para entrar', texto: mensagemDeErro(e, SEM_INTERNET, 'Não consegui aceitar o convite agora. Tente de novo.') });
       setAceitando(false);
     }
   }
@@ -1821,6 +1893,7 @@ function ModalEntrarEquipe({ onFechar, onAceito }: { onFechar: () => void; onAce
               style={styles.sheetInput}
               autoFocus
             />
+            {erro ? <ErroNaFolha titulo={erro.titulo} texto={erro.texto} /> : null}
             <OlliButton
               label="Entrar na equipe"
               variant="gradient"
@@ -1881,9 +1954,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   assinaturaTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   assinaturaSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
 
-  // Excluir conta
-  excluirLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, marginTop: 4 },
-  excluirLinkText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted },
 
   fotoOpcao: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 16, paddingVertical: 14, marginTop: 10 },
   fotoOpcaoText: { fontSize: 15, fontWeight: '700', color: c.onSurface },
@@ -1906,7 +1976,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   notifBloqueadaCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.warningLight, borderRadius: BorderRadius.lg, padding: 12, marginHorizontal: Spacing.base, marginBottom: Spacing.sm },
   notifBloqueadaTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
   notifBloqueadaTexto: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginTop: 2 },
-  notifBloqueadaLink: { fontSize: 13, fontWeight: '800', color: c.accentLight, marginTop: 6 },
+  notifBloqueadaLink: { fontSize: 13, fontWeight: '800', color: c.accentLight },
+  notifBloqueadaBotao: { alignSelf: 'flex-start', marginTop: 6, paddingVertical: 4 },
   excluirAppleForte: { fontWeight: '700', color: c.onSurface },
   excluirCancelar: { alignItems: 'center', paddingVertical: 14, marginTop: 4 },
   excluirCancelarText: { fontSize: 14, fontWeight: '700', color: c.onSurfaceVariant },
@@ -1975,6 +2046,16 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   backupItemMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
 
   version: { textAlign: 'center', fontSize: 12, color: c.onSurfaceMuted, marginTop: Spacing.xl },
+
+  // Busca de ajuste sem resultado
+  buscaVazia: { alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.xl },
+  buscaVaziaTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface, textAlign: 'center' },
+  buscaVaziaTexto: { fontSize: 13, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 19 },
+
+  // Erro mostrado dentro de Modal (lista de cópias, excluir conta, folhas de equipe)
+  erroInline: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: c.dangerLight, borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.md },
+  erroInlineTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
+  erroInlineTexto: { fontSize: 13, color: c.onSurface, lineHeight: 18, marginTop: 2 },
 
   // Empresa / Equipe (Onda 2)
   empresaCard: { backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
