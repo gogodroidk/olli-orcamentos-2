@@ -368,6 +368,31 @@ console.log('\n5) política do Nominatim: teto global, fila, orçamento, cache, 
     await nom({ city: 'Jundiaí', state: 'São Paulo' });
     checar('passado o recuo, volta a consultar', m.chamadas.length === 2);
   }
+  reset();
+  {
+    // Pedidos SIMULTÂNEOS (dois /geo no mesmo isolate): cada um reserva o seu
+    // horário de saída e dorme no PRÓPRIO contexto — nada de encadear o fetch numa
+    // promessa criada por outro pedido (no Workers isso roda I/O no contexto alheio).
+    // Relógio parado: cada espera registra o horário-ALVO de saída daquele pedido.
+    const t0 = Date.parse('2026-10-02T10:00:00-03:00');
+    const saidas: number[] = [];
+    const m = montarFetch({ nominatim: () => respJson(NOMINATIM_RUA) });
+    const nom = criarNominatim({ env: ENV_OK(), fetchFn: m.f, agora: () => t0, dormir: async (ms: number) => { saidas.push(ms); }, cache: null, orcamento: { restante: 3 } });
+    const rs = await Promise.all(['Rua E', 'Rua F', 'Rua G'].map((rua) => nom({ street: rua, city: 'Campinas', state: 'São Paulo' })));
+    checar('simultâneos: todos respondem e saem com horários reservados em sequência',
+      rs.every((r) => r.estado === 'ok') && m.chamadas.length === 3 && js(saidas) === js([NOMINATIM_INTERVALO_MS, 2 * NOMINATIM_INTERVALO_MS]), js(saidas));
+    const fonteGeo = readFileSync('worker/src/geoClientes.js', 'utf8');
+    checar('sem promessa compartilhada entre pedidos (fila por horário, não por .then)', !/filaNominatim/.test(fonteGeo));
+  }
+  reset();
+  {
+    const m = montarFetch({ nominatim: () => respJson({}, 429) });
+    const rel = relogio();
+    const nom = criarNominatim({ env: ENV_OK(), fetchFn: m.f, agora: rel.agora, dormir: rel.dormir, cache: null, orcamento: { restante: 3 } });
+    const rs = await Promise.all(['Rua H', 'Rua I'].map((rua) => nom({ street: rua, city: 'Campinas', state: 'São Paulo' })));
+    checar('simultâneos: 429 do primeiro faz o que esperava desistir (recuo)',
+      m.chamadas.length === 1 && rs[1].estado === 'indisponivel' && (rs[1] as { motivo?: string }).motivo === 'recuo', js(rs));
+  }
   const fonte = readFileSync('worker/src/geoClientes.js', 'utf8');
   checar('nada de Google Geocoding no geo do cliente', !/googleapis|maps\.google/.test(fonte));
 }
@@ -611,7 +636,7 @@ console.log('\n10) espelhos: SQLite local, cloudSync, agenda, worker e wrangler'
   checar('SQLite: v<9 acrescenta lat/lon/ibge/geo_precisao e agendamentos.externa',
     /if \(v < 9\)/.test(db) && /\['lat', 'REAL'\], \['lon', 'REAL'\], \['ibge', 'TEXT'\], \['geo_precisao', 'TEXT'\]/.test(db) &&
     /addColumnIfMissing\(database, 'agendamentos', 'externa', 'INTEGER'\)/.test(db));
-  checar('SQLite: CREATE TABLE já nasce com as colunas', /geo_precisao TEXT\n\s*\);/.test(db) && /externa INTEGER\n\s*\);/.test(db));
+  checar('SQLite: CREATE TABLE já nasce com as colunas', /geo_precisao TEXT\r?\n\s*\);/.test(db) && /externa INTEGER\r?\n\s*\);/.test(db));
   checar('saveCliente: geo decidida pelo que está gravado (geoAposEdicao)', /geoAposEdicao\(anterior, cliente\)/.test(db));
   checar('saveCliente: geocodifica DEPOIS de gravar, em segundo plano', db.indexOf("mirrorPush('clientes', salvo)") < db.indexOf('void geocodificarClienteSalvo(salvo)'));
   const geoSalvo = db.slice(db.indexOf('async function geocodificarClienteSalvo'));

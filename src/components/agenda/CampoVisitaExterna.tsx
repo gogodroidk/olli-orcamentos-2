@@ -60,8 +60,10 @@ export function CampoVisitaExterna({ valor, sugestao, onChange, rotulo = 'Servi�
         </View>
       ) : (
         <Text style={[styles.ajuda, { marginTop: Spacing.xs }]}>
+          {/* Copy honesta: o aviso de chuva que usa este campo ainda não existe —
+              nada de prometer "o OLLI sugere remarcar" antes de ele estar no ar. */}
           {valor === true
-            ? 'Com chuva prevista, o OLLI sugere remarcar e avisar o cliente.'
+            ? 'Marcada como externa: serviço que a chuva pode atrapalhar.'
             : valor === false
               ? 'A chuva não muda esta visita.'
               : 'Sem resposta, o OLLI não sabe se a chuva atrapalha esta visita.'}
@@ -79,6 +81,8 @@ function Chip({ ativo, rotulo, icone, onPress }: { ativo: boolean; rotulo: strin
       style={[styles.chip, ativo && styles.chipAtivo]}
       onPress={onPress}
       activeOpacity={0.85}
+      // Chip tem ~34 dp de altura: o hitSlop leva o alvo de toque a 48 dp (Android).
+      hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
       accessibilityRole="radio"
       accessibilityState={{ selected: ativo, checked: ativo }}
       accessibilityLabel={rotulo}

@@ -26,10 +26,13 @@
  * doado e quem desrespeita é bloqueado por IP (o que derrubaria o recurso para
  * TODOS os clientes do OLLI de uma vez). Então:
  *   - User-Agent próprio identificando o app e um contato (`NOMINATIM_USER_AGENT`);
- *   - no máximo 1 requisição por segundo: fila serial no isolate com intervalo de
- *     1,1 s (`NOMINATIM_INTERVALO_MS`) + teto GLOBAL pelo binding NOMINATIM_RL
- *     (50/min, abaixo de 1/s mesmo somando todos os isolates). Binding ausente =
- *     NÃO chama (fail-closed): sem teto global não dá para garantir a regra;
+ *   - no máximo 1 requisição por segundo: horário de saída reservado no isolate
+ *     com intervalo de 1,1 s (`NOMINATIM_INTERVALO_MS`) + teto pelo binding
+ *     NOMINATIM_RL (50/min, chave única). ATENÇÃO: o contador do Rate Limiting
+ *     da Cloudflare é por data center, não planetário — com tráfego espalhado em
+ *     vários POPs a soma pode passar de 1/s. No volume atual isso não acontece;
+ *     se o /geo crescer, o teto certo é um Durable Object único. Binding ausente
+ *     = NÃO chama (fail-closed);
  *   - cache: mapa do isolate + Cache API por consulta normalizada (30 dias), e o
  *     próprio banco (o ponto fica gravado no cliente; ninguém pergunta de novo);
  *   - nada de autocompletar: só consulta ao SALVAR um cliente ou no backfill;
@@ -106,8 +109,8 @@ function texto(v, limite = 200) {
 // Estado do isolate (fila do Nominatim, recuo, caches)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let filaNominatim = Promise.resolve();
-let ultimaNominatimMs = Number.NEGATIVE_INFINITY;
+/** Próximo horário livre para sair uma consulta ao Nominatim neste isolate (ms). */
+let proximaSaidaNominatimMs = Number.NEGATIVE_INFINITY;
 let pendentesNominatim = 0;
 let recuoAteMs = 0;
 const cacheNominatim = new Map(); // chave → { exp, achado }
@@ -116,8 +119,7 @@ const CACHE_MAX = 500;
 
 /** Só para teste: estado de módulo herdado do vizinho não prova nada. */
 export function limparEstadoGeo() {
-  filaNominatim = Promise.resolve();
-  ultimaNominatimMs = Number.NEGATIVE_INFINITY;
+  proximaSaidaNominatimMs = Number.NEGATIVE_INFINITY;
   pendentesNominatim = 0;
   recuoAteMs = 0;
   cacheNominatim.clear();
@@ -215,16 +217,22 @@ export function criarNominatim(o) {
 
     orcamento.restante -= 1;
     pendentesNominatim += 1;
-    const minha = filaNominatim.then(async () => {
-      const espera = ultimaNominatimMs + NOMINATIM_INTERVALO_MS - agora();
-      if (espera > 0) await dormir(espera);
-      ultimaNominatimMs = agora();
-      return chamarNominatim(fetchFn, params, agora);
-    });
-    filaNominatim = minha.catch(() => {});
     let resultado;
     try {
-      resultado = await minha;
+      // Reserva o HORÁRIO de saída de forma síncrona (sem promessa compartilhada
+      // entre pedidos): no Workers, encadear o fetch deste pedido numa promessa
+      // criada por OUTRO pedido faz a I/O correr no contexto alheio — que pode
+      // acabar antes ("hanging promise"/"I/O on behalf of a different request").
+      // Cada pedido dorme no próprio contexto até o seu horário; as saídas ficam
+      // espaçadas de NOMINATIM_INTERVALO_MS do mesmo jeito.
+      const agoraMs = agora();
+      const saida = Math.max(agoraMs, proximaSaidaNominatimMs);
+      proximaSaidaNominatimMs = saida + NOMINATIM_INTERVALO_MS;
+      if (saida > agoraMs) await dormir(saida - agoraMs);
+      // Quem estava na frente pode ter levado 403/429 enquanto este esperava.
+      resultado = agora() < recuoAteMs
+        ? { estado: 'indisponivel', motivo: 'recuo' }
+        : await chamarNominatim(fetchFn, params, agora);
     } catch {
       resultado = { estado: 'indisponivel', motivo: 'rede' };
     } finally {
