@@ -7,6 +7,12 @@ import { pushRow } from './cloudSync';
 import { cancelarAvisoSaida } from './avisoSaida';
 import { LEMBRETE_MAP_KEY } from './storageKeys';
 import { expandirRecorrencia, type OcorrenciaAgendamento } from '../utils/contratoRecorrente';
+import {
+  escolherProximaParada, filtrarVisitasSemBaixa, limitesDoDiaLocal,
+  JANELA_EM_ANDAMENTO_DIAS, JANELA_PROXIMA_PARADA_DIAS, JANELA_SEM_BAIXA_DIAS,
+} from '../utils/agendaDia';
+
+const MS_DIA = 24 * 60 * 60 * 1000;
 
 /**
  * CRUD da Agenda (Fase 2). Mesmo padrão do database.ts: SQLite local,
@@ -282,8 +288,8 @@ export async function getAgendamentosRange(inicioISO: string, fimISO: string): P
  * Agendamentos do intervalo [inicioISO, fimISO) COM as ocorrências projetadas das
  * séries recorrentes (que começaram antes do intervalo e ainda valem nele). A
  * ocorrência projetada tem id `<base>@<dia>` e `ocorrenciaDe` = base — quem edita
- * abre a base (`idBaseDaOcorrencia`). Só a agenda usa: Home/lembretes seguem com
- * as linhas reais.
+ * abre a base (`idBaseDaOcorrencia`). Agenda, Hoje, Próxima parada, Relatório do
+ * dia e "Bom dia" leem daqui; só os lembretes locais seguem com as linhas reais.
  */
 export async function getAgendamentosExpandidos(inicioISO: string, fimISO: string): Promise<OcorrenciaAgendamento[]> {
   const db = await getDb();
@@ -300,26 +306,42 @@ export async function getAgendamentosExpandidos(inicioISO: string, fimISO: strin
     .sort((a, b) => a.inicio.localeCompare(b.inicio));
 }
 
-/** Agendamentos do dia informado (Date local). Default: hoje. */
-export async function getAgendamentosDoDia(dia: Date = new Date()): Promise<Agendamento[]> {
-  const inicio = new Date(dia.getFullYear(), dia.getMonth(), dia.getDate(), 0, 0, 0, 0);
-  const fim = new Date(dia.getFullYear(), dia.getMonth(), dia.getDate() + 1, 0, 0, 0, 0);
-  return getAgendamentosRange(inicio.toISOString(), fim.toISOString());
+/**
+ * Agendamentos do dia informado (Date local; default: hoje), COM as repetições
+ * das séries recorrentes. Antes lia só as linhas cujo `inicio` caía no dia, e uma
+ * manutenção semanal sumia do Hoje, do Relatório do dia e do "Bom dia" a partir
+ * da 2ª semana. Repetição projetada tem id `<base>@<dia>`.
+ */
+export async function getAgendamentosDoDia(dia: Date = new Date()): Promise<OcorrenciaAgendamento[]> {
+  const { inicio, fim } = limitesDoDiaLocal(dia);
+  return getAgendamentosExpandidos(inicio.toISOString(), fim.toISOString());
 }
 
 /**
- * Próxima parada: o agendamento futuro mais próximo (não cancelado), ou null.
- * Usado na Home ("AO VIVO · PRÓXIMA PARADA"). Comparação por ISO datetime.
+ * Próxima parada (Início, aviso "saia às", "Bom dia"): a primeira visita ativa
+ * dos próximos 60 dias, já com as séries recorrentes, cujo fim
+ * (COALESCE(fim, inicio + 1h)) ainda não passou. Cancelada e concluída não
+ * contam. A visita EM ANDAMENTO continua sendo a próxima parada até terminar
+ * (o rótulo vira "AGORA", ver `rotuloQuandoVisita`). `null` = nada marcado.
  */
-export async function getProximoAgendamento(): Promise<Agendamento | null> {
-  const db = await getDb();
-  const agora = new Date().toISOString();
-  // LIXEIRA: exclui soft-deletados — senão a Home sugere uma visita já excluída.
-  const row = await db.getFirstAsync<any>(
-    "SELECT * FROM agendamentos WHERE excluido_em IS NULL AND inicio >= ? AND status != 'cancelado' ORDER BY inicio ASC LIMIT 1",
-    [agora],
-  );
-  return row ? rowToAgendamento(row) : null;
+export async function getProximoAgendamento(agora: Date = new Date()): Promise<OcorrenciaAgendamento | null> {
+  const desde = new Date(agora.getTime() - JANELA_EM_ANDAMENTO_DIAS * MS_DIA);
+  const ate = new Date(agora.getTime() + JANELA_PROXIMA_PARADA_DIAS * MS_DIA);
+  // LIXEIRA: getAgendamentosExpandidos já exclui soft-deletados.
+  const ocorrencias = await getAgendamentosExpandidos(desde.toISOString(), ate.toISOString());
+  return escolherProximaParada(ocorrencias, agora);
+}
+
+/**
+ * Visitas dos últimos 60 dias que já terminaram e seguem "agendado" (ninguém
+ * deu baixa). Mais recente primeiro. Séries recorrentes ficam de fora enquanto o
+ * status for da série inteira (ver `filtrarVisitasSemBaixa`). Propaga erro de
+ * leitura: quem mostra decide o estado de erro (nunca vira lista vazia).
+ */
+export async function getVisitasSemBaixa(agora: Date = new Date()): Promise<Agendamento[]> {
+  const desde = new Date(agora.getTime() - JANELA_SEM_BAIXA_DIAS * MS_DIA);
+  const linhas = await getAgendamentosRange(desde.toISOString(), agora.toISOString());
+  return filtrarVisitasSemBaixa(linhas, agora);
 }
 
 // SEM filtro de excluido_em de propósito: leitura por id serve tanto o detalhe
