@@ -27,6 +27,7 @@ import {
   escolherProximaParada, escolherProximaSaida, filtrarVisitasSemBaixa, limitesDoDiaLocal,
   JANELA_EM_ANDAMENTO_DIAS, JANELA_PROXIMA_PARADA_DIAS, JANELA_SEM_BAIXA_DIAS,
 } from '../utils/agendaDia';
+import { alcanceDaBaixa } from '../utils/linhaDoTempoHoje';
 
 const MS_DIA = 24 * 60 * 60 * 1000;
 
@@ -493,6 +494,29 @@ export async function editarRecorrente(
   if (plano.novaSerie) await saveAgendamento(plano.novaSerie);
   await saveAgendamento(plano.base);
   return plano;
+}
+
+// ─── Baixa rápida (linha do tempo do Hoje) ───────────────────────────────────
+
+/**
+ * Dá baixa (ou desfaz a baixa) numa visita do dia direto do Hoje. Visita de série
+ * muda SÓ esta ocorrência (exceção da série, via `editarRecorrente`), nunca a série
+ * inteira; visita avulsa muda a própria linha. Ver `alcanceDaBaixa`.
+ *
+ * LANÇA se não conseguir gravar (visita sumiu do aparelho, foi para a lixeira,
+ * erro de banco): a tela mostra o erro e o estado anterior continua valendo.
+ */
+export async function mudarStatusVisitaDoDia(
+  v: OcorrenciaAgendamento,
+  status: 'concluido' | 'agendado',
+): Promise<void> {
+  if (alcanceDaBaixa(v) === 'so_esta_da_serie') {
+    await editarRecorrente(v.id, 'so_esta', { status });
+    return;
+  }
+  const atual = await getAgendamento(v.id);
+  if (!atual || atual.excluidoEm) throw new Error('Esta visita não está mais na sua agenda.');
+  await saveAgendamento({ ...atual, status, atualizadoEm: new Date().toISOString() });
 }
 
 // ─── OS concluída → visita concluída ──────────────────────────────────────────
