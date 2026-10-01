@@ -45,6 +45,7 @@ const METODOS_POR_ROTA = new Map([
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
   ['/clima', 'GET'],
+  ['/alertas', 'GET'],
   ['/geo', 'POST'],
   ['/resend/webhook', 'POST'],
   ['/auth/email-hook', 'POST'],
