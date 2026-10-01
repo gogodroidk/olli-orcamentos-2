@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, Image, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { OlliInput, OlliMoneyInput } from '../../components/OlliInput';
 import { OlliButton } from '../../components/OlliButton';
@@ -78,11 +78,11 @@ export function PainelServico({ servico, visivel, aoFechar, aoSalvar }: Props) {
     setSalvando(true);
     try {
       await saveServico(s);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       aoSalvar();
       aoFechar();
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       avisar('Erro', 'Não foi possível salvar o serviço agora. Tente novamente.');
     } finally {
       setSalvando(false);

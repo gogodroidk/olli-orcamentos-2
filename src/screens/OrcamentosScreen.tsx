@@ -26,7 +26,8 @@ import {
 } from '../database/database';
 import { sincronizarStatusLinks } from '../services/clienteLink';
 import { onSyncAplicado } from '../services/cloudSync';
-import { DIAS_RETENCAO_LIXEIRA } from '../services/lixeira';
+import { DIAS_RETENCAO_LIXEIRA, restaurarItem } from '../services/lixeira';
+import { confirmar, toast } from '../components/feedback';
 import { formatCurrency } from '../utils/currency';
 import { formatDate } from '../utils/date';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -397,25 +398,34 @@ export default function OrcamentosScreen() {
     carregarPagina(montarFiltro(filtroRef.current.query, s, filtroRef.current.clienteId), { reset: true });
   }
 
+  /**
+   * Excluir = mandar pra Lixeira (soft delete). Confirma numa folha e, depois,
+   * oferece "Desfazer" no próprio toast — o caminho de volta fica a um toque, sem
+   * precisar abrir a Lixeira. Desfazer que falha avisa (nunca some calado).
+   */
   const handleDelete = useCallback(async (o: Orcamento) => {
-    Alert.alert(
-      'Excluir orçamento',
-      `O orçamento nº ${formatarNumeroExibicao(o.numero)} de ${o.clienteNome} vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir', style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteOrcamento(o.id);
-              recarregar();
-            } catch (e) {
-              Alert.alert('Erro', 'Não foi possível excluir o orçamento agora. Tente novamente.');
-            }
+    const ok = await confirmar({
+      titulo: 'Excluir orçamento?',
+      mensagem: `O orçamento nº ${formatarNumeroExibicao(o.numero)} de ${o.clienteNome} vai para a Lixeira. Você pode restaurá-lo por ${DIAS_RETENCAO_LIXEIRA} dias.`,
+      destrutivo: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteOrcamento(o.id);
+      recarregar();
+      toast.sucesso(`Orçamento nº ${formatarNumeroExibicao(o.numero)} foi para a Lixeira.`, {
+        acao: {
+          rotulo: 'Desfazer',
+          aoTocar: () => {
+            restaurarItem('orcamento', o.id)
+              .then(() => { recarregar(); toast.sucesso('Orçamento restaurado.'); })
+              .catch(() => toast.erro('Não foi possível restaurar agora. Ele continua na Lixeira (Conta → Lixeira).'));
           },
         },
-      ]
-    );
+      });
+    } catch {
+      toast.erro('Não foi possível excluir o orçamento agora. Tente novamente.');
+    }
   }, [recarregar]);
 
   // ─── MODO DE SELEÇÃO MÚLTIPLA (exclusão em lote → Lixeira) ─────────────────
@@ -444,29 +454,29 @@ export default function OrcamentosScreen() {
     setSelecionados(new Set(ids));
   }
 
-  function handleExcluirSelecionados() {
+  async function handleExcluirSelecionados() {
     const ids = Array.from(selecionados);
     if (!ids.length) return;
-    Alert.alert(
-      'Excluir selecionados',
-      `${ids.length} orçamento${ids.length === 1 ? '' : 's'} ${ids.length === 1 ? 'vai' : 'vão'} para a Lixeira. Você pode restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir', style: 'destructive',
-          onPress: async () => {
-            try {
-              for (const id of ids) {
-                try { await deleteOrcamento(id); } catch { /* pula um; segue o lote */ }
-              }
-            } finally {
-              sairSelecao();
-              await recarregar();
-            }
-          },
-        },
-      ],
-    );
+    const ok = await confirmar({
+      titulo: `Excluir ${ids.length} orçamento${ids.length === 1 ? '' : 's'}?`,
+      mensagem: `${ids.length === 1 ? 'Ele vai' : 'Eles vão'} para a Lixeira. Você pode restaurar por ${DIAS_RETENCAO_LIXEIRA} dias.`,
+      destrutivo: true,
+    });
+    if (!ok) return;
+    let falhas = 0;
+    try {
+      for (const id of ids) {
+        try { await deleteOrcamento(id); } catch { falhas++; /* pula um; segue o lote */ }
+      }
+    } finally {
+      sairSelecao();
+      await recarregar();
+    }
+    // O lote não esconde falha parcial: "3 de 5" é diferente de "5".
+    const movidos = ids.length - falhas;
+    if (falhas === 0) toast.sucesso(`${movidos} orçamento${movidos === 1 ? '' : 's'} na Lixeira.`);
+    else if (movidos > 0) toast.erro(`${movidos} de ${ids.length} foram para a Lixeira. ${falhas} não ${falhas === 1 ? 'pôde' : 'puderam'} ser excluído${falhas === 1 ? '' : 's'} agora — tente de novo.`);
+    else toast.erro('Não foi possível excluir os orçamentos agora. Tente novamente.');
   }
 
   /**
@@ -559,8 +569,9 @@ export default function OrcamentosScreen() {
     if (!o) return;
     if (acao === 'duplicar') void handleClone(o);
     else if (acao === 'editar') onEditarLinha(o);
-    // A confirmação (Alert) espera o menu terminar de fechar: no iOS, um Alert
-    // aberto enquanto o Modal sai some junto com ele.
+    // A confirmação espera o menu terminar de fechar: no iOS (alerta nativo), um
+    // alerta aberto enquanto o Modal sai some junto com ele; no Android a folha
+    // entra limpa, sem disputar a tela com o menu saindo.
     else setTimeout(() => { void handleDelete(o); }, 350);
   }
 

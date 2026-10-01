@@ -28,7 +28,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { GateEquipe } from '../components/GateEquipe';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
@@ -121,12 +121,12 @@ function EquipeAoVivoConteudo() {
   }
 
   async function compartilharAgora() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setCompartilhando(true);
     try {
       const ok = await enviarMinhaLocalizacao().catch(() => false);
       if (ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        vibrar('sucesso');
         await load();
       } else {
         // 3 estados: `false` não é "compartilhado com sucesso, sem novidade" — é falha
@@ -274,7 +274,7 @@ function MembroCard({ membro }: { membro: LocalizacaoMembro }) {
       <Pressable
         style={styles.row}
         onLongPress={() => {
-          Haptics.selectionAsync().catch(() => {});
+          vibrar('selecao');
           setMostrarCoordenadas((v) => !v);
         }}
         delayLongPress={400}

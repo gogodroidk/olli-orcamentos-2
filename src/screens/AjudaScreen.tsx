@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
@@ -127,19 +127,19 @@ export default function AjudaScreen() {
   }
 
   function abrirCategoria(id: string) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setQuery('');
     setCategoriaAtiva(prev => (prev === id ? null : id));
   }
 
   function abrirArtigo(a: AjudaArtigo) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setArtigo(a);
     track(Eventos.ajudaArtigoAberto, { id: a.id, origem: origemAtual() });
   }
 
   function handleWhatsApp() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (!WHATSAPP_SUPORTE) {
       Alert.alert('Ainda não disponível', 'O contato por WhatsApp ainda não foi configurado. Tente por e-mail.');
       return;
@@ -151,7 +151,7 @@ export default function AjudaScreen() {
   }
 
   function handleEmail() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.ajudaSuporteContato, { canal: 'email', origem: origemAtual() });
     const assunto = encodeURIComponent('Suporte OLLI Orçamentos');
     const corpo = encodeURIComponent(mensagemSuporte());
@@ -166,7 +166,7 @@ export default function AjudaScreen() {
       return;
     }
     if (enviandoForm) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setEnviandoForm(true);
     track(Eventos.ajudaSuporteContato, { canal: 'formulario', tipo: formTipo, origem: origemAtual() });
 
@@ -179,7 +179,7 @@ export default function AjudaScreen() {
     setEnviandoForm(false);
 
     if (r === 'ok') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       Alert.alert('Recebemos! 🙌', 'Sua mensagem chegou pra gente. Se precisar de retorno rápido, chama no WhatsApp.');
       setFormAberto(false);
       setFormNome('');

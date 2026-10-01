@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { useReducedMotion } from '../theme/motion';
 import { GradientHeader } from '../components/GradientHeader';
@@ -185,7 +185,7 @@ export default function OlliChatScreen() {
         setPendenciaCredito(null);
         setSaldoCreditos(undefined);
         creditoRefRef.current = null;
-        Haptics.selectionAsync().catch(() => {});
+        vibrar('selecao');
         await consumirUsoIa();
       }
     } finally {
@@ -213,7 +213,7 @@ export default function OlliChatScreen() {
   }, [carregado]));
 
   const irParaPlanos = useCallback((origem: string) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.gateCta, { recurso: 'ia_ilimitada', plano: 'pro', origem });
     nav.navigate('Planos');
   }, [nav]);
@@ -224,7 +224,7 @@ export default function OlliChatScreen() {
       irParaPlanos('chat_sem_saldo');
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const creditoRef = creditoRefRef.current ?? generateId();
     creditoRefRef.current = creditoRef;
     await chamarIA(pendenciaCredito, { confirmarCredito: true, creditoRef }, modoChat);
@@ -233,7 +233,7 @@ export default function OlliChatScreen() {
   const enviar = useCallback(async (mensagem?: string) => {
     const conteudo = (mensagem ?? texto).trim();
     if (!conteudo || digitando) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
 
     // Nova pergunta = novo trabalho. Qualquer consentimento/referência anterior
     // deixa de valer; se a cota estiver esgotada o servidor abrirá um novo gate.
@@ -249,7 +249,7 @@ export default function OlliChatScreen() {
   }, [texto, bolhas, digitando, chamarIA, modoChat]);
 
   const cancelarEnvio = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     abortRef.current?.abort();
   }, []);
 
@@ -260,7 +260,7 @@ export default function OlliChatScreen() {
     if (idx <= 0) return;
     const historicoBase = bolhas.slice(0, idx);
     if (historicoBase[historicoBase.length - 1]?.role !== 'user') return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setBolhas(historicoBase);
     const creditoRef = creditoRefRef.current;
     chamarIA(
@@ -271,7 +271,7 @@ export default function OlliChatScreen() {
   }, [bolhas, digitando, chamarIA, modoChat]);
 
   const limpar = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setBolhas([SAUDACAO]);
     setPendenciaCredito(null);
     setSaldoCreditos(undefined);
@@ -308,7 +308,7 @@ export default function OlliChatScreen() {
   // item de serviço pré-preenchido — fecha o loop de "perguntei o preço" para
   // "montei o orçamento", igual ao padrão de DiagnosticoScreen/DiagnosticoIA.
   const criarOrcamentoDaResposta = useCallback((texto: string) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const nome = texto.split('\n')[0].slice(0, 80).trim() || 'Serviço sugerido pela OLLI';
     const descricao = texto.length > nome.length ? texto : undefined;
     nav.navigate('NovoOrcamento', {

@@ -249,7 +249,7 @@ ok(/urlRecuperacaoSenha\(\)/.test(servicoApp), 'app usa o redirectTo do contrato
 ok(/shouldCreateUser:\s*false/.test(servicoApp), 'login por código NÃO cria conta no app');
 ok(/type:\s*'recovery'/.test(servicoApp) && /type:\s*'email'/.test(servicoApp), 'app verifica recovery e login por código');
 ok(/oneTimeCode/.test(campoApp) && /one-time-code/.test(campoApp) && /sms-otp/.test(campoApp), 'campo do app aceita autofill do código');
-ok(/Haptics/.test(campoApp) || /Haptics/.test(acessoApp), 'haptic no app');
+ok(/Haptics|vibrar\(/.test(campoApp) || /Haptics|vibrar\(/.test(acessoApp), 'haptic no app');
 ok(/useReducedMotion/.test(campoApp), 'app respeita Reduzir movimento');
 ok(/resultadoDoEnvio/.test(acessoApp), 'app aplica a regra anti-enumeração');
 

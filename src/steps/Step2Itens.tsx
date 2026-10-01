@@ -4,7 +4,7 @@ import {
   TouchableOpacity, FlatList, Modal, Image, Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { Orcamento, ItemOrcamento, ServicoItem, ProdutoItem, UNIDADES } from '../types';
 import { searchServicos, searchProdutos } from '../database/database';
@@ -58,7 +58,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
   }
 
   function addFromCatalog(item: ServicoItem | ProdutoItem) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const exists = orc.itens.find(i => i.catalogoId === item.id && i.tipo === activeTab);
 
     // Item de catálogo cadastrado com preço 0: mesma trava de cortesia/brinde
@@ -119,7 +119,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
   }
 
   function removeItem(id: string) {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    vibrar('aviso');
     onChangeItens(orc.itens.filter(i => i.id !== id));
   }
 

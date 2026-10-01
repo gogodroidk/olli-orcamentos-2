@@ -7,7 +7,7 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -196,7 +196,7 @@ export default function EquipamentoScreen() {
   }, [equipamentos, filtro, busca]);
 
   function abrirDetalhe(id: string) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setDetalheId(id);
   }
 
@@ -215,7 +215,7 @@ export default function EquipamentoScreen() {
       Alert.alert('Sem etiquetas', 'Sincronize os equipamentos para gerar os QRs primeiro.');
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setImprimindoLote(true);
     try {
       let empresa: string | undefined;
@@ -309,7 +309,7 @@ export default function EquipamentoScreen() {
               <TouchableOpacity
                 style={styles.scanBtn}
                 activeOpacity={0.85}
-                onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('EscanearQr'); }}
+                onPress={() => { vibrar('selecao'); nav.navigate('EscanearQr'); }}
                 accessibilityRole="button"
                 accessibilityLabel="Escanear QR do equipamento"
               >
@@ -319,7 +319,7 @@ export default function EquipamentoScreen() {
             <TouchableOpacity
               style={styles.newBtn}
               activeOpacity={0.85}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setEditando('novo'); }}
+              onPress={() => { vibrar('selecao'); setEditando('novo'); }}
             >
               <MaterialCommunityIcons name="plus" size={20} color="#fff" />
               <Text style={styles.newBtnLabel}>Novo</Text>
@@ -344,7 +344,7 @@ export default function EquipamentoScreen() {
         </View>
         {pode('ver_valores_agregados') && (
           <TouchableOpacity
-            onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Pmoc'); }}
+            onPress={() => { vibrar('selecao'); nav.navigate('Pmoc'); }}
             accessibilityRole="button"
             accessibilityLabel="Planos de manutenção PMOC"
             style={styles.pmocAtalho}
@@ -539,7 +539,7 @@ function DetalheEquipamento({
       for (const uri of res.uris) {
         await adicionarFotoEquip(eq.id, uri);
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       const atualizado = await getEquipamento(eq.id);
       if (atualizado) setEq(atualizado);
       onMudou();
@@ -564,12 +564,12 @@ function DetalheEquipamento({
             setRevogando(true);
             try {
               await revogarQr(eq.id);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              vibrar('sucesso');
               const atualizado = await getEquipamento(eq.id);
               if (atualizado) setEq(atualizado);
               onMudou();
             } catch (err: any) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+              vibrar('erro');
               Alert.alert('Não deu', err?.message ?? 'Não consegui revogar o QR agora.');
             } finally {
               setRevogando(false);
@@ -593,10 +593,10 @@ function DetalheEquipamento({
           onPress: async () => {
             try {
               await removerEquipamento(eq.id);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              vibrar('sucesso');
               onRemovido();
             } catch (err: any) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+              vibrar('erro');
               Alert.alert('Não deu', err?.message ?? 'Não consegui excluir agora.');
             }
           },
@@ -615,7 +615,7 @@ function DetalheEquipamento({
   // usado em Clientes (clienteId) e Diagnóstico/Códigos de erro (prefillItem).
   function criarOrcamentoDoEquipamento() {
     if (!eq) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const nomeEquip = [eq.fabricante, eq.modelo].filter(Boolean).join(' ')
       || eq.codigoInterno
       || labelCategoria(eq.categoria)
@@ -731,7 +731,7 @@ function DetalheEquipamento({
                   <TouchableOpacity
                     style={styles.acaoLinha}
                     activeOpacity={0.85}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setShowEtiqueta(true); }}
+                    onPress={() => { vibrar('selecao'); setShowEtiqueta(true); }}
                   >
                     <MaterialCommunityIcons name="qrcode" size={20} color={cores.accentLight} />
                     <Text style={styles.acaoLinhaText}>Ver etiqueta / QR</Text>
@@ -822,7 +822,7 @@ function EtiquetaSheet({
 
   async function imprimir() {
     if (imprimindo) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setImprimindo(true);
     try {
       // Nome da empresa no rodapé da etiqueta (best-effort — não bloqueia).
@@ -840,7 +840,7 @@ function EtiquetaSheet({
   }
 
   async function compartilhar() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       await Share.share({ message: `Etiqueta do equipamento ${titulo}: ${url}` });
     } catch {
@@ -857,7 +857,7 @@ function EtiquetaSheet({
         const nav: any = typeof navigator !== 'undefined' ? navigator : undefined;
         if (nav?.clipboard?.writeText) {
           await nav.clipboard.writeText(url);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          vibrar('sucesso');
           Alert.alert('Copiado', 'O link da etiqueta foi copiado.');
           return;
         }
@@ -984,7 +984,7 @@ function FormEquipamento({
       if (!res.uris.length) return; // cancelou
       // No form, guardamos as URIs em estado; persistem no salvarEquipamento.
       setFotos((atuais) => [...atuais, ...res.uris]);
-      Haptics.selectionAsync().catch(() => {});
+      vibrar('selecao');
     } catch (e: any) {
       Alert.alert('Não deu', e?.message ?? 'Não consegui anexar a foto agora.');
     } finally {
@@ -1040,7 +1040,7 @@ function FormEquipamento({
     setSalvando(true);
     try {
       const salvo = await salvarEquipamento(equipamento);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      vibrar('sucesso');
       // O service PODE devolver o equipamento persistido (com id/token/datas do
       // DB) ou nada — tratamos os dois casos sem depender do tipo de retorno.
       // Cast via unknown p/ não acoplar à assinatura exata da Frente A.
@@ -1048,7 +1048,7 @@ function FormEquipamento({
       const id = salvoObj?.id || equipamento.id;
       onSalvo(id);
     } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      vibrar('erro');
       Alert.alert('Não deu', e?.message ?? 'Não consegui salvar o equipamento agora.');
     } finally {
       setSalvando(false);
@@ -1085,7 +1085,7 @@ function FormEquipamento({
                     key={c.id}
                     style={[styles.catChip, ativo && styles.catChipActive]}
                     activeOpacity={0.85}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setCategoria(ativo ? undefined : c.id); }}
+                    onPress={() => { vibrar('selecao'); setCategoria(ativo ? undefined : c.id); }}
                   >
                     <MaterialCommunityIcons
                       name={c.icon as keyof typeof MaterialCommunityIcons.glyphMap}
@@ -1120,7 +1120,7 @@ function FormEquipamento({
                     key={c.id}
                     style={[styles.selChip, ativo && { backgroundColor: c.cor + '22', borderColor: c.cor }]}
                     activeOpacity={0.85}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setCriticidade(ativo ? undefined : c.id); }}
+                    onPress={() => { vibrar('selecao'); setCriticidade(ativo ? undefined : c.id); }}
                   >
                     <Text style={[styles.selChipText, ativo && { color: c.cor }]}>{c.label}</Text>
                   </TouchableOpacity>
@@ -1141,7 +1141,7 @@ function FormEquipamento({
                     key={s}
                     style={[styles.selChip, ativo && { backgroundColor: cor + '22', borderColor: cor }]}
                     activeOpacity={0.85}
-                    onPress={() => { Haptics.selectionAsync().catch(() => {}); setSituacao(s); }}
+                    onPress={() => { vibrar('selecao'); setSituacao(s); }}
                   >
                     <Text style={[styles.selChipText, ativo && { color: cor }]}>{STATUS_EQUIP_LABELS[s]}</Text>
                   </TouchableOpacity>

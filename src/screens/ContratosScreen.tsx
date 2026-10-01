@@ -3,7 +3,7 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Ale
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -99,7 +99,7 @@ function ContratosConteudo() {
   }
 
   async function cobrar(c: ContratoRecorrente) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     try {
       const [empresa, clientes] = await Promise.all([getEmpresa(), getClientes()]);
       const telefone = c.clienteId ? clientes.find((x) => x.id === c.clienteId)?.telefone ?? '' : '';

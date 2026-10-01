@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, type ViewStyle } from 'react-
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { BorderRadius, Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
 import { OlliButton } from './OlliButton';
 import { AnimatedEntrance } from './AnimatedEntrance';
@@ -121,7 +121,7 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
   const abrirExemplo = useCallback((vertical: VerticalId) => {
     const exemplo = exemploOrcamentoPara(vertical);
     if (!exemplo) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     track(Eventos.exemploAtivacaoAberto, { vertical });
     nav.navigate('NovoOrcamento', { exemploVertical: vertical, prefillItems: itensPrefillDoExemplo(exemplo) });
   }, [nav]);
@@ -155,7 +155,7 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
   }, [salvandoOficio, abrirExemplo]);
 
   const irPara = useCallback((passo: PassoAtivacaoId, vertical: VerticalId | undefined, semOrcamento: boolean) => {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     const destino = DESTINO[passo];
     if (destino === 'exemplo') {
       // Quem já tem rascunho vai para a lista enviar o que já fez; o exemplo é

@@ -9,7 +9,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { BotaoApple } from '../components/BotaoApple';
 import { appleSignInDisponivel, signInWithApple } from '../services/appleAuth';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sobreSecundario, type Cores } from '../theme';
@@ -197,7 +197,7 @@ export default function EntrarScreen() {
         // imediata OU pendente de confirmação de e-mail, tanto faz: o
         // funil signup→orçamento começa aqui.
         track(Eventos.signup);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        vibrar('sucesso');
         if (data.session) {
           await abrirParticaoDoUsuario(data.session.user.id);
           await semearTelefoneEmpresa(telNormalizado);
@@ -211,7 +211,7 @@ export default function EntrarScreen() {
         }
       } else {
         await signIn(emailLimpo, senha);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        vibrar('sucesso');
         await entrarNoApp();
       }
     } catch (e: any) {
@@ -228,7 +228,7 @@ export default function EntrarScreen() {
    * no Supabase e a pessoa parada na tela Entrar sem saber por quê.
    */
   async function handleGoogle() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (!configured) {
       Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
       return;
@@ -237,7 +237,7 @@ export default function EntrarScreen() {
     try {
       const res = await signInWithGoogle();
       if (res === 'ok') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        vibrar('sucesso');
         await entrarNoApp();
       }
       if (res === 'cancelado') {
@@ -255,7 +255,7 @@ export default function EntrarScreen() {
    * Exigência da Guideline 4.8: existe porque o app oferece login com o Google.
    */
   async function handleApple() {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (!configured) {
       Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
       return;
@@ -264,7 +264,7 @@ export default function EntrarScreen() {
     try {
       const res = await signInWithApple();
       if (res === 'ok') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        vibrar('sucesso');
         await entrarNoApp();
       }
       if (res === 'cancelado') {
@@ -279,7 +279,7 @@ export default function EntrarScreen() {
 
   /** "Esqueci a senha" e "Entrar com código": o mesmo trilho de código por e-mail. */
   function abrirFluxoCodigo(fluxo: FluxoCodigo) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (!configured) {
       Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
       return;
@@ -390,7 +390,7 @@ export default function EntrarScreen() {
       )}
 
       {/* ALTERNA LOGIN/SIGNUP */}
-      <TouchableOpacity disabled={anyBusy} onPress={() => { Haptics.selectionAsync().catch(() => {}); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
+      <TouchableOpacity disabled={anyBusy} onPress={() => { vibrar('selecao'); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
         <Text style={styles.switchText}>
           {modo === 'login' ? 'Ainda não tem conta? ' : 'Já tem conta? '}
           <Text style={styles.switchLink}>{modo === 'login' ? 'Criar agora' : 'Entrar'}</Text>

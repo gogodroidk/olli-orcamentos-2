@@ -4,7 +4,7 @@ import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliMascot } from '../components/OlliMascot';
@@ -501,7 +501,7 @@ export default function PlanosScreen() {
     // caminho que a Guideline 3.1.1 chama de "fale conosco" para fechar por fora.
     if (!COMPRA_NO_APP) return;
     if (BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     if (!WHATSAPP_SUPORTE) {
       // Honesto: sem número configurado, não finge que vai abrir uma conversa.
       Alert.alert(
@@ -522,7 +522,7 @@ export default function PlanosScreen() {
       if (acoesPlanoDisponiveis) nav.navigate('Entrar');
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     // Pro e Empresa são ambos assináveis via Stripe Checkout.
     if (p.id === 'pro' || p.id === 'empresa') {
       assinarPlano(p);
@@ -546,7 +546,7 @@ export default function PlanosScreen() {
       ]);
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setPixEmAndamento(p.id);
     try {
       const c = await criarPixPlano(chavePixPlano(p.id, periodo));
@@ -615,7 +615,7 @@ export default function PlanosScreen() {
     if (ofertasPlay.estado !== 'ok') return;
     const oferta = ofertaPara(ofertasPlay.ofertas, p.id, periodo);
     if (!oferta) return;
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     setCompraPlayEm(p.id);
     try {
       const r = await comprarNaPlay(oferta);
@@ -673,7 +673,7 @@ export default function PlanosScreen() {
   // 12× no cartão: só o Pro tem produto avulso. Força o checkout 'pro_12x'
   // (valor cheio do ano), independentemente da aba mensal/anual selecionada.
   function pagar12x(p: Plano) {
-    Haptics.selectionAsync().catch(() => {});
+    vibrar('selecao');
     assinarPlano(p, 'pro_12x');
   }
 
@@ -770,7 +770,7 @@ export default function PlanosScreen() {
             <TouchableOpacity
               style={styles.assinaturaBtn}
               activeOpacity={0.85}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); nav.navigate('Assinatura' as never); }}
+              onPress={() => { vibrar('selecao'); nav.navigate('Assinatura' as never); }}
               accessibilityRole="button"
               accessibilityLabel="Abrir sua assinatura"
             >
@@ -808,7 +808,7 @@ export default function PlanosScreen() {
           <View style={styles.toggle} accessibilityRole="tablist">
             <TouchableOpacity
               style={[styles.toggleOpt, periodo === 'mensal' && styles.toggleOptActive]}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setPeriodo('mensal'); }}
+              onPress={() => { vibrar('selecao'); setPeriodo('mensal'); }}
               activeOpacity={0.85}
               accessibilityRole="tab"
               accessibilityState={{ selected: periodo === 'mensal' }}
@@ -817,7 +817,7 @@ export default function PlanosScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggleOpt, periodo === 'anual' && styles.toggleOptActive]}
-              onPress={() => { Haptics.selectionAsync().catch(() => {}); setPeriodo('anual'); }}
+              onPress={() => { vibrar('selecao'); setPeriodo('anual'); }}
               activeOpacity={0.85}
               accessibilityRole="tab"
               accessibilityState={{ selected: periodo === 'anual' }}
