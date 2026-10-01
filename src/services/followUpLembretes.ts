@@ -34,7 +34,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getOrcamentos, getRecibos } from '../database/database';
 import { temPermissaoNotificacao } from './agenda';
-import { CANAL_RITUAL_ANDROID_ID, garantirCanalAndroid as garantirCanalRitualAndroid, getPreferenciasRitual } from './ritualDiario';
+import { getPreferenciasRitual } from './ritualDiario';
 import { RESPOSTAS_AVISADAS_KEY } from './storageKeys';
 import {
   ORIGEM_FOLLOWUP,
@@ -52,6 +52,39 @@ export type { RespostaDoLink } from './followUpLembretesRegra';
 
 /** Notificações locais não existem no navegador — o painel web não agenda nada. */
 const SUPORTADO = Platform.OS !== 'web';
+
+/**
+ * Canal Android PRÓPRIO (não o do Ritual diário): quem silencia "Ritual diário da
+ * OLLI" nas configurações do Android não pode perder, sem saber, o "Cliente
+ * aprovou" — e o nome do canal tem de dizer o que ele entrega.
+ */
+export const CANAL_FOLLOWUP_ANDROID_ID = 'orcamentos-followup';
+
+async function garantirCanalAndroid(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync(CANAL_FOLLOWUP_ANDROID_ID, {
+      name: 'Orçamentos: follow-up e respostas do cliente',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      lightColor: '#34C6D9',
+      sound: 'default',
+    });
+  } catch {}
+}
+
+/**
+ * Fila deste módulo: reconciliação e aviso de resposta rodam UM de cada vez.
+ * Chamadores concorrentes existem (sync do boot + foco da lista/detalhe chamam
+ * `sincronizarStatusLinks`): sem fila, dois leem o mesmo estado antes de um gravar
+ * e o "Cliente aprovou" sai em dobro, ou dois reconciliam e agendam o mesmo
+ * lembrete duas vezes.
+ */
+let fila: Promise<unknown> = Promise.resolve();
+function naFila<T>(tarefa: () => Promise<T>): Promise<T> {
+  const rodada = fila.then(tarefa, tarefa);
+  fila = rodada.catch(() => undefined);
+  return rodada;
+}
 
 /**
  * Agendamentos deste módulo (marcados com `data.origem === 'followUp'`), lidos do
@@ -83,7 +116,7 @@ async function agendar(p: NotificacaoPlanejada): Promise<void> {
   try {
     await Notifications.scheduleNotificationAsync({
       content: { title: p.titulo, body: p.corpo, data: { ...p.data } },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: p.alvo, channelId: CANAL_RITUAL_ANDROID_ID },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: p.alvo, channelId: CANAL_FOLLOWUP_ANDROID_ID },
     });
   } catch {
     // pula este lembrete; o próximo sync tenta de novo (a chave não ficou agendada)
@@ -96,6 +129,12 @@ async function agendar(p: NotificacaoPlanejada): Promise<void> {
  */
 export async function cancelarFollowUpLembretes(): Promise<void> {
   if (!SUPORTADO) return;
+  // Na fila: um reagendamento em curso não pode agendar DEPOIS deste cancelamento
+  // (no logout, sobraria lembrete com nome/valor do cliente da conta que saiu).
+  return naFila(cancelarFollowUpLembretesAgora);
+}
+
+async function cancelarFollowUpLembretesAgora(): Promise<void> {
   try {
     const existentes = await agendadasDoFollowUp();
     if (existentes) await cancelarIds(existentes.map((e) => e.id));
@@ -112,9 +151,13 @@ export async function cancelarFollowUpLembretes(): Promise<void> {
  */
 export async function reagendarFollowUps(agora: Date = new Date()): Promise<void> {
   if (!SUPORTADO) return;
+  return naFila(() => reagendarFollowUpsAgora(agora));
+}
+
+async function reagendarFollowUpsAgora(agora: Date): Promise<void> {
   try {
     if (!(await temPermissaoNotificacao())) {
-      await cancelarFollowUpLembretes();
+      await cancelarFollowUpLembretesAgora();
       return;
     }
 
@@ -139,7 +182,7 @@ export async function reagendarFollowUps(agora: Date = new Date()): Promise<void
     const { cancelar, criar } = reconciliarAgendadas(existentes, plano);
     await cancelarIds(cancelar);
     if (criar.length === 0) return;
-    await garantirCanalRitualAndroid();
+    await garantirCanalAndroid();
     for (const p of criar) await agendar(p);
   } catch {
     // best-effort: lembrete nunca trava o sync
@@ -162,14 +205,30 @@ export async function avisarRespostasDoCliente(
   agora: Date = new Date(),
 ): Promise<number> {
   if (!SUPORTADO || !userId) return 0;
+  return naFila(() => avisarRespostasAgora(userId, respostas, idsComLink, agora));
+}
+
+async function avisarRespostasAgora(
+  userId: string,
+  respostas: readonly RespostaDoLink[],
+  idsComLink: readonly string[],
+  agora: Date,
+): Promise<number> {
   try {
-    let estado;
+    let raw: string | null;
     try {
-      const raw = await AsyncStorage.getItem(RESPOSTAS_AVISADAS_KEY);
-      estado = lerEstadoRespostas(raw ? JSON.parse(raw) : null);
+      raw = await AsyncStorage.getItem(RESPOSTAS_AVISADAS_KEY);
     } catch {
-      return 0;
+      return 0; // não consegui LER: não sei quem já foi avisado → não avisa
     }
+    let json: unknown = null;
+    try {
+      json = raw ? JSON.parse(raw) : null;
+    } catch {
+      // JSON corrompido: tratado como conta nova (só a janela de 48h avisa) e
+      // regravado abaixo — senão o aviso ficaria mudo para sempre.
+    }
+    const estado = lerEstadoRespostas(json);
     const { avisar, novoEstado } = decidirAvisosDeResposta(respostas, idsComLink, estado, userId, agora);
     try {
       await AsyncStorage.setItem(RESPOSTAS_AVISADAS_KEY, JSON.stringify(novoEstado));
@@ -178,13 +237,13 @@ export async function avisarRespostasDoCliente(
     }
     if (avisar.length === 0) return 0;
     if (!(await temPermissaoNotificacao())) return 0;
-    await garantirCanalRitualAndroid();
+    await garantirCanalAndroid();
     let enviados = 0;
     for (const a of avisar) {
       try {
         await Notifications.scheduleNotificationAsync({
           content: { title: a.titulo, body: a.corpo, data: { origem: 'respostaCliente', orcamentoId: a.orcamentoId } },
-          trigger: { channelId: CANAL_RITUAL_ANDROID_ID },
+          trigger: { channelId: CANAL_FOLLOWUP_ANDROID_ID },
         });
         enviados++;
       } catch {

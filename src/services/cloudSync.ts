@@ -2921,15 +2921,18 @@ export async function syncOnLogin(): Promise<void> {
       .then(m => m.sincronizarStatusLinks())
       .catch(() => 0);
     if (syncAbortado(geracao)) return;
-    void import('./followUpLembretes')
-      .then(m => m.reagendarFollowUps())
-      .catch(() => {});
     // O pull gravou agendamentos direto no SQLite sem tocar nas notificações:
     // reconcilia os lembretes locais com o estado novo (reagenda/cancela). Import
     // tardio p/ não acoplar cloudSync ao módulo de agenda no grafo estático (evita
     // ciclo de carga). Fire-and-forget: falha de notificação não afeta o sync.
+    // Os follow-ups vêm DEPOIS dela, encadeados: `resincronizarLembretes` usa
+    // `cancelAllScheduledNotificationsAsync`, que derrubaria um follow-up agendado
+    // (ou "mantido" pela reconciliação) em paralelo — e ele só voltaria no próximo sync.
     void import('./agenda')
       .then(m => m.resincronizarLembretes())
+      .catch(() => {})
+      .then(() => import('./followUpLembretes'))
+      .then(m => m.reagendarFollowUps())
       .catch(() => {});
     // Mesmo motivo, para os lembretes de vencimento PMOC: o pull grava
     // ordens_servico/pmoc_ordens_geradas direto no SQLite (localUpsert*, sem

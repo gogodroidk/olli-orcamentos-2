@@ -57,8 +57,6 @@ const HORA_FECHAR_DIA = 18;
 /** Fim da janela de silêncio (docs/ENXAME/COMUNICACAO_VISAO.md: "silêncio 07h-20h"). */
 const FIM_JANELA_HORA = 20;
 const CANAL_ANDROID_ID = 'ritual-diario';
-/** Canal Android do ritual — reaproveitado pelos lembretes de follow-up (followUpLembretes.ts). */
-export const CANAL_RITUAL_ANDROID_ID = CANAL_ANDROID_ID;
 
 type CanalRitual = 'bomDia' | 'fecharDia';
 
@@ -88,7 +86,7 @@ async function lerToggle(chave: string, defaultAtivo: boolean): Promise<boolean>
 
 /** Cria (uma vez) o canal Android do ritual. Sem efeito no iOS. Importância
  *  DEFAULT (não HIGH): é um resumo informativo, não um alarme de compromisso. */
-export async function garantirCanalAndroid(): Promise<void> {
+async function garantirCanalAndroid(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
     await Notifications.setNotificationChannelAsync(CANAL_ANDROID_ID, {

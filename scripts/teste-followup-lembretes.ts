@@ -250,6 +250,9 @@ console.log('\n7) fiação');
   const iFollow = sync.indexOf('m.reagendarFollowUps()');
   ok(iPull > 0 && iLinks > iPull, 'syncOnLogin chama sincronizarStatusLinks DEPOIS do pull');
   ok(iFollow > iLinks, 'e reagenda os follow-ups depois do status novo');
+  const iAgenda = sync.indexOf('m.resincronizarLembretes()');
+  ok(iAgenda > 0 && iFollow > iAgenda && /resincronizarLembretes\(\)\)\s*\.catch\(\(\) => \{\}\)\s*\.then\(\(\) => import\('\.\/followUpLembretes'\)\)/.test(sync),
+    'follow-ups ENCADEADOS depois do resincronizarLembretes da agenda (o cancelAll dela não derruba os lembretes)');
 
   const link = semComentarios(ler('../src/services/clienteLink.ts'));
   const iFn = link.indexOf('export async function sincronizarStatusLinks');
@@ -263,7 +266,10 @@ console.log('\n7) fiação');
 
   const servico = semComentarios(ler('../src/services/followUpLembretes.ts'));
   ok(!servico.includes('requestPermissionsAsync'), 'nunca pede permissão sozinho');
-  ok(servico.includes('CANAL_RITUAL_ANDROID_ID'), 'usa o canal Android existente do ritual');
+  ok(servico.includes("CANAL_FOLLOWUP_ANDROID_ID = 'orcamentos-followup'") && !servico.includes('CANAL_RITUAL_ANDROID_ID'),
+    'canal Android próprio (silenciar o Ritual diário não cala o "Cliente aprovou")');
+  ok(/naFila\(\(\) => avisarRespostasAgora/.test(servico) && /naFila\(\(\) => reagendarFollowUpsAgora/.test(servico) && servico.includes('naFila(cancelarFollowUpLembretesAgora)'),
+    'aviso, reconciliação e cancelamento serializados (chamadas concorrentes não duplicam o aviso)');
 
   const db = semComentarios(ler('../src/database/database.ts'));
   ok(db.includes('await cancelarFollowUpLembretes()'), 'logout (limpar dados) cancela os lembretes de follow-up');
