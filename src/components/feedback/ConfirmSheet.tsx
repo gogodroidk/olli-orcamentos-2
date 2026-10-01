@@ -31,8 +31,12 @@ import { filaConfirmacao, type PedidoConfirmar } from './filaFeedback';
  * com botões em caixa-alta, e na web ele nem aparece).
  *
  * É um `Modal` de propósito: confirmar pode ser chamado de dentro de outro Modal
- * (lista de backups, menu de ações) e precisa ficar POR CIMA dele. Dentro do
- * Modal do Android os gestos exigem um GestureHandlerRootView próprio.
+ * (lista de backups, menu de ações) e precisa ficar POR CIMA dele — no Android
+ * cada Modal é uma janela nova, empilhada; na web é um portal no fim do body.
+ * Dentro do Modal do Android os gestos exigem um GestureHandlerRootView próprio.
+ * No iOS esta folha NÃO é usada: o UIKit recusa apresentar um Modal irmão por
+ * cima de outro já aberto, então `confirmar()` vai direto ao alerta nativo
+ * (ver index.ts).
  */
 export function ConfirmSheetHost() {
   const pedido = useSyncExternalStore(filaConfirmacao.assinar, filaConfirmacao.atual, filaConfirmacao.atual);

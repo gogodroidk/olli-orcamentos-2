@@ -2,7 +2,7 @@
  * FILAS DO FEEDBACK (toast e folha de confirmação) — lógica PURA.
  *
  * Este arquivo NÃO importa `react-native` de propósito: assim o teste
- * (`scripts/teste-feedback-toast.ts`) roda em Node e trava as regras da fila sem
+ * (`scripts/teste-feedback-navegacao.ts`) roda em Node e trava as regras da fila sem
  * emulador. Os hosts (ToastHost/ConfirmSheet) só DESENHAM o que estiver na frente
  * daqui; as telas falam com a API de `index.ts` (`toast.sucesso`, `confirmar`).
  *

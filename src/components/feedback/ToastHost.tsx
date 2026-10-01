@@ -177,18 +177,23 @@ function CartaoToast({ pedido }: { pedido: PedidoToast }) {
         style={[styles.posicao, { top: insets.top + Spacing.sm }, estilo]}
         accessibilityRole="alert"
       >
-        <Pressable
-          onPress={sair}
-          accessibilityRole="button"
-          accessibilityLabel={textoAnunciado(pedido)}
-          accessibilityHint="Toque para dispensar"
-          style={[styles.cartao, { borderLeftColor: cor }]}
-        >
-          <MaterialCommunityIcons name={ICONE[pedido.tipo]} size={22} color={cor} />
-          <View style={styles.textos}>
-            {pedido.titulo ? <Text style={styles.titulo} numberOfLines={2}>{pedido.titulo}</Text> : null}
-            <Text style={styles.mensagem} numberOfLines={4}>{pedido.mensagem}</Text>
-          </View>
+        {/* O botão da ação é IRMÃO do corpo, não filho: um Pressable acessível
+            vira um elemento único para o VoiceOver e esconde os filhos — o
+            "Desfazer" ficaria inalcançável por quem usa leitor de tela. */}
+        <View style={[styles.cartao, { borderLeftColor: cor }]}>
+          <Pressable
+            onPress={sair}
+            accessibilityRole="button"
+            accessibilityLabel={textoAnunciado(pedido)}
+            accessibilityHint="Toque para dispensar"
+            style={styles.corpo}
+          >
+            <MaterialCommunityIcons name={ICONE[pedido.tipo]} size={22} color={cor} />
+            <View style={styles.textos}>
+              {pedido.titulo ? <Text style={styles.titulo} numberOfLines={2}>{pedido.titulo}</Text> : null}
+              <Text style={styles.mensagem} numberOfLines={4}>{pedido.mensagem}</Text>
+            </View>
+          </Pressable>
           {pedido.acao ? (
             <Pressable
               onPress={tocarAcao}
@@ -200,7 +205,7 @@ function CartaoToast({ pedido }: { pedido: PedidoToast }) {
               <Text style={[styles.acaoTexto, { color: cores.accentLight }]}>{pedido.acao.rotulo}</Text>
             </Pressable>
           ) : null}
-        </Pressable>
+        </View>
       </Animated.View>
     </GestureDetector>
   );
@@ -229,6 +234,7 @@ const criarEstilos = (c: Cores) =>
       backgroundColor: c.surfaceElevated,
       ...sombrasDe(c).lg,
     },
+    corpo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
     textos: { flex: 1 },
     titulo: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginBottom: 2 },
     mensagem: { fontSize: 14, lineHeight: 20, color: c.onSurface },

@@ -140,6 +140,13 @@ async function principal() {
   const api = semComentarios(ler('../src/components/feedback/index.ts'));
   checar('API sem host cai no alerta do sistema (aviso nunca some)', /if \(!filaToast\.temOuvinte\(\)\)/.test(api) && /Alert\.alert\(titulo, mensagem\)/.test(api), true);
   checar('confirmar sem host usa Alert com cancelar → false', /onPress: \(\) => resolver\(false\)/.test(api), true);
+  // iOS: Modal irmão não abre por cima de outro Modal (UIKit "already presenting")
+  // — a folha sumiria e o `await` ficaria pendurado. iOS vai ao alerta nativo.
+  checar('confirmar no iOS usa o alerta nativo (Modal sobre Modal falha)', /Platform\.OS !== 'ios' && filaConfirmacao\.temOuvinte\(\)/.test(api), true);
+  // VoiceOver: Pressable acessível esconde os filhos; a ação ("Desfazer") não pode
+  // morar dentro do Pressable do corpo do toast.
+  const corpoToast = toastSrc.match(/<Pressable\s+onPress=\{sair\}[\s\S]*?<\/Pressable>/)?.[0] ?? '';
+  checar('ação do toast é irmã do corpo (alcançável pelo leitor de tela)', corpoToast.length > 0 && !/tocarAcao/.test(corpoToast), true);
 
   // ─── 6. App.tsx: hosts montados e splash suave ─────────────────────────────
   console.log('\n6) App.tsx');

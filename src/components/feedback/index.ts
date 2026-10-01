@@ -15,9 +15,11 @@
  *
  * Os hosts (`ToastHost`, `ConfirmSheetHost`) montam uma vez em App.tsx. Sem host
  * montado (teste, tela isolada), a API cai no alerta do sistema — um aviso NUNCA
- * some em silêncio, e um `await confirmar()` nunca fica pendurado.
+ * some em silêncio, e um `await confirmar()` nunca fica pendurado. No iOS o
+ * `confirmar` usa sempre o alerta nativo (ver o motivo na função).
  */
 import { Alert, Platform } from 'react-native';
+import { vibrar } from '../../utils/haptico';
 import {
   filaConfirmacao,
   filaToast,
@@ -58,8 +60,17 @@ export const toast = {
  * confirmar; Cancelar, tocar fora, arrastar pra baixo ou "voltar" = `false`.
  */
 export function confirmar(opcoes: OpcoesConfirmar): Promise<boolean> {
-  if (filaConfirmacao.temOuvinte()) return filaConfirmacao.pedir(opcoes);
+  // iOS: a folha é um `Modal`, e o RN apresenta o Modal a partir do view
+  // controller da raiz. Com OUTRO Modal já aberto (lista de backups, menu de
+  // ações) o UIKit recusa a apresentação ("already presenting"): a folha não
+  // aparece, o `await` fica pendurado e toda confirmação seguinte trava atrás
+  // dela na fila. O alerta nativo do iOS (UIAlertController) é apresentado pelo
+  // controller do topo — aparece por cima de qualquer Modal — e já tem o botão
+  // destrutivo em vermelho. A folha própria fica para Android e web, onde o
+  // alerta do sistema é a caixa cinza (ou nem aparece).
+  if (Platform.OS !== 'ios' && filaConfirmacao.temOuvinte()) return filaConfirmacao.pedir(opcoes);
   const p = normalizarConfirmacao(opcoes, 0);
+  if (p.destrutivo) vibrar('aviso');
   if (Platform.OS === 'web') {
     try {
       return Promise.resolve(!!globalThis.confirm?.(p.mensagem ? `${p.titulo}\n\n${p.mensagem}` : p.titulo));

@@ -485,7 +485,8 @@ export default function ContaScreen() {
    * Restaura uma cópia específica da lista, com confirmação DUPLA (é destrutivo):
    * a primeira folha avisa a substituição; a segunda reforça que é definitivo
    * antes de tocar nos dados do aparelho. As folhas abrem POR CIMA do modal da
-   * lista (são Modal também); o resultado sai em toast depois que a lista fecha.
+   * lista (Android/web: são Modal também; iOS: alerta nativo, que sempre fica
+   * por cima); o resultado sai em toast depois que a lista fecha.
    */
   async function handleRestaurarBackup(item: BackupVersionadoResumo) {
     const continuar = await confirmar({

@@ -206,7 +206,7 @@ function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
 /**
  * Fundo da splash. É o MESMO `backgroundColor` do plugin `expo-splash-screen` em
  * app.json: a splash nativa some e a BrandSplash assume no mesmo pixel, sem
- * piscar de cor no meio (teste-feedback-toast.ts confere que os dois batem).
+ * piscar de cor no meio (scripts/teste-feedback-navegacao.ts confere que os dois batem).
  */
 const FUNDO_SPLASH = '#0A2547';
 
@@ -263,6 +263,10 @@ function BrandSplash({ saindo, aoDesenhar, aoSair }: { saindo: boolean; aoDesenh
       pointerEvents={saindo ? 'none' : 'auto'}
       onLayout={aoDesenhar}
       accessibilityLabel="OLLI carregando"
+      // Saindo, a splash ainda cobre o app por um fade: o leitor de tela já
+      // tem de ler a primeira tela que está por baixo, não a marca.
+      accessibilityElementsHidden={saindo}
+      importantForAccessibility={saindo ? 'no-hide-descendants' : 'auto'}
     >
       <Animated.View style={[styles.splashMarca, estiloMarca]}>
         <OlliLogo size={104} />

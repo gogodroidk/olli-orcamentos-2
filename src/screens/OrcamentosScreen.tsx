@@ -569,8 +569,9 @@ export default function OrcamentosScreen() {
     if (!o) return;
     if (acao === 'duplicar') void handleClone(o);
     else if (acao === 'editar') onEditarLinha(o);
-    // A folha de confirmação espera o menu terminar de fechar: no iOS, um Modal
-    // aberto enquanto outro Modal sai some junto com ele.
+    // A confirmação espera o menu terminar de fechar: no iOS (alerta nativo), um
+    // alerta aberto enquanto o Modal sai some junto com ele; no Android a folha
+    // entra limpa, sem disputar a tela com o menu saindo.
     else setTimeout(() => { void handleDelete(o); }, 350);
   }
 
