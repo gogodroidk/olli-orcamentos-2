@@ -170,8 +170,12 @@ caso('pulso anima só transform/opacity', () => {
   assert.doesNotMatch(bloco, /\b(width|height|margin\w*|padding\w*|top|left|backgroundColor)\s*:/);
 });
 caso('relógio só roda com a tela em foco (e é limpo ao sair)', () => {
-  assert.match(hoje, /setInterval\(\(\) => setAgora\(new Date\(\)\), TICK_RELOGIO_MS\)/);
+  assert.match(hoje, /const relogio = setInterval\(\(\) => \{[\s\S]*?setAgora\(n\);[\s\S]*?\}, TICK_RELOGIO_MS\)/);
   assert.match(hoje, /return \(\) => clearInterval\(relogio\)/);
+});
+caso('virou o dia com a tela aberta → recarrega a agenda (não pinta ontem como "Sem baixa")', () => {
+  assert.match(hoje, /diaCarregadoRef\.current = format\(agoraLeitura, 'yyyy-MM-dd'\)/);
+  assert.match(hoje, /diaCarregadoRef\.current !== format\(n, 'yyyy-MM-dd'\)\) void load\(\)/);
 });
 caso('botão de ação tem carregando, anúncio de ocupado e háptico leve só na principal', () => {
   assert.match(noFonte, /accessibilityState=\{\{ busy: !!carregando \}\}/);

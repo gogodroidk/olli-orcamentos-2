@@ -46,7 +46,7 @@ export function NoLinhaDoTempo({ marcador, primeiro, ultimo, percorrido, percorr
   const corPercorrida = comAlfa(cores.accentLight, 0.55);
   return (
     <View style={styles.no}>
-      <View style={styles.coluna} importantForAccessibility="no-hide-descendants">
+      <View style={styles.coluna} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         {!primeiro && <View style={[styles.trilho, styles.trilhoAcima, { backgroundColor: percorridoAcima ? corPercorrida : cores.outline }]} />}
         {!ultimo && <View style={[styles.trilho, styles.trilhoAbaixo, { backgroundColor: percorrido ? corPercorrida : cores.outline }]} />}
         <View style={styles.marcadorWrap}>

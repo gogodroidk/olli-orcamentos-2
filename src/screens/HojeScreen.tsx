@@ -485,6 +485,11 @@ export default function HojeScreen() {
     }
   }, []);
 
+  // Dia (local) da última leitura da agenda. Se o relógio passar da meia-noite
+  // com a tela aberta, a linha do tempo é de ONTEM: o tique recarrega em vez de
+  // pintar as visitas de ontem como "Sem baixa" sob o título de hoje.
+  const diaCarregadoRef = useRef<string | null>(null);
+
   const load = useCallback(async () => {
     setCarregandoErro(false);
     try {
@@ -496,6 +501,7 @@ export default function HojeScreen() {
         AsyncStorage.getItem(CHECKLIST_KEY),
       ]);
       const agoraLeitura = new Date();
+      diaCarregadoRef.current = format(agoraLeitura, 'yyyy-MM-dd');
       setAgora(agoraLeitura);
       setItens(ag.filter(a => a.status !== 'cancelado').sort((a, b) => a.inicio.localeCompare(b.inicio)));
       const inicioDeHoje = limitesDoDiaLocal(agoraLeitura).inicio.getTime();
@@ -528,7 +534,11 @@ export default function HojeScreen() {
     load();
     loadFollowUp();
     setGatilhoPulso(n => n + 1);
-    const relogio = setInterval(() => setAgora(new Date()), TICK_RELOGIO_MS);
+    const relogio = setInterval(() => {
+      const n = new Date();
+      setAgora(n);
+      if (diaCarregadoRef.current && diaCarregadoRef.current !== format(n, 'yyyy-MM-dd')) void load();
+    }, TICK_RELOGIO_MS);
     return () => clearInterval(relogio);
   }, [load, loadFollowUp]));
 

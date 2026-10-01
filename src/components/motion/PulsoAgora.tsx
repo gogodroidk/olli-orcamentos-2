@@ -62,7 +62,7 @@ export function PulsoAgora({ tamanho, cor, gatilho = 0, style }: Props) {
   const redondo = { width: tamanho, height: tamanho, borderRadius: tamanho / 2 };
 
   return (
-    <View style={[redondo, style]} importantForAccessibility="no-hide-descendants">
+    <View style={[redondo, style]} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
       {!reduzir && (
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, redondo, { backgroundColor: cor }, estiloHalo]} />
       )}
