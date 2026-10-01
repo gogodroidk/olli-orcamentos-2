@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo, Easing, Platform, UIManager } from 'react-native';
+import { DURACAO } from './motionTokens';
+
+// Tokens puros (durações, molas, curvas, distâncias, stagger) e os helpers de
+// "Reduzir movimento". Moram num arquivo sem `react-native` para o teste rodar
+// em Node; aqui só são reexportados.
+export * from './motionTokens';
 
 /**
  * Tokens da linguagem de movimento OLLI (v3).
@@ -8,10 +14,13 @@ import { AccessibilityInfo, Easing, Platform, UIManager } from 'react-native';
  * números soltos.
  */
 export const Motion = {
+  // Mesma escala de `DURACAO` (motionTokens.ts) — a antiga `base` 260/`slow` 420
+  // foi alinhada a 240/360 para não haver duas tabelas de duração no app.
   dur: {
-    fast: 160,
-    base: 260,
-    slow: 420,
+    instant: DURACAO.instant,
+    fast: DURACAO.fast,
+    base: DURACAO.base,
+    slow: DURACAO.slow,
     celebrate: 900,
   },
   easing: {
@@ -52,7 +61,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
  * quando isto for verdadeiro — o conteúdo é idêntico, só sem a animação. Começa
  * `false` (resolve async) e atualiza ao vivo se a preferência mudar. Nunca lança.
  */
-export function useReducedMotion(): boolean {
+export function useReduzirMovimento(): boolean {
   const [reduzir, setReduzir] = useState(false);
   useEffect(() => {
     let vivo = true;
@@ -75,3 +84,6 @@ export function useReducedMotion(): boolean {
   }, []);
   return reduzir;
 }
+
+/** Nome antigo de `useReduzirMovimento` — mantido para os componentes existentes. */
+export const useReducedMotion = useReduzirMovimento;
