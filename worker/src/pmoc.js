@@ -32,6 +32,8 @@
  *    restritiva (mesmo padrão de link.js).
  */
 
+import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
+
 const ACCENT = '#0B6FCE';
 const SUPORTE_WHATSAPP_FALLBACK = ''; // sem contato do prestador → não inventa número
 
@@ -43,10 +45,6 @@ function esc(v) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function digits(v) {
-  return String(v ?? '').replace(/\D/g, '');
 }
 
 function safeHexColor(v, fallback = ACCENT) {
@@ -492,14 +490,14 @@ function pageEtiqueta(asset, prestador, token) {
   };
   const [sbg, sfg] = situacaoCores[situacaoId] || situacaoCores.ativo;
 
-  // Contato: WhatsApp preferencial; senão telefone. Só dígitos; DDI 55 no wa.me.
-  const whats = digits((prestador && prestador.whatsapp) || SUPORTE_WHATSAPP_FALLBACK);
-  const tel = digits((prestador && prestador.telefone) || '');
-  const contatoNum = whats || tel;
+  // Contato: WhatsApp preferencial; senão telefone. O número passa pela regra única
+  // (`numeroWhatsAppBR`): DDD 55 certo, e número que não é brasileiro plausível
+  // vira "sem contato" — nunca um wa.me para um desconhecido.
+  const contatoNum =
+    numeroWhatsAppBR((prestador && prestador.whatsapp) || SUPORTE_WHATSAPP_FALLBACK) ||
+    numeroWhatsAppBR((prestador && prestador.telefone) || '');
   const msg = `Olá! Escaneei a etiqueta de um equipamento sob manutenção${codigo ? ` (código ${codigo})` : ''}. Preciso falar sobre ele.`;
-  const zapHref = contatoNum
-    ? `https://wa.me/${contatoNum.startsWith('55') ? contatoNum : '55' + contatoNum}?text=${encodeURIComponent(msg)}`
-    : '';
+  const zapHref = contatoNum ? linkWaMe(contatoNum, msg) : '';
 
   const linhas = [];
   if (codigo) linhas.push(`<div class="row"><span class="row-l">Código do equipamento</span><span class="row-v">${esc(codigo)}</span></div>`);

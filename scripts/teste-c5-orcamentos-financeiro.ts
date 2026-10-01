@@ -151,7 +151,9 @@ assert.match(telaDetalhe, /link\?\.status !== 'aprovado' \|\| \(comPix && saldo 
 // Republicar o link de um orçamento que o cliente já aprovou não pode voltar o
 // status público para 'enviado' (a página pediria "Aprovar" de novo e sumiria o Pix).
 const clienteLinkSrc = ler('../src/services/clienteLink.ts');
-assert.match(clienteLinkSrc, /reusado\.status === 'aprovado' \? \{ token, \.\.\.semStatus \}/, 'reenvio preserva o aprovado do link');
+// (o reenvio atualiza SÓ o snapshot, sem status: o status é a resposta do cliente).
+assert.match(clienteLinkSrc, /\.update\(conteudo\)\s*\.eq\('token', reusado\)/, 'reenvio atualiza só o snapshot do link existente');
+assert.doesNotMatch(clienteLinkSrc.slice(clienteLinkSrc.indexOf('const conteudo = {'), clienteLinkSrc.indexOf('const baseRow')), /status:/, 'o snapshot republicado não leva status (preserva o aprovado do link)');
 // Lista: "Criar revisão" do card (recusado/expirado/cancelado) cria a revisão de fato.
 assert.match(telaMobile, /label: 'Criar revisão', cor: cores\.primary, onPress: \(\) => onRevisar\(o\)/, 'Criar revisão do card não pode abrir o original no editor');
 assert.match(telaDetalhe, /montarMensagemCobrancaLink/, 'o detalhe usa a mensagem com link');

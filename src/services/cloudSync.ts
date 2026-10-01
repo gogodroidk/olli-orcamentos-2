@@ -36,6 +36,8 @@ import {
   COBRANCAS_ENVIADAS_STAMP_KEY,
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
+  PULL_INICIAL_OK_PREFIX,
+  ULTIMO_PULL_KEY,
 } from './storageKeys';
 import type {
   PmocPlano,
@@ -1494,14 +1496,15 @@ async function localRecordTombstone(tabela: string, itemId: string, excluidoEm: 
  * tombstone local p/ o pull aditivo não re-subir a linha). Também limpa a linha
  * na nuvem (`removeRow`) por garantia — auto-cura caso o aparelho de origem não
  * tenha conseguido apagar, evitando que o pull seguinte ressuscite. NUNCA lança.
+ * Devolve `false` quando a LEITURA da nuvem falhou (o pullAll conta como falha).
  */
-async function applyCloudTombstones(geracao?: number): Promise<void> {
+async function applyCloudTombstones(geracao?: number): Promise<boolean> {
   try {
-    if (!supabase) return;
+    if (!supabase) return false;
     const { data, error } = await supabase.from('exclusoes').select('tabela, item_id, excluido_em');
-    if (error || !Array.isArray(data)) return;
+    if (error || !Array.isArray(data)) return false;
     for (const row of data) {
-      if (syncAbortado(geracao)) return; // logout/wipe em voo → para de gravar
+      if (syncAbortado(geracao)) return false; // logout/wipe em voo → para de gravar
       try {
         const tabela = (row as any)?.tabela as string;
         const itemId = (row as any)?.item_id as string;
@@ -1515,8 +1518,10 @@ async function applyCloudTombstones(geracao?: number): Promise<void> {
         // pula tombstone problemático
       }
     }
+    return true;
   } catch {
     // best-effort
+    return false;
   }
 }
 
@@ -1642,6 +1647,145 @@ async function syncContadores(geracao?: number): Promise<void> {
   }
 }
 
+// ─── DOWNLOAD INICIAL — "ainda não baixei" ≠ "a conta tem zero" ──────────────
+// O app é local-first: num aparelho novo (ou numa partição nova) o SQLite está
+// vazio até o primeiro pull gravar. Sem distinguir os dois, o Início lia "0
+// orçamentos" e convidava a criar o primeiro quem já tinha 12 na nuvem — e um
+// pull que FALHOU (RLS, timeout, 5xx) deixava todas as telas afirmando "Nenhum
+// orçamento ainda". Três estados, nunca dois:
+//   • 'baixando' — o primeiro download desta conta ainda não terminou;
+//   • 'falhou'   — terminou com alguma tabela que a nuvem não entregou;
+//   • 'pronto'   — o carimbo `pull_inicial_ok_<userId>` existe (gravado SÓ quando
+//                  todas as tabelas vieram ok) ou um pull desta sessão deu ok.
+// A tela lê isso pelo hook `useSyncInicial` (hooks/useSyncInicial.ts).
+
+/** Estado do pull DESTA sessão do app (memória; zera no logout). */
+export type EstadoPullSessao = 'ocioso' | 'baixando' | 'falhou' | 'ok';
+
+/** O que o último pull completo deixou de trazer. `falhas` vazio = veio tudo. */
+export interface UltimoPull {
+  em: string;
+  /** Tabelas (ou etapas: 'sessao', 'exclusoes', 'empresa') que a nuvem não entregou. */
+  falhas: string[];
+  /** Logout/limpeza no meio: o resultado não vale nem como sucesso nem como falha. */
+  abortado: boolean;
+}
+
+let estadoPull: EstadoPullSessao = 'ocioso';
+let ultimoPull: UltimoPull | null = null;
+/** userId cujo carimbo já foi CONFIRMADO nesta sessão (evita reler o storage a cada tela). */
+let carimboConfirmadoPara: string | null = null;
+const estadoPullListeners = new Set<(estado: EstadoPullSessao) => void>();
+
+function definirEstadoPull(estado: EstadoPullSessao): void {
+  if (estadoPull === estado) return;
+  estadoPull = estado;
+  avisarEstadoPull();
+}
+
+/** Reavisa os inscritos com o estado atual (ex.: o carimbo em memória mudou de dono). */
+function avisarEstadoPull(): void {
+  const estado = estadoPull;
+  for (const fn of estadoPullListeners) {
+    try {
+      fn(estado);
+    } catch {
+      // um listener quebrado não afeta o sync nem os demais
+    }
+  }
+}
+
+/** Estado do pull nesta sessão (síncrono). */
+export function estadoPullDaSessao(): EstadoPullSessao {
+  return estadoPull;
+}
+
+/** Último resultado de `pullAll` nesta sessão, ou `null` se ainda não houve. */
+export function getUltimoPull(): UltimoPull | null {
+  return ultimoPull;
+}
+
+/** Inscreve um callback para mudanças do estado do pull. Devolve o cancelamento. */
+export function onEstadoPull(fn: (estado: EstadoPullSessao) => void): () => void {
+  estadoPullListeners.add(fn);
+  return () => {
+    estadoPullListeners.delete(fn);
+  };
+}
+
+/**
+ * true quando já sabemos, SEM ler o storage, que o download inicial desta conta
+ * está concluído (pull ok nesta sessão ou carimbo já confirmado). Serve para a
+ * tela nascer no estado certo, sem piscar o skeleton a cada foco.
+ */
+export function downloadInicialJaConfirmado(): boolean {
+  // Build sem nuvem: não há download a esperar — o SQLite local é a verdade.
+  if (!supabase) return true;
+  return estadoPull === 'ok' || carimboConfirmadoPara !== null;
+}
+
+/**
+ * O primeiro download completo da conta logada já terminou sem falha (carimbo
+ * `pull_inicial_ok_<userId>`)? NUNCA lança: storage ou sessão ilegível = `false`
+ * — "não confirmei" nunca vira "conta vazia" do outro lado.
+ */
+export async function pullInicialConcluido(): Promise<boolean> {
+  if (!supabase) return true;
+  if (estadoPull === 'ok') return true;
+  try {
+    const usuario = await getCurrentUser();
+    if (!usuario?.id) return false;
+    if (carimboConfirmadoPara === usuario.id) return true;
+    const carimbo = await AsyncStorage.getItem(PULL_INICIAL_OK_PREFIX + usuario.id);
+    if (carimbo) {
+      carimboConfirmadoPara = usuario.id;
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Esquece o download inicial (memória + TODOS os carimbos do aparelho). Chamado
+ * pela limpeza de dados locais (`clearAllLocalData`): sem isto, quem apaga os
+ * dados e entra de novo teria o carimbo antigo dizendo "já baixei" sobre um
+ * SQLite vazio — o mesmo "vazio que não é vazio". NUNCA lança.
+ */
+export async function esquecerDownloadInicial(): Promise<void> {
+  carimboConfirmadoPara = null;
+  ultimoPull = null;
+  definirEstadoPull('ocioso');
+  try {
+    const chaves = await AsyncStorage.getAllKeys();
+    const carimbos = chaves.filter((k) => k.startsWith(PULL_INICIAL_OK_PREFIX));
+    if (carimbos.length > 0) await AsyncStorage.multiRemove(carimbos);
+  } catch {
+    // best-effort: no pior caso a conta passa pelo "baixando" uma vez a mais
+  }
+}
+
+/** Registra o resultado do pull (memória + storage) e grava o carimbo se veio tudo. */
+async function registrarResultadoPull(resultado: UltimoPull, geracao?: number): Promise<void> {
+  if (resultado.abortado || syncAbortado(geracao)) return;
+  ultimoPull = resultado;
+  try {
+    await AsyncStorage.setItem(ULTIMO_PULL_KEY, JSON.stringify(resultado));
+  } catch {
+    // diagnóstico apenas: não muda o que a tela decide
+  }
+  if (resultado.falhas.length > 0) return;
+  try {
+    const usuario = await getCurrentUser();
+    if (!usuario?.id || syncAbortado(geracao)) return;
+    await AsyncStorage.setItem(PULL_INICIAL_OK_PREFIX + usuario.id, resultado.em);
+    carimboConfirmadoPara = usuario.id;
+  } catch {
+    // sem carimbo, o próximo pull ok grava; nesta sessão vale o estado 'ok'
+  }
+}
+
 // ─── PULL ALL (nuvem → SQLite local, caminho silencioso) ─────────────────────
 /**
  * Lê todas as tabelas da nuvem e grava no SQLite SEM re-disparar push.
@@ -1650,14 +1794,25 @@ async function syncContadores(geracao?: number): Promise<void> {
  * Antes do pull ADITIVO de linhas, aplica os tombstones da nuvem (apaga local +
  * registra tombstone) para um registro deletado NÃO reaparecer. Também funde os
  * contadores (numeração) tomando o maior valor.
+ *
+ * Devolve (e grava em `ultimoPull`) o que a nuvem NÃO entregou: uma leitura que
+ * falhou nunca mais vira "tabela vazia" em silêncio. O carimbo
+ * `pull_inicial_ok_<userId>` só é gravado quando TODAS as etapas vieram ok.
  */
-export async function pullAll(geracao?: number): Promise<void> {
+export async function pullAll(geracao?: number): Promise<UltimoPull> {
+  const em = new Date().toISOString();
+  const falhas: string[] = [];
+  const abortado = (): UltimoPull => ({ em, falhas, abortado: true });
   try {
-    if (!(await hasSession()) || !supabase) return;
+    if (!(await hasSession()) || !supabase) {
+      const semSessao: UltimoPull = { em, falhas: ['sessao'], abortado: false };
+      await registrarResultadoPull(semSessao, geracao);
+      return semSessao;
+    }
 
     // 1) Exclusões primeiro: garante que o pull aditivo abaixo não ressuscite ids.
-    await applyCloudTombstones(geracao);
-    if (syncAbortado(geracao)) return;
+    if (!(await applyCloudTombstones(geracao))) falhas.push('exclusoes');
+    if (syncAbortado(geracao)) return abortado();
 
     // empresa (uma linha por usuário) — SEMPRE escopada a um tenant explícito.
     // O membro de equipe LEGITIMAMENTE puxa a empresa do DONO (é a marca que sai
@@ -1669,49 +1824,72 @@ export async function pullAll(geracao?: number): Promise<void> {
     // o local (fonte da verdade) segue intacto até o próximo sync saber quem somos.
     try {
       const alvo = await alvoEmpresa();
-      if (alvo) {
-        const { data } = await supabase.from('empresa').select('*').eq('user_id', alvo.userId).maybeSingle();
-        if (syncAbortado(geracao)) return;
-        const emp = rowToEmpresa(data);
-        if (emp) await localUpsertEmpresa(emp, (data as any)?.atualizado_em);
+      if (!alvo) {
+        // Contexto de equipe indeterminado: o pull da empresa foi ADIADO (ver
+        // acima). Não é "não tem empresa" — é "não sei", e conta como falha.
+        falhas.push('empresa');
+      } else {
+        const { data, error } = await supabase.from('empresa').select('*').eq('user_id', alvo.userId).maybeSingle();
+        if (syncAbortado(geracao)) return abortado();
+        if (error) {
+          falhas.push('empresa');
+        } else {
+          const emp = rowToEmpresa(data);
+          if (emp) await localUpsertEmpresa(emp, (data as any)?.atualizado_em);
+        }
       }
-    } catch {}
+    } catch {
+      falhas.push('empresa');
+    }
 
-    await pullTable<Cliente>('clientes', rowToCliente, localUpsertCliente, geracao);
-    await pullTable<ServicoItem>('servicos', rowToServico, localUpsertServico, geracao);
-    await pullTable<ProdutoItem>('produtos', rowToProduto, localUpsertProduto, geracao);
-    await pullTable<Orcamento>('orcamentos', rowToOrcamento, localUpsertOrcamento, geracao);
-    await pullTable<Recibo>('recibos', rowToRecibo, localUpsertRecibo, geracao);
-    await pullTable<ModeloOrcamento>('modelos', rowToModelo, localUpsertModelo, geracao);
-    await pullTable<Depoimento>('depoimentos', rowToDepoimento, localUpsertDepoimento, geracao);
-    await pullTable<Agendamento>('agendamentos', rowToAgendamento, localUpsertAgendamento, geracao);
-    await pullTable<OrdemServico>('ordens_servico', rowToOrdemServico, localUpsertOrdemServico, geracao);
-    await pullTable<Equipamento>('equipamentos', rowToEquipamentoCloud, localUpsertEquipamento, geracao);
-    await pullTable<PmocPlano>('pmoc_planos', rowToPmocPlano, localUpsertPmocPlano, geracao);
-    await pullTable<PmocPlanoVersao>('pmoc_plano_versoes', rowToPmocVersao, localUpsertPmocVersao, geracao);
-    await pullTable<PmocOrdemGerada>('pmoc_ordens_geradas', rowToPmocGerada, localUpsertPmocGerada, geracao);
-    await pullTable<DocumentoBibliotecaRegistro>('documentos', rowToDocumento, localUpsertDocumento, geracao);
-    await pullTable<DocumentoBibliotecaVersao>('documento_versoes', rowToDocumentoVersao, localUpsertDocumentoVersao, geracao);
-    if (syncAbortado(geracao)) return;
+    const resultados = [
+      await pullTable<Cliente>('clientes', rowToCliente, localUpsertCliente, geracao),
+      await pullTable<ServicoItem>('servicos', rowToServico, localUpsertServico, geracao),
+      await pullTable<ProdutoItem>('produtos', rowToProduto, localUpsertProduto, geracao),
+      await pullTable<Orcamento>('orcamentos', rowToOrcamento, localUpsertOrcamento, geracao),
+      await pullTable<Recibo>('recibos', rowToRecibo, localUpsertRecibo, geracao),
+      await pullTable<ModeloOrcamento>('modelos', rowToModelo, localUpsertModelo, geracao),
+      await pullTable<Depoimento>('depoimentos', rowToDepoimento, localUpsertDepoimento, geracao),
+      await pullTable<Agendamento>('agendamentos', rowToAgendamento, localUpsertAgendamento, geracao),
+      await pullTable<OrdemServico>('ordens_servico', rowToOrdemServico, localUpsertOrdemServico, geracao),
+      await pullTable<Equipamento>('equipamentos', rowToEquipamentoCloud, localUpsertEquipamento, geracao),
+      await pullTable<PmocPlano>('pmoc_planos', rowToPmocPlano, localUpsertPmocPlano, geracao),
+      await pullTable<PmocPlanoVersao>('pmoc_plano_versoes', rowToPmocVersao, localUpsertPmocVersao, geracao),
+      await pullTable<PmocOrdemGerada>('pmoc_ordens_geradas', rowToPmocGerada, localUpsertPmocGerada, geracao),
+      await pullTable<DocumentoBibliotecaRegistro>('documentos', rowToDocumento, localUpsertDocumento, geracao),
+      await pullTable<DocumentoBibliotecaVersao>('documento_versoes', rowToDocumentoVersao, localUpsertDocumentoVersao, geracao),
+    ];
+    for (const r of resultados) if (!r.ok) falhas.push(r.tabela);
+    if (syncAbortado(geracao)) return abortado();
 
     // Numeração: funde contadores (maior valor vence) entre local e nuvem.
+    // Não entra nas falhas: contador não decide se uma tela está vazia.
     await syncContadores(geracao);
   } catch {
-    // pull é best-effort; falha não afeta o app local
+    // pull é best-effort para o app local, mas a falha fica REGISTRADA
+    falhas.push('inesperado');
   }
+  if (syncAbortado(geracao)) return abortado();
+  const resultado: UltimoPull = { em, falhas, abortado: false };
+  await registrarResultadoPull(resultado, geracao);
+  return resultado;
 }
 
-/** Lê uma tabela e grava cada linha no SQLite (silencioso). Tolera fromRow nulo. */
+/**
+ * Lê uma tabela e grava cada linha no SQLite (silencioso). Tolera fromRow nulo.
+ * Devolve `ok: false` quando a LEITURA da nuvem falhou — erro de rede/RLS/5xx não
+ * pode mais virar "a tabela está vazia" sem ninguém saber (ver `pullAll`).
+ */
 async function pullTable<T>(
   table: SyncTable,
   fromRow: (row: any) => T | null,
   localUpsert: (obj: T) => Promise<void>,
   geracao?: number,
-): Promise<void> {
+): Promise<{ tabela: SyncTable; ok: boolean }> {
   try {
-    if (!supabase) return;
+    if (!supabase) return { tabela: table, ok: false };
     const { data, error } = await supabase.from(remoteNome(table)).select('*');
-    if (error || !Array.isArray(data)) return;
+    if (error || !Array.isArray(data)) return { tabela: table, ok: false };
     // Grava o lote inteiro numa ÚNICA transação: cada INSERT OR REPLACE fora de
     // transação força um commit/fsync próprio no SQLite — com dezenas/centenas de
     // linhas por tabela isso é ~50x mais lento que agrupar tudo num só commit.
@@ -1732,8 +1910,11 @@ async function pullTable<T>(
         }
       }
     });
+    return { tabela: table, ok: true };
   } catch {
-    // tabela indisponível = ignora
+    // tabela indisponível ou gravação local que falhou: o app segue, mas a
+    // falha volta para o pullAll registrar (nunca "veio vazio" em silêncio).
+    return { tabela: table, ok: false };
   }
 }
 
@@ -2612,6 +2793,11 @@ export function abortarSyncEmAndamento(): void {
   // Troca de conta / logout: o contexto de equipe é de QUEM SAIU. Mantê-lo faria
   // o próximo usuário carimbar linhas no tenant do anterior (mistura de tenant).
   resetarContextoEquipe();
+  // O "download inicial confirmado" em memória também é de quem saiu: o próximo
+  // login relê o carimbo DELE (o storage continua valendo para a partição dele).
+  carimboConfirmadoPara = null;
+  ultimoPull = null;
+  definirEstadoPull('ocioso');
 }
 
 /**
@@ -2641,9 +2827,10 @@ function syncAbortado(geracao: number | undefined): boolean {
  *                           snooze do radar e relatórios diários) via extras_sync,
  *                           com last-write-wins. Roda por último para não competir
  *                           com o pipeline relacional; falha aqui não afeta o resto.
- * Ao terminar, reconcilia os lembretes de agenda (o pull grava agendamentos
- * direto no SQLite, sem reagendar notificações) e notifica os inscritos
- * (onSyncAplicado) para as telas recarregarem.
+ * Logo depois do pull, publica o estado do download ('ok'/'falhou', ver
+ * `useSyncInicial`) e notifica os inscritos (onSyncAplicado) para as telas
+ * recarregarem. Ao terminar, reconcilia os lembretes de agenda (o pull grava
+ * agendamentos direto no SQLite, sem reagendar notificações) e notifica de novo.
  * NÃO bloqueia a UI: roda em background e NUNCA lança. Reentrância por flag.
  * Cancelável por `abortarSyncEmAndamento` (checagem de geração antes de gravar).
  */
@@ -2651,6 +2838,11 @@ export async function syncOnLogin(): Promise<void> {
   if (syncing) return;
   syncing = true;
   const geracao = syncGeneration;
+  // Enquanto este sync não chega ao fim do pull, a conta está "baixando". Saídas
+  // antes do pull (sem partição, banco de outra pessoa) viram 'falhou': a tela
+  // pode oferecer "tentar de novo" em vez de afirmar que a conta está vazia.
+  definirEstadoPull('baixando');
+  let pullTerminou = false;
   try {
     if (!(await hasSession())) return;
 
@@ -2661,6 +2853,14 @@ export async function syncOnLogin(): Promise<void> {
     // banco de outra pessoa é pior do que sync nenhum.
     const usuario = await getCurrentUser();
     if (!usuario?.id) return;
+    // Carimbo confirmado em memória de OUTRA conta (sessão que caiu por
+    // SIGNED_OUT sem passar por abortarSyncEmAndamento): não vale para esta.
+    // Sem isto, o SQLite ainda vazio de quem acabou de entrar seria lido como
+    // "conta sem orçamento" — o mesmo "não sei" virando "não tem".
+    if (carimboConfirmadoPara !== null && carimboConfirmadoPara !== usuario.id) {
+      carimboConfirmadoPara = null;
+      avisarEstadoPull();
+    }
     try {
       await abrirParticaoDoUsuario(usuario.id);
     } catch {
@@ -2683,8 +2883,14 @@ export async function syncOnLogin(): Promise<void> {
       new Promise(resolve => setTimeout(resolve, 15_000)),
     ]);
     if (syncAbortado(geracao)) return;
-    await pullAll(geracao);
-    if (syncAbortado(geracao)) return;
+    const pull = await pullAll(geracao);
+    if (syncAbortado(geracao) || pull.abortado) return;
+    pullTerminou = true;
+    definirEstadoPull(pull.falhas.length === 0 ? 'ok' : 'falhou');
+    // As telas releem JÁ: o que elas mostram (orçamentos, recibos, agenda,
+    // empresa) chegou com o pull. Esperar o push, as versões e os extras abaixo
+    // deixava o Início com "primeiro orçamento" por até dezenas de segundos.
+    notificarSyncAplicado();
     await pushLocalTombstones(geracao);
     if (syncAbortado(geracao)) return;
     await pushAllLocal(geracao);
@@ -2727,12 +2933,16 @@ export async function syncOnLogin(): Promise<void> {
     void import('./ritualDiario')
       .then(m => m.reagendarRitualDiario())
       .catch(() => {});
-    // Sinaliza que a nuvem já foi baixada para o SQLite: as telas que se
-    // inscreveram refazem o fetch e o estado "vazio" inicial some sozinho.
+    // Segundo aviso, no fim: o push pode ter renumerado um orçamento (corrida
+    // entre aparelhos) e os extras trazem o checklist do Hoje e os adiamentos do
+    // radar — coisas que as telas também mostram.
     notificarSyncAplicado();
   } catch {
     // sync de fundo: nunca quebra a sessão / UX
   } finally {
+    // Saiu antes de terminar o pull (sem sessão/partição, erro inesperado) e
+    // ninguém abortou: o download não aconteceu — 'falhou', nunca "vazio".
+    if (!pullTerminou && !syncAbortado(geracao)) definirEstadoPull('falhou');
     // Só zera a flag se ninguém abortou no meio (o abort já a zerou e pode ter
     // liberado um novo sync); assim não sobrescrevemos o estado de um novo login.
     if (!syncAbortado(geracao)) syncing = false;

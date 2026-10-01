@@ -1,4 +1,8 @@
 import { Platform } from 'react-native';
+import { linkApiWhatsApp, linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp';
+
+/** A regra única do número de WhatsApp, à mão de quem já importa daqui (o shim web espelha). */
+export { linkApiWhatsApp, linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp';
 
 /* ─── Saída de documentos (HTML → PDF) multiplataforma ────────────────
  * Um único ponto de entrega para o PDF, funcionando no nativo E na web.
@@ -205,16 +209,23 @@ export async function exportarHtmlComoPdf(
 
 /**
  * Abre o WhatsApp com uma mensagem pré-preenchida.
- *  - Web: `https://wa.me/<numero>?text=...` (abre no navegador / WhatsApp Web).
- *  - Nativo: esquema `whatsapp://` (mantém o comportamento original).
+ *
+ * O número passa SEMPRE por `numeroWhatsAppBR` (regra única, `telefoneWhatsapp.ts`):
+ * DDD 55 correto, "0 + DDD" e "+55" aceitos. Sem número válido (vazio, curto, não
+ * brasileiro), abre o WhatsApp no SELETOR DE CONTATO com a mensagem pronta
+ * (`wa.me/?text=`) — nunca `wa.me/55` nem um chute de número.
+ *  - Web: `https://wa.me/...` numa aba nova (WhatsApp Web ou o app instalado).
+ *  - Android: `https://api.whatsapp.com/send` direto, SEM `canOpenURL`. No Android 11+
+ *    o `canOpenURL('whatsapp://...')` devolve `false` sem o pacote no `<queries>`, e o
+ *    app caía sempre no navegador; o link https é o App Link do próprio WhatsApp.
+ *  - iOS: esquema `whatsapp://` quando o sistema confirma; senão, `wa.me` (link universal).
+ * Lança se o sistema não conseguir abrir nada — quem chama mostra o erro.
  */
-export async function abrirWhatsApp(telefone: string, mensagem: string): Promise<void> {
-  const numero = (telefone || '').replace(/\D/g, '');
-  const comDDI = numero.startsWith('55') ? numero : `55${numero}`;
-  const texto = encodeURIComponent(mensagem);
+export async function abrirWhatsApp(telefone: string | null | undefined, mensagem: string): Promise<void> {
+  const numero = numeroWhatsAppBR(telefone);
 
   if (isWeb) {
-    const url = `https://wa.me/${comDDI}?text=${texto}`;
+    const url = linkWaMe(numero, mensagem);
     const g: any = typeof globalThis !== 'undefined' ? globalThis : undefined;
     if (g?.open) {
       g.open(url, '_blank');
@@ -225,16 +236,22 @@ export async function abrirWhatsApp(telefone: string, mensagem: string): Promise
   }
 
   const { Linking } = require('react-native');
-  const url = `whatsapp://send?phone=${comDDI}&text=${texto}`;
-  try {
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
-      return;
-    }
-  } catch {
-    /* cai no fallback wa.me abaixo */
+  if (Platform.OS === 'android') {
+    await Linking.openURL(linkApiWhatsApp(numero, mensagem));
+    return;
   }
-  // Fallback nativo: wa.me também abre o app instalado.
-  await Linking.openURL(`https://wa.me/${comDDI}?text=${texto}`);
+
+  if (numero) {
+    const url = `whatsapp://send?phone=${numero}&text=${encodeURIComponent(mensagem ?? '')}`;
+    try {
+      if (await Linking.canOpenURL(url)) {
+        await Linking.openURL(url);
+        return;
+      }
+    } catch {
+      /* cai no wa.me abaixo */
+    }
+  }
+  // wa.me também abre o app instalado (link universal); sem número, abre o seletor.
+  await Linking.openURL(linkWaMe(numero, mensagem));
 }
