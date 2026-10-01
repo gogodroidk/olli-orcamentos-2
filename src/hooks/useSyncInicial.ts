@@ -34,10 +34,8 @@ export function useSyncInicial(): { estado: EstadoSyncInicial; tentarDeNovo: () 
   const montado = useRef(true);
 
   const avaliar = useCallback(async () => {
-    if (downloadInicialJaConfirmado()) {
-      if (montado.current) setEstado('pronto');
-      return;
-    }
+    // Sem atalho síncrono aqui: `pullInicialConcluido` confere o carimbo do
+    // usuário DA SESSÃO (o atalho só serve para o estado inicial, sem piscar).
     // Lê a sessão ANTES do storage: se o pull terminar enquanto o storage é lido,
     // o listener abaixo reavalia — nunca fica preso num estado antigo.
     const sessao = estadoPullDaSessao();

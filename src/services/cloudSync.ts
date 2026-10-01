@@ -1680,6 +1680,12 @@ const estadoPullListeners = new Set<(estado: EstadoPullSessao) => void>();
 function definirEstadoPull(estado: EstadoPullSessao): void {
   if (estadoPull === estado) return;
   estadoPull = estado;
+  avisarEstadoPull();
+}
+
+/** Reavisa os inscritos com o estado atual (ex.: o carimbo em memória mudou de dono). */
+function avisarEstadoPull(): void {
+  const estado = estadoPull;
   for (const fn of estadoPullListeners) {
     try {
       fn(estado);
@@ -1713,6 +1719,8 @@ export function onEstadoPull(fn: (estado: EstadoPullSessao) => void): () => void
  * tela nascer no estado certo, sem piscar o skeleton a cada foco.
  */
 export function downloadInicialJaConfirmado(): boolean {
+  // Build sem nuvem: não há download a esperar — o SQLite local é a verdade.
+  if (!supabase) return true;
   return estadoPull === 'ok' || carimboConfirmadoPara !== null;
 }
 
@@ -1722,6 +1730,7 @@ export function downloadInicialJaConfirmado(): boolean {
  * — "não confirmei" nunca vira "conta vazia" do outro lado.
  */
 export async function pullInicialConcluido(): Promise<boolean> {
+  if (!supabase) return true;
   if (estadoPull === 'ok') return true;
   try {
     const usuario = await getCurrentUser();
@@ -2844,6 +2853,14 @@ export async function syncOnLogin(): Promise<void> {
     // banco de outra pessoa é pior do que sync nenhum.
     const usuario = await getCurrentUser();
     if (!usuario?.id) return;
+    // Carimbo confirmado em memória de OUTRA conta (sessão que caiu por
+    // SIGNED_OUT sem passar por abortarSyncEmAndamento): não vale para esta.
+    // Sem isto, o SQLite ainda vazio de quem acabou de entrar seria lido como
+    // "conta sem orçamento" — o mesmo "não sei" virando "não tem".
+    if (carimboConfirmadoPara !== null && carimboConfirmadoPara !== usuario.id) {
+      carimboConfirmadoPara = null;
+      avisarEstadoPull();
+    }
     try {
       await abrirParticaoDoUsuario(usuario.id);
     } catch {

@@ -168,7 +168,14 @@ assert.match(
 );
 assert.match(ler('../src/database/database.ts'), /await esquecerDownloadInicial\(\);/, 'apagar dados também apaga o carimbo');
 assert.match(ler('../src/services/storageKeys.ts'), /ULTIMO_PULL_KEY,\s*\];/, 'diagnóstico do último pull some no logout');
+assert.match(
+  sync,
+  /if \(carimboConfirmadoPara !== null && carimboConfirmadoPara !== usuario\.id\) \{\s+carimboConfirmadoPara = null;\s+avisarEstadoPull\(\);/,
+  'carimbo em memória de outra conta não vale para quem acabou de entrar',
+);
+assert.match(sync, /export function downloadInicialJaConfirmado\(\): boolean \{[\s\S]{0,160}if \(!supabase\) return true;/, 'build sem nuvem não fica preso em "baixando"');
 const hook = ler('../src/hooks/useSyncInicial.ts');
 assert.match(hook, /export type EstadoSyncInicial = 'baixando' \| 'falhou' \| 'pronto';/);
+assert.doesNotMatch(hook, /const avaliar = useCallback\(async \(\) => \{\s+if \(downloadInicialJaConfirmado\(\)\)/, 'reavaliação confere o carimbo do usuário da sessão');
 
 console.log('OK — radar de follow-up (pago fora, valor × recência, vencida) e sincronização honesta validados.');
