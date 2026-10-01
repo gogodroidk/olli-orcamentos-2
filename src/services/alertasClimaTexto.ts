@@ -21,6 +21,11 @@
  * "Alertas indisponíveis agora", nunca "sem alertas". Alerta desenhado só por
  * área que não deu para conferir (consulta sem a coordenada do cliente) →
  * "Pode haver alerta da Defesa Civil na região".
+ * Com UMA fonte no ar e nada nela, a frase diz DE QUEM é o "sem alertas"
+ * ("Sem alertas do INMET agora") e a nota diz qual fonte ficou de fora — hoje a
+ * Defesa Civil está desligada no worker (`motivo:'fonte_desligada'`: o feed de
+ * ~24 MB não cabe nos 10 ms de CPU do plano Free), então é o caso comum.
+ * A atribuição credita SÓ as fontes que responderam.
  */
 
 export type NivelAlerta = 'vermelho' | 'laranja' | 'amarelo' | 'desconhecido';
@@ -56,8 +61,10 @@ export interface DadosAlertas {
   /** `true` só quando INMET E Defesa Civil responderam. */
   completo: boolean;
   avisos: AvisoOficial[];
-  /** Nomes das fontes fora do ar agora ('INMET', 'Defesa Civil'). */
+  /** Nomes das fontes fora do ar agora ('INMET', 'Defesa Civil') — inclui as desligadas. */
   fontesIndisponiveis: string[];
+  /** Subconjunto de `fontesIndisponiveis` que o OLLI não consulta de propósito (`fonte_desligada`). */
+  fontesDesligadas: string[];
   /** Alertas só-por-área na mesma UF que não deu para conferir (sem lat/lon). */
   naoConferidos: number;
   pontoConferido: boolean;
@@ -66,6 +73,7 @@ export interface DadosAlertas {
   resumo: string;
   /** Nota secundária (fonte fora, alerta não conferido) ou `null`. */
   nota: string | null;
+  /** Crédito só das fontes que responderam ("Alertas: INMET"). */
   atribuicao: string;
 }
 
@@ -218,15 +226,25 @@ function lerAviso(a: any): AvisoOficial | null {
   };
 }
 
+const DE_FONTE: Record<string, string> = { INMET: 'do INMET', 'Defesa Civil': 'da Defesa Civil' };
+const deFontes = (nomes: string[]) => nomes.map((n) => DE_FONTE[n] ?? `de ${n}`).join(' e ');
+
+/** Crédito só de quem forneceu dado: "Alertas: INMET", "Alertas: INMET e Defesa Civil". */
+export function atribuicaoDasFontes(fontesIndisponiveis: string[]): string {
+  const ok = ['INMET', 'Defesa Civil'].filter((n) => !fontesIndisponiveis.includes(n));
+  return ok.length === 2 ? ATRIBUICAO_ALERTAS : `Alertas: ${ok.join(' e ')}`;
+}
+
 /** Frase principal e nota secundária — as regras da casa num lugar só. */
 export function resumoAlertas(
-  d: Pick<DadosAlertas, 'avisos' | 'completo' | 'fontesIndisponiveis' | 'naoConferidos'>,
+  d: Pick<DadosAlertas, 'avisos' | 'completo' | 'fontesIndisponiveis' | 'naoConferidos'> & { fontesDesligadas?: string[] },
   agoraMs: number,
 ): { resumo: string; nota: string | null } {
   const notas: string[] = [];
-  if (d.fontesIndisponiveis.length) {
-    notas.push(`Alertas ${d.fontesIndisponiveis.length > 1 ? 'do INMET e da Defesa Civil' : d.fontesIndisponiveis[0] === 'INMET' ? 'do INMET' : 'da Defesa Civil'} indisponíveis agora`);
-  }
+  const desligadas = (d.fontesDesligadas ?? []).filter((n) => d.fontesIndisponiveis.includes(n));
+  const fora = d.fontesIndisponiveis.filter((n) => !desligadas.includes(n));
+  if (fora.length) notas.push(`Alertas ${deFontes(fora)} indisponíveis agora`);
+  if (desligadas.length) notas.push(`Alertas ${deFontes(desligadas)} ainda não são consultados pelo OLLI`);
   if (d.naoConferidos > 0) notas.push('Pode haver alerta da Defesa Civil na região (falta a localização do cliente para conferir)');
   const nota = notas.length ? notas.join(' · ') : null;
 
@@ -234,6 +252,11 @@ export function resumoAlertas(
     const principal = fraseDoAviso(d.avisos[0], agoraMs);
     const resto = d.avisos.length - 1;
     return { resumo: resto > 0 ? `${principal} (+${resto})` : principal, nota };
+  }
+  // Uma fonte respondeu "nada" e a outra está fora: o "sem alertas" é DELA, e só dela.
+  if (!d.completo && d.fontesIndisponiveis.length === 1 && d.naoConferidos === 0) {
+    const respondeu = d.fontesIndisponiveis[0] === 'INMET' ? 'Defesa Civil' : 'INMET';
+    return { resumo: `Sem alertas ${deFontes([respondeu])} agora`, nota };
   }
   if (!d.completo) return { resumo: 'Alertas indisponíveis agora', nota };
   if (d.naoConferidos > 0) return { resumo: 'Pode haver alerta da Defesa Civil na região', nota: 'Falta a localização do cliente para conferir' };
@@ -259,10 +282,15 @@ export function normalizarRespostaAlertas(data: unknown, agoraMs: number = Date.
   avisos.sort((x, y) => ORDEM[y.nivel] - ORDEM[x.nivel] || Date.parse(x.inicio) - Date.parse(y.inicio));
 
   const fontesIndisponiveis: string[] = [];
+  const fontesDesligadas: string[] = [];
   for (const chave of ['inmet', 'defesaCivil']) {
     const f = d.fontes[chave];
+    const nome = chave === 'inmet' ? 'INMET' : 'Defesa Civil';
     // Fonte ausente na resposta também é "não sei".
-    if (!f || f.estado !== 'ok') fontesIndisponiveis.push(chave === 'inmet' ? 'INMET' : 'Defesa Civil');
+    if (!f || f.estado !== 'ok') {
+      fontesIndisponiveis.push(nome);
+      if (f && f.motivo === 'fonte_desligada') fontesDesligadas.push(nome);
+    }
   }
   const completo = d.estado === 'ok' && fontesIndisponiveis.length === 0;
   let naoConferidos = 0;
@@ -271,7 +299,7 @@ export function normalizarRespostaAlertas(data: unknown, agoraMs: number = Date.
       if (typeof v === 'number' && Number.isFinite(v) && v > 0) naoConferidos += v;
     }
   }
-  const base = { avisos, completo, fontesIndisponiveis, naoConferidos };
+  const base = { avisos, completo, fontesIndisponiveis, fontesDesligadas, naoConferidos };
   const { resumo, nota } = resumoAlertas(base, agoraMs);
   return {
     ok: true,
@@ -281,7 +309,7 @@ export function normalizarRespostaAlertas(data: unknown, agoraMs: number = Date.
     consultadoEm: typeof d.consultadoEm === 'string' ? d.consultadoEm : null,
     resumo,
     nota,
-    atribuicao: ATRIBUICAO_ALERTAS,
+    atribuicao: atribuicaoDasFontes(fontesIndisponiveis),
   };
 }
 
@@ -330,9 +358,9 @@ export function avisosNoPeriodo(dados: DadosAlertas, inicioIso: string, fimIso: 
   });
 }
 
-/** Crédito das fontes quando há dado de alerta na tela; `null` em carregando/falha. */
+/** Crédito das fontes que responderam quando há dado na tela; `null` em carregando/falha. */
 export function atribuicaoAlertas(estado?: EstadoAlertas): string | null {
   if (estado === undefined) return ATRIBUICAO_ALERTAS;
   if (estado === 'carregando' || estado.ok === false) return null;
-  return ATRIBUICAO_ALERTAS;
+  return estado.atribuicao;
 }

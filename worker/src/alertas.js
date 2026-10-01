@@ -3,7 +3,10 @@
  *
  *   GET /alertas?ibge=<7 dígitos>[&lat=<graus>&lon=<graus>]
  *   cron "7,27,47 * * * *" → processarAlertas(env, { fonte:'inmet' })
- *   cron "8,28,48 * * * *" → processarAlertas(env, { fonte:'defesa_civil' })
+ *
+ * ⚠ DEFESA CIVIL (IDAP) DESLIGADA — ver FONTES_DESLIGADAS. A rota responde
+ *   `fontes.defesaCivil = { estado:'indisponivel', motivo:'fonte_desligada' }`
+ *   (logo `estado:'parcial'`), nunca "sem alertas da Defesa Civil".
  *
  * ─── FONTES (só serviço grátis com uso comercial permitido) ────────────────
  *  INMET — https://apiprevmet3.inmet.gov.br/avisos/ativos
@@ -13,16 +16,24 @@
  *    polígono em GeoJSON — o RSS exigiria 1 chamada por aviso para chegar ao
  *    CAP. Licença: o próprio feed declara `<copyright>public domain</copyright>`
  *    e "o conteúdo poderá ser reproduzido desde que citada a fonte" → o JSON da
- *    rota sempre leva a atribuição ("Alertas: INMET e Defesa Civil").
+ *    rota sempre leva a atribuição (ALERTAS_ATRIBUICAO, só das fontes ativas).
  *    Horários: o INMET publica no horário de Brasília (o CAP traz -03:00; o
  *    JSON traz "2026-10-01 11:28" sem fuso) → convertidos para ISO com -03:00.
  *
  *  Defesa Civil (IDAP/MIDR) — https://idapfile.mdr.gov.br/idap/api/rss/cap
  *    Feed Atom com o CAP 1.2 de cada alerta embutido (o mesmo que vai para o
  *    Google Public Alerts). Dado público do governo federal, sem chave. Só ~1/3
- *    dos alertas trazem `<geocode>` IBGE; o resto vem SÓ com polígono. O feed é
- *    PESADO (11–13 MB, polígonos com dezenas de milhares de vértices) e o
- *    worker está no plano Free (10 ms de CPU por invocação), por isso:
+ *    dos alertas trazem `<geocode>` IBGE; o resto vem SÓ com polígono.
+ *    DESLIGADA EM PRODUÇÃO (revisão do PR #99, 01/10/2026): o feed chegou a
+ *    23,9 MB (72 alertas vivos) e o `lerIdap` mediu 14–25 ms de CPU no Node
+ *    (frio/quente), fora o `arrayBuffer()` de 24 MB e o `JSON.stringify` dos
+ *    polígonos (~5 ms). O plano Free dá 10 ms por invocação de cron e o
+ *    estouro seria SISTEMÁTICO (não o "de vez em quando" que a Cloudflare
+ *    tolera). Streaming não resolve (a CPU total é a mesma numa invocação só) e
+ *    o feed não tem filtro por UF; Workers Paid está fora de questão. O parser
+ *    continua aqui, testado, para o dia em que houver um caminho que caiba —
+ *    religar = tirar de FONTES_DESLIGADAS + cron próprio + medir de novo.
+ *    O que foi feito para caber (e não bastou):
  *      - o feed é lido em BYTES (Buffer, busca nativa): só o cabeçalho de cada
  *        CAP, os nomes de área e os IBGEs viram string; o miolo dos polígonos
  *        é pulado com uma busca pelo próximo '<' (medido: ~5 ms quente);
@@ -42,8 +53,8 @@
  *                                 traz lat/lon e algum bbox contém o ponto
  * O índice carrega `geradoEm`; o arquivo de polígonos também. Se não baterem
  * (gravação pela metade), o polígono vira "não conferido" — nunca "fora da área".
- * Escritas: ≤ 2 por fonte por rodada × 2 fontes × 72 rodadas/dia = 288/dia
- * (o Free dá 1.000).
+ * Escritas: ≤ 2 por rodada × 1 fonte ativa (INMET) × 72 rodadas/dia = 144/dia.
+ * A cota do Free (1.000/dia) é da CONTA inteira e o fonteia também usa KV.
  *
  * ─── ERRO NUNCA VIRA VAZIO ─────────────────────────────────────────────────
  * Feed fora (rede, HTTP ≠ 200, corpo que não dá para ler) → o índice daquela
@@ -83,11 +94,13 @@ function json(obj, status = 200, extra = {}) {
 }
 
 /**
- * Crons PRÓPRIOS de cada fonte (têm de bater com `triggers.crons` do
+ * Cron PRÓPRIO de cada fonte ATIVA (tem de bater com `triggers.crons` do
  * wrangler.jsonc). Minutos fora dos 0/5/10… usados pelos jobs de e-mail e
  * contratos, só por clareza de log: cada expressão já é uma invocação separada.
+ * A conta Free da Cloudflare tem só 5 Cron Triggers no TOTAL (todas as workers
+ * somadas) — por isso a Defesa Civil desligada não tem cron.
  */
-export const ALERTAS_CRONS = { '7,27,47 * * * *': 'inmet', '8,28,48 * * * *': 'defesa_civil' };
+export const ALERTAS_CRONS = { '7,27,47 * * * *': 'inmet' };
 
 /** Fonte de alertas que um cron dispara, ou `null` (cron de outro job). */
 export function fonteDoCron(cron) {
@@ -115,11 +128,20 @@ export const ALERTAS_MEMO_MS = 60 * 1000;
 /** Alerta sem fim declarado só vale até 24 h depois do início. */
 const SEM_FIM_MS = 24 * 60 * 60 * 1000;
 
-export const ALERTAS_ATRIBUICAO = 'Alertas: INMET e Defesa Civil';
-
 export const FONTES = /** @type {const} */ (['inmet', 'defesa_civil']);
 const ROTULO_FONTE = { inmet: 'INMET', defesa_civil: 'Defesa Civil' };
 const CHAVE_RESPOSTA = { inmet: 'inmet', defesa_civil: 'defesaCivil' };
+
+/**
+ * Fontes DESLIGADAS de propósito → motivo exposto na rota. Continuam na
+ * resposta (como 'indisponivel'), porque "não consultei" nunca pode parecer
+ * "consultei e não tem". Ver o cabeçalho: o IDAP não cabe nos 10 ms do Free.
+ */
+export const FONTES_DESLIGADAS = Object.freeze({ defesa_civil: 'fonte_desligada' });
+export const FONTES_COLETADAS = FONTES.filter((f) => !Object.prototype.hasOwnProperty.call(FONTES_DESLIGADAS, f));
+
+/** Crédito só de quem de fato fornece dado (hoje: "Alertas: INMET"). */
+export const ALERTAS_ATRIBUICAO = `Alertas: ${FONTES_COLETADAS.map((f) => ROTULO_FONTE[f]).join(' e ')}`;
 
 export const chaveIndice = (fonte) => `alertas:v1:${fonte}`;
 export const chavePoligonos = (fonte) => `alertas:v1:${fonte}:poligonos`;
@@ -671,7 +693,8 @@ export async function processarAlertas(env, deps = {}) {
   const agora = deps.now ? deps.now() : new Date();
   const agoraMs = agora.getTime();
   const fontes = {};
-  const alvo = deps.fonte ? FONTES.filter((f) => f === deps.fonte) : FONTES;
+  // Fonte desligada nunca é buscada (nem por um cron antigo que sobrou na conta).
+  const alvo = FONTES_COLETADAS.filter((f) => !deps.fonte || f === deps.fonte);
   for (const fonte of alvo) {
     const res = await coletarFonte(fonte, fetchFn, agoraMs);
     const geradoEm = new Date(agoraMs).toISOString();
@@ -736,14 +759,16 @@ function aindaValido(aviso, agoraMs) {
  * `carregarPoligonos(fonte, geradoEm)` devolve o mapa de polígonos da fonte ou
  * `null` quando não dá para conferir.
  */
-export async function cruzarAlertas({ indices, ibge, coord, agoraMs, carregarPoligonos }) {
+export async function cruzarAlertas({ indices, ibge, coord, agoraMs, carregarPoligonos, desligadas = FONTES_DESLIGADAS }) {
   const fontes = {};
   const avisos = [];
   const naoConferidos = {};
   const uf = ibge.slice(0, 2);
   for (const fonte of FONTES) {
     const indice = indices[fonte];
-    const st = estadoDaFonte(indice, agoraMs);
+    const st = Object.prototype.hasOwnProperty.call(desligadas, fonte)
+      ? { estado: 'indisponivel', motivo: desligadas[fonte] }
+      : estadoDaFonte(indice, agoraMs);
     fontes[CHAVE_RESPOSTA[fonte]] = { nome: ROTULO_FONTE[fonte], ...st };
     if (st.estado !== 'ok') continue;
     let poligonos;
@@ -817,8 +842,9 @@ export async function handleAlertas(request, env, url, deps = {}) {
     const estadoRl = await checarLimite(env.ALERTAS_RL, ip);
     if (!deixaPassar(estadoRl, { sensivel: false })) return json({ ok: false, motivo: 'muitas_requisicoes' }, 429);
     porFonte = {};
-    const lidos = await Promise.all(FONTES.map((f) => lerKvJson(kv, chaveIndice(f))));
-    FONTES.forEach((f, i) => { porFonte[f] = lidos[i]; });
+    // Só as fontes coletadas: ler a chave de uma desligada gastaria cota à toa.
+    const lidos = await Promise.all(FONTES_COLETADAS.map((f) => lerKvJson(kv, chaveIndice(f))));
+    FONTES_COLETADAS.forEach((f, i) => { porFonte[f] = lidos[i]; });
     // Erro de leitura (undefined) não fica na memória: a próxima consulta tenta de novo.
     if (lidos.every((v) => v !== undefined)) memoIndices = { exp: agoraMs + ALERTAS_MEMO_MS, porFonte };
   }

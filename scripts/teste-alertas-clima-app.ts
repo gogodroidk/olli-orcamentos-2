@@ -122,10 +122,47 @@ console.log('\n2) erro nunca vira vazio');
       defesaCivil: { nome: 'Defesa Civil', estado: 'indisponivel', motivo: 'http_500' },
     },
   });
-  checar('Defesa Civil fora e nenhum aviso: "Alertas indisponíveis agora"', textoAlertas(d), 'Alertas indisponíveis agora');
+  checar('Defesa Civil fora e nada no INMET: o "sem alertas" é SÓ do INMET', textoAlertas(d), 'Sem alertas do INMET agora');
   checar('nota diz qual fonte caiu', d.nota, 'Alertas da Defesa Civil indisponíveis agora');
   checar('NÃO é "sem alertas" confirmado', semAlertasConfirmado(d), false);
   checar('completo = false', d.completo, false);
+  checar('atribuição só de quem respondeu', atribuicaoAlertas(d), 'Alertas: INMET');
+}
+{
+  // Como o worker responde HOJE: Defesa Civil desligada (feed de ~24 MB não cabe no plano Free).
+  const d = dados({
+    estado: 'parcial',
+    atribuicao: 'Alertas: INMET',
+    fontes: {
+      inmet: { nome: 'INMET', estado: 'ok' },
+      defesaCivil: { nome: 'Defesa Civil', estado: 'indisponivel', motivo: 'fonte_desligada' },
+    },
+  });
+  checar('Defesa Civil desligada: "Sem alertas do INMET agora"', textoAlertas(d), 'Sem alertas do INMET agora');
+  checar('…nota honesta: não é consultada (não "fora agora")', d.nota, 'Alertas da Defesa Civil ainda não são consultados pelo OLLI');
+  checar('…fontesDesligadas', d.fontesDesligadas, ['Defesa Civil']);
+  checar('…NÃO é "sem alertas" confirmado', semAlertasConfirmado(d), false);
+  checar('…atribuição só do INMET', atribuicaoAlertas(d), 'Alertas: INMET');
+  const comAviso = dados({
+    estado: 'parcial',
+    avisos: [aviso()],
+    fontes: {
+      inmet: { nome: 'INMET', estado: 'ok' },
+      defesaCivil: { nome: 'Defesa Civil', estado: 'indisponivel', motivo: 'fonte_desligada' },
+    },
+  });
+  checar('…com aviso do INMET, o aviso manda na frase', textoAlertas(comAviso), 'Alerta INMET: Tempestade até hoje 23h59');
+}
+{
+  const d = dados({
+    estado: 'parcial',
+    fontes: {
+      inmet: { nome: 'INMET', estado: 'indisponivel', motivo: 'http_503' },
+      defesaCivil: { nome: 'Defesa Civil', estado: 'indisponivel', motivo: 'fonte_desligada' },
+    },
+  });
+  checar('as duas fora (mesmo em 200): "Alertas indisponíveis agora"', textoAlertas(d), 'Alertas indisponíveis agora');
+  checar('…nota separa a caída da desligada', d.nota, 'Alertas do INMET indisponíveis agora · Alertas da Defesa Civil ainda não são consultados pelo OLLI');
 }
 {
   const d = dados({ fontes: { inmet: { estado: 'ok' } } });

@@ -18,12 +18,15 @@ nunca no app ou no APK.
   extrai clientes, catálogo, orçamento e documentos com evidência/confiança;
   retorna somente uma prévia (`requiresReview=true`)
 - `GET /` — health check (`{ ok:true, service:'olli-diagnostico', ia:'on'|'off', autopilot:'on'|'off' }`)
-- `GET /alertas?ibge=<7 dígitos>[&lat=&lon=]` — alertas oficiais de tempo (INMET +
-  Defesa Civil/IDAP), público e limitado por IP (`ALERTAS_RL`). Só lê o KV
-  `CACHE`, que dois crons próprios (`7,27,47 * * * *` = INMET e
-  `8,28,48 * * * *` = Defesa Civil) preenchem. Feed fora = `estado:'parcial'` ou
-  503 `alertas_indisponiveis` — nunca "sem alertas". `ALERTAS_MODE=off` desliga
-  coleta e rota (503 `alertas_desligados`). Detalhes em `src/alertas.js`.
+- `GET /alertas?ibge=<7 dígitos>[&lat=&lon=]` — alertas oficiais de tempo do
+  INMET, público e limitado por IP (`ALERTAS_RL`). Só lê o KV `CACHE`, que um
+  cron próprio (`7,27,47 * * * *`) preenche. A Defesa Civil (IDAP) está
+  DESLIGADA: o feed tem ~24 MB e o parse não cabe nos 10 ms de CPU do plano
+  Free — a rota responde `defesaCivil: { estado:'indisponivel',
+  motivo:'fonte_desligada' }` e, por isso, `estado:'parcial'`. Feed fora =
+  `parcial` ou 503 `alertas_indisponiveis` — nunca "sem alertas".
+  `ALERTAS_MODE=off` desliga coleta e rota (503 `alertas_desligados`). A conta
+  Free tem só 5 Cron Triggers somando todas as workers. Detalhes em `src/alertas.js`.
 
 Todos os POST exigem `Authorization: Bearer <token Supabase>`.
 

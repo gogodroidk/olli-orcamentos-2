@@ -32,12 +32,15 @@
   // Cron de minuto: consumer da outbox (boas-vindas + lembretes + resumo) a cada
   // minuto; a seleção de lembretes só age na hora cheia, 8h–20h de Brasília, e a
   // do resumo diário de 10 em 10 min entre 7h00 e 7h50 (seg–sáb).
-  // Os dois crons de 20 em 20 min são dos ALERTAS OFICIAIS (worker/src/alertas.js):
-  // um por fonte, para cada um ser uma invocação SEPARADA — o feed da Defesa
-  // Civil tem ~11 MB e não pode dividir os 10 ms de CPU do plano Free com a
-  // outbox. O scheduled() roteia por `controller.cron`; mudar uma expressão aqui
-  // exige mudar ALERTAS_CRONS em alertas.js (o teste teste-alertas.js confere).
-  "triggers": { "crons": ["* * * * *", "7,27,47 * * * *", "8,28,48 * * * *"] },
+  // O cron de 20 em 20 min é dos ALERTAS OFICIAIS do INMET (worker/src/alertas.js),
+  // numa invocação SEPARADA para não dividir os 10 ms de CPU do plano Free com a
+  // outbox. A Defesa Civil (IDAP, feed de ~24 MB) está DESLIGADA: não cabe nos
+  // 10 ms e não tem cron. O scheduled() roteia por `controller.cron`; mudar uma
+  // expressão aqui exige mudar ALERTAS_CRONS em alertas.js (teste-alertas.js confere).
+  // LIMITE DA CONTA FREE: 5 Cron Triggers no TOTAL, somando todas as workers
+  // (olli-diagnostico 2 + olli-diagnostico-staging 1 + genesis-v2-api 1 + o que
+  // o fonteia tiver). Antes de acrescentar um cron, conte os da conta.
+  "triggers": { "crons": ["* * * * *", "7,27,47 * * * *"] },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put OPENROUTER_API_KEY
   //   npx wrangler secret put STRIPE_SECRET_KEY       (sk_live_...)
@@ -135,6 +138,10 @@
   "env": {
     "staging": {
       "name": "olli-diagnostico-staging",
+      // `triggers` é HERDADO pelo env: sem esta linha o staging ganharia o cron
+      // dos alertas (que lá estão desligados) e gastaria 1 dos 5 Cron Triggers
+      // da conta Free à toa. Fica só o cron de minuto que o staging já tinha.
+      "triggers": { "crons": ["* * * * *"] },
       "workers_dev": true,
       "preview_urls": false,
       "routes": [],

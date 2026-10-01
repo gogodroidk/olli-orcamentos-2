@@ -10,7 +10,9 @@
  * amostrado, Cancel/references tiram o alerta do ar, status≠Actual fora,
  * expirado fora); ponto-no-polígono (com buraco); cron grava no KV e, com o
  * feed fora, grava 'indisponivel' — NUNCA lista vazia com cara de "sem
- * alertas"; rota: parcial quando uma fonte cai, 503 quando caem todas,
+ * alertas"; Defesa Civil DESLIGADA (não cabe nos 10 ms de CPU do Free): nem
+ * busca, nem cron, nem leitura de KV, e a rota diz 'fonte_desligada' (parcial,
+ * nunca "sem alertas"); rota: parcial quando uma fonte cai, 503 quando caem todas,
  * índice velho = indisponível, alerta só-polígono sem lat/lon vira
  * `naoConferidos` (não some), memória do isolate poupa o KV; crons do
  * wrangler.jsonc batem com `ALERTAS_CRONS`; index.js roteia o cron de alertas
@@ -25,11 +27,14 @@ import {
   ALERTAS_MAX_VERTICES,
   ALERTAS_USER_AGENT,
   ALERTAS_VALIDADE_MS,
+  FONTES_COLETADAS,
+  FONTES_DESLIGADAS,
   IDAP_URL,
   INMET_URL,
   amostrarAnelCap,
   chaveIndice,
   chavePoligonos,
+  cruzarAlertas,
   fonteDoCron,
   handleAlertas,
   horaInmetIso,
@@ -345,34 +350,53 @@ await caso('grava índice + polígonos; feed fora grava indisponivel SEM avisos'
   const kv = kvFalso();
   const fetchFn = fetchFalso({ [INMET_URL]: respostaFalsa(200, inmetFalso()), [IDAP_URL]: respostaFalsa(502, 'Bad Gateway') });
   const r = await processarAlertas({ ...ENV_BASE, CACHE: kv }, { fetch: fetchFn, now: () => new Date(AGORA) });
-  assert.deepEqual(r, { estado: 'processado', fontes: { inmet: 'ok:2', defesa_civil: 'indisponivel:http_502' } });
+  // A Defesa Civil está desligada: nem é buscada (a rota responde 'fonte_desligada').
+  assert.deepEqual(r, { estado: 'processado', fontes: { inmet: 'ok:2' } });
+  assert.deepEqual(fetchFn.chamadas.map((c) => c.url), [INMET_URL]);
   const inmet = JSON.parse(kv.dados.get(chaveIndice('inmet')));
   assert.equal(inmet.estado, 'ok');
   assert.equal(inmet.avisos.length, 2);
   const pol = JSON.parse(kv.dados.get(chavePoligonos('inmet')));
   assert.equal(pol.geradoEm, inmet.geradoEm);
-  const idap = JSON.parse(kv.dados.get(chaveIndice('defesa_civil')));
-  assert.equal(idap.estado, 'indisponivel');
-  assert.equal(idap.motivo, 'http_502');
-  assert.deepEqual(idap.avisos, []);
+  assert.equal(kv.dados.has(chaveIndice('defesa_civil')), false, 'fonte desligada não gasta escrita de KV');
   assert.ok(kv.puts.every((p) => p.opts && p.opts.expirationTtl > 0), 'toda chave tem TTL');
   assert.equal(fetchFn.chamadas[0].init.headers['User-Agent'], ALERTAS_USER_AGENT);
   // Polígonos são gravados ANTES do índice.
   const ordem = kv.puts.map((p) => p.chave);
   assert.ok(ordem.indexOf(chavePoligonos('inmet')) < ordem.indexOf(chaveIndice('inmet')));
 });
-await caso('cada cron coleta só a sua fonte', async () => {
+await caso('feed do INMET fora grava indisponivel SEM avisos', async () => {
+  const kv = kvFalso();
+  const fetchFn = fetchFalso({ [INMET_URL]: respostaFalsa(502, 'Bad Gateway') });
+  const r = await processarAlertas({ ...ENV_BASE, CACHE: kv }, { fetch: fetchFn, now: () => new Date(AGORA) });
+  assert.deepEqual(r.fontes, { inmet: 'indisponivel:http_502' });
+  const inmet = JSON.parse(kv.dados.get(chaveIndice('inmet')));
+  assert.equal(inmet.estado, 'indisponivel');
+  assert.equal(inmet.motivo, 'http_502');
+  assert.deepEqual(inmet.avisos, []);
+});
+await caso('Defesa Civil desligada: nem um cron dela busca o feed de 24 MB', async () => {
+  assert.deepEqual(FONTES_COLETADAS, ['inmet']);
+  assert.equal(FONTES_DESLIGADAS.defesa_civil, 'fonte_desligada');
   const kv = kvFalso();
   const fetchFn = fetchFalso({ [IDAP_URL]: respostaFalsa(200, IDAP_PADRAO) });
   const r = await processarAlertas({ ...ENV_BASE, CACHE: kv }, { fonte: 'defesa_civil', fetch: fetchFn, now: () => new Date(AGORA) });
-  assert.deepEqual(r.fontes, { defesa_civil: 'ok:3' });
-  assert.deepEqual(fetchFn.chamadas.map((c) => c.url), [IDAP_URL]);
+  assert.deepEqual(r.fontes, {});
+  assert.equal(fetchFn.chamadas.length, 0);
+  assert.equal(kv.puts.length, 0);
+});
+await caso('cron do INMET coleta só o INMET', async () => {
+  const kv = kvFalso();
+  const fetchFn = fetchFalso({ [INMET_URL]: respostaFalsa(200, inmetFalso()) });
+  const r = await processarAlertas({ ...ENV_BASE, CACHE: kv }, { fonte: 'inmet', fetch: fetchFn, now: () => new Date(AGORA) });
+  assert.deepEqual(r.fontes, { inmet: 'ok:2' });
+  assert.deepEqual(fetchFn.chamadas.map((c) => c.url), [INMET_URL]);
 });
 await caso('rede caindo e JSON quebrado também viram indisponivel', async () => {
-  const kv = kvFalso();
-  const fetchFn = fetchFalso({ [INMET_URL]: respostaFalsa(200, '{quebrado'), [IDAP_URL]: new TypeError('fetch failed') });
-  const r = await processarAlertas({ ...ENV_BASE, CACHE: kv }, { fetch: fetchFn, now: () => new Date(AGORA) });
-  assert.deepEqual(r.fontes, { inmet: 'indisponivel:formato_inesperado', defesa_civil: 'indisponivel:rede' });
+  const quebrado = await processarAlertas({ ...ENV_BASE, CACHE: kvFalso() }, { fetch: fetchFalso({ [INMET_URL]: respostaFalsa(200, '{quebrado') }), now: () => new Date(AGORA) });
+  assert.deepEqual(quebrado.fontes, { inmet: 'indisponivel:formato_inesperado' });
+  const semRede = await processarAlertas({ ...ENV_BASE, CACHE: kvFalso() }, { fetch: fetchFalso({ [INMET_URL]: new TypeError('fetch failed') }), now: () => new Date(AGORA) });
+  assert.deepEqual(semRede.fontes, { inmet: 'indisponivel:rede' });
 });
 
 console.log('\n6) rota GET /alertas');
@@ -402,66 +426,82 @@ await caso('KV vazio (cron nunca rodou) = 503 indisponível, nunca "sem alertas"
   assert.equal(r.corpo.ok, false);
   assert.equal(r.corpo.motivo, 'alertas_indisponiveis');
   assert.equal(r.corpo.fontes.inmet.estado, 'indisponivel');
-  assert.equal(r.corpo.fontes.defesaCivil.motivo, 'sem_dados');
+  assert.equal(r.corpo.fontes.defesaCivil.motivo, 'fonte_desligada');
 });
-await caso('tudo ok: avisos do município, ordenados por nível, sem dados internos', async () => {
+await caso('INMET ok: avisos do município, ordenados por nível, sem dados internos; Defesa Civil = desligada', async () => {
   limparMemoAlertas();
   const kv = await kvPreenchido();
+  kv.gets = 0;
   const r = await consultar({ ...ENV_BASE, CACHE: kv }, `ibge=${SP_CAPITAL}`);
   assert.equal(r.status, 200);
   assert.equal(r.corpo.ok, true);
-  assert.equal(r.corpo.estado, 'ok');
+  // Uma fonte desligada = parcial: a tela NUNCA pode dizer "sem alertas" no geral.
+  assert.equal(r.corpo.estado, 'parcial');
+  assert.deepEqual(r.corpo.fontes.defesaCivil, { nome: 'Defesa Civil', estado: 'indisponivel', motivo: 'fonte_desligada' });
   assert.equal(r.corpo.atribuicao, ALERTAS_ATRIBUICAO);
+  assert.equal(ALERTAS_ATRIBUICAO, 'Alertas: INMET'); // não credita quem não forneceu dado
   // Vermelho primeiro; no mesmo nível, o que começa antes.
-  assert.deepEqual(r.corpo.avisos.map((a) => a.id), ['inmet:55920', 'inmet:55916', 'defesa_civil:100/2026']);
+  assert.deepEqual(r.corpo.avisos.map((a) => a.id), ['inmet:55920', 'inmet:55916']);
   assert.equal(r.corpo.avisos[0].emVigor, false); // amanhã
   assert.equal(r.corpo.avisos[1].emVigor, true);
-  assert.equal(r.corpo.avisos[2].conferidoPor, 'municipio');
+  assert.equal(r.corpo.avisos[1].conferidoPor, 'municipio');
   for (const a of r.corpo.avisos) {
     assert.equal(a.ibges, undefined);
     assert.equal(a.bbox, undefined);
     assert.equal(a.ufs, undefined);
   }
-  // Alerta só-polígono em SP (Cajati) sem lat/lon: não some, vira "não conferido".
-  assert.deepEqual(r.corpo.naoConferidos, { defesaCivil: 1 });
+  assert.deepEqual(r.corpo.naoConferidos, {});
   assert.equal(r.corpo.pontoConferido, false);
+  assert.equal(kv.gets, 1, 'só o índice do INMET é lido; a fonte desligada não gasta leitura');
 });
-await caso('com lat/lon: só-polígono entra se o ponto está dentro', async () => {
-  limparMemoAlertas();
-  const kv = await kvPreenchido();
-  const env = { ...ENV_BASE, CACHE: kv };
-  const dentro = await consultar(env, `ibge=${CAJATI}&lat=-24.73&lon=-48.12`);
-  assert.deepEqual(dentro.corpo.avisos.map((a) => [a.id, a.conferidoPor]), [['defesa_civil:101/2026', 'poligono']]);
-  assert.deepEqual(dentro.corpo.naoConferidos, {});
-  const fora = await consultar(env, `ibge=${CAJATI}&lat=-23.0&lon=-48.12`);
-  assert.deepEqual(fora.corpo.avisos, []);
-  assert.deepEqual(fora.corpo.naoConferidos, {});
-  assert.equal(fora.corpo.estado, 'ok'); // aqui "sem alertas" é verdade: fontes ok e ponto conferido
+
+// O cruzamento só-polígono (Defesa Civil) continua provado pela função PURA,
+// com a fonte "religada" no teste — é o caminho que volta quando o IDAP couber.
+const indicesIdap = (geradoEm = new Date(AGORA).toISOString()) => {
+  const lido = lerIdap(IDAP_PADRAO, AGORA);
+  const inmet = lerInmet(inmetFalso());
+  return {
+    indices: {
+      inmet: { v: 1, estado: 'ok', geradoEm, atualizadoEm: geradoEm, avisos: inmet.avisos },
+      defesa_civil: { v: 1, estado: 'ok', geradoEm, atualizadoEm: geradoEm, avisos: lido.avisos },
+    },
+    poligonos: lido.poligonos,
+  };
+};
+await caso('fonte religada: aviso por município entra e só-polígono sem lat/lon vira "não conferido"', async () => {
+  const { indices, poligonos } = indicesIdap();
+  const r = await cruzarAlertas({ indices, ibge: SP_CAPITAL, coord: null, agoraMs: AGORA, carregarPoligonos: async () => poligonos, desligadas: {} });
+  assert.equal(r.estado, 'ok');
+  assert.deepEqual(r.avisos.map((a) => a.id), ['inmet:55920', 'inmet:55916', 'defesa_civil:100/2026']);
+  assert.deepEqual(r.naoConferidos, { defesaCivil: 1 }); // Cajati (SP) não some
 });
-await caso('polígonos de outra rodada (gravação pela metade) = não conferido', async () => {
-  limparMemoAlertas();
-  const kv = await kvPreenchido();
-  const pol = JSON.parse(kv.dados.get(chavePoligonos('defesa_civil')));
-  pol.geradoEm = '2026-09-30T00:00:00.000Z';
-  kv.dados.set(chavePoligonos('defesa_civil'), JSON.stringify(pol));
-  const r = await consultar({ ...ENV_BASE, CACHE: kv }, `ibge=${CAJATI}&lat=-24.73&lon=-48.12`);
-  assert.deepEqual(r.corpo.avisos, []);
-  assert.deepEqual(r.corpo.naoConferidos, { defesaCivil: 1 });
+await caso('fonte religada, com lat/lon: só-polígono entra se o ponto está dentro', async () => {
+  const { indices, poligonos } = indicesIdap();
+  const carregar = async () => poligonos;
+  const dentro = await cruzarAlertas({ indices, ibge: CAJATI, coord: { lat: -24.73, lon: -48.12 }, agoraMs: AGORA, carregarPoligonos: carregar, desligadas: {} });
+  assert.deepEqual(dentro.avisos.map((a) => [a.id, a.conferidoPor]), [['defesa_civil:101/2026', 'poligono']]);
+  assert.deepEqual(dentro.naoConferidos, {});
+  const fora = await cruzarAlertas({ indices, ibge: CAJATI, coord: { lat: -23.0, lon: -48.12 }, agoraMs: AGORA, carregarPoligonos: carregar, desligadas: {} });
+  assert.deepEqual(fora.avisos, []);
+  assert.deepEqual(fora.naoConferidos, {});
+  assert.equal(fora.estado, 'ok'); // aqui "sem alertas" é verdade: fontes ok e ponto conferido
 });
-await caso('Defesa Civil fora: parcial (a tela não pode dizer "sem alertas")', async () => {
-  limparMemoAlertas();
-  const kv = await kvPreenchido({ idap: 500 });
-  const r = await consultar({ ...ENV_BASE, CACHE: kv }, `ibge=${RIO}`);
-  assert.equal(r.status, 200);
-  assert.equal(r.corpo.estado, 'parcial');
-  assert.deepEqual(r.corpo.avisos, []);
-  assert.equal(r.corpo.fontes.inmet.estado, 'ok');
-  assert.equal(r.corpo.fontes.defesaCivil.estado, 'indisponivel');
-  assert.equal(r.corpo.fontes.defesaCivil.motivo, 'http_500');
+await caso('fonte religada: polígonos de outra rodada (gravação pela metade) = não conferido', async () => {
+  const { indices } = indicesIdap();
+  const r = await cruzarAlertas({ indices, ibge: CAJATI, coord: { lat: -24.73, lon: -48.12 }, agoraMs: AGORA, carregarPoligonos: async () => null, desligadas: {} });
+  assert.deepEqual(r.avisos, []);
+  assert.deepEqual(r.naoConferidos, { defesaCivil: 1 });
 });
-await caso('as duas fontes fora: 503', async () => {
+await caso('desligada por padrão: mesmo com índice no KV, a Defesa Civil não entra', async () => {
+  const { indices, poligonos } = indicesIdap();
+  const r = await cruzarAlertas({ indices, ibge: SP_CAPITAL, coord: null, agoraMs: AGORA, carregarPoligonos: async () => poligonos });
+  assert.equal(r.estado, 'parcial');
+  assert.ok(r.avisos.every((a) => a.fonte === 'inmet'));
+  assert.deepEqual(r.naoConferidos, {});
+});
+await caso('INMET fora (e Defesa Civil desligada): 503', async () => {
   limparMemoAlertas();
-  const kv = await kvPreenchido({ inmet: 503, idap: 500 });
+  const kv = await kvPreenchido({ inmet: 503 });
   const r = await consultar({ ...ENV_BASE, CACHE: kv }, `ibge=${SP_CAPITAL}`);
   assert.equal(r.status, 503);
   assert.equal(r.corpo.motivo, 'alertas_indisponiveis');
@@ -480,9 +520,6 @@ await caso('aviso vencido sai da resposta', async () => {
   const ind = JSON.parse(kv.dados.get(chaveIndice('inmet')));
   ind.atualizadoEm = new Date(depois).toISOString();
   kv.dados.set(chaveIndice('inmet'), JSON.stringify(ind));
-  const idap = JSON.parse(kv.dados.get(chaveIndice('defesa_civil')));
-  idap.atualizadoEm = new Date(depois).toISOString();
-  kv.dados.set(chaveIndice('defesa_civil'), JSON.stringify(idap));
   const r = await consultar({ ...ENV_BASE, CACHE: kv }, `ibge=${SP_CAPITAL}`, { agora: depois });
   assert.deepEqual(r.corpo.avisos.map((a) => a.id), ['inmet:55920']);
 });
@@ -525,7 +562,14 @@ await caso('crons do wrangler.jsonc batem com ALERTAS_CRONS', () => {
   assert.ok(crons.includes('* * * * *'), 'o cron de minuto continua');
   const deAlertas = crons.filter((c) => fonteDoCron(c));
   assert.deepEqual(deAlertas.sort(), Object.keys(ALERTAS_CRONS).sort());
-  assert.deepEqual(Object.values(ALERTAS_CRONS).sort(), ['defesa_civil', 'inmet']);
+  assert.deepEqual(Object.values(ALERTAS_CRONS), ['inmet']); // fonte desligada não gasta Cron Trigger
+  // Conta Free = 5 Cron Triggers no total: esta worker usa no máximo 2.
+  assert.ok(crons.length <= 2, `crons em produção: ${crons.length}`);
+  // `triggers` é herdado pelo env de staging: ele precisa fixar os próprios crons.
+  const staging = wr.slice(wr.indexOf('"olli-diagnostico-staging"'));
+  const ms = /"triggers"\s*:\s*\{\s*"crons"\s*:\s*\[([^\]]*)\]/.exec(staging);
+  assert.ok(ms, 'staging declara os próprios triggers');
+  assert.deepEqual([...ms[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), ['* * * * *']);
   assert.equal(fonteDoCron('* * * * *'), null);
   assert.equal(fonteDoCron(undefined), null);
   assert.ok(/"binding"\s*:\s*"CACHE"/.test(wr), 'binding KV CACHE declarado');
