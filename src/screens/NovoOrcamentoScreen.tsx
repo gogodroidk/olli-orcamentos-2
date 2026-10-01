@@ -1,22 +1,28 @@
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Animated,
+  View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform,
   Keyboard, Alert, ActivityIndicator,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { useNavigation, useRoute, RouteProp, usePreventRemove, type NavigationAction } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, comAlfa, textoSobre, type Cores } from '../theme';
-import { Motion, useReducedMotion } from '../theme/motion';
+import { DISTANCIA, DURACAO, useReduzirMovimento } from '../theme/motion';
+import { ContadorAnimado, curvas } from '../components/motion';
+import { toast } from '../components/feedback';
 import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { Celebracao } from '../components/Celebracao';
-import { getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa, edicaoBloqueada } from '../database/database';
+import {
+  getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa, edicaoBloqueada,
+  getUltimoOrcamentoDoCliente,
+} from '../database/database';
 import { Orcamento, ItemOrcamento, Empresa } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
@@ -26,6 +32,21 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { track, Eventos } from '../services/analytics';
 import { AVISO_EXEMPLO } from '../services/ativacao';
+import {
+  PASSOS_VISIVEIS,
+  direcaoDaTroca,
+  idsDeCortesia,
+  indiceVisivel,
+  motivoBloqueio,
+  passoAnterior,
+  passoInicial,
+  progressoDoPasso,
+  proximoPasso,
+  repetirDoUltimo,
+  rotuloDoBotaoPrincipal,
+  type EstadoUltimoOrcamento,
+  type Passo,
+} from '../utils/orcarRapido';
 
 // Steps
 import Step1Cliente from '../steps/Step1Cliente';
@@ -36,8 +57,6 @@ import Step4Personalizacao from '../steps/Step4Personalizacao';
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'NovoOrcamento'>;
 
-const STEPS = ['Cliente', 'Itens', 'Detalhes', 'Revisar'];
-const useNativeAnimations = Platform.OS !== 'web';
 
 const PDF_MODEL_LABELS: Record<string, string> = {
   editorial: 'Editorial',
@@ -114,14 +133,14 @@ export default function NovoOrcamentoScreen() {
   // os itens chegam com valor de referência e o editor avisa que é exemplo.
   const ehExemplo = !isEdit && !!(route.params as any)?.exemploVertical;
 
-  const [step, setStep] = useState(0);
+  const [passo, setPasso] = useState<Passo>('cliente');
   const [saving, setSaving] = useState(false);
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [carga, setCarga] = useState<Carga>({ estado: 'carregando' });
   // O usuário mexeu em algo (cliente, itens, detalhes)? Decide se sair pede confirmação.
   const [alterado, setAlterado] = useState(false);
-  // Teclado aberto → o rodapé (total + botões) sai da frente dos campos e da busca.
+  // Teclado aberto → o rodapé encolhe (ou sai, no passo Cliente) — ver `rodapeCompacto`.
   const [tecladoAberto, setTecladoAberto] = useState(false);
   // Liga logo antes de uma saída que JÁ foi decidida (salvou, descartou) para o
   // usePreventRemove não perguntar de novo sobre o mesmo trabalho.
@@ -135,52 +154,64 @@ export default function NovoOrcamentoScreen() {
   const pendingNavRef = useRef<string | null>(null);
   // IDs de itens com preço R$ 0,00 que o usuário já confirmou explicitamente
   // como cortesia/brinde (via Alert em Step2Itens). Persiste entre trocas de
-  // step porque vive no componente pai, que não desmonta.
+  // passo porque vive no componente pai, que não desmonta.
   const [itensZeroConfirmados, setItensZeroConfirmados] = useState<Set<string>>(new Set());
-  const slide = useRef(new Animated.Value(0)).current;
-  // Fade acompanha o slide na troca de passo: some rapidinho e reaparece já
-  // no lugar novo, reforçando a sensação de "página virou" (não só deslizou).
-  const fade = useRef(new Animated.Value(1)).current;
-  // Preenchimento animado da barra de progresso do wizard (0 a 1 = passo 1 a 4).
-  const stepProgress = useRef(new Animated.Value(0)).current;
-  const reduzirMovimento = useReducedMotion();
+  // "Repetir o último orçamento deste cliente" (só na criação, cliente do cadastro).
+  const [ultimoDoCliente, setUltimoDoCliente] = useState<EstadoUltimoOrcamento | undefined>(undefined);
 
-  const animateStep = useCallback((dir: 1 | -1, novoStep: number) => {
-    const progressoFinal = novoStep / (STEPS.length - 1);
-    // reduced-motion: troca de passo direto no estado final — sem slide, sem
-    // fade, sem preenchimento animado da barra de progresso.
+  // Troca de passo na UI thread (Reanimated): o conteúdo entra deslizando
+  // `DISTANCIA.deslize` e ganhando opacidade; a barra enche por scaleX. Só
+  // transform/opacity. "Reduzir movimento" = tudo já no estado final.
+  const reduzirMovimento = useReduzirMovimento();
+  const deslize = useSharedValue(0);
+  const opacidadeConteudo = useSharedValue(1);
+  const progresso = useSharedValue(progressoDoPasso('cliente'));
+
+  const animarPasso = useCallback((dir: 1 | -1, novo: Passo) => {
+    const alvo = progressoDoPasso(novo);
     if (reduzirMovimento) {
-      slide.setValue(0);
-      fade.setValue(1);
-      stepProgress.setValue(progressoFinal);
+      deslize.set(0);
+      opacidadeConteudo.set(1);
+      progresso.set(alvo);
       return;
     }
-    slide.setValue(dir * 40);
-    fade.setValue(0);
-    Animated.parallel([
-      Animated.spring(slide, { toValue: 0, useNativeDriver: useNativeAnimations, friction: 9, tension: 60 }),
-      Animated.timing(fade, { toValue: 1, duration: Motion.dur.base, easing: Motion.easing.standard, useNativeDriver: useNativeAnimations }),
-    ]).start();
-    // A barra cresce por scaleX (transform) — roda no driver nativo, fora do
-    // JS thread, em vez de animar `width` a cada quadro.
-    Animated.timing(stepProgress, {
-      toValue: progressoFinal,
-      duration: Motion.dur.base,
-      easing: Motion.easing.standard,
-      useNativeDriver: useNativeAnimations,
-    }).start();
-  }, [slide, fade, stepProgress, reduzirMovimento]);
+    deslize.set(withSequence(
+      withTiming(dir * DISTANCIA.deslize, { duration: 0 }),
+      withTiming(0, { duration: DURACAO.base, easing: curvas.emphasized }),
+    ));
+    opacidadeConteudo.set(withSequence(
+      withTiming(0, { duration: 0 }),
+      withTiming(1, { duration: DURACAO.fast, easing: curvas.standard }),
+    ));
+    progresso.set(withTiming(alvo, { duration: DURACAO.slow, easing: curvas.emphasized }));
+  }, [reduzirMovimento, deslize, opacidadeConteudo, progresso]);
 
-  function goNext() {
-    if (!canAdvance()) return;
-    vibrar('selecao');
-    const novoStep = step + 1;
-    setStep(novoStep);
-    animateStep(1, novoStep);
+  const estiloConteudo = useAnimatedStyle(() => ({
+    opacity: opacidadeConteudo.get(),
+    transform: [{ translateX: deslize.get() }],
+  }));
+  const estiloBarra = useAnimatedStyle(() => ({
+    transform: [{ scaleX: Math.max(0.001, progresso.get()) }],
+  }));
+
+  function irPara(novo: Passo) {
+    if (novo === passo) return;
+    Keyboard.dismiss();
+    animarPasso(direcaoDaTroca(passo, novo), novo);
+    setPasso(novo);
   }
 
-  // Teclado aberto esconde o rodapé: com ele de pé, a busca de cliente só
-  // mostrava meio resultado (o rodapé subia junto com o teclado).
+  /** Botão principal: vai ao próximo passo ou, na revisão, salva. */
+  function acaoPrincipal() {
+    if (!canAdvance()) return;
+    const prox = proximoPasso(passo);
+    if (prox) irPara(prox);
+    else void handleSave();
+  }
+
+  // Teclado aberto troca o rodapé: no passo Cliente ele sai da frente (a busca de
+  // cliente só mostrava meio resultado com o rodapé subindo junto); nos outros
+  // vira a barra fina com total e botão principal, acima do teclado.
   useEffect(() => {
     const evAbrir = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const evFechar = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -285,6 +316,11 @@ export default function NovoOrcamentoScreen() {
       if (itensPrefill.length) base = calcTotais({ ...base, itens: itensPrefill });
 
       if (!montadoRef.current) return;
+      // Cliente já ligado ao cadastro (veio do CRM): o passo "Cliente" não tem o
+      // que fazer — abre direto em Itens (o "Voltar" ainda leva ao cliente).
+      const inicial = passoInicial({ edicao: false, clienteLigado });
+      setPasso(inicial);
+      progresso.set(progressoDoPasso(inicial));
       setOrc(base);
       setCarga({ estado: 'pronto' });
     } catch {
@@ -295,7 +331,7 @@ export default function NovoOrcamentoScreen() {
         mensagem: 'Os dados do aparelho não carregaram agora. Nada foi perdido — toque em “Tentar de novo”.',
       });
     }
-  }, [isEdit, orcamentoId, prefillClienteId, prefillClienteNome, prefillItem, prefillItems, nav]);
+  }, [isEdit, orcamentoId, prefillClienteId, prefillClienteNome, prefillItem, prefillItems, nav, progresso]);
 
   // Carga automática UMA vez só. `carregar` muda de identidade se `nav` ou os
   // params mudarem (setParams, navigate para a mesma rota) — recarregar aí
@@ -332,15 +368,45 @@ export default function NovoOrcamentoScreen() {
     setItensZeroConfirmados(prev => new Set(prev).add(id));
   }
 
+  /** Por que o botão principal está apagado (`null` = liberado). Ver `motivoBloqueio`. */
+  function bloqueio(): string | null {
+    if (!orc) return 'Carregando…';
+    return motivoBloqueio(passo, orc, itensZeroConfirmados);
+  }
+
   function canAdvance(): boolean {
-    if (!orc) return false;
-    if (step === 0) return !!orc.clienteNome.trim();
-    if (step === 1) {
-      if (orc.itens.length === 0) return false;
-      // Item com preço 0 só passa se já foi confirmado como cortesia/brinde.
-      return orc.itens.every(i => i.preco > 0 || itensZeroConfirmados.has(i.id));
+    return bloqueio() === null;
+  }
+
+  // ─── REPETIR O ÚLTIMO ORÇAMENTO DO CLIENTE ─────────────────────────
+  const clienteIdAtual = orc?.clienteId ?? '';
+  const orcIdAtual = orc?.id ?? '';
+  const carregarUltimo = useCallback(async () => {
+    if (isEdit || !clienteIdAtual) {
+      setUltimoDoCliente(undefined);
+      return;
     }
-    return true;
+    setUltimoDoCliente({ estado: 'carregando' });
+    try {
+      const anterior = await getUltimoOrcamentoDoCliente(clienteIdAtual, orcIdAtual);
+      if (montadoRef.current) setUltimoDoCliente({ estado: 'pronto', orcamento: anterior });
+    } catch {
+      if (montadoRef.current) setUltimoDoCliente({ estado: 'erro' });
+    }
+  }, [isEdit, clienteIdAtual, orcIdAtual]);
+
+  useEffect(() => {
+    void carregarUltimo();
+  }, [carregarUltimo]);
+
+  function repetirUltimo(origem: Orcamento) {
+    const parcial = repetirDoUltimo(origem, generateId);
+    update(parcial);
+    // Itens R$ 0,00 de um orçamento já salvo passaram pela confirmação lá.
+    const cortesias = idsDeCortesia(parcial.itens ?? []);
+    if (cortesias.length) setItensZeroConfirmados(prev => new Set([...prev, ...cortesias]));
+    vibrar('sucesso');
+    toast.sucesso(`Itens do orçamento nº ${formatarNumeroExibicao(origem.numero)} copiados. Confira os preços antes de enviar.`);
   }
 
   /**
@@ -449,18 +515,18 @@ export default function NovoOrcamentoScreen() {
   }
 
   function recuarPasso() {
-    const novoStep = Math.max(0, step - 1);
-    setStep(novoStep);
-    animateStep(-1, novoStep);
+    const anterior = passoAnterior(passo);
+    if (anterior) irPara(anterior);
   }
 
   /**
-   * Botão "Voltar/Cancelar" e seta do header. Nos passos 2–4 recua um passo.
+   * Botão "Voltar/Cancelar" e seta do header. Fora do passo Cliente recua um
+   * passo ("Ajustar" volta para a revisão).
    * No passo 1 tenta sair — e, se houver trabalho, o usePreventRemove abaixo
    * pergunta "Descartar ou salvar rascunho" (mesma pergunta do voltar do Android).
    */
   function handleBack() {
-    if (step > 0) {
+    if (passo !== 'cliente') {
       recuarPasso();
       return;
     }
@@ -481,13 +547,13 @@ export default function NovoOrcamentoScreen() {
   // pré-carregado); na edição, só o que o usuário mudou.
   const temTrabalho = !!orc && (alterado || (!isEdit && (orc.itens.length > 0 || !!orc.clienteNome.trim())));
   // Voltar do Android / gesto / seta: antes descartava o orçamento inteiro sem
-  // perguntar. Agora, nos passos 2–4 recua um passo; no passo 1 pergunta.
-  usePreventRemove(carga.estado === 'pronto' && !celebrando && (step > 0 || temTrabalho), ({ data }) => {
+  // perguntar. Agora, fora do passo Cliente recua um passo; no Cliente pergunta.
+  usePreventRemove(carga.estado === 'pronto' && !celebrando && (passo !== 'cliente' || temTrabalho), ({ data }) => {
     if (saidaLiberadaRef.current) {
       nav.dispatch(data.action);
       return;
     }
-    if (step > 0 && ehAcaoDeVoltar(data.action)) {
+    if (passo !== 'cliente' && ehAcaoDeVoltar(data.action)) {
       recuarPasso();
       return;
     }
@@ -544,6 +610,17 @@ export default function NovoOrcamentoScreen() {
   const clienteResumo = orc.clienteNome.trim() || 'sem cliente';
   const modeloResumo = orc.modeloNome ?? (orc.modeloPdf ? PDF_MODEL_LABELS[orc.modeloPdf] ?? orc.modeloPdf : '');
   const itemResumo = `${orc.itens.length} ${orc.itens.length === 1 ? 'item' : 'itens'}`;
+  const motivo = bloqueio();
+  const rotuloPrincipal = rotuloDoBotaoPrincipal(passo, isEdit);
+  const ehSalvar = proximoPasso(passo) === null;
+  const subtituloPasso = passo === 'ajustar'
+    ? 'Ajustar detalhes'
+    : `Passo ${indiceVisivel(passo) + 1} de ${PASSOS_VISIVEIS.length}`;
+  const iconePrincipal = ehSalvar ? 'content-save-check-outline' : passo === 'ajustar' ? 'check' : 'arrow-right';
+  // Teclado aberto: no passo Cliente o rodapé sai da frente da busca (B07); nos
+  // outros fica uma barra fina com o total e o botão principal, por cima do
+  // teclado — dá para seguir sem fechar o teclado, e nada do rodapé fica coberto.
+  const rodapeCompacto = tecladoAberto && passo !== 'cliente';
 
   return (
     <KeyboardAvoidingView
@@ -552,7 +629,7 @@ export default function NovoOrcamentoScreen() {
     >
       <GradientHeader
         title={isEdit ? 'Editar orçamento' : 'Novo orçamento'}
-        subtitle={`${orc.numero ? `Nº ${formatarNumeroExibicao(orc.numero)}` : 'Nº a definir'} · Passo ${step + 1} de 4`}
+        subtitle={`${orc.numero ? `Nº ${formatarNumeroExibicao(orc.numero)}` : 'Nº a definir'} · ${subtituloPasso}`}
         onBack={handleBack}
         compact
         right={
@@ -586,41 +663,55 @@ export default function NovoOrcamentoScreen() {
             <Text style={styles.revisionBannerText}>Orçamento de exemplo. {AVISO_EXEMPLO}</Text>
           </View>
         ) : null}
-        <StepIndicator steps={STEPS} current={step} />
+        <StepIndicator steps={[...PASSOS_VISIVEIS]} current={indiceVisivel(passo)} />
         <View style={styles.progressTrack}>
-          <Animated.View
-            style={[
-              styles.progressFill,
-              {
-                transform: [{
-                  scaleX: stepProgress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.001, 1],
-                  }),
-                }],
-              },
-            ]}
-          />
+          <Animated.View style={[styles.progressFill, estiloBarra]} />
         </View>
       </GradientHeader>
 
-      <Animated.View style={[styles.content, { opacity: fade, transform: [{ translateX: slide }] }]}>
-        {step === 0 && <Step1Cliente orc={orc} onChange={update} />}
-        {step === 1 && (
+      <Animated.View style={[styles.content, estiloConteudo]}>
+        {passo === 'cliente' && <Step1Cliente orc={orc} onChange={update} />}
+        {passo === 'itens' && (
           <Step2Itens
             orc={orc}
             onChangeItens={updateItens}
             onChangeOrc={update}
             itensZeroConfirmados={itensZeroConfirmados}
             onConfirmarItemZero={confirmarItemZero}
+            ultimoDoCliente={ultimoDoCliente}
+            onRepetirUltimo={repetirUltimo}
+            onTentarUltimoDeNovo={() => { void carregarUltimo(); }}
           />
         )}
-        {step === 2 && <Step3Detalhes orc={orc} onChange={update} empresa={empresa} />}
-        {step === 3 && <Step4Personalizacao orc={orc} onChange={update} empresa={empresa} />}
+        {passo === 'ajustar' && <Step3Detalhes orc={orc} onChange={update} empresa={empresa} />}
+        {passo === 'revisar' && (
+          <Step4Personalizacao
+            orc={orc}
+            onChange={update}
+            empresa={empresa}
+            onAjustarDetalhes={() => irPara('ajustar')}
+          />
+        )}
       </Animated.View>
 
-      {/* Com o teclado aberto o rodapé sai da frente (some e volta ao fechar). */}
-      {!tecladoAberto && (
+      {rodapeCompacto ? (
+        <View style={styles.footerCompacto}>
+          <View style={{ flex: 1 }} accessible accessibilityLabel={`Total ${formatCurrency(orc.valorTotal)}`}>
+            <Text style={styles.summaryLabel}>Valor total</Text>
+            <ContadorAnimado valor={orc.valorTotal} formato="brl" style={styles.summaryTotalCompacto} />
+          </View>
+          <OlliButton
+            label={rotuloPrincipal}
+            variant="gradient"
+            size="sm"
+            onPress={acaoPrincipal}
+            loading={ehSalvar && saving}
+            disabled={saving || !!motivo}
+            accessibilityLabel={motivo ? `${rotuloPrincipal}. ${motivo}` : rotuloPrincipal}
+            icon={<MaterialCommunityIcons name={iconePrincipal} size={16} color="#fff" />}
+          />
+        </View>
+      ) : !tecladoAberto ? (
       <>
       <View
         style={styles.quoteSummary}
@@ -629,7 +720,7 @@ export default function NovoOrcamentoScreen() {
       >
         <View style={styles.summaryTotalBlock}>
           <Text style={styles.summaryLabel}>Valor total</Text>
-          <Text style={styles.summaryTotal} numberOfLines={1}>{formatCurrency(orc.valorTotal)}</Text>
+          <ContadorAnimado valor={orc.valorTotal} formato="brl" style={styles.summaryTotal} />
         </View>
 
         <View style={styles.summaryMeta}>
@@ -648,44 +739,46 @@ export default function NovoOrcamentoScreen() {
             </View>
           ) : null}
         </View>
+        {motivo ? (
+          <View style={styles.motivoLinha}>
+            <MaterialCommunityIcons name="information-outline" size={14} color={cores.onSurfaceVariant} />
+            <Text style={styles.motivoTexto} numberOfLines={2}>{motivo}</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* BOTTOM ACTIONS */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={handleBack} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={handleBack}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={passo === 'cliente' ? 'Cancelar' : passo === 'ajustar' ? 'Voltar para a revisão' : 'Voltar ao passo anterior'}
+        >
           <MaterialCommunityIcons name="chevron-left" size={22} color={cores.primary} />
-          <Text style={styles.backLabel}>{step === 0 ? 'Cancelar' : 'Voltar'}</Text>
+          <Text style={styles.backLabel}>{passo === 'cliente' ? 'Cancelar' : 'Voltar'}</Text>
         </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', gap: 8, flex: 1, justifyContent: 'flex-end' }}>
-          {step < 3 ? (
-            <>
-              <OlliButton label="Rascunho" variant="outline" size="md" onPress={() => { void handleRascunho(); }} loading={saving} haptic={false} />
-              <OlliButton
-                label="Avançar"
-                variant="gradient"
-                size="md"
-                onPress={goNext}
-                disabled={!canAdvance()}
-                icon={<MaterialCommunityIcons name="arrow-right" size={18} color="#fff" />}
-              />
-            </>
-          ) : (
-            <OlliButton
-              label="Salvar e revisar"
-              variant="gradient"
-              size="md"
-              onPress={() => handleSave()}
-              loading={saving}
-              disabled={!canAdvance()}
-              icon={<MaterialCommunityIcons name="content-save-check-outline" size={18} color="#fff" />}
-            />
-          )}
+          {!ehSalvar ? (
+            <OlliButton label="Rascunho" variant="outline" size="md" onPress={() => { void handleRascunho(); }} loading={saving} disabled={saving} haptic={false} />
+          ) : null}
+          <OlliButton
+            label={rotuloPrincipal}
+            variant="gradient"
+            size="md"
+            onPress={acaoPrincipal}
+            loading={ehSalvar && saving}
+            disabled={saving || !!motivo}
+            accessibilityLabel={motivo ? `${rotuloPrincipal}. ${motivo}` : rotuloPrincipal}
+            icon={<MaterialCommunityIcons name={iconePrincipal} size={18} color="#fff" />}
+          />
         </View>
       </View>
 
       </>
-      )}
+      ) : null}
 
       <Celebracao visible={celebrando} tipo="gerado" onDone={finalizarCelebracao} />
     </KeyboardAvoidingView>
@@ -741,6 +834,15 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   summaryLabel: { fontSize: 12, color: c.onSurfaceVariant, fontWeight: '700' },
   summaryTotal: { fontSize: 22, fontWeight: '900', color: c.onSurface },
+  summaryTotalCompacto: { fontSize: 17, fontWeight: '900', color: c.onSurface },
+  motivoLinha: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  motivoTexto: { flex: 1, fontSize: 12, color: c.onSurfaceVariant, fontWeight: '600' },
+  footerCompacto: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: c.surfaceGlass,
+    borderTopWidth: 1, borderTopColor: c.outline,
+    paddingHorizontal: Spacing.base, paddingVertical: 8,
+  },
   summaryMeta: {
     flexDirection: 'row',
     alignItems: 'center',

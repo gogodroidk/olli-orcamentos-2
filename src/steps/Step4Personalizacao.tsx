@@ -16,6 +16,7 @@ import {
 import { Depoimento, Empresa, ModeloPdfId, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { OlliButton } from '../components/OlliButton';
+import { PressableAnimado } from '../components/motion';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { getDepoimentos } from '../database/database';
 import { usePlano } from '../hooks/usePlano';
@@ -26,6 +27,8 @@ interface Props {
   orc: Orcamento;
   onChange: (partial: Partial<Orcamento>) => void;
   empresa?: Empresa | null;
+  /** Abre "Ajustar detalhes" (datas, condições, fotos), que volta para cá. */
+  onAjustarDetalhes?: () => void;
 }
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -80,7 +83,7 @@ function SwitchRow({ label, hint, value, onValueChange }: {
   );
 }
 
-export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
+export default function Step4Personalizacao({ orc, onChange, empresa, onAjustarDetalhes }: Props) {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -129,6 +132,30 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
           <Text style={styles.totalValue}>{formatCurrency(orc.valorTotal)}</Text>
         </View>
       </View>
+
+      {onAjustarDetalhes ? (
+        <PressableAnimado
+          onPress={onAjustarDetalhes}
+          haptic="light"
+          escala={0.98}
+          style={styles.detalhesCard}
+          accessibilityLabel="Ajustar detalhes: datas, condições, garantia e fotos"
+        >
+          <View style={styles.detalhesIcone}>
+            <MaterialCommunityIcons name="tune-variant" size={20} color={cores.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detalhesTitulo}>Datas, condições e fotos</Text>
+            {resumoDetalhes(orc).map(linha => (
+              <Text key={linha} style={styles.detalhesLinha} numberOfLines={1}>{linha}</Text>
+            ))}
+          </View>
+          <View style={styles.detalhesAcao}>
+            <Text style={styles.detalhesAcaoTexto}>Ajustar</Text>
+            <MaterialCommunityIcons name="chevron-right" size={18} color={cores.primary} />
+          </View>
+        </PressableAnimado>
+      ) : null}
 
       <Text style={styles.sectionTitle}>Aparência do documento</Text>
       <Text style={styles.sectionHint}>
@@ -209,6 +236,16 @@ export default function Step4Personalizacao({ orc, onChange, empresa }: Props) {
   );
 }
 
+/** O que já está nos detalhes, em até 3 linhas curtas (o vazio diz que está vazio). */
+function resumoDetalhes(orc: Orcamento): string[] {
+  const fotos = orc.fotosServico?.length ?? 0;
+  return [
+    orc.validadeOrcamento?.trim() ? `Validade: ${orc.validadeOrcamento.trim()}` : 'Sem validade definida',
+    orc.garantia?.trim() ? `Garantia: ${orc.garantia.trim()}` : 'Sem garantia escrita',
+    fotos > 0 ? `${fotos} ${fotos === 1 ? 'foto anexada' : 'fotos anexadas'}` : 'Nenhuma foto anexada',
+  ];
+}
+
 function SummaryRow({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -249,6 +286,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   totalLabel: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   totalValue: { fontSize: 22, fontWeight: '900', color: c.primary },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginTop: 4, marginBottom: 3 },
+  detalhesCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 11,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline,
+    borderRadius: BorderRadius.lg, padding: Spacing.md, marginBottom: Spacing.lg,
+  },
+  detalhesIcone: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: comAlfa(c.primary, 0.1),
+    alignItems: 'center', justifyContent: 'center',
+  },
+  detalhesTitulo: { fontSize: 14, fontWeight: '800', color: c.onSurface, marginBottom: 2 },
+  detalhesLinha: { fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17 },
+  detalhesAcao: { flexDirection: 'row', alignItems: 'center' },
+  detalhesAcaoTexto: { fontSize: 13, fontWeight: '800', color: c.primary },
   sectionHint: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginBottom: 10 },
   brandCard: {
     flexDirection: 'row', alignItems: 'center', gap: 11,

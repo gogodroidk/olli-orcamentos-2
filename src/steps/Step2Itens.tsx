@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
   TouchableOpacity, FlatList, Modal, Image, Alert,
@@ -7,12 +7,21 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, type Cores } from '../theme';
 import { Orcamento, ItemOrcamento, ServicoItem, ProdutoItem, UNIDADES } from '../types';
-import { searchServicos, searchProdutos } from '../database/database';
+import { searchServicos, searchProdutos, getCatalogoMaisUsados, type CatalogoComUso } from '../database/database';
 import { formatCurrency, formatQty, parseNumber, parseNumberPositive } from '../utils/currency';
 import { generateId } from '../utils/id';
+import { formatarNumeroExibicao } from '../utils/numeroDocumento';
+import {
+  adicionarDoCatalogo,
+  quantidadeNoOrcamento,
+  sugestoesParaAdicionar,
+  type EstadoUltimoOrcamento,
+} from '../utils/orcarRapido';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
+import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton } from '../components/motion';
+import { confirmar } from '../components/feedback';
 
 interface Props {
   orc: Orcamento;
@@ -22,17 +31,41 @@ interface Props {
   itensZeroConfirmados: Set<string>;
   /** Marca um item como confirmado (preço zero é intencional). */
   onConfirmarItemZero: (id: string) => void;
+  /**
+   * Atalho "Repetir o último orçamento deste cliente" (só na criação, com cliente
+   * do cadastro). Ausente = não se aplica; aparece só enquanto a lista está vazia.
+   */
+  ultimoDoCliente?: EstadoUltimoOrcamento;
+  onRepetirUltimo?: (origem: Orcamento) => void;
+  onTentarUltimoDeNovo?: () => void;
 }
 
 type Tab = 'servico' | 'produto';
 
-export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroConfirmados, onConfirmarItemZero }: Props) {
+/** "Você mais usa" em 3 estados: erro de leitura nunca vira "sem sugestão". */
+type EstadoSugestoes =
+  | { estado: 'carregando' }
+  | { estado: 'erro' }
+  | { estado: 'pronto'; lista: CatalogoComUso[] };
+
+/** Busca do catálogo (modal) em 3 estados, pelo mesmo motivo. */
+type EstadoBusca = 'carregando' | 'erro' | 'pronto';
+
+export default function Step2Itens({
+  orc, onChangeItens, onChangeOrc, itensZeroConfirmados, onConfirmarItemZero,
+  ultimoDoCliente, onRepetirUltimo, onTentarUltimoDeNovo,
+}: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const [activeTab, setActiveTab] = useState<Tab>('servico');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState<(ServicoItem | ProdutoItem)[]>([]);
+  const [estadoBusca, setEstadoBusca] = useState<EstadoBusca>('carregando');
   const [showCatalog, setShowCatalog] = useState(false);
+  // Quantos toques de "adicionar" desde que o catálogo abriu: o modal agora fica
+  // aberto para escolher vários itens de uma vez, e o botão de fechar conta.
+  const [adicionadosNaSessao, setAdicionadosNaSessao] = useState(0);
+  const [sugestoes, setSugestoes] = useState<Partial<Record<Tab, EstadoSugestoes>>>({});
   const [editingItem, setEditingItem] = useState<ItemOrcamento | null>(null);
   const [isNewItem, setIsNewItem] = useState(false);
   // Texto local do campo de desconto percentual, para preservar a digitação
@@ -43,64 +76,89 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
   // cada tecla apaga a vírgula/ponto que o usuário acabou de digitar.
   const [qtyText, setQtyText] = useState<string | null>(null);
 
+  // A lista de itens vive no pai e chega por props; toques rápidos em sequência
+  // (antes do re-render) precisam da versão MAIS NOVA, não da capturada no
+  // render — senão o 2º toque apagaria o 1º.
+  const itensRef = useRef(orc.itens);
+  itensRef.current = orc.itens;
+  const montadoRef = useRef(true);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => { montadoRef.current = false; };
+  }, []);
+
+  // ─── "VOCÊ MAIS USA" ─────────────────────────────────────────────
+  const carregarSugestoes = useCallback(async (tab: Tab) => {
+    setSugestoes(prev => ({ ...prev, [tab]: { estado: 'carregando' } }));
+    try {
+      const lista = await getCatalogoMaisUsados(tab, 12);
+      if (montadoRef.current) setSugestoes(prev => ({ ...prev, [tab]: { estado: 'pronto', lista } }));
+    } catch {
+      if (montadoRef.current) setSugestoes(prev => ({ ...prev, [tab]: { estado: 'erro' } }));
+    }
+  }, []);
+
+  const estadoSugestoesDaAba = sugestoes[activeTab];
+  useEffect(() => {
+    if (!estadoSugestoesDaAba) void carregarSugestoes(activeTab);
+  }, [activeTab, estadoSugestoesDaAba, carregarSugestoes]);
+
+  // ─── BUSCA DO CATÁLOGO ───────────────────────────────────────────
   // Busca vazia ('') também é válida: o LIKE '%%' do banco traz o catálogo
-  // inteiro (mais usados/ordem alfabética), igual ao painel — o técnico já vê
-  // tudo ao abrir o modal e só filtra se quiser, em vez de precisar digitar
-  // 1+ caractere para a lista aparecer.
+  // inteiro (mais usados primeiro), igual ao painel — o técnico já vê tudo ao
+  // abrir o modal e só filtra se quiser. A sequência descarta a resposta de uma
+  // tecla antiga que chegou depois da mais nova.
+  const buscaSeqRef = useRef(0);
   const handleCatalogSearch = useCallback(async (q: string) => {
     setCatalogQuery(q);
-    setCatalogResults(activeTab === 'servico' ? await searchServicos(q) : await searchProdutos(q));
+    const seq = ++buscaSeqRef.current;
+    setEstadoBusca('carregando');
+    try {
+      const res = activeTab === 'servico' ? await searchServicos(q) : await searchProdutos(q);
+      if (!montadoRef.current || seq !== buscaSeqRef.current) return;
+      setCatalogResults(res);
+      setEstadoBusca('pronto');
+    } catch {
+      if (!montadoRef.current || seq !== buscaSeqRef.current) return;
+      setEstadoBusca('erro');
+    }
   }, [activeTab]);
 
   function openCatalog() {
+    setAdicionadosNaSessao(0);
     setShowCatalog(true);
-    handleCatalogSearch('');
+    void handleCatalogSearch('');
   }
 
-  function addFromCatalog(item: ServicoItem | ProdutoItem) {
+  function aplicarAdicao(item: ServicoItem | ProdutoItem, tab: Tab, cortesiaConfirmada = false) {
+    const { itens, novoId } = adicionarDoCatalogo(itensRef.current, item, tab, generateId);
+    if (cortesiaConfirmada && novoId) onConfirmarItemZero(novoId);
+    itensRef.current = itens;
+    onChangeItens(itens);
+    setAdicionadosNaSessao(n => n + 1);
+  }
+
+  /**
+   * Põe um item do catálogo no orçamento (do modal OU de um chip de sugestão). O
+   * catálogo fica aberto: dá para escolher vários de uma vez, e cada toque soma 1.
+   */
+  async function addFromCatalog(item: ServicoItem | ProdutoItem, tab: Tab = activeTab) {
     vibrar('selecao');
-    const exists = orc.itens.find(i => i.catalogoId === item.id && i.tipo === activeTab);
+    const jaEsta = quantidadeNoOrcamento(itensRef.current, item.id, tab) > 0;
 
     // Item de catálogo cadastrado com preço 0: mesma trava de cortesia/brinde
     // do item manual, para não entrar de graça no orçamento sem o técnico notar.
-    if (!exists && item.preco <= 0) {
-      Alert.alert(
-        'Item sem valor — é cortesia?',
-        `"${item.nome}" está cadastrado no catálogo com preço R$ 0,00. Confirme só se for mesmo um item de cortesia/brinde — caso contrário, edite o preço no catálogo antes de adicionar.`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'É cortesia, adicionar',
-            onPress: () => {
-              const newId = generateId();
-              onConfirmarItemZero(newId);
-              onChangeItens([...orc.itens, {
-                id: newId, tipo: activeTab, catalogoId: item.id,
-                nome: item.nome, descricao: item.descricao, preco: item.preco,
-                quantidade: 1, unidade: item.unidade, fotoUri: item.fotoUri, subtotal: item.preco,
-              }]);
-              closeCatalog();
-            },
-          },
-        ],
-      );
+    if (!jaEsta && item.preco <= 0) {
+      const ok = await confirmar({
+        titulo: 'Item sem valor: é cortesia?',
+        mensagem: `"${item.nome}" está no catálogo com preço R$ 0,00. Confirme só se for mesmo cortesia ou brinde. Se não for, ajuste o preço no catálogo antes.`,
+        rotuloConfirmar: 'É cortesia, adicionar',
+        rotuloCancelar: 'Cancelar',
+      });
+      if (ok) aplicarAdicao(item, tab, true);
       return;
     }
-
-    if (exists) {
-      onChangeItens(orc.itens.map(i =>
-        i.catalogoId === item.id && i.tipo === activeTab
-          ? { ...i, quantidade: i.quantidade + 1, subtotal: i.preco * (i.quantidade + 1) }
-          : i
-      ));
-    } else {
-      onChangeItens([...orc.itens, {
-        id: generateId(), tipo: activeTab, catalogoId: item.id,
-        nome: item.nome, descricao: item.descricao, preco: item.preco,
-        quantidade: 1, unidade: item.unidade, fotoUri: item.fotoUri, subtotal: item.preco,
-      }]);
-    }
-    closeCatalog();
+    aplicarAdicao(item, tab);
   }
 
   function addManual() {
@@ -161,6 +219,14 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
   const tabTotal = tabItens.reduce((s, i) => s + i.subtotal, 0);
   const servCount = orc.itens.filter(i => i.tipo === 'servico').length;
   const prodCount = orc.itens.filter(i => i.tipo === 'produto').length;
+  const nomeTipo = activeTab === 'servico' ? 'serviço' : 'produto';
+
+  const chips = estadoSugestoesDaAba?.estado === 'pronto'
+    ? sugestoesParaAdicionar(estadoSugestoesDaAba.lista, orc.itens, activeTab, 6)
+    : [];
+  const ultimo = ultimoDoCliente;
+  const mostrarRepetir = !!ultimo && orc.itens.length === 0
+    && (ultimo.estado !== 'pronto' || !!ultimo.orcamento);
 
   return (
     <View style={{ flex: 1, backgroundColor: cores.background }}>
@@ -171,11 +237,83 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
       </View>
 
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+        {/* REPETIR O ÚLTIMO ORÇAMENTO DO CLIENTE (só com a lista vazia) */}
+        {mostrarRepetir && ultimo ? (
+          ultimo.estado === 'carregando' ? (
+            <Skeleton height={86} radius={BorderRadius.lg} style={{ marginBottom: Spacing.base }} />
+          ) : ultimo.estado === 'erro' ? (
+            <View style={[styles.repetirCard, styles.repetirCardErro]} accessibilityRole="alert">
+              <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+              <Text style={[styles.repetirTexto, { flex: 1 }]}>Não consegui ler os orçamentos anteriores deste cliente.</Text>
+              <OlliButton label="Tentar de novo" variant="ghost" size="sm" haptic={false} onPress={() => onTentarUltimoDeNovo?.()} />
+            </View>
+          ) : ultimo.orcamento ? (
+            <Aparecer>
+              <View style={styles.repetirCard}>
+                <View style={styles.repetirIcone}>
+                  <MaterialCommunityIcons name="history" size={20} color={cores.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.repetirTitulo}>Repetir o último orçamento</Text>
+                  <Text style={styles.repetirTexto} numberOfLines={2}>
+                    Nº {formatarNumeroExibicao(ultimo.orcamento.numero)} · {ultimo.orcamento.itens.length} {ultimo.orcamento.itens.length === 1 ? 'item' : 'itens'} · {formatCurrency(ultimo.orcamento.valorTotal)}
+                  </Text>
+                  <Text style={styles.repetirNota}>Os itens vêm com os preços daquele orçamento. Dá para mudar tudo depois.</Text>
+                </View>
+              </View>
+              <OlliButton
+                label="Usar estes itens"
+                variant="outline"
+                size="sm"
+                onPress={() => { if (ultimo.estado === 'pronto' && ultimo.orcamento) onRepetirUltimo?.(ultimo.orcamento); }}
+                icon={<MaterialCommunityIcons name="content-copy" size={16} color={cores.accentLight} />}
+                style={styles.repetirBotao}
+              />
+            </Aparecer>
+          ) : null
+        ) : null}
+
+        {/* VOCÊ MAIS USA — 1 toque põe o item (sem abrir o catálogo) */}
+        {estadoSugestoesDaAba?.estado === 'carregando' ? (
+          <View style={styles.sugestoesBloco} accessibilityLabel="Carregando os itens que você mais usa">
+            <Skeleton width={110} height={14} />
+            <View style={styles.chipsLinha}>
+              <Skeleton width={128} height={38} radius={BorderRadius.full} />
+              <Skeleton width={104} height={38} radius={BorderRadius.full} />
+              <Skeleton width={92} height={38} radius={BorderRadius.full} />
+            </View>
+          </View>
+        ) : estadoSugestoesDaAba?.estado === 'erro' ? (
+          <View style={[styles.sugestoesBloco, styles.sugestoesErro]} accessibilityRole="alert">
+            <Text style={[styles.sugestoesErroTexto, { flex: 1 }]}>Não consegui ler o catálogo agora.</Text>
+            <OlliButton label="Tentar de novo" variant="ghost" size="sm" haptic={false} onPress={() => { void carregarSugestoes(activeTab); }} />
+          </View>
+        ) : chips.length > 0 ? (
+          <View style={styles.sugestoesBloco}>
+            <Text style={styles.sugestoesTitulo}>Você mais usa</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.chipsLinha}>
+              {chips.map(({ item }, i) => (
+                <Aparecer key={item.id} indice={i}>
+                  <PressableAnimado
+                    onPress={() => { void addFromCatalog(item, activeTab); }}
+                    style={styles.chip}
+                    accessibilityLabel={`Adicionar ${item.nome}, ${formatCurrency(item.preco)}`}
+                  >
+                    <MaterialCommunityIcons name="plus" size={15} color={cores.primary} />
+                    <Text style={styles.chipNome} numberOfLines={1}>{item.nome}</Text>
+                    <Text style={styles.chipPreco}>{formatCurrency(item.preco)}</Text>
+                  </PressableAnimado>
+                </Aparecer>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+
         {/* LISTA */}
         {tabItens.length === 0 ? (
           <View style={styles.emptyBox}>
             <MaterialCommunityIcons name={activeTab === 'servico' ? 'wrench-outline' : 'package-variant-closed'} size={44} color={cores.onSurfaceMuted} />
-            <Text style={styles.emptyText}>Nenhum {activeTab === 'servico' ? 'serviço' : 'produto'} adicionado</Text>
+            <Text style={styles.emptyText}>Nenhum {nomeTipo} adicionado</Text>
           </View>
         ) : tabItens.map((item, idx) => (
           <AnimatedEntrance key={item.id} index={idx}>
@@ -220,7 +358,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
         {tabItens.length > 0 && (
           <View style={styles.tabTotalBar}>
             <Text style={styles.tabTotalLabel}>Total {activeTab === 'servico' ? 'serviços' : 'produtos'}</Text>
-            <Text style={styles.tabTotalValue}>{formatCurrency(tabTotal)}</Text>
+            <ContadorAnimado valor={tabTotal} formato="brl" style={styles.tabTotalValue} />
           </View>
         )}
 
@@ -296,7 +434,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
               </Text>
             )}
           </View>
-          <Text style={styles.grandTotalValue}>{formatCurrency(orc.valorTotal)}</Text>
+          <ContadorAnimado valor={orc.valorTotal} formato="brl" style={styles.grandTotalValue} />
         </View>
       </ScrollView>
 
@@ -314,7 +452,7 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
               <MaterialCommunityIcons name="magnify" size={22} color={cores.onSurfaceVariant} />
               <TextInput
                 style={styles.searchInput}
-                placeholder={`Buscar ${activeTab === 'servico' ? 'serviço' : 'produto'}...`}
+                placeholder={`Buscar ${nomeTipo}...`}
                 value={catalogQuery}
                 onChangeText={handleCatalogSearch}
                 autoFocus
@@ -323,35 +461,77 @@ export default function Step2Itens({ orc, onChangeItens, onChangeOrc, itensZeroC
             </View>
           </View>
           <FlatList
-            data={catalogResults}
+            data={estadoBusca === 'erro' ? [] : catalogResults}
+            extraData={orc.itens}
             keyExtractor={i => i.id}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ paddingHorizontal: Spacing.base }}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.catalogItem} onPress={() => addFromCatalog(item)} activeOpacity={0.7}>
-                {item.fotoUri ? (
-                  <Image source={{ uri: item.fotoUri }} style={styles.catalogThumb} />
-                ) : (
-                  <View style={[styles.catalogThumb, styles.catalogThumbPlaceholder]}>
-                    <MaterialCommunityIcons name={activeTab === 'servico' ? 'wrench' : 'package-variant'} size={20} color={cores.primary} />
+            contentContainerStyle={{ paddingHorizontal: Spacing.base, paddingBottom: Spacing.base }}
+            renderItem={({ item }) => {
+              const qtd = quantidadeNoOrcamento(orc.itens, item.id, activeTab);
+              return (
+                <TouchableOpacity
+                  style={styles.catalogItem}
+                  onPress={() => { void addFromCatalog(item); }}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.nome}, ${formatCurrency(item.preco)}${qtd > 0 ? `, ${formatQty(qtd)} no orçamento` : ''}. Toque para adicionar.`}
+                >
+                  {item.fotoUri ? (
+                    <Image source={{ uri: item.fotoUri }} style={styles.catalogThumb} />
+                  ) : (
+                    <View style={[styles.catalogThumb, styles.catalogThumbPlaceholder]}>
+                      <MaterialCommunityIcons name={activeTab === 'servico' ? 'wrench' : 'package-variant'} size={20} color={cores.primary} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.catalogName}>{item.nome}</Text>
+                    {item.descricao ? <Text style={styles.catalogDesc} numberOfLines={1}>{item.descricao}</Text> : null}
                   </View>
-                )}
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.catalogName}>{item.nome}</Text>
-                  {item.descricao ? <Text style={styles.catalogDesc} numberOfLines={1}>{item.descricao}</Text> : null}
-                </View>
-                <Text style={styles.catalogPrice}>{formatCurrency(item.preco)}</Text>
-                <MaterialCommunityIcons name="plus-circle" size={24} color={cores.success} style={{ marginLeft: 8 }} />
-              </TouchableOpacity>
-            )}
+                  <Text style={styles.catalogPrice}>{formatCurrency(item.preco)}</Text>
+                  {qtd > 0 ? (
+                    <View style={styles.catalogQtd}>
+                      <Text style={styles.catalogQtdTexto}>{formatQty(qtd)}</Text>
+                    </View>
+                  ) : (
+                    <MaterialCommunityIcons name="plus-circle" size={24} color={cores.success} style={{ marginLeft: 8 }} />
+                  )}
+                </TouchableOpacity>
+              );
+            }}
             ListEmptyComponent={
-              <Text style={styles.catalogEmpty}>
-                {catalogQuery.length > 0
-                  ? 'Nenhum resultado. Use "Adicionar manual".'
-                  : `Nenhum ${activeTab === 'servico' ? 'serviço' : 'produto'} cadastrado no catálogo ainda.`}
-              </Text>
+              estadoBusca === 'carregando' ? (
+                <View style={{ gap: 12, paddingTop: 8 }} accessibilityLabel="Carregando o catálogo">
+                  <Skeleton height={46} />
+                  <Skeleton height={46} />
+                  <Skeleton height={46} />
+                </View>
+              ) : estadoBusca === 'erro' ? (
+                <View style={styles.catalogErro} accessibilityRole="alert">
+                  <Text style={styles.catalogEmpty}>Não consegui ler o catálogo agora. Nada foi perdido.</Text>
+                  <OlliButton label="Tentar de novo" variant="outline" size="sm" onPress={() => { void handleCatalogSearch(catalogQuery); }} />
+                </View>
+              ) : (
+                <Text style={styles.catalogEmpty}>
+                  {catalogQuery.length > 0
+                    ? 'Nenhum resultado. Feche e use "Adicionar manual".'
+                    : `Nenhum ${nomeTipo} cadastrado no catálogo ainda.`}
+                </Text>
+              )
             }
           />
+          <View style={styles.modalFooter}>
+            <OlliButton
+              label={adicionadosNaSessao > 0
+                ? `Pronto · ${adicionadosNaSessao} ${adicionadosNaSessao === 1 ? 'adicionado' : 'adicionados'}`
+                : 'Fechar'}
+              variant={adicionadosNaSessao > 0 ? 'gradient' : 'outline'}
+              size="lg"
+              fullWidth
+              haptic={false}
+              onPress={closeCatalog}
+              icon={adicionadosNaSessao > 0 ? <MaterialCommunityIcons name="check" size={20} color="#fff" /> : undefined}
+            />
+          </View>
         </View>
       </Modal>
 
@@ -439,7 +619,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tabBadgeActive: { backgroundColor: c.primary },
   tabBadgeText: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
 
-  emptyBox: { alignItems: 'center', paddingVertical: 36 },
+  emptyBox: { alignItems: 'center', paddingVertical: 24 },
   emptyText: { fontSize: 14, color: c.onSurfaceMuted, marginTop: 8 },
 
   itemCard: {
@@ -505,6 +685,40 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   catalogDesc: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   catalogPrice: { fontSize: 14, fontWeight: '700', color: c.primary },
   catalogEmpty: { textAlign: 'center', color: c.onSurfaceMuted, padding: 32, fontSize: 14 },
+  catalogErro: { alignItems: 'center', gap: 4, paddingBottom: 16 },
+  catalogQtd: {
+    marginLeft: 8, minWidth: 26, height: 26, borderRadius: 13, paddingHorizontal: 6,
+    backgroundColor: c.success, alignItems: 'center', justifyContent: 'center',
+  },
+  catalogQtdTexto: { fontSize: 12, fontWeight: '800', color: c.onPrimary },
+
+  repetirCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 11,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base,
+    borderWidth: 1, borderColor: comAlfa(c.primary, 0.28),
+  },
+  repetirCardErro: { alignItems: 'center', borderColor: c.warning, marginBottom: Spacing.base },
+  repetirIcone: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: c.primaryContainer,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  repetirTitulo: { fontSize: 14.5, fontWeight: '800', color: c.onSurface },
+  repetirTexto: { fontSize: 13, color: c.onSurface, marginTop: 2, fontWeight: '600' },
+  repetirNota: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 16 },
+  repetirBotao: { marginTop: 8, marginBottom: Spacing.base, alignSelf: 'flex-start' },
+
+  sugestoesBloco: { marginBottom: Spacing.base, gap: 8 },
+  sugestoesTitulo: { fontSize: 12, fontWeight: '800', color: c.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.4 },
+  sugestoesErro: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sugestoesErroTexto: { fontSize: 13, color: c.onSurfaceVariant },
+  chipsLinha: { flexDirection: 'row', gap: 8, paddingRight: 4 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: 260, minHeight: 40,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full,
+    backgroundColor: c.surface, borderWidth: 1, borderColor: comAlfa(c.primary, 0.35),
+  },
+  chipNome: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: c.onSurface },
+  chipPreco: { fontSize: 12, fontWeight: '700', color: c.primary },
 
   rowFields: { flexDirection: 'row' },
   unidadeLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },

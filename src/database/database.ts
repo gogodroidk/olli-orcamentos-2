@@ -27,6 +27,8 @@ import {
   semAcentoLowerSql,
   sqlAgregadoPorStatusNoPeriodo,
   sqlBuscaCatalogo,
+  sqlCatalogoMaisUsados,
+  SQL_ULTIMO_ORCAMENTO_DO_CLIENTE,
 } from './consultasSql';
 import { carimbarDecisao } from '../utils/orcamentoDecisao';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
@@ -1044,6 +1046,27 @@ function rowToProduto(r: any): ProdutoItem {
   };
 }
 
+/** Item do catálogo com quantas vezes já entrou em orçamento (ver `getCatalogoMaisUsados`). */
+export interface CatalogoComUso {
+  item: ServicoItem | ProdutoItem;
+  uso: number;
+}
+
+/**
+ * "Você mais usa" do passo Itens: só itens que JÁ entraram em orçamento, mais
+ * usados primeiro (`sqlCatalogoMaisUsados`). Erro de leitura propaga — a tela
+ * mostra "não consegui ler", nunca uma lista vazia no lugar do erro.
+ */
+export async function getCatalogoMaisUsados(tipo: 'servico' | 'produto', limite = 8): Promise<CatalogoComUso[]> {
+  const db = await getDb();
+  const tabela = tipo === 'servico' ? 'servicos' : 'produtos';
+  const rows = await db.getAllAsync<any>(sqlCatalogoMaisUsados(tabela), [Math.max(1, Math.floor(limite))]);
+  return rows.map(r => ({
+    item: tipo === 'servico' ? rowToServico(r) : rowToProduto(r),
+    uso: Number(r.uso) || 0,
+  }));
+}
+
 // ─── ORÇAMENTOS ─────────────────────────────────────────────
 export async function getOrcamentos(): Promise<Orcamento[]> {
   const db = await getDb();
@@ -1059,6 +1082,17 @@ export async function getOrcamentos(): Promise<Orcamento[]> {
     "SELECT * FROM orcamentos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
   );
   return rows.map(r => JSON.parse(r.data));
+}
+
+/**
+ * Último orçamento ativo do cliente com itens (fora `excluirId`), para o atalho
+ * "Repetir o último orçamento". `null` = o cliente não tem um; erro propaga.
+ */
+export async function getUltimoOrcamentoDoCliente(clienteId: string, excluirId = ''): Promise<Orcamento | null> {
+  if (!clienteId) return null;
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ data: string }>(SQL_ULTIMO_ORCAMENTO_DO_CLIENTE, [clienteId, excluirId]);
+  return row ? (JSON.parse(row.data) as Orcamento) : null;
 }
 
 /**
