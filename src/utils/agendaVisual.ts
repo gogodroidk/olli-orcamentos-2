@@ -177,11 +177,16 @@ export interface CamposSerie {
   clienteId?: string | null;
   clienteNome?: string;
   endereco?: string | null;
+  /**
+   * Serviço externo (pega chuva). `null` = voltou para "não sei" — NUNCA vira
+   * `false` ("interna"); ausente = não mudou.
+   */
+  externa?: boolean | null;
 }
 
 export type EstadoOcorrencia = Pick<Agendamento,
   'inicio' | 'fim' | 'status' | 'titulo' | 'observacao' | 'responsavelId' | 'responsavelNome' | 'tipo'
-  | 'clienteId' | 'clienteNome' | 'endereco' | 'recorrencia' | 'recorrenciaAte'>;
+  | 'clienteId' | 'clienteNome' | 'endereco' | 'recorrencia' | 'recorrenciaAte' | 'externa'>;
 
 export interface DiferencaOcorrencia {
   /** O que muda na ocorrência (vai para `editarRecorrente`). */
@@ -219,6 +224,8 @@ export function diferencaDaOcorrencia(original: EstadoOcorrencia, editado: Estad
     camposSerie.clienteNome = editado.clienteNome;
   }
   if ((original.endereco || null) !== (editado.endereco || null)) camposSerie.endereco = editado.endereco || null;
+  // "Externa?" é da série (como o endereço): o lugar do serviço não muda numa ocorrência só.
+  if ((original.externa ?? null) !== (editado.externa ?? null)) camposSerie.externa = editado.externa ?? null;
   const mudouRegra = (original.recorrencia || null) !== (editado.recorrencia || null)
     || (original.recorrenciaAte || null) !== (editado.recorrenciaAte || null);
   const vazia = !Object.keys(mudanca).length && !Object.keys(camposSerie).length && !mudouRegra;
@@ -226,7 +233,7 @@ export function diferencaDaOcorrencia(original: EstadoOcorrencia, editado: Estad
 }
 
 /**
- * Quais alcances fazem sentido para a mudança. Cliente/tipo/endereço não existem
+ * Quais alcances fazem sentido para a mudança. Cliente/tipo/endereço/"externa?" não existem
  * por ocorrência (só a série os tem): "só esta" sai da lista. Mudar a REGRA da
  * repetição é da série inteira.
  */
@@ -237,12 +244,14 @@ export function alcancesPermitidos(d: Pick<DiferencaOcorrencia, 'camposSerie' | 
 }
 
 /** Aplica os campos de série a uma linha (série nova ou base). Puro. */
-export function aplicarCamposSerie<T extends Pick<Agendamento, 'tipo' | 'clienteId' | 'clienteNome' | 'endereco'>>(a: T, c: CamposSerie): T {
+export function aplicarCamposSerie<T extends Pick<Agendamento, 'tipo' | 'clienteId' | 'clienteNome' | 'endereco' | 'externa'>>(a: T, c: CamposSerie): T {
   const b = { ...a };
   if (c.tipo) b.tipo = c.tipo;
   if (c.clienteId !== undefined) b.clienteId = c.clienteId || undefined;
   if (c.clienteNome !== undefined) b.clienteNome = c.clienteNome;
   if (c.endereco !== undefined) b.endereco = c.endereco || undefined;
+  // `null` = "não sei": a chave fica, com `undefined` (o save grava NULL, não mantém o antigo).
+  if (c.externa !== undefined) b.externa = c.externa === null ? undefined : c.externa;
   return b;
 }
 

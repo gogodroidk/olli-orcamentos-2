@@ -9,10 +9,18 @@
 
 import {
   IA_USOS_GRATIS_MES,
-  ORCAMENTOS_ENVIADOS_GRATIS_MES,
   TRIAL_PRO_DIAS,
 } from '../../services/entitlements';
+import { FRASE_GRATIS, planoBase } from '../../services/planosBase';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos';
+
+/** Os recursos que um plano pago acrescenta, lidos da tabela única (com "em breve"). */
+function recursosDoPlano(id: 'pro' | 'empresa'): string {
+  return planoBase(id)
+    .bullets.filter((b) => b.recursos.length > 0)
+    .map((b) => (b.emBreve ? `${b.texto} (em breve)` : b.texto))
+    .join('; ');
+}
 
 /** Tipo de bloco do corpo de um artigo. */
 export type AjudaBlocoTipo = 'paragrafo' | 'passos' | 'aviso';
@@ -437,17 +445,15 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          `No Grátis, rascunhos, recibos, clientes, agenda e histórico ficam sem limite; você pode enviar, compartilhar por link ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos distintos por mês. Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática. Os planos pagos liberam recursos extras:`,
+          `O Grátis tem ${FRASE_GRATIS}; rascunhos, recibos, clientes, agenda e histórico também ficam sem limite. Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática. Os planos pagos liberam recursos extras:`,
       },
       {
         tipo: 'passos',
         conteudo: [
-          // Preços e cota vêm da fonte (precosPlanos/entitlements), não digitados.
-          `Grátis (${reais(0)}) — tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
-          `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — IA incluída com uso justo diário, relatórios, metas, clientes para lembrar da manutenção, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.`,
-          // Mapa ao vivo e painel de gestão são concedidos, mas ainda não entregues
-          // (ver `emBreve` em web/src/data/recursos.ts) — aqui também dizem "em breve".
-          `Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês) — tudo do Pro, mais equipe com papéis e permissões. Mapa da equipe ao vivo e painel de gestão da empresa: em breve.`,
+          // Preços vêm de precosPlanos; recursos e "em breve" da tabela única planosBase.
+          `Grátis (${reais(0)}) — orçamentos ilimitados e tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
+          `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — ${recursosDoPlano('pro')}.`,
+          `Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês) — tudo do Pro, mais: ${recursosDoPlano('empresa')}.`,
         ],
       },
       {

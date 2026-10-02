@@ -33,6 +33,12 @@ import { PressableAnimado } from '../components/motion';
 import { GradeDia } from '../components/agenda/GradeDia';
 import { SeletorVisao } from '../components/agenda/SeletorVisao';
 import { FolhaAlcanceSerie, usePerguntaAlcance } from '../components/agenda/FolhaAlcanceSerie';
+import { CampoVisitaExterna } from '../components/agenda/CampoVisitaExterna';
+import { SugestaoEncaixe } from '../components/agenda/SugestaoEncaixe';
+import { ClimaProximasVisitas } from '../components/agenda/ClimaProximasVisitas';
+import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
+import { useEncaixe } from '../hooks/useEncaixe';
+import { sugerirVisitaExterna } from '../services/verticais';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getAgendamentosExpandidos, getAgendamentosDoDia, getAgendamento, saveAgendamento, deleteAgendamento, editarRecorrente,
@@ -396,6 +402,10 @@ export default function AgendaScreen() {
   const itensDoDia = useMemo(() => ordenarDoDia(itensFiltrados
     .filter(a => isSameDay(new Date(a.inicio), ref))), [itensFiltrados, ref]);
 
+  // Cadastro de cada cliente (ponto para o clima, WhatsApp para o "Remarcar por chuva").
+  const clientePorId = useMemo(() => new Map(clientes.map(c => [c.id, c] as const)), [clientes]);
+  const clienteDe = useCallback((a: Pick<Agendamento, 'clienteId'>) => (a.clienteId ? clientePorId.get(a.clienteId) ?? null : null), [clientePorId]);
+
   // FAB "Agendar visita" — some ao rolar para baixo (não cobre o último card) e
   // volta ao rolar para cima. Só transform/opacity, na UI thread.
   const fabOculto = useSharedValue(0);
@@ -596,6 +606,7 @@ export default function AgendaScreen() {
       contratoId: a.contratoId,
       excecoes: a.excecoes,
       ordemServicoId: a.ordemServicoId,
+      externa: a.externa,
     };
     // Série: guarda a ocorrência COMO ABRIU, passada pela mesma montagem do salvar
     // — assim só o que a pessoa mudou de verdade vira mudança.
@@ -668,7 +679,7 @@ export default function AgendaScreen() {
         mensagem: d.mudouRegra
           ? 'Mudar a repetição vale para a série inteira.'
           : opcoes.length < 3
-            ? 'Cliente, tipo e endereço valem para a série: não dá para mudar só esta visita.'
+            ? 'Cliente, tipo, endereço e "Serviço externo?" valem para a série: não dá para mudar só esta visita.'
             : `Esta visita repete ${rotuloRecorrencia(e.recorrencia)}.`,
         opcoes,
       });
@@ -980,7 +991,7 @@ export default function AgendaScreen() {
         </Text>
       ) : itensDoDia.map((a, index) => (
         <AnimatedEntrance key={`${periodoKey}:${a.id}`} index={index + 1}>
-          <AgendaItem item={a} cor={corDe(a)} onPress={() => { void abrirItem(a); }} />
+          <AgendaItem item={a} cor={corDe(a)} cliente={clienteDe(a)} clientes={clientes} aoRemarcado={load} onPress={() => { void abrirItem(a); }} />
         </AnimatedEntrance>
       ))}
     </>
@@ -1108,7 +1119,7 @@ export default function AgendaScreen() {
                     <MaterialCommunityIcons name="chevron-right" size={18} color={cores.onSurfaceMuted} />
                   </TouchableOpacity>
                   {doDia.map(a => (
-                    <AgendaItem key={a.id} item={a} cor={corDe(a)} onPress={() => { void abrirItem(a); }} />
+                    <AgendaItem key={a.id} item={a} cor={corDe(a)} cliente={clienteDe(a)} clientes={clientes} aoRemarcado={load} onPress={() => { void abrirItem(a); }} />
                   ))}
                 </View>
               </AnimatedEntrance>
@@ -1159,6 +1170,7 @@ export default function AgendaScreen() {
         refreshControl={refreshControl}
         onScroll={aoRolar}
         paddingInferior={paddingLista}
+        cabecalho={<ClimaProximasVisitas itens={itensDoDia} clientes={clientes} aoRemarcado={load} />}
       />
     );
   }
@@ -1364,7 +1376,15 @@ function hhmm(iso?: string | null): string {
 }
 
 // ─── ITEM DA LISTA ──────────────────────────────────────────
-function AgendaItem({ item, cor: corMarca, onPress }: { item: OcorrenciaAgendamento; cor: string; onPress: () => void }) {
+function AgendaItem({ item, cor: corMarca, cliente, clientes, aoRemarcado, onPress }: {
+  item: OcorrenciaAgendamento;
+  cor: string;
+  /** Cadastro do cliente (ponto para o clima). */
+  cliente: Cliente | null;
+  clientes: Cliente[];
+  aoRemarcado: () => void;
+  onPress: () => void;
+}) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   // O matiz identifica o tipo; a luminosidade cede contra o fundo REAL do chip
@@ -1413,6 +1433,8 @@ function AgendaItem({ item, cor: corMarca, onPress }: { item: OcorrenciaAgendame
             ].filter(Boolean).join(' · ')}
           </Text>
         ) : null}
+        {/* CLIMA — só nas visitas das próximas 12h (some sozinho no resto). */}
+        <ClimaDaVisita visita={item} cliente={cliente} clientes={clientes} aoRemarcado={aoRemarcado} style={styles.itemClima} />
         {item.status !== 'agendado' && (
           <View style={styles.statusLinha}>
             <MaterialCommunityIcons name={concluido ? 'check-circle' : 'close-circle'} size={13} color={concluido ? cores.success : cores.danger} />
@@ -1477,6 +1499,11 @@ interface EditState {
    */
   ocorrenciaId?: string;
   original?: EstadoOcorrencia;
+  /**
+   * Serviço externo (pega chuva). `undefined` = "Não sei" — e o formulário SEMPRE
+   * manda a chave para o save (escolha explícita), nunca "interna" por omissão.
+   */
+  externa?: boolean;
 }
 
 /** O formulário como ele seria gravado (mesma montagem para o "antes" e o "depois"). */
@@ -1519,6 +1546,8 @@ function montarAgendamento(e: EditState, meuId?: string): { agendamento: Agendam
       // série: tirar a repetição as descarta (o save grava nulo sem `recorrencia`).
       excecoes: e.excecoes,
       ordemServicoId: e.ordemServicoId,
+      // Chave sempre presente: o formulário conhece o campo ("Não sei" grava NULL).
+      externa: e.externa,
     },
   };
 }
@@ -1528,7 +1557,7 @@ function estadoDaOcorrencia(a: Agendamento): EstadoOcorrencia {
     inicio: a.inicio, fim: a.fim, status: a.status, titulo: a.titulo, observacao: a.observacao,
     responsavelId: a.responsavelId, responsavelNome: a.responsavelNome, tipo: a.tipo,
     clienteId: a.clienteId, clienteNome: a.clienteNome, endereco: a.endereco,
-    recorrencia: a.recorrencia, recorrenciaAte: a.recorrenciaAte,
+    recorrencia: a.recorrencia, recorrenciaAte: a.recorrenciaAte, externa: a.externa,
   };
 }
 
@@ -1583,6 +1612,36 @@ function AgendamentoForm({
   const [datePicker, setDatePicker] = useState(false);
 
   const set = (patch: Partial<EditState>) => onChange({ ...state, ...patch });
+
+  // ENCAIXE INTELIGENTE — só ao AGENDAR (visita nova) um cliente cadastrado:
+  // horários perto de onde o técnico já vai estar nos próximos 7 dias.
+  const clienteSel = useMemo(() => (state.clienteId ? clientes.find(c => c.id === state.clienteId) ?? null : null), [clientes, state.clienteId]);
+  const mostrarEncaixe = !state.id && !!clienteSel;
+  const encaixe = useEncaixe({
+    cliente: clienteSel,
+    ativo: mostrarEncaixe,
+    duracaoMin: duracaoEstimadaMin(state.tipo),
+    responsavelId: state.responsavelId,
+    clientes,
+  });
+  function usarEncaixe(inicioISO: string, fimISO: string) {
+    vibrar('selecao');
+    const ini = new Date(inicioISO);
+    const fimEnc = new Date(fimISO);
+    if (isNaN(ini.getTime())) return;
+    set({
+      data: ini,
+      horaInicio: format(ini, 'HH:mm'),
+      horaFim: isNaN(fimEnc.getTime()) ? '' : format(fimEnc, 'HH:mm'),
+      fimAutomatico: true,
+    });
+    toast.info(`Encaixado: ${format(ini, "EEEE, d 'de' MMM 'às' HH:mm", { locale: ptBR })}. Confira e confirme.`);
+  }
+  // "Serviço externo?" — sugestão pelo título/observação (o prestador confirma).
+  const sugestaoExterna = useMemo(
+    () => sugerirVisitaExterna({ titulo: state.titulo, observacao: state.observacao }),
+    [state.titulo, state.observacao],
+  );
 
   // Busca em TODOS os clientes (antes a lista parava nos 30 primeiros, sem busca).
   const clientesFiltrados = useMemo(() => filtrarClientes(clientes, buscaCliente), [clientes, buscaCliente]);
@@ -1739,6 +1798,11 @@ function AgendamentoForm({
         </TouchableOpacity>
         {state.clienteNome && !state.clienteId ? (
           <Text style={styles.ajuda}>Sem cadastro: o nome fica só neste compromisso.</Text>
+        ) : null}
+        {mostrarEncaixe ? (
+          <View style={{ marginTop: Spacing.md }}>
+            <SugestaoEncaixe resultado={encaixe} onEscolher={(s) => usarEncaixe(s.inicio, s.fim)} />
+          </View>
         ) : null}
         <View style={{ height: Spacing.base }} />
 
@@ -1920,6 +1984,11 @@ function AgendamentoForm({
             placeholder="Rua, número, bairro"
             leftIcon="map-marker"
           />
+        </View>
+
+        {/* SERVIÇO EXTERNO? — liga o "Remarcar por chuva" (3 estados: "Não sei" ≠ interna). */}
+        <View style={{ marginTop: -Spacing.base, marginBottom: Spacing.base }}>
+          <CampoVisitaExterna valor={state.externa} sugestao={sugestaoExterna} onChange={(externa) => set({ externa })} />
         </View>
 
         {/* OBSERVAÇÃO */}
@@ -2136,6 +2205,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   addrRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
   addrText: { fontSize: 11.5, color: c.onSurfaceMuted, flex: 1 },
   statusLinha: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  itemClima: { marginTop: 8 },
   statusText: { fontSize: 12, fontWeight: '700' },
   strike: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
 

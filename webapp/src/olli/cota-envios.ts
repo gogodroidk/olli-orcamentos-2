@@ -3,28 +3,32 @@ import {
 	interpretarReservaEnvio,
 	interpretarEstadoOferta,
 	interpretarInicioTrial,
-	reservaIndisponivel,
+	envioSemRegistro,
 	type CanalEnvioOrcamento,
 	type ReservaEnvioOrcamento,
 	type EstadoOfertaComercial,
 	type InicioTrialPro,
 } from "@limites-comerciais";
 
+/**
+ * REGISTRA o envio (o Grátis é ilimitado — ver `limitesComerciais.ts`). Nunca barra:
+ * falha de registro vira `motivo: 'sem_registro'` e o PDF sai do mesmo jeito.
+ */
 export async function reservarEnvioOrcamento(
 	orcamentoId: string,
 	canal: CanalEnvioOrcamento,
 ): Promise<ReservaEnvioOrcamento> {
 	const referencia = orcamentoId.trim();
-	if (!referencia || referencia.length > 160) return reservaIndisponivel();
+	if (!referencia || referencia.length > 160) return envioSemRegistro();
 	try {
 		const { data, error } = await supabase.rpc("reservar_envio_orcamento_gratis", {
 			p_orcamento_id: referencia,
 			p_canal: canal,
 		});
-		if (error) return reservaIndisponivel();
+		if (error) return envioSemRegistro();
 		return interpretarReservaEnvio(data);
 	} catch {
-		return reservaIndisponivel();
+		return envioSemRegistro();
 	}
 }
 

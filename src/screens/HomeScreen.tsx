@@ -7,9 +7,14 @@
  *   2. AGORA / PRÓXIMA PARADA: hora, cliente, endereço, "Traçar rota" e
  *      "Estou a caminho" (WhatsApp ao cliente, sem precisar de GPS);
  *   3. ROTA DE HOJE: as visitas do dia em sequência, com "Rota no Maps";
+ *      (pedidos de orçamento pela etiqueta QR entram aqui, só quando há algum novo);
  *   4. DINHEIRO: a receber e esperando resposta (o palco de sempre) + números do mês;
  *   5. ATALHOS DE 1 TOQUE: Orçar, Recibo, Agendar, Clientes;
  *   6. o resto (clientes para lembrar, diagnóstico do ofício, orçamentos recentes).
+ *
+ * Avisos que só aparecem quando têm o que dizer (encaixes de 02/10/2026): o do
+ * crédito de troca, o convite "Trazer meus dados do app antigo" no primeiro acesso
+ * e o "Disponível no Pro" no lugar da hora de sair (Grátis sem registro).
  *
  * Sem duplicidade: "Abrir agenda" e "Diagnóstico" apareciam 3 vezes cada, e o
  * menu de atalhos repetia as ações rápidas. Cada ação tem UM lugar.
@@ -70,6 +75,11 @@ import { EmptyState } from '../components/EmptyState';
 import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
 import { LembreteAssinaturaFaixa } from '../components/LembreteAssinaturaFaixa';
 import { AtivacaoInicio } from '../components/AtivacaoInicio';
+import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
+import { ConviteImportar, useConviteImportarDispensado } from '../components/ConviteImportar';
+import { PedidosQrAvisoInicio } from '../components/equipamento/PedidosQrAvisoInicio';
+import { RecursoPlanoChip, useRecursoPlano } from '../components/RecursoPlano';
+import { deveConvidarImportar } from '../utils/conviteImportar';
 import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton, curvas } from '../components/motion';
 import { toast } from '../components/feedback';
 import { ClimaDoDia } from '../components/rua/ClimaDoDia';
@@ -217,6 +227,10 @@ export default function HomeScreen() {
   const [radarErro, setRadarErro] = useState(false);
   const [adiandoId, setAdiandoId] = useState<string | null>(null);
   const [sincronizando, setSincronizando] = useState(false);
+  // Pedidos pela etiqueta QR: o aviso relê no puxar-para-atualizar (não a cada foco).
+  const [versaoPedidosQr, setVersaoPedidosQr] = useState(0);
+  // "Trazer meus dados do app antigo" — o "Agora não" deste usuário (null = lendo).
+  const conviteImportar = useConviteImportarDispensado();
 
   // RADAR DE COBRANÇA — orçamentos aprovados sem recibo (dinheiro parado).
   const [cobranca, setCobranca] = useState<OrcamentoParaCobrar[]>([]);
@@ -282,6 +296,11 @@ export default function HomeScreen() {
   // tentado; um registro de FALHA aparece com o motivo.
   const [avisoSaida, setAvisoSaida] = useState<AvisoSaida | null>(null);
   const [recalculandoSaida, setRecalculandoSaida] = useState(false);
+  // Sem registro de saída, o Grátis vê ONDE a hora de sair entraria ("Disponível no
+  // Pro"). Só no estado BLOQUEADO: carregando/liberado não desenham nada (o Pro não
+  // vê um esqueleto piscar no herói) e o "plano não confirmado" já é dito pelo
+  // EtaChip quando há destino — aqui seria um 2º aviso igual no mesmo cartão.
+  const { estado: estadoHoraDeSair } = useRecursoPlano('hora_de_sair');
 
   const lerSaida = useCallback(async () => {
     if (!proxima) { setAvisoSaida(null); return; }
@@ -396,6 +415,7 @@ export default function HomeScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
+    setVersaoPedidosQr(v => v + 1);
     try {
       await carregarTudo();
     } finally {
@@ -521,6 +541,17 @@ export default function HomeScreen() {
    */
   const esperandoDownload = download !== 'pronto' && !carregando && !carregandoErro && totalOrcamentos === 0;
   /**
+   * Convite "Trazer meus dados do app antigo": primeiro acesso / conta com poucos
+   * dados, para quem cadastra clientes. Os números só valem lidos E com o 1º
+   * download confirmado — antes disso são "não sei" (null), e "não sei" não convida.
+   */
+  const contagemConfiavel = !carregando && !carregandoErro && download === 'pronto';
+  const mostraConviteImportar = !papelCarregando && pode('gerenciar_clientes') && deveConvidarImportar({
+    clientes: contagemConfiavel ? clientes.length : null,
+    orcamentos: contagemConfiavel ? totalOrcamentos : null,
+    dispensado: conviteImportar.dispensado,
+  });
+  /**
    * "Pedem follow-up" = o MESMO radar do palco (3+ dias sem resposta).
    * `null` = o radar ainda carrega ou falhou (não sei ≠ zero).
    */
@@ -639,8 +670,24 @@ export default function HomeScreen() {
           style={styles.lembreteAssinatura}
         />
 
+        {/* CRÉDITO DE TROCA — só o AVISO (em análise / decidido há pouco), só para o
+            dono; sem pedido não ocupa espaço. O cartão fixo mora em Planos e Conta. */}
+        {ativacaoDoDono ? <CreditoTrocaAtalho modo="aviso" style={styles.lembreteAssinatura} /> : null}
+
         {/* ATIVAÇÃO — "Seu primeiro orçamento" e o checklist curto (services/ativacao.ts). */}
         <AtivacaoInicio style={styles.lembreteAssinatura} />
+
+        {/* PRIMEIRO ACESSO — trazer clientes, serviços e produtos do app antigo.
+            Some sozinho quando a base cresce; o "x" dispensa neste aparelho. */}
+        {mostraConviteImportar ? (
+          <Aparecer>
+            <ConviteImportar
+              style={styles.lembreteAssinatura}
+              onAbrir={() => nav.navigate('Importar')}
+              onDispensar={conviteImportar.dispensar}
+            />
+          </Aparecer>
+        ) : null}
 
         {/* 2. AGORA / PRÓXIMA PARADA */}
         <Aparecer indice={1}>
@@ -733,6 +780,12 @@ export default function HomeScreen() {
                       atualizando={recalculandoSaida}
                     />
                   </View>
+                ) : !avisoSaida && !atendendo && !temEta && estadoHoraDeSair === 'bloqueado' ? (
+                  // Grátis sem registro: o lugar da hora de sair diz "Disponível no Pro".
+                  // Com destino, o EtaChip acima já mostra este mesmo chip (sem 2º igual).
+                  <View style={styles.heroEta}>
+                    <RecursoPlanoChip recurso="hora_de_sair">{null}</RecursoPlanoChip>
+                  </View>
                 ) : null}
                 <View style={styles.heroActions}>
                   {proxima.endereco?.trim() ? (
@@ -816,6 +869,15 @@ export default function HomeScreen() {
             />
           </Aparecer>
         )}
+
+        {/* PEDIDOS PELA ETIQUETA QR — cliente pedindo orçamento é dinheiro chegando:
+            fica logo antes do Dinheiro. Some quando não há pedido novo ou a leitura
+            falha (é aviso, não lista); quem orça responde no WhatsApp. */}
+        {!papelCarregando && pode('criar_orcamento') ? (
+          <Aparecer indice={3}>
+            <PedidosQrAvisoInicio nomeEmpresa={empresa?.nome || undefined} versao={versaoPedidosQr} style={styles.pedidosQr} />
+          </Aparecer>
+        ) : null}
 
         {/* 4. DINHEIRO — a receber (aprovado sem pagamento) e esperando resposta.
             Os 3 estados de cada radar vão INTEIROS para o palco: é ele que
@@ -1265,6 +1327,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   topbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: 4 },
   lembreteAssinatura: { marginHorizontal: Spacing.base, marginTop: Spacing.sm, marginBottom: Spacing.sm },
+  pedidosQr: { marginTop: Spacing.lg, marginBottom: 0 },
   greeting: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '500' },
   name: { fontSize: 21, fontWeight: '800', color: c.onBackground, marginTop: 1 },
   company: { fontSize: 13, fontWeight: '600', color: c.onSurfaceMuted },

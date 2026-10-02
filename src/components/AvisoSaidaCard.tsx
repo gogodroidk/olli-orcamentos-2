@@ -8,6 +8,7 @@ import type { AvisoSaida } from '../services/avisoSaida';
 // A copy dos estados de falha vem de `saidaCalculo` (puro) de propósito: lá o
 // `node` alcança e o teste prova o TEXTO, não a existência de um `if`.
 import { fraseSaida, textoEnderecoInsuficiente, textoIndisponivel } from '../services/saidaCalculo';
+import { RecursoPlanoChip } from './RecursoPlano';
 
 /**
  * "Saia às 14:23 para chegar às 15:00" na Home — a resposta que o dono pediu,
@@ -53,7 +54,7 @@ function coresDoTom(tom: Tom, c: Cores): { bg: string; fg: string; borda: string
   return { bg: c.surfaceVariant, fg: c.onSurfaceMuted, borda: c.outline };
 }
 
-export function AvisoSaidaCard({ aviso, onAtualizar, atualizando, agora }: AvisoSaidaCardProps) {
+function AvisoSaidaCardConteudo({ aviso, onAtualizar, atualizando, agora }: AvisoSaidaCardProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const reduzirMovimento = useReducedMotion();
@@ -151,3 +152,20 @@ const criarEstilos = (_c: Cores) => StyleSheet.create({
   },
   botaoTexto: { fontSize: 12.5, fontWeight: '800', textDecorationLine: 'underline' },
 });
+
+/**
+ * "Hora de sair" é inteligência do Pro (`hora_de_sair`, decisão de 01/10/2026).
+ * Com o recurso liberado (Pro/Empresa) é a peça de sempre; no Grátis vira o chip
+ * "Disponível no Pro"; com o plano ilegível, "plano não confirmado" — os 3 estados
+ * de `RecursoPlano.tsx`. Quem encaixa a peça numa tela não precisa saber de plano.
+ */
+export function AvisoSaidaCard(props: AvisoSaidaCardProps) {
+  // Mesmo contrato de sempre: sem registro, nada foi tentado → não renderiza
+  // (nem o chip do plano: não há o que vender onde não há o que mostrar).
+  if (!props.aviso) return null;
+  return (
+    <RecursoPlanoChip recurso="hora_de_sair">
+      <AvisoSaidaCardConteudo {...props} />
+    </RecursoPlanoChip>
+  );
+}

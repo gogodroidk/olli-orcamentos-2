@@ -25,9 +25,21 @@
  * `valorACobrar: null` (o app não soube quanto já foi pago) = sem Pix, nunca o total.
  * `#pagar` no fim do link rola até o bloco de pagamento. Proposta vencida não aceita
  * aprovação (409) e a página diz que venceu.
+ *
+ * PLANO DO DONO (Grátis ilimitado, 01/10/2026): a página lê o plano EFETIVO de quem
+ * publicou o link (`plano_comercial_para_usuario`, a mesma RPC que a IA usa) e
+ * decide duas coisas pela tabela única `src/services/entitlements.ts`:
+ *  - o selo "Feito com OLLI" no rodapé — fica no Grátis e quando não deu para
+ *    confirmar o plano (o lado seguro do "não sei" é o selo FICAR); some no Pro/Empresa;
+ *  - o "Pagar com Pix" — é recurso do Pro (`link_pagamento`). No Grátis a página
+ *    diz "combine a forma de pagamento" (o cliente final nunca vê paywall); quando a
+ *    leitura do plano FALHA, diz que o pagamento não carregou e pede para recarregar —
+ *    nunca mostra o Pix sem confirmar, nem finge que não existe.
  */
 import { gerarPixCopiaECola, normalizarChavePix, pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
 import { qrSvg } from '../../src/utils/qrcode.ts';
+import { seloOlliHtml } from '../../src/utils/marcaOlli.ts';
+import { RECURSO_REMOVE_MARCA, temAcessoRecurso } from '../../src/services/entitlements.ts';
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
 
 const ACCENT = '#0B6FCE';
@@ -118,7 +130,10 @@ function sbHeaders(env, extra = {}) {
 // aplicada quando o worker subir — pedir uma coluna inexistente derruba a query
 // inteira (PostgREST 400). O worker grava o motivo em AMBAS, então ler
 // resposta_cliente já basta para a página.
-const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente';
+// `user_id` (dono do link) entra para a página ler o PLANO de quem publicou: é ele
+// que decide o selo "Feito com OLLI" e o "Pagar com Pix" (ver o topo do arquivo).
+// A coluna existe desde o schema base (a RLS `orcamentos_publicos_owner` usa ela).
+const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente,user_id';
 // Coluna do "Já paguei" (migration 20260930120300_link_pagamento_informado.sql).
 // Pedida numa 1ª tentativa; se o banco ainda não tem a coluna (PostgREST 400), a
 // leitura cai para SELECT_COLS e a linha volta marcada `_semPagamentoInformado` —
@@ -555,6 +570,52 @@ function acaoPreSelecionada(request) {
   }
 }
 
+// ─── plano do dono do link (selo + Pix) ──────────────────────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PLANOS = new Set(['gratis', 'pro', 'empresa']);
+
+/**
+ * Plano EFETIVO de quem publicou o link: `{ confirmado:true, plano }` ou
+ * `{ confirmado:false }`. A RPC só é executável por service_role e já resolve
+ * tenant (membro de equipe herda o plano do dono), assinatura, override do admin e
+ * teste do Pro. Qualquer falha (rede, 4xx/5xx, JSON estranho, linha sem dono) é
+ * "não sei" — NUNCA "grátis" e nunca "pago".
+ */
+export async function planoDoDonoDoLink(env, row) {
+  const userId = row && typeof row.user_id === 'string' ? row.user_id : '';
+  if (!UUID_RE.test(userId)) return { confirmado: false };
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/plano_comercial_para_usuario`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_user_id: userId }),
+    });
+    if (!r.ok) return { confirmado: false };
+    const plano = await r.json().catch(() => null);
+    return PLANOS.has(plano) ? { confirmado: true, plano } : { confirmado: false };
+  } catch {
+    return { confirmado: false };
+  }
+}
+
+/**
+ * O que a página mostra para este plano — regra PURA (testada em
+ * worker/scripts/teste-link-pix.js). Três estados no pagamento:
+ *  - `liberado`      → plano confirmado com `link_pagamento`: mostra o Pix;
+ *  - `bloqueado`     → plano confirmado sem o recurso (Grátis): "combine com o prestador";
+ *  - `indeterminado` → não deu para ler o plano: "o pagamento não carregou, recarregue".
+ * O selo some só com o plano CONFIRMADO com `remove_olli_brand`.
+ */
+export function regrasDaPagina(leitura) {
+  if (!leitura || leitura.confirmado !== true || !PLANOS.has(leitura.plano)) {
+    return { mostrarSelo: true, pagamento: 'indeterminado' };
+  }
+  return {
+    mostrarSelo: !temAcessoRecurso(leitura.plano, RECURSO_REMOVE_MARCA),
+    pagamento: temAcessoRecurso(leitura.plano, 'link_pagamento') ? 'liberado' : 'bloqueado',
+  };
+}
+
 export async function renderLinkPage(token, env, request) {
   const preSelecao = acaoPreSelecionada(request);
   if (!validToken(token)) return html(pageErro('Link inválido', 'Confira o endereço que você recebeu.'), 400);
@@ -577,11 +638,14 @@ export async function renderLinkPage(token, env, request) {
     // nunca deixa a trilha atrapalhar a entrega da página
   }
 
-  return html(pageOrcamento(row, preSelecao));
+  // Plano do dono: decide o selo e o Pix. Lido DEPOIS da trilha, e a falha vira
+  // o terceiro estado (ver `regrasDaPagina`), nunca uma página quebrada.
+  const regras = regrasDaPagina(await planoDoDonoDoLink(env, row));
+  return html(pageOrcamento({ ...row, _regras: regras }, preSelecao));
 }
 
 // ─── páginas ─────────────────────────────────────────────────
-function shell(inner, accentRaw = ACCENT) {
+function shell(inner, accentRaw = ACCENT, mostrarSelo = true) {
   const accent = safeHexColor(accentRaw, ACCENT);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -674,13 +738,11 @@ function shell(inner, accentRaw = ACCENT) {
   .btn-paguei{width:100%;margin-top:10px;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
   .pix-nota{font-size:11.5px;color:#5A6575;margin-top:6px;line-height:1.4}
   .pix-avisado{margin-top:12px;font-size:12.5px;color:#1A7F4B;background:#E9F9F1;border:1px solid #BFE6CF;border-radius:11px;padding:10px;line-height:1.4}
-  .olli-cta{text-align:center;margin:22px auto 10px;font-size:12px}
-  .olli-cta a{color:#8A95A6;text-decoration:none;font-weight:600}
-  .olli-cta a b{color:#0B6FCE}
+  .olli-cta{text-align:center;margin:22px auto 10px}
 </style>
 </head>
 <body><div class="wrap">${inner}</div>
-<div class="olli-cta"><a href="https://olliorcamentos.online/?utm_source=portal_cliente&utm_medium=rodape&utm_campaign=feito_com_olli" target="_blank" rel="noopener">Feito com <b>OLLI</b> · crie seu orçamento grátis</a></div>
+${mostrarSelo ? `<div class="olli-cta">${seloOlliHtml('link_orcamento')}</div>` : ''}
 </body>
 </html>`;
 }
@@ -702,6 +764,15 @@ function pageErro(titulo, sub) {
  * "Já paguei" some quando o banco não tem a coluna (`_semPagamentoInformado`).
  */
 function blocoPagamento(row, d, total, numero, nomePrestador) {
+  // Recurso do Pro (`link_pagamento`), decidido pelo plano do dono em renderLinkPage.
+  // Linha sem regras (chamada antiga/teste) = "não sei": não mostra Pix.
+  const pagamento = row && row._regras ? row._regras.pagamento : 'indeterminado';
+  if (pagamento === 'indeterminado') {
+    return `<div class="pix-box" id="pagar"><div class="pix-t">Pagamento</div><div class="pix-sub">Não consegui carregar a forma de pagamento agora. Recarregue a página em instantes ou combine diretamente com ${esc(nomePrestador)}.</div></div>`;
+  }
+  if (pagamento !== 'liberado') {
+    return `<div class="pix-box" id="pagar"><div class="pix-t">Pagamento</div><div class="pix-sub">Combine a forma de pagamento diretamente com ${esc(nomePrestador)}.</div></div>`;
+  }
   const pix = pixDaPagina(d, total, numero);
   const informadoEm = row && typeof row[COL_PAGAMENTO] === 'string' ? formatData(row[COL_PAGAMENTO]) : '';
   const podeInformar = pix && !row._semPagamentoInformado && !informadoEm;
@@ -1008,5 +1079,6 @@ function pageOrcamento(row, preSelecao = '') {
     })();
   </script>`;
 
-  return shell(inner, accent);
+  // Selo: só some com plano CONFIRMADO sem selo. Linha sem regras = selo fica.
+  return shell(inner, accent, !(row._regras && row._regras.mostrarSelo === false));
 }

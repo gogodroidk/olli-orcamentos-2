@@ -37,6 +37,7 @@
 import { Platform } from 'react-native';
 import { DIAGNOSTICO_URL } from '../config';
 import { supabase } from './supabase';
+import { acessoRecursoAgora } from './planos';
 import { LOCALIZACAO_DISPONIVEL } from './localizacaoEquipe';
 import { hhmm, janelaChegada } from './saidaCalculo';
 
@@ -307,6 +308,11 @@ export function temDestinoEta(a: DestinoAgendamento | null | undefined): boolean
  */
 export async function getEtaAgendamento(a: DestinoAgendamento | null | undefined): Promise<ResultadoEta> {
   if (!a) return { estado: 'indisponivel' };
+  // ETA com trânsito é inteligência do Pro (`hora_de_sair`) e custa uma chamada
+  // paga da Routes API. Sem o recurso CONFIRMADO, nem geocodifica nem chama: a
+  // tela mostra "Disponível no Pro" (ou "plano não confirmado") pelo próprio
+  // EtaChip, que pergunta o plano — este 'indisponivel' nunca chega a ser exibido.
+  if ((await acessoRecursoAgora('hora_de_sair')) !== 'liberado') return { estado: 'indisponivel' };
   let destino: Coordenada | null = null;
   if (Number.isFinite(a.lat) && Number.isFinite(a.lng)) {
     destino = { lat: a.lat as number, lng: a.lng as number };

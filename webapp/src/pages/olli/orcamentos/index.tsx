@@ -74,7 +74,6 @@ import {
 	obterEstadoOfertaComercial,
 	reservarEnvioOrcamento,
 } from "@/olli/cota-envios";
-import { mensagemBloqueioEnvio } from "@limites-comerciais";
 import { avisoTrialAutomatico } from "@ativacao";
 /**
  * Contrato carregado SOB DEMANDA: ele arrasta o gerador de PDF do contrato, e
@@ -442,12 +441,9 @@ export default function OrcamentosPage() {
 		 * toast de sucesso conta que ficou, em vez de deixá-lo descobrir no papel.
 		 */
 		const tarefa = (async () => {
+			// REGISTRO do envio, não portão: o Grátis é ilimitado (limitesComerciais.ts).
+			// Se o registro falhar, `reserva` vem como `sem_registro` e o PDF sai igual.
 			const reserva = await reservarEnvioOrcamento(linha.id, "pdf");
-			if (!reserva.permitido) {
-				const erro = new Error(mensagemBloqueioEnvio(reserva));
-				(erro as Error & { cotaEsgotada?: boolean }).cotaEsgotada = reserva.motivo === "cota_esgotada";
-				throw erro;
-			}
 			try {
 				const marca = await resolverMarcaDoDocumento(qc);
 				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });
@@ -496,16 +492,7 @@ export default function OrcamentosPage() {
 					? `Abri a janela de impressão. ${aviso}`
 					: "Abri a janela de impressão — escolha “Salvar como PDF”.";
 			},
-			error: (erro) => {
-				const falha = erro as Error & { cotaEsgotada?: boolean };
-				if (falha.cotaEsgotada) {
-					setTimeout(() => toast("Quer continuar enviando?", {
-						description: "Veja o Pro e o teste de 14 dias, sem cartão e sem cobrança automática.",
-						action: { label: "Ver planos", onClick: () => window.location.assign("/olli/planos") },
-					}), 0);
-				}
-				return falha.message || "Não consegui gerar o PDF agora. Tente de novo.";
-			},
+			error: (erro) => (erro as Error).message || "Não consegui gerar o PDF agora. Tente de novo.",
 		});
 	};
 

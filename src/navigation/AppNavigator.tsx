@@ -42,6 +42,7 @@ import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
 import AutopilotScreen from '../screens/AutopilotScreen';
+import ImportarScreen from '../screens/ImportarScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import PrepararNotaScreen from '../screens/PrepararNotaScreen';
@@ -49,6 +50,7 @@ import CertificadoCaixaDaguaScreen from '../screens/CertificadoCaixaDaguaScreen'
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
 import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
+import VimDeOutroAppScreen from '../screens/VimDeOutroAppScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
@@ -150,6 +152,8 @@ export type RootStackParamList = {
   OlliVoz: undefined;
   OlliChat: undefined;
   Autopilot: undefined;
+  // Troque em 5 minutos: contatos (.vcf/CSV), planilha CSV/XLSX e foto de orçamento antigo (IA).
+  Importar: undefined;
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
   // Comprovante de controle de pragas (RDC 622, art. 19) do ofício de dedetização (gate `vertical: 'dedetizacao'`).
@@ -166,6 +170,8 @@ export type RootStackParamList = {
     recurso: Recurso;
     plano: 'pro' | 'empresa';
   } | undefined;
+  // Crédito de troca ("Vim de outro app"): pedido com comprovante, conferido à mão.
+  VimDeOutroApp: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
   // Onda 2 — Equipe (empresa): gestão de membros/papéis/convites.
@@ -265,6 +271,7 @@ const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
 const AutopilotCentro = comCentroDesktop(AutopilotScreen);
+const ImportarCentro = comCentroDesktop(ImportarScreen);
 
 /**
  * Contas antigas podem ter uma linha `empresa` criada antes dos campos mínimos.
@@ -411,6 +418,7 @@ const CertificadoCaixaDaguaCentro = comCentroDesktop(CertificadoCaixaDaguaScreen
 const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
 const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
+const VimDeOutroAppCentro = comCentroDesktop(VimDeOutroAppScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
 const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
@@ -780,12 +788,14 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OlliVoz" component={OlliVozCentro} options={criar} />
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
       <Stack.Screen name="Autopilot" component={AutopilotCentro} />
+      <Stack.Screen name="Importar" component={ImportarCentro} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />
       <Stack.Screen name="Creditos" component={CreditosCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />
+      <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
       {/* Onda 2 — Equipe (empresa) e aceite de convite (deep link). */}

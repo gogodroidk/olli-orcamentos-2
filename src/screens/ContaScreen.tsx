@@ -13,6 +13,9 @@ import { Aparecer } from '../components/motion';
 import { curvas } from '../components/motion/curvas';
 import { DURACAO, duracaoAcessivel, useReduzirMovimento } from '../theme/motion';
 import { buscarAjustes, SECAO_AJUSTES, TERMOS_AJUSTE, type ItemAjuste } from '../services/buscaAjustes';
+import { TEXTO_CONVITE_IMPORTAR } from '../utils/conviteImportar';
+import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
+import { resumoPedidoTroca } from '../services/creditoTrocaRegras';
 import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, comAlfa, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
@@ -222,6 +225,8 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais, marcas e preços', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
+    // Importar grava clientes, serviços e produtos: é de quem cuida do cadastro.
+    { key: 'importar', icon: 'database-import-outline', label: TEXTO_CONVITE_IMPORTAR.titulo, desc: TEXTO_CONVITE_IMPORTAR.descricao, color: c.accentLight, route: 'Importar', ocultarTecnico: true },
     { key: 'contratos', icon: 'calendar-sync-outline', label: 'Contratos recorrentes', desc: 'Visitas e cobrança todo mês', color: c.success, route: 'Contratos', ocultarTecnico: true },
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: '#F7B23B', route: 'CalculadoraTinta', vertical: 'pintura' },
@@ -799,9 +804,17 @@ export default function ContaScreen() {
   // de "existe para esta pessoa" mora num lugar só, e a busca nunca acha algo
   // que a tela não desenharia.
   const sessaoAtiva = configured && !!user;
+  // Crédito de troca ("Vim de outro app"): só o DONO pede (a RPC recusa membro), e
+  // só com sessão. Quem paga só vê a linha quando já tem pedido (o próprio atalho
+  // decide isso) — a mesma regra da tela de Planos.
+  const mostraCreditoTroca = sessaoAtiva && !membroDeEmpresa && !carregandoPermissao
+    && pode('gerenciar_faturamento') && !cardPlanoCarregando;
   const itensAjuste: ItemAjuste[] = [
     { id: 'perfil', secao: SECAO_AJUSTES.conta, titulo: 'Seu perfil', descricao: nomeExibido },
     { id: 'assinatura', secao: SECAO_AJUSTES.conta, titulo: 'Assinatura e planos' },
+    // Na busca só para o Grátis: para quem paga a linha pode nem existir (sem
+    // pedido), e a busca nunca acha o que a tela não desenharia.
+    ...(mostraCreditoTroca && !temAssinaturaPaga ? [{ id: 'creditoTroca', secao: SECAO_AJUSTES.conta, titulo: resumoPedidoTroca(null).titulo }] : []),
     ...(configured && !carregandoConta ? [{ id: 'equipe', secao: SECAO_AJUSTES.conta, titulo: 'Empresa e equipe' }] : []),
     ...ferramentasVisiveis.map(f => ({ id: `ferramenta:${f.key}`, secao: SECAO_AJUSTES.ferramentas, titulo: f.label, descricao: f.desc })),
     { id: 'aparencia', secao: SECAO_AJUSTES.aparencia, titulo: 'Tema e cor da marca' },
@@ -1058,6 +1071,16 @@ export default function ContaScreen() {
             </View>
           )}
         </Aparecer>
+        ) : null}
+
+        {/* CRÉDITO DE TROCA — logo abaixo do plano, discreto: convite para quem veio
+            de outro app (Grátis) e o estado do pedido (em análise, aprovado até
+            dd/mm, recusado com o motivo). Concessão conferida à mão, não venda:
+            aparece igual nas lojas. Sem leitura confiável, só o convite neutro. */}
+        {mostraCreditoTroca && (temAssinaturaPaga ? !resultadoBusca.ativa : mostra('creditoTroca')) ? (
+          <Aparecer indice={ind(1)}>
+            <CreditoTrocaAtalho ocultarSemPedido={temAssinaturaPaga} style={styles.creditoTroca} />
+          </Aparecer>
         ) : null}
 
         {/* EMPRESA / EQUIPE (Onda 2) — só quando a nuvem está configurada. */}
@@ -1960,6 +1983,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   assinaturaIcon: { width: 40, height: 40, borderRadius: BorderRadius.chip, backgroundColor: c.accentContainer, justifyContent: 'center', alignItems: 'center' },
   assinaturaTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   assinaturaSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
+  // Colado no cartão do plano (marginTop curto) e sem a sombra/borda de destaque
+  // dele: lê como um complemento do plano, não como um 2º anúncio.
+  creditoTroca: { marginHorizontal: Spacing.base, marginTop: Spacing.sm, marginBottom: 0 },
 
 
   fotoOpcao: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outlineDark, paddingHorizontal: 16, paddingVertical: 14, marginTop: 10 },

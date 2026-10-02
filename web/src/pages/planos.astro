@@ -23,7 +23,7 @@ import {
 	reais,
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { IA_USOS_GRATIS_MES, ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../data/recursos";
+import { FRASE_GRATIS, IA_USOS_GRATIS_MES } from "../data/recursos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
@@ -48,8 +48,8 @@ const doze =
 /**
  * FAQ DE DECISÃO — as perguntas que travam a assinatura, respondidas com a VERDADE
  * lida do código e dos Termos:
- *  - grátis sem prazo → entitlements (histórico/rascunhos sem limite, envios com
- *    cota mensal) + Termos §4 (plano gratuito existe);
+ *  - grátis sem prazo → entitlements + planosBase (orçamentos ILIMITADOS desde
+ *    01/10/2026, com o selo "Feito com OLLI") + Termos §4 (plano gratuito existe);
  *  - cartão só no pago → Termos §4 (cartão pela Stripe; Pix por período, que só
  *    aparece quando `data/pix.ts` confirmou no build que o Pix está ligado);
  *  - cancelamento → Termos §5 (portal Stripe; acesso até o fim do período pago;
@@ -60,7 +60,7 @@ const doze =
 const faq = [
 	{
 		q: "O plano Grátis acaba depois de um tempo?",
-		a: `Não. O Grátis é permanente: rascunhos, ordem de serviço, recibos, clientes e histórico ficam sem limite. Você pode enviar ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos por mês, e a IA tem ${IA_USOS_GRATIS_MES} usos mensais. Depois do primeiro envio, há um teste Pro opcional de 14 dias, sem cartão e sem cobrança automática.`,
+		a: `Não. O Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, ordem de serviço, recibos, clientes e histórico também ficam sem limite, e a IA tem ${IA_USOS_GRATIS_MES} usos mensais. Depois do primeiro envio, há um teste Pro opcional de 14 dias, sem cartão e sem cobrança automática.`,
 	},
 	{
 		q: "Preciso de cartão de crédito para começar?",

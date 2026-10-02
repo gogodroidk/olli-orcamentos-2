@@ -5,9 +5,10 @@
  *
  * Protege: janelas D+3/D+7 da ativação (D+1 é só no app), no máximo 2 e-mails de
  * ativação, nada de cobrança para conta sem orçamento, gatilhos de assinatura
- * idênticos aos da faixa do app (cota_quase, cota_esgotada, renovar_pix D-3/D0,
- * plano_vencido D+1), 1 e-mail de cobrança por semana, não-duplicação, teto por
- * rodada e horário comercial de Brasília.
+ * idênticos aos da faixa do app (renovar_pix D-3/D0, plano_vencido D+1), 1 e-mail
+ * de cobrança por semana, não-duplicação, teto por rodada e horário comercial de
+ * Brasília. Desde 01/10/2026 o Grátis é ILIMITADO: nenhum e-mail de cota, com
+ * qualquer número de envios — nem quando o banco antigo ainda manda o limite 5.
  */
 import assert from 'node:assert/strict';
 import {
@@ -42,7 +43,7 @@ function candidato(extra = {}) {
     donoDoTenant: true,
     assinatura: null,
     oferta: {
-      plano_efetivo: 'gratis', limite_envios: 5, envios_usados: 0, envios_restantes: 5,
+      plano_efetivo: 'gratis', limite_envios: null, envios_usados: 0, envios_restantes: null,
       trial_estado: 'unstarted', trial_termina_em: null, trial_dias: 14,
     },
     historico: { ativacao: [], cobranca: [] },
@@ -50,12 +51,16 @@ function candidato(extra = {}) {
   };
 }
 
-function gratisComEnvios(usados, trial = 'ended') {
+/** `bancoAntigo` simula o banco antes de 20261002150000, que ainda manda o limite 5. */
+function gratisComEnvios(usados, trial = 'ended', bancoAntigo = false) {
   return candidato({
     orcamentos: usados + 1,
     confirmadoEm: antes(24 * 60),
     oferta: {
-      plano_efetivo: 'gratis', limite_envios: 5, envios_usados: usados, envios_restantes: Math.max(0, 5 - usados),
+      plano_efetivo: 'gratis',
+      limite_envios: bancoAntigo ? 5 : null,
+      envios_usados: usados,
+      envios_restantes: bancoAntigo ? Math.max(0, 5 - usados) : null,
       trial_estado: trial, trial_termina_em: null, trial_dias: 14,
     },
   });
@@ -72,8 +77,8 @@ function pagoPix(horasParaVencer, extra = {}) {
       ...extra,
     },
     oferta: {
-      plano_efetivo: ativo ? 'pro' : 'gratis', limite_envios: ativo ? null : 5, envios_usados: 0,
-      envios_restantes: ativo ? null : 5, trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
+      plano_efetivo: ativo ? 'pro' : 'gratis', limite_envios: null, envios_usados: 0,
+      envios_restantes: null, trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
     },
   });
 }
@@ -160,21 +165,26 @@ caso('histórico ilegível falha fechado', () => {
 
 console.log('\n3. Assinatura — mesmos gatilhos da faixa do app');
 caso('conta sem orçamento NUNCA recebe cobrança (vai para a trilha de ativação)', () => {
-  const c = candidato({ confirmadoEm: antes(24 * 60), oferta: { ...candidato().oferta, envios_usados: 5, envios_restantes: 0 } });
+  const c = candidato({ confirmadoEm: antes(24 * 60), oferta: { ...candidato().oferta, envios_usados: 5 } });
   const d = decidirLembreteEmail(c, OPTS);
   assert.notEqual(d.pedido?.purpose, 'billing_reminder');
 });
-caso('Grátis com 3 de 5: cota_quase uma vez no mês', () => {
-  const d = decidirLembreteEmail(gratisComEnvios(3), OPTS);
-  assert.equal(d.enfileirar, true);
-  assert.equal(d.motivo, 'cota_quase');
-  assert.equal(d.pedido.idempotencyKey, `lembrete:assinatura:${U(1)}:cota_quase:2026-09`);
-  assert.deepEqual(d.pedido.dados, { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 });
+caso('Grátis ILIMITADO: 3, 5, 6 ou 40 envios no mês nunca viram e-mail de cota', () => {
+  for (const n of [3, 5, 6, 40]) {
+    for (const trial of ['ended', 'eligible']) {
+      const d = decidirLembreteEmail(gratisComEnvios(n, trial), OPTS);
+      assert.equal(d.enfileirar, false, `${n} envios (${trial})`);
+      assert.equal(d.motivo, 'assinatura_tipo_sem_email');
+    }
+  }
 });
-caso('Grátis com 5 de 5: cota_esgotada', () => {
-  const d = decidirLembreteEmail(gratisComEnvios(5, 'eligible'), OPTS);
-  assert.equal(d.motivo, 'cota_esgotada');
-  assert.deepEqual(d.pedido.dados, { tipo: 'cota_esgotada', limite: 5, usados: 5, restantes: 0 });
+caso('banco ANTIGO ainda mandando limite 5: o e-mail de cota também não sai', () => {
+  for (const n of [3, 5]) {
+    const d = decidirLembreteEmail(gratisComEnvios(n, 'ended', true), OPTS);
+    assert.equal(d.enfileirar, false);
+    assert.notEqual(d.motivo, 'cota_quase');
+    assert.notEqual(d.motivo, 'cota_esgotada');
+  }
 });
 caso('Grátis com 1 envio (trial_disponivel/assinar) fica só na faixa do app', () => {
   assert.equal(decidirLembreteEmail(gratisComEnvios(1, 'eligible'), OPTS).motivo, 'assinatura_tipo_sem_email');
@@ -217,12 +227,12 @@ caso('oferta desconhecida (null) não vira cobrança inventada', () => {
 });
 
 console.log('\n4. Ritmo: 1 cobrança por semana e não-duplicação');
-caso('cobrança há 3 dias bloqueia cota_esgotada', () => {
-  const c = { ...gratisComEnvios(5), historico: { ativacao: [], cobranca: [{ chave: 'x', sequencia: null, em: antes(72) }] } };
+caso('cobrança de outro motivo há 3 dias bloqueia o D-3', () => {
+  const c = { ...pagoPix(60), historico: { ativacao: [], cobranca: [{ chave: 'x', sequencia: null, em: antes(72) }] } };
   assert.equal(decidirLembreteEmail(c, OPTS).motivo, 'assinatura_limite_semanal');
 });
 caso('cobrança há 8 dias não bloqueia', () => {
-  const c = { ...gratisComEnvios(5), historico: { ativacao: [], cobranca: [{ chave: 'x', sequencia: null, em: antes(24 * 8) }] } };
+  const c = { ...pagoPix(60), historico: { ativacao: [], cobranca: [{ chave: 'x', sequencia: null, em: antes(24 * 8) }] } };
   assert.equal(decidirLembreteEmail(c, OPTS).enfileirar, true);
 });
 caso('D0 depois do D-3 do MESMO vencimento passa (sequência conta como uma)', () => {
@@ -236,23 +246,25 @@ caso('D-3 bloqueado por cobrança de OUTRO motivo na semana', () => {
   assert.equal(decidirLembreteEmail(c, OPTS).motivo, 'assinatura_limite_semanal');
 });
 caso('mesma chave já enfileirada não repete', () => {
-  const c = { ...gratisComEnvios(3), historico: { ativacao: [], cobranca: [{ chave: `lembrete:assinatura:${U(1)}:cota_quase:2026-09`, sequencia: null, em: antes(24 * 8) }] } };
+  const base = pagoPix(60);
+  const chave = decidirLembreteEmail(base, OPTS).pedido.idempotencyKey;
+  const c = { ...base, historico: { ativacao: [], cobranca: [{ chave, sequencia: null, em: antes(24 * 8) }] } };
   assert.equal(decidirLembreteEmail(c, OPTS).motivo, 'assinatura_ja_enfileirado');
 });
 
 console.log('\n5. Lote: dedupe por conta e teto por rodada');
 caso('conta repetida no lote é avaliada uma vez', () => {
-  const r = selecionarPedidos([gratisComEnvios(3), gratisComEnvios(3)], { ...OPTS, tetoRodada: 5 });
+  const r = selecionarPedidos([pagoPix(60), pagoPix(60)], { ...OPTS, tetoRodada: 5 });
   assert.equal(r.pedidos.length, 1);
 });
 caso('teto da rodada corta o excedente', () => {
-  const lote = [1, 2, 3, 4].map((n) => ({ ...gratisComEnvios(3), userId: U(n) }));
+  const lote = [1, 2, 3, 4].map((n) => ({ ...pagoPix(60), userId: U(n) }));
   const r = selecionarPedidos(lote, { ...OPTS, tetoRodada: 2 });
   assert.equal(r.pedidos.length, 2);
   assert.equal(r.motivos.teto_da_rodada, 2);
 });
 caso('candidato malformado não derruba o lote', () => {
-  const r = selecionarPedidos([null, { userId: 'x' }, gratisComEnvios(3)], { ...OPTS, tetoRodada: 5 });
+  const r = selecionarPedidos([null, { userId: 'x' }, pagoPix(60)], { ...OPTS, tetoRodada: 5 });
   assert.equal(r.pedidos.length, 1);
   assert.equal(r.motivos.candidato_invalido, 2);
 });

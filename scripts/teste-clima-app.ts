@@ -23,6 +23,7 @@ import {
   mmCurto,
   motivoDeFalha,
   normalizarRespostaClima,
+  quandoHoraChuva,
   resumoClima,
   simboloEhChuva,
   textoClima,
@@ -48,8 +49,10 @@ function checar(nome: string, real: unknown, esperado: unknown): void {
 function horas(mms: (number | null)[], inicioHora = 14, simbolos?: (string | null)[]): HoraChuva[] {
   return mms.map((mm, i) => {
     const h = String((inicioHora + i) % 24).padStart(2, '0');
+    // Passou da meia-noite → é o dia seguinte (a série do worker é contínua).
+    const dia = inicioHora + i >= 24 ? '2026-10-02' : '2026-10-01';
     const simbolo = simbolos ? (simbolos[i] ?? null) : mm === null ? null : 'partlycloudy_day';
-    return { inicio: `2026-10-01T${h}:00`, hora: `${h}:00`, mm, simbolo };
+    return { inicio: `${dia}T${h}:00`, hora: `${h}:00`, mm, simbolo };
   });
 }
 
@@ -109,6 +112,31 @@ checar('símbolo de chuva com 0 mm NÃO vira "Sem chuva prevista"',
 checar('o texto nunca fala em porcentagem',
   /%/.test(resumoClima({ temperatura: 27, simbolo: 'cloudy', max: 31, chuvaPorHora: horas([0, 0.3], 14, NUBLADO(2)) })),
   false);
+
+console.log('\n1b) hora do dia seguinte não parece hoje');
+checar('às 21h, chuva às 3h → "amanhã, 3h da madrugada"',
+  resumoClima({ temperatura: 22, simbolo: 'cloudy', max: 28, chuvaPorHora: horas([0, 0, 0, 0, 0, 0, 1.5], 21, NUBLADO(7)) }),
+  'Chuva prevista amanhã, 3h da madrugada — leve capa');
+checar('às 20h, chuva às 7h → "amanhã, 7h"',
+  resumoClima({ temperatura: 22, simbolo: 'cloudy', max: 28, chuvaPorHora: horas([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2], 20, NUBLADO(12)) }),
+  'Chuva prevista amanhã, 7h — leve capa');
+checar('às 22h, garoa à meia-noite → "Pode chover amanhã, 0h da madrugada (0,2 mm)"',
+  resumoClima({ temperatura: 20, simbolo: 'cloudy', max: 26, chuvaPorHora: horas([0, 0, 0.2], 22, NUBLADO(3)) }),
+  'Pode chover amanhã, 0h da madrugada (0,2 mm)');
+checar('às 23h, chuva às 23h30 do MESMO dia continua "às"',
+  resumoClima({ temperatura: 20, simbolo: 'cloudy', max: 26, chuvaPorHora: [{ inicio: '2026-10-01T23:00', hora: '23:30', mm: 1, simbolo: 'cloudy' }] }),
+  'Chuva prevista às 23h30 — leve capa');
+checar('de madrugada, chuva às 3h do mesmo dia → "às 3h" (não "amanhã")',
+  resumoClima({ temperatura: 18, simbolo: 'cloudy', max: 25, chuvaPorHora: horas([0, 0, 1], 1, NUBLADO(3)) }),
+  'Chuva prevista às 3h — leve capa');
+checar('série seca que atravessa a meia-noite continua "Sem chuva prevista nas próximas 12h"',
+  resumoClima({ temperatura: 22, simbolo: 'clearsky_night', max: 28, chuvaPorHora: horas(DOZE_SECAS, 20) }),
+  'Sem chuva prevista nas próximas 12h · 22°');
+checar('quandoHoraChuva: mesmo dia', quandoHoraChuva({ inicio: '2026-10-01T15:00', hora: '15:00' }, '2026-10-01T14:00'), 'às 15h');
+checar('quandoHoraChuva: dia seguinte 5h ainda é madrugada', quandoHoraChuva({ inicio: '2026-10-02T05:00', hora: '05:00' }, '2026-10-01T20:00'), 'amanhã, 5h da madrugada');
+checar('quandoHoraChuva: dia seguinte 6h já é manhã', quandoHoraChuva({ inicio: '2026-10-02T06:00', hora: '06:00' }, '2026-10-01T20:00'), 'amanhã, 6h');
+checar('quandoHoraChuva: sem referência não inventa "amanhã"', quandoHoraChuva({ inicio: '2026-10-02T03:00', hora: '03:00' }, null), 'às 3h');
+checar('quandoHoraChuva: data ilegível não inventa "amanhã"', quandoHoraChuva({ inicio: 'lixo', hora: '03:00' }, '2026-10-01T20:00'), 'às 3h');
 
 console.log('\n2) peças do texto');
 checar('horaCurta 15:00 → 15h', horaCurta('15:00'), '15h');

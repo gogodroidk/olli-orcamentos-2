@@ -10,8 +10,9 @@
  *     (`src/services/planoEfetivo.ts`) e o mesmo preço (`precosPlanos.ts`).
  *
  * Por cima da regra, só o RITMO do e-mail (que é mais invasivo que a faixa):
- *   - só estes gatilhos viram e-mail: cota_quase e cota_esgotada (1 por mês
- *     cada), renovar_pix em D-3 e D0, plano_vencido em D+1;
+ *   - só estes gatilhos viram e-mail: renovar_pix em D-3 e D0, plano_vencido em
+ *     D+1. (Até 01/10/2026 também havia cota_quase e cota_esgotada; o Grátis
+ *     ficou ILIMITADO e esses avisos deixaram de existir na regra.)
  *   - no máximo 1 e-mail de cobrança por semana por conta — a sequência de
  *     renovação de UM vencimento (D-3, D0, D+1) conta como uma só;
  *   - nunca cobrança para conta sem orçamento, nem para membro de equipe alheia.
@@ -24,7 +25,7 @@ import { avaliarLembreteAtivacao } from './onboardingReminderPolicy.js';
 import { lembreteAssinatura } from '../../src/services/lembreteAssinatura.ts';
 import { derivarPlanoEfetivo } from '../../src/services/planoEfetivo.ts';
 
-export const EMAIL_LEMBRETES_POLICY_VERSION = '2026-09-29.v1';
+export const EMAIL_LEMBRETES_POLICY_VERSION = '2026-10-01.v2';
 /** Consentimento educativo = opt-out: todo lembrete leva o link de descadastro. */
 export const LEMBRETES_CONSENTIMENTO_VERSAO = 'opt_out_link.2026-09-29';
 
@@ -194,19 +195,19 @@ function assinaturaParaRegra(linha, agoraMs) {
   };
 }
 
+/**
+ * `limite_envios`/`envios_restantes` são IGNORADOS de propósito: o banco antigo
+ * (antes de 20261002150000) ainda manda o 5, o novo manda null, e o Grátis não tem
+ * mais teto — nenhum dos dois pode reinventar uma cota no e-mail.
+ */
 function ofertaParaRegra(o) {
   if (o === null) return null;
   const plano = o.plano_efetivo;
   if (plano !== 'gratis' && !PLANOS_PAGOS.has(plano)) return null;
   if (!inteiroNaoNegativo(o.envios_usados) || !TRIAL_ESTADOS.has(o.trial_estado)) return null;
-  const limite = o.limite_envios === null ? null : Number.isInteger(o.limite_envios) ? o.limite_envios : NaN;
-  const restantes = o.envios_restantes === null ? null : Number.isInteger(o.envios_restantes) ? o.envios_restantes : NaN;
-  if (Number.isNaN(limite) || Number.isNaN(restantes)) return null;
   return {
     planoEfetivo: plano,
-    limiteEnvios: limite,
     enviosUsados: o.envios_usados,
-    enviosRestantes: restantes,
     trialEstado: o.trial_estado,
     trialTerminaEm: typeof o.trial_termina_em === 'string' ? o.trial_termina_em : null,
     trialDias: Number.isInteger(o.trial_dias) ? o.trial_dias : 14,
@@ -250,22 +251,12 @@ function decidirAssinatura(c, agora, precoProMensal) {
   const lembrete = lembreteAssinatura({ agora, oferta, assinatura, precoProMensal });
   if (!lembrete) return decisao('assinatura_nada_a_lembrar');
 
-  const mes = agora.toISOString().slice(0, 7);
   const base = `lembrete:assinatura:${c.userId}`;
   let chave;
   let sequencia = null;
   let dados;
 
-  if (lembrete.tipo === 'cota_quase' || lembrete.tipo === 'cota_esgotada') {
-    if (!oferta || oferta.limiteEnvios === null) return decisao('assinatura_oferta_invalida');
-    chave = `${base}:${lembrete.tipo}:${mes}`;
-    dados = {
-      tipo: lembrete.tipo,
-      limite: oferta.limiteEnvios,
-      usados: oferta.enviosUsados,
-      restantes: oferta.enviosRestantes ?? Math.max(0, oferta.limiteEnvios - oferta.enviosUsados),
-    };
-  } else if (lembrete.tipo === 'renovar_pix' || lembrete.tipo === 'plano_vencido') {
+  if (lembrete.tipo === 'renovar_pix' || lembrete.tipo === 'plano_vencido') {
     const vencimento = data(assinatura.proximaCobranca);
     if (!vencimento) return decisao('assinatura_sem_vencimento');
     const slot = slotRenovacao(lembrete.tipo, vencimento, agora);

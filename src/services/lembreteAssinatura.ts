@@ -12,16 +12,19 @@
  *
  * Tom: lembrar sempre, humilhar nunca. Conta nova sem nenhum orçamento NÃO vê
  * cobrança — o trabalho dela é chegar ao primeiro orçamento; pedir dinheiro antes
- * disso só espanta. Quanto mais perto do limite/vencimento, mais forte o aviso e
- * menos tempo ele fica dispensado; no limite esgotado e no vencimento, não some.
+ * disso só espanta. Quanto mais perto do vencimento, mais forte o aviso e menos
+ * tempo ele fica dispensado; no vencimento, não some.
+ *
+ * Desde 01/10/2026 o Grátis é ILIMITADO (ver `limitesComerciais.ts`): os avisos
+ * "faltam N orçamentos" e "você usou os 5" deixaram de existir. O que o Pro vende
+ * agora vem da tabela única `planosBase.ts` (`frasePro`), nunca escrito aqui.
  */
+import { frasePro } from './planosBase.ts';
 
 export type TipoLembrete =
   | 'renovar_pix'
   | 'plano_vencido'
   | 'trial_acabando'
-  | 'cota_esgotada'
-  | 'cota_quase'
   | 'trial_disponivel'
   | 'assinar';
 
@@ -48,9 +51,8 @@ export interface EntradaLembrete {
   /** Estado da oferta (RPC meu_estado_oferta_comercial). null = não confirmado. */
   oferta: {
     planoEfetivo: 'gratis' | 'pro' | 'empresa';
-    limiteEnvios: number | null;
+    /** Orçamentos enviados neste mês (informativo: o Grátis não tem teto). */
     enviosUsados: number;
-    enviosRestantes: number | null;
     trialEstado: 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';
     trialTerminaEm: string | null;
     trialDias: number;
@@ -155,7 +157,7 @@ export function lembreteAssinatura(e: EntradaLembrete): Lembrete | null {
         tipo: 'trial_acabando',
         urgencia: dias <= 1 ? 'critico' : 'atencao',
         titulo: `Seu teste do Pro acaba ${quando(dias)}`,
-        texto: `Assine por ${e.precoProMensal}/mês — dá para pagar com Pix — e continue sem limite e sem a marca OLLI no PDF.`,
+        texto: `Assine por ${e.precoProMensal}/mês — dá para pagar com Pix — e mantenha o Pro: ${frasePro()}.`,
         cta: { rotulo: 'Assinar o Pro', acao: 'planos' },
         ctaSecundario: null,
         dispensavelPorHoras: dias <= 1 ? null : 24,
@@ -164,69 +166,39 @@ export function lembreteAssinatura(e: EntradaLembrete): Lembrete | null {
     return null;
   }
 
-  if (oferta.planoEfetivo !== 'gratis' || oferta.limiteEnvios === null) return null;
+  if (oferta.planoEfetivo !== 'gratis') return null;
 
   const mes = mesDe(agora);
   const usados = oferta.enviosUsados;
-  const limite = oferta.limiteEnvios;
-  const restantes = oferta.enviosRestantes ?? Math.max(0, limite - usados);
   const podeTestar = oferta.trialEstado === 'eligible' || oferta.trialEstado === 'unstarted';
   const ofertaTeste = podeTestar
     ? { rotulo: `Testar o Pro ${oferta.trialDias} dias grátis`, acao: 'iniciar_trial' as const }
     : null;
 
-  // 4) Limite do mês esgotado: não some.
-  if (restantes <= 0) {
-    return {
-      id: `cota_esgotada:${mes}`,
-      tipo: 'cota_esgotada',
-      urgencia: 'critico',
-      titulo: `Você usou os ${limite} orçamentos grátis deste mês`,
-      texto: `Para continuar enviando orçamentos agora, assine o Pro por ${e.precoProMensal}/mês — pode pagar com Pix.`,
-      cta: ofertaTeste ?? { rotulo: 'Assinar o Pro', acao: 'planos' },
-      ctaSecundario: ofertaTeste ? { rotulo: 'Assinar o Pro', acao: 'planos' } : null,
-      dispensavelPorHoras: null,
-    };
-  }
-
-  // 5) Perto do limite.
-  if (restantes <= 2) {
-    return {
-      id: `cota_quase:${mes}:${restantes}`,
-      tipo: 'cota_quase',
-      urgencia: 'atencao',
-      titulo: restantes === 1 ? 'Falta 1 orçamento grátis este mês' : `Faltam ${restantes} orçamentos grátis este mês`,
-      texto: `Você já enviou ${usados} de ${limite}. No Pro (${e.precoProMensal}/mês, com Pix) é sem limite e sem a marca OLLI no PDF.`,
-      cta: { rotulo: 'Ver o Pro', acao: 'planos' },
-      ctaSecundario: ofertaTeste,
-      dispensavelPorHoras: 48,
-    };
-  }
-
   // Conta que ainda não enviou nenhum orçamento: sem cobrança (ver topo).
   if (usados < 1) return null;
 
-  // 6) Já usa o produto e pode testar o Pro de graça.
+  // 4) Já usa o produto e pode testar o Pro de graça.
   if (ofertaTeste) {
     return {
       id: `trial_disponivel:${mes}`,
       tipo: 'trial_disponivel',
       urgencia: 'info',
       titulo: `Teste o Pro por ${oferta.trialDias} dias, de graça`,
-      texto: 'Sem cartão e sem cobrança automática: orçamentos sem limite, IA sem cota e PDF sem a marca OLLI.',
+      texto: `Sem cartão e sem cobrança automática: ${frasePro()}.`,
       cta: ofertaTeste,
       ctaSecundario: { rotulo: 'Ver planos', acao: 'planos' },
       dispensavelPorHoras: 72,
     };
   }
 
-  // 7) Usa o Grátis e já testou: lembrete leve de assinar.
+  // 5) Usa o Grátis (sem limite) e já testou: lembrete leve do que o Pro acrescenta.
   return {
     id: `assinar:${mes}`,
     tipo: 'assinar',
     urgencia: 'info',
-    titulo: `Você enviou ${usados} de ${limite} orçamentos grátis este mês`,
-    texto: `Com o Pro (${e.precoProMensal}/mês, dá para pagar com Pix) é sem limite, com IA sem cota e PDF sem a marca OLLI.`,
+    titulo: usados === 1 ? 'Você enviou 1 orçamento este mês' : `Você enviou ${usados} orçamentos este mês`,
+    texto: `No Pro (${e.precoProMensal}/mês, dá para pagar com Pix): ${frasePro()}.`,
     cta: { rotulo: 'Assinar o Pro', acao: 'planos' },
     ctaSecundario: null,
     dispensavelPorHoras: 72,

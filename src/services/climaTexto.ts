@@ -136,6 +136,30 @@ export function horaCurta(hhmm: string): string {
   return m[2] === '00' ? `${h}h` : `${h}h${m[2]}`;
 }
 
+/** Até que hora (exclusiva) uma hora do dia seguinte ainda é "da madrugada". */
+const FIM_MADRUGADA = 6;
+
+/**
+ * QUANDO é uma hora da série, dito para quem lê agora. A série do worker começa
+ * na hora cheia corrente e cobre 12h: à noite ela atravessa a meia-noite, e
+ * "Chuva prevista às 3h" lido às 21h parece hoje à tarde (já passou) — o
+ * prestador entende errado. Por isso:
+ *   - mesmo dia da 1ª hora da série  → "às 15h";
+ *   - dia seguinte, antes das 6h      → "amanhã, 3h da madrugada";
+ *   - dia seguinte, das 6h em diante  → "amanhã, 7h".
+ * Sem referência legível (ou data estranha), cai no "às 15h" de sempre — nunca
+ * inventa um "amanhã".
+ */
+export function quandoHoraChuva(h: Pick<HoraChuva, 'inicio' | 'hora'>, referenciaInicio?: string | null): string {
+  const hc = horaCurta(h.hora);
+  const dia = String(h.inicio ?? '').slice(0, 10);
+  const diaRef = String(referenciaInicio ?? '').slice(0, 10);
+  const dataOk = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dataOk.test(dia) || !dataOk.test(diaRef) || dia <= diaRef) return `às ${hc}`;
+  const hora = Number(h.hora.slice(0, 2));
+  return Number.isFinite(hora) && hora < FIM_MADRUGADA ? `amanhã, ${hc} da madrugada` : `amanhã, ${hc}`;
+}
+
 /** 0.2 → '0,2 mm'. */
 export function mmCurto(mm: number): string {
   return `${mm.toFixed(1).replace('.', ',')} mm`;
@@ -163,6 +187,8 @@ function horaComChuva(h: HoraChuva): boolean {
  *  4. janela inteira com mm CONHECIDO, abaixo disso e sem símbolo de chuva
  *     → "Sem chuva prevista nas próximas 12h · 27°"
  *  5. qualquer hora sem dado → só a temperatura (não afirma "sem chuva")
+ * Hora que já é do dia seguinte sai como "amanhã, 3h da madrugada" / "amanhã,
+ * 7h" (`quandoHoraChuva`), nunca um "às 3h" que parece hoje.
  */
 export function resumoClima(d: {
   temperatura: number;
@@ -174,10 +200,12 @@ export function resumoClima(d: {
   if (simboloEhChuva(d.simbolo) || simboloEhChuva(horas[0]?.simbolo)) {
     return 'Chuva prevista agora — leve capa';
   }
+  // A 1ª hora da série é "hoje": horas de outro dia saem como "amanhã, …".
+  const referencia = horas[0]?.inicio ?? null;
   const chuva = horas.find(horaComChuva);
-  if (chuva) return `Chuva prevista às ${horaCurta(chuva.hora)} — leve capa`;
+  if (chuva) return `Chuva prevista ${quandoHoraChuva(chuva, referencia)} — leve capa`;
   const talvez = horas.find((h) => h.mm !== null && h.mm >= LIMIAR_MM_TALVEZ);
-  if (talvez && talvez.mm !== null) return `Pode chover às ${horaCurta(talvez.hora)} (${mmCurto(talvez.mm)})`;
+  if (talvez && talvez.mm !== null) return `Pode chover ${quandoHoraChuva(talvez, referencia)} (${mmCurto(talvez.mm)})`;
   const tudoConhecido = horas.length > 0 && horas.every((h) => h.mm !== null);
   if (tudoConhecido) return `Sem chuva prevista nas próximas ${horas.length}h · ${grau(d.temperatura)}`;
   return textoTemperatura(d.temperatura, d.max);

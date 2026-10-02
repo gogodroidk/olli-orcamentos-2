@@ -23,13 +23,9 @@ import {
 import { generateId } from '../utils/id';
 import { Equipamento } from '../types';
 
-/** Base pública do link do QR — o worker resolve GET /q/<token> (página do cliente). */
-const BASE_ETIQUETA = 'https://link.olliorcamentos.online/q/';
-
-/** URL pública da etiqueta (vazia enquanto o token ainda não foi gerado/sincronizado). */
-export function urlEtiqueta(qrToken: string): string {
-  return qrToken ? `${BASE_ETIQUETA}${encodeURIComponent(qrToken)}` : '';
-}
+// A URL pública da etiqueta mora no módulo PURO utils/qrEtiqueta (o PDF da
+// etiqueta e o teste de linha de comando usam a mesma regra sem puxar o banco).
+export { urlEtiqueta } from '../utils/qrEtiqueta';
 
 export function getEquipamentos(): Promise<Equipamento[]> {
   return getEquipamentosDb();

@@ -1,8 +1,13 @@
 name: CI
 
+# Um PR roda UMA vez (pull_request). Push só dispara na main (o merge), para não
+# pagar o mesmo CI duas vezes por branch de PR — economiza metade dos minutos
+# gratuitos do Actions. Sem cota no Actions, o gate é o scripts/ci-local.sh
+# (ver docs/CI_LOCAL.md), que reproduz estes mesmos jobs.
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
 
 jobs:
   # 1) App (raiz): o mesmo preflight que governa a release local.

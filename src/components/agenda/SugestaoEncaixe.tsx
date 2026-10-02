@@ -9,7 +9,9 @@
  *   );
  *   <SugestaoEncaixe resultado={encaixe} onEscolher={(s) => preencher(s.inicio, s.fim)} />
  *
- * `resultado: 'carregando'` enquanto a agenda ainda não saiu do banco local.
+ * `resultado: 'carregando'` enquanto a agenda ainda não saiu do banco local;
+ * `'erro'` quando a leitura falhou (diz isso — nunca "nenhum encaixe").
+ * O `useEncaixe` (hooks/useEncaixe.ts) já devolve os três.
  *
  * Nenhum estado some calado:
  *  - cliente sem coordenada → "Cadastre o CEP do cliente…" (não "nenhum encaixe");
@@ -28,7 +30,7 @@ import { Aparecer, PressableAnimado, Skeleton } from '../motion';
 import type { ResultadoEncaixe, SugestaoEncaixe as Sugestao } from '../../services/encaixe';
 
 export interface SugestaoEncaixeProps {
-  resultado: ResultadoEncaixe | 'carregando';
+  resultado: ResultadoEncaixe | 'carregando' | 'erro';
   onEscolher: (sugestao: Sugestao) => void;
   /** Padrão "Encaixe perto de onde você já vai estar". */
   titulo?: string;
@@ -56,6 +58,17 @@ export function SugestaoEncaixe({ resultado, onEscolher, titulo }: SugestaoEncai
         <Skeleton height={52} radius={BorderRadius.md} style={styles.esqueleto} />
         <Skeleton height={52} radius={BorderRadius.md} style={styles.esqueleto} />
       </View>
+    );
+  }
+
+  if (resultado === 'erro') {
+    return (
+      <Aparecer style={styles.caixa}>
+        {cabecalho}
+        <Text style={styles.vazio}>
+          Não deu para ler sua agenda agora para sugerir horários. Escolha o dia e a hora abaixo.
+        </Text>
+      </Aparecer>
     );
   }
 
