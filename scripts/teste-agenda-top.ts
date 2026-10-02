@@ -100,6 +100,12 @@ checar('cliente é de série', trocouCliente.camposSerie, { clienteId: 'c2', cli
 checar('cliente: sem "só esta"', alcancesPermitidos(trocouCliente), ['esta_e_proximas', 'toda_serie']);
 const mudouRegra = diferencaDaOcorrencia(orig, { ...orig, recorrencia: 'semanal' });
 checar('regra: só a série toda', alcancesPermitidos(mudouRegra), ['toda_serie']);
+checar('"externa?" ausente × ausente não é mudança', diferencaDaOcorrencia(orig, { ...orig, externa: undefined }).vazia, true);
+const virouExterna = diferencaDaOcorrencia(orig, { ...orig, externa: true });
+checar('"externa?" é de série', virouExterna.camposSerie, { externa: true });
+checar('"externa?": sem "só esta"', alcancesPermitidos(virouExterna), ['esta_e_proximas', 'toda_serie']);
+checar('externa → "não sei" vira null (nunca false)', diferencaDaOcorrencia({ ...orig, externa: true }, { ...orig, externa: undefined }).camposSerie, { externa: null });
+checar('interna → externa', diferencaDaOcorrencia({ ...orig, externa: false }, { ...orig, externa: true }).camposSerie, { externa: true });
 
 console.log('Extras de série no plano');
 const base = {
@@ -118,6 +124,9 @@ checar('deixar de repetir: sem regra, sem exceções', [parou.base.recorrencia, 
 let recusou = '';
 try { aplicarExtrasAoPlano({ base }, 'so_esta', { camposSerie: { clienteNome: 'Hotel' } }); } catch (e) { recusou = (e as Error).message; }
 checar('"só esta" com cliente novo é recusado', recusou.includes('série'), true);
+const ext = aplicarExtrasAoPlano({ base: { ...base, externa: true } }, 'toda_serie', { camposSerie: { externa: null } });
+checar('"não sei" grava a chave vazia (o save grava NULL, não mantém o antigo)', ['externa' in ext.base, ext.base.externa], [true, undefined]);
+checar('externa true chega na série nova', aplicarExtrasAoPlano({ base, novaSerie: nova }, 'esta_e_proximas', { camposSerie: { externa: true } }).novaSerie?.externa, true);
 checar('sem extras = plano intacto', aplicarExtrasAoPlano({ base }, 'so_esta', { camposSerie: {} }).base === base, true);
 
 console.log('Puxar para atualizar');
