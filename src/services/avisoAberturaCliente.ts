@@ -71,7 +71,32 @@ export function iniciarAvisoAberturaCliente(): () => void {
     cliente.removeChannel(c).catch(() => {});
   };
 
+  // CUSTO: cada canal aberto é uma conexão Realtime contada na cota do Supabase.
+  // Só o Pro (termômetro liberado) escuta; Grátis, plano ilegível ou "em breve"
+  // não abrem conexão nenhuma. Reconfere a cada volta do app ao primeiro plano
+  // (quem assinou passa a escutar; quem perdeu o plano para).
+  let geracao = 0;
   const ajustar = () => {
+    const minha = ++geracao;
+    if (!userId || !ativo) {
+      desligar();
+      return;
+    }
+    acessoRecursoAgora('termometro_orcamento')
+      .then((acesso) => {
+        if (minha !== geracao) return;
+        if (acesso !== 'liberado') {
+          desligar();
+          return;
+        }
+        ligar();
+      })
+      .catch(() => {
+        if (minha === geracao) desligar();
+      });
+  };
+
+  const ligar = () => {
     try {
       if (!userId || !ativo) {
         desligar();

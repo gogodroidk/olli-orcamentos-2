@@ -40,6 +40,7 @@ import { RECURSOS_EM_BREVE } from '../src/services/entitlements.ts';
 import type { Orcamento } from '../src/types/index.ts';
 import {
   TETO_SINAIS_POR_HORA,
+  ehPreVisualizadorDeLink,
   horaDeLimparSinais,
   lerSinal,
   limparEventosAntigos,
@@ -173,8 +174,11 @@ console.log('\n5) "Cliente abriu seu orçamento agora"');
 {
   const orc = { status: 'enviado' as const, clienteNome: 'Ana Paula', numero: '00726', valorTotal: 300 };
   const r1 = decidirAvisoAbertura({ orcamentoId: 'o1', tipo: 'abertura', em: haMin(1) }, orc, {}, AGORA);
-  igual(r1.aviso?.titulo, 'Cliente abriu seu orçamento agora', 'abertura recente avisa');
-  ok(r1.aviso?.corpo.includes('Ana está vendo o orçamento nº 007/26'), 'corpo com nome e número legível');
+  igual(r1.aviso?.titulo, 'Seu orçamento foi aberto agora', 'abertura recente avisa');
+  ok(r1.aviso?.corpo.includes('orçamento nº 007/26 de Ana'), 'corpo com nome e número legível');
+  // Abertura conta qualquer navegador (inclusive o do prestador conferindo o link):
+  // o aviso não afirma que foi o cliente.
+  ok(!/Cliente abriu|está vendo/.test(`${r1.aviso?.titulo} ${r1.aviso?.corpo}`) && r1.aviso?.corpo.includes('Se foi o cliente'), 'aviso não afirma QUEM abriu');
   const r2 = decidirAvisoAbertura({ orcamentoId: 'o1', tipo: 'abertura', em: haMin(0) }, orc, r1.ultimosAvisos, new Date(AGORA.getTime() + 10 * 60_000));
   igual(r2.aviso, null, 'mesmo orçamento não avisa de novo em 30 min');
   const r3 = decidirAvisoAbertura({ orcamentoId: 'o1', tipo: 'abertura', em: new Date(AGORA.getTime() + 40 * 60_000).toISOString() }, orc, r2.ultimosAvisos, new Date(AGORA.getTime() + 40 * 60_000));
@@ -204,6 +208,10 @@ console.log('\n6) follow-up que lê o comportamento');
   const comSinal = planejarFollowUps([o1], [], AGORA, SEM_DOMINGO, { sinais: new Map([['1', parcelar]]) });
   ok(comSinal[0].corpo.includes('abriu o orçamento 3 vezes e voltou ao preço') && comSinal[0].corpo.includes('oferecer parcelar'), 'com termômetro: "voltou ao preço → oferecer parcelar"');
   ok(comSinal[0].data.chave !== semSinal[0].data.chave, 'texto novo muda a chave (a reconciliação reagenda)');
+  // O lembrete é agendado com dias de antecedência: nunca afirma "não abriu".
+  const reenviar: EstadoTermometro = { ...parcelar, temperatura: 'frio', resumo: { ...parcelar.resumo, aberturas: 0, aberturas7d: 0, vistasPreco: 0, voltasPreco: 0 }, acao: { tipo: 'reenviar', titulo: 'x', detalhe: 'x' } };
+  const comReenviar = planejarFollowUps([o1], [], AGORA, SEM_DOMINGO, { sinais: new Map([['1', reenviar]]) });
+  ok(comReenviar[0].corpo.includes('sem sinal de abertura do link') && !/não abriu/.test(comReenviar[0].corpo), 'lembrete agendado não afirma "não abriu" (o cliente pode abrir antes de tocar)');
 
   // Vence amanhã: validade 03/10 → aviso 02/10 às 09h, que é o MESMO alvo do D+2 do o2.
   const o2 = { ...base('2', {}), validadeOrcamento: '03/10/2026' } as Orcamento;
@@ -230,15 +238,20 @@ console.log('\n7) Worker: POST /o/<token>/sinal');
     cliente_nome: 'Maria', prestador_nome: 'Frio Bom', numero: '01126', valor_total: 350,
     dados: { numero: '011/26', clienteNome: 'Maria', valorTotal: 350, itens: [], prestador: { nome: 'Frio Bom' } },
   };
-  type Fake = { contagem?: number; semTabela?: boolean };
+  type Fake = { contagem?: number; semTabela?: boolean; naoVistoHoje?: boolean };
   function fake(opts: Fake = {}) {
     const inserts: Record<string, unknown>[] = [];
     const deletes: string[] = [];
+    const trilha: string[] = [];
     globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
       const u = String(url);
       const metodo = init.method || 'GET';
       if (u.includes('/rpc/plano_comercial_para_usuario')) return Response.json('pro');
-      if (u.includes('/eventos_orcamento_publico')) return metodo === 'POST' ? new Response('', { status: 201 }) : Response.json([{ id: 1 }]);
+      if (u.includes('/eventos_orcamento_publico')) {
+        if (metodo === 'POST') { trilha.push('evento'); return new Response('', { status: 201 }); }
+        return Response.json(opts.naoVistoHoje ? [] : [{ id: 1 }]);
+      }
+      if (u.includes('/orcamentos_publicos') && metodo === 'PATCH') { trilha.push('visualizado_em'); return new Response(null, { status: 204 }); }
       if (u.includes('/orcamento_eventos')) {
         if (opts.semTabela) return new Response('{"code":"PGRST205"}', { status: 404 });
         if (metodo === 'POST') { inserts.push(JSON.parse(String(init.body))); return new Response('', { status: 201 }); }
@@ -248,7 +261,7 @@ console.log('\n7) Worker: POST /o/<token>/sinal');
       if (u.includes('/orcamentos_publicos')) return Response.json([linha]);
       return new Response('nao esperado', { status: 500 });
     }) as typeof fetch;
-    return { inserts, deletes };
+    return { inserts, deletes, trilha };
   }
   const req = (corpo: unknown) => new Request(`https://link.exemplo/o/${TOKEN}/sinal`, {
     method: 'POST', headers: { 'CF-Connecting-IP': '203.0.113.9', 'User-Agent': 'Mozilla/5.0 teste' },
@@ -290,9 +303,25 @@ console.log('\n7) Worker: POST /o/<token>/sinal');
   ok(html.includes("+ '/sinal'") && html.includes('navigator.sendBeacon'), 'a página manda os sinais por beacon para /sinal');
   ok(html.includes("window.olliSinal('clique_aprovar')"), 'tocar em Aprovar manda clique_aprovar');
   ok(html.includes("window.olliSinal('clique_pagar')"), 'copiar o Pix / "Já paguei" manda clique_pagar');
+  ok(html.includes('O prestador vê quando esta página é aberta e por quanto tempo'), 'LGPD: a página avisa o cliente que a abertura é medida');
+  ok(ler('../src/content/legal/privacidade.ts').includes('Interação com o link do orçamento'), 'LGPD: a política de privacidade cobre o termômetro');
   const script = scriptSinais();
   ok(!/cookie|localStorage|userAgent|navigator\.language/.test(script), 'o script não lê cookie, user-agent nem idioma');
   ok(script.includes('sessionStorage') && script.includes('getRandomValues'), 'sessão aleatória só no sessionStorage da aba');
+
+  // Prévia do link (o WhatsApp do prestador busca a URL ao colar) NÃO é o cliente
+  // abrindo: não vira 'visualizado' — senão o termômetro diria "abriu" sem ninguém abrir.
+  const comUa = (ua: string) => new Request(`https://link.exemplo/o/${TOKEN}`, { headers: { 'User-Agent': ua } });
+  igual(ehPreVisualizadorDeLink(comUa('WhatsApp/2.23.20.0 A')), true, 'robô de prévia do WhatsApp é reconhecido');
+  igual(ehPreVisualizadorDeLink(comUa('facebookexternalhit/1.1 Facebot Twitterbot/1.0')), true, 'prévia do iMessage/Facebook é reconhecida');
+  igual(ehPreVisualizadorDeLink(comUa('Mozilla/5.0 (Linux; Android 14; CUBOT X70) AppleWebKit/537.36 Chrome/128 Mobile Safari/537.36')), false, 'celular CUBOT não é robô (nada de /bot/i genérico)');
+  igual(ehPreVisualizadorDeLink(comUa('Mozilla/5.0 (Linux; Android 14; wv) AppleWebKit/537.36 Chrome/128 Mobile Safari/537.36')), false, 'navegador dentro do app conta como pessoa');
+  f = fake({ naoVistoHoje: true });
+  await renderLinkPage(TOKEN, ENV, comUa('WhatsApp/2.23.20.0 A'));
+  igual(f.trilha, [], 'prévia do WhatsApp não grava "visualizado" nem carimba visualizado_em');
+  f = fake({ naoVistoHoje: true });
+  await renderLinkPage(TOKEN, ENV, comUa('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1'));
+  igual(f.trilha, ['evento', 'visualizado_em'], 'navegador de verdade grava "visualizado" (1x no dia)');
 
   igual(horaDeLimparSinais(new Date(Date.UTC(2026, 9, 1, 6, 17))), true, 'retenção roda às 06:17 UTC');
   igual(horaDeLimparSinais(new Date(Date.UTC(2026, 9, 1, 6, 18))), false, 'e só nesse minuto');
@@ -328,6 +357,10 @@ console.log('\n8) migration e fiação');
   ok(detalhe.includes('<CartaoTermometro'), 'detalhe mostra o cartão do termômetro');
   const app = ler('../App.tsx');
   ok(app.includes('iniciarAvisoAberturaCliente()'), 'App liga o aviso "cliente abriu agora"');
+  const aviso = ler('../src/services/avisoAberturaCliente.ts');
+  const iLigar = aviso.indexOf('const ligar = ');
+  const iPlano = aviso.indexOf("acessoRecursoAgora('termometro_orcamento')", aviso.indexOf('const ajustar = '));
+  ok(iPlano > 0 && iPlano < iLigar && /if \(acesso !== 'liberado'\) \{\s*desligar\(\);/.test(aviso), 'Realtime só abre conexão com o termômetro liberado (custo: Grátis não conecta)');
   const followUp = ler('../src/services/followUpLembretes.ts');
   ok(followUp.includes('termometrosSeLiberado(orcamentos, agora)') && followUp.includes('avisoValidade: true'), 'follow-up usa o sinal e o "vence amanhã"');
   igual(RECURSOS_EM_BREVE.has('termometro_orcamento'), false, 'termômetro não é mais "em breve"');

@@ -1293,12 +1293,15 @@ export default function VisualizarOrcamentoScreen() {
             <Aparecer indice={1}>
               <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
                 <Text style={styles.cardTitle}>Termômetro</Text>
-                <DicaContextual
-                  id="orcamento.termometro"
-                  icon="thermometer"
-                  texto="Aqui você vê quando o cliente abriu o link e se voltou ao preço. O botão embaixo é o próximo passo sugerido pelo que ele fez."
-                />
                 {estadoTermometroPlano === 'liberado' ? (
+                  <>
+                  {/* Dica só para quem TEM o termômetro: no "Disponível no Pro" ela
+                      explicaria um cartão que a pessoa não está vendo. */}
+                  <DicaContextual
+                    id="orcamento.termometro"
+                    icon="thermometer"
+                    texto="Aqui você vê quando o link foi aberto e se voltaram ao preço. O botão embaixo é o próximo passo sugerido por isso."
+                  />
                   <CartaoTermometro
                     leitura={termometro.estado}
                     estado={estadoTermometro}
@@ -1308,6 +1311,7 @@ export default function VisualizarOrcamentoScreen() {
                     aoLigar={orc.clienteTelefone ? ligarParaCliente : undefined}
                     agindo={enviandoWhats || duplicando}
                   />
+                  </>
                 ) : (
                   <CartaoRecursoPlano recurso="termometro_orcamento" />
                 )}

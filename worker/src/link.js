@@ -764,6 +764,24 @@ export function regrasDaPagina(leitura) {
   };
 }
 
+/**
+ * O GET veio de um robô de PRÉVIA de link (WhatsApp, Facebook/Instagram, Telegram,
+ * Slack, X, Discord, LinkedIn, Skype, iMessage...)? PURA. Lista de assinaturas
+ * específicas (nada de /bot/i genérico: "CUBOT" é marca de celular). O navegador
+ * dentro do WhatsApp usa o user-agent do Chrome/Safari, não o "WhatsApp/x.y" do
+ * robô de prévia — então o cliente de verdade continua contando.
+ */
+const PRE_VISUALIZADORES_RE =
+  /^WhatsApp\/|facebookexternalhit|Facebot|meta-externalagent|TelegramBot|Slackbot|Slack-ImgProxy|Twitterbot|Discordbot|LinkedInBot|SkypeUriPreview|Googlebot|bingbot|Applebot|Pinterestbot|redditbot|Embedly|Iframely|vkShare/i;
+export function ehPreVisualizadorDeLink(request) {
+  try {
+    const ua = request && request.headers ? String(request.headers.get('User-Agent') || '') : '';
+    return PRE_VISUALIZADORES_RE.test(ua);
+  } catch {
+    return false;
+  }
+}
+
 export async function renderLinkPage(token, env, request) {
   const preSelecao = acaoPreSelecionada(request);
   if (!validToken(token)) return html(pageErro('Link inválido', 'Confira o endereço que você recebeu.'), 400);
@@ -774,8 +792,11 @@ export async function renderLinkPage(token, env, request) {
   // TRILHA: registra 'visualizado' na 1ª abertura do dia (dedupe por dia). É
   // best-effort e roda ANTES de responder — como é 1x/dia por token, o custo é
   // desprezível e evita depender de waitUntil (que exigiria mexer no router).
+  // Pré-visualizador de link (o WhatsApp do PRÓPRIO prestador busca a URL para
+  // montar a prévia ao colar o link) NÃO é o cliente abrindo: não vira
+  // 'visualizado' — senão o app e o termômetro diriam "abriu" sem ninguém abrir.
   try {
-    if (!(await visualizadoHoje(env, token))) {
+    if (!ehPreVisualizadorDeLink(request) && !(await visualizadoHoje(env, token))) {
       const ctx = await contextoTrilha(token, request);
       await registrarEvento(env, token, 'visualizado', { ipHash: ctx.ipHash, uaCurto: ctx.uaCurto });
       // Carimba a 1ª visualização (idempotente por `visualizado_em=is.null`): é o
@@ -1174,6 +1195,7 @@ function pageOrcamento(row, preSelecao = '') {
       ${condsHtml}
       ${actionsHtml}
       <div class="foot">enviado com segurança pela OLLI</div>
+      <div class="foot" style="margin-top:6px;font-weight:500">O prestador vê quando esta página é aberta e por quanto tempo, sem saber quem abriu.</div>
     </div>
   </div>
   <script>

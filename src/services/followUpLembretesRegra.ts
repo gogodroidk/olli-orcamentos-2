@@ -180,9 +180,11 @@ function textoFollowUpUnico(
           corpo: `${nome} tocou em Aprovar e não concluiu (${valorTexto(o)}). Pergunte se ficou alguma dúvida. Toque para ver.`,
         };
       case 'reenviar':
+        // O lembrete é um RETRATO agendado para daqui a dias: o cliente pode abrir
+        // antes de ele tocar. Por isso "sem sinal de abertura", nunca "não abriu".
         return {
           titulo,
-          corpo: `${nome} ainda não abriu o link do orçamento (${valorTexto(o)}) — ${dias}. Reenvie ou ligue. Toque para ver o orçamento.`,
+          corpo: `${nome} (${valorTexto(o)}): ${dias} sem sinal de abertura do link. Vale reenviar ou ligar. Toque para ver o orçamento.`,
         };
       default:
         break;

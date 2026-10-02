@@ -480,11 +480,14 @@ export function decidirAvisoAbertura(
   }
   if (podados[ev.orcamentoId] !== undefined) return { aviso: null, ultimosAvisos: podados };
   podados[ev.orcamentoId] = agoraMs;
-  const nome = (orc.clienteNome ?? '').trim().split(/\s+/)[0] || 'O cliente';
+  const nome = (orc.clienteNome ?? '').trim().split(/\s+/)[0];
+  const de = nome ? ` de ${nome}` : '';
+  // Honestidade: a abertura conta qualquer navegador — inclusive o do próprio
+  // prestador conferindo o link que acabou de mandar. O aviso não afirma QUEM abriu.
   return {
     aviso: {
-      titulo: 'Cliente abriu seu orçamento agora',
-      corpo: `${nome} está vendo o orçamento nº ${formatarNumeroExibicao(orc.numero)} (${formatCurrency(orc.valorTotal ?? 0)}). Bom momento para chamar no WhatsApp.`,
+      titulo: 'Seu orçamento foi aberto agora',
+      corpo: `O link do orçamento nº ${formatarNumeroExibicao(orc.numero)}${de} (${formatCurrency(orc.valorTotal ?? 0)}) acabou de ser aberto. Se foi o cliente, é um bom momento para chamar no WhatsApp.`,
     },
     ultimosAvisos: podados,
   };

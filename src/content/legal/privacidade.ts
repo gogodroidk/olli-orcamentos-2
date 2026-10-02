@@ -141,6 +141,11 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Legítimo interesse em segurança (art. 7º, IX). Guardamos apenas o hash irreversível do IP, nunca o IP original.',
         },
         {
+          dado: 'Interação com o link do orçamento enviado ao cliente',
+          finalidade: 'Mostrar ao prestador se o link foi aberto, quantas vezes, por quanto tempo a página ficou visível, se o valor total foi visto e se tocaram em Aprovar ou em pagar (o "termômetro do orçamento"). Não guardamos IP, navegador nem nada que identifique quem abriu: a página usa só um código aleatório que some quando a aba é fechada. Os registros são apagados em até 180 dias, ou antes, junto com o link.',
+          base: 'Legítimo interesse do prestador em acompanhar a proposta que enviou (art. 7º, IX), com dados mínimos e não identificáveis.',
+        },
+        {
           dado: 'Uso do app (analytics local no aparelho)',
           finalidade: 'Entender quais telas ajudam e melhorar o produto.',
           base: 'Legítimo interesse (art. 7º, IX).',
