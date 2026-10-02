@@ -9,7 +9,7 @@ import { GradientHeader } from './GradientHeader';
 import { usePlano } from '../hooks/usePlano';
 import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '../services/entitlements';
-import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso } from '../services/planosBase';
+import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
 import { ESTADO_PLAY_BILLING } from '../services/playBilling';
 import { track, Eventos } from '../services/analytics';
 
@@ -201,7 +201,8 @@ export function CartaoRecursoPlano({ recurso, beneficio }: PropsCartao) {
         <Text style={[styles.seloTxt, { color: cores.accentLight }]}>DISPONÍVEL NO {nome.toUpperCase()}</Text>
       </View>
       <Text style={styles.titulo}>{rotulo.titulo}</Text>
-      <Text style={styles.texto}>{beneficio ?? beneficioRecurso(recurso)}</Text>
+      {/* Nas lojas (APK/iOS) o benefício padrão sai sem Pix: ver `beneficioLoja`. */}
+      <Text style={styles.texto}>{beneficio ?? (Platform.OS === 'web' ? beneficioRecurso(recurso) : beneficioRecursoLoja(recurso))}</Text>
       <Text style={styles.nota}>Seus dados continuam salvos, em qualquer plano.</Text>
       {podeOferecerPlano() ? (
         <OlliPressable onPress={irParaPlanos} haptic="light" style={styles.botao} accessibilityRole="button">

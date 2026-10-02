@@ -46,6 +46,13 @@ export interface RotuloRecurso {
   titulo: string;
   beneficio: string;
   curto: string;
+  /**
+   * O `beneficio` para o app das LOJAS, quando o padrão cita meio de pagamento
+   * (Pix). Num muro "Disponível no Pro" dentro do APK/iOS, qualquer menção a Pix é
+   * risco de revisão (mesma decisão de `lembreteAssinaturaLoja.ts`). Ausente = o
+   * `beneficio` já serve nas lojas.
+   */
+  beneficioLoja?: string;
 }
 
 export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
@@ -65,6 +72,7 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
     // O Pix aqui é o do PRESTADOR (o cliente dele paga o serviço) — o benefício diz.
     titulo: 'Link do orçamento com pagamento na hora',
     beneficio: 'O cliente aprova e já paga pelo Pix, direto na sua conta, no próprio link.',
+    beneficioLoja: 'O cliente aprova e já paga no próprio link do orçamento.',
     curto: 'link com pagamento na hora',
   },
   clima_visita: {
@@ -141,6 +149,15 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
  */
 export function beneficioRecurso(recurso: Recurso): string {
   const b = ROTULO_RECURSO[recurso].beneficio;
+  return RECURSOS_EM_BREVE.has(recurso) ? `${b.replace(/\.$/, '')} (em breve).` : b;
+}
+
+/**
+ * `beneficioRecurso` para o app das LOJAS: usa `beneficioLoja` quando existe (sem
+ * Pix), com o mesmo "(em breve)" da versão padrão.
+ */
+export function beneficioRecursoLoja(recurso: Recurso): string {
+  const b = ROTULO_RECURSO[recurso].beneficioLoja ?? ROTULO_RECURSO[recurso].beneficio;
   return RECURSOS_EM_BREVE.has(recurso) ? `${b.replace(/\.$/, '')} (em breve).` : b;
 }
 

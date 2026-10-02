@@ -37,6 +37,8 @@ import {
   type PedidoTroca,
 } from '../src/services/creditoTrocaRegras.ts';
 import { TERMOS_AJUSTE, buscarAjustes, SECAO_AJUSTES } from '../src/services/buscaAjustes.ts';
+import { RECURSOS_EM_ORDEM } from '../src/services/entitlements.ts';
+import { beneficioRecurso, beneficioRecursoLoja } from '../src/services/planosBase.ts';
 
 let ok = 0;
 function caso(nome: string, fn: () => void) {
@@ -212,6 +214,17 @@ caso('Detalhe: cartão do link com pagamento perto do envio, só para quem decid
   const card = detalhe.indexOf('<CartaoRecursoPlano recurso="link_pagamento"');
   assert.ok(card > detalhe.indexOf("cardAcao === 'fechar' && ("), 'depois do cartão "Fechar negócio"');
   assert.ok(card < detalhe.indexOf("cardAcao === 'cobrar'"), 'antes do cartão de cobrar');
+});
+
+caso('Detalhe nas lojas: o cartão do link com pagamento não cita Pix', () => {
+  // O cartão "Disponível no Pro" do link aparece no APK: menção a Pix num muro de
+  // plano é risco de revisão (mesma regra de lembreteAssinaturaLoja.ts).
+  for (const r of RECURSOS_EM_ORDEM) {
+    assert.doesNotMatch(beneficioRecursoLoja(r), /pix/i, `beneficioRecursoLoja(${r}) cita Pix`);
+  }
+  assert.match(beneficioRecurso('link_pagamento'), /Pix/, 'na web o benefício completo continua');
+  const recursoPlano = semComentarios(ler('../src/components/RecursoPlano.tsx'));
+  assert.match(recursoPlano, /Platform\.OS === 'web' \? beneficioRecurso\(recurso\) : beneficioRecursoLoja\(recurso\)/);
 });
 
 caso('Onboarding: "Trazer meus dados" conclui o cadastro e chega na importação', () => {
