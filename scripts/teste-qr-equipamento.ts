@@ -350,7 +350,10 @@ ok('schema local: asset_id no CREATE, na migração incremental e no save', () =
 });
 ok('sync: escada da coluna ausente e pull que preserva o vínculo local', () => {
   assert.match(sync, /osSemColunaAsset \? \{\} : \{ asset_id: o\.equipamentoId \?\? null \}/);
-  assert.match(sync, /table === 'ordens_servico' && !osSemColunaAsset && erroDeColunaDesconhecida\(error\)/);
+  // Recuo POR COLUNA (a OS tem dois: asset_id e materiais): o erro tem de nomear
+  // `asset_id` para o push largá-lo — falta de `materiais` não derruba o vínculo.
+  assert.match(sync, /!osSemColunaAsset && erroDeColunaDesconhecidaDe\(error, 'asset_id'\)/);
+  assert.match(sync, /!osSemColunaMateriais && erroDeColunaDesconhecidaDe\(error, 'materiais'\)/);
   // Nuvem vazia nunca apaga o vínculo local (nem sem a coluna, nem com a linha
   // enviada antes da migration com o mesmo atualizado_em).
   assert.match(sync, /const assetId = o\.equipamentoId \?\? assetLocal;/);

@@ -37,6 +37,17 @@ export const FATOR_RUA = 1.4;
 export interface Ponto {
   lat?: number | null;
   lon?: number | null;
+  /**
+   * De onde veio o ponto (`geoCliente.ts`). 'cidade' é o CENTRO do município: base
+   * e cliente na mesma cidade dariam "0 km" — deslocamento inventado. Por isso
+   * ponto só pela cidade conta como falta (o CEP ou o endereço resolvem).
+   */
+  geoPrecisao?: string | null;
+}
+
+/** Ponto bom o bastante para estimar a distância: coordenada válida e mais fino que a cidade. */
+function pontoUtil(p: Ponto | null | undefined): p is { lat: number; lon: number } & Ponto {
+  return !!p && coordenadaValida(p.lat, p.lon) && p.geoPrecisao !== 'cidade';
 }
 
 /** O que o prestador informou em Meu Negócio. */
@@ -132,8 +143,8 @@ function calcularDeslocamento(e: EntradaLucro): { valor: number; km: number | nu
   if (custoKm === 0) return { valor: 0, km: null };
   const faltas: FaltaLucro[] = [];
   const base = e.negocio.base;
-  if (!base || !coordenadaValida(base.lat, base.lon)) faltas.push({ tipo: 'base' });
-  if (!e.cliente || !coordenadaValida(e.cliente.lat, e.cliente.lon)) faltas.push({ tipo: 'local_cliente' });
+  if (!pontoUtil(base)) faltas.push({ tipo: 'base' });
+  if (!pontoUtil(e.cliente)) faltas.push({ tipo: 'local_cliente' });
   if (faltas.length) return faltas;
   const km = kmIdaEVolta(base as { lat: number; lon: number }, e.cliente as { lat: number; lon: number });
   return { valor: centavos(km * custoKm), km };
@@ -221,7 +232,7 @@ export function textoFalta(f: FaltaLucro): string {
     case 'custo_km':
       return 'Falta o custo por km em Meu negócio.';
     case 'base':
-      return 'Falta o seu ponto de saída em Meu negócio.';
+      return 'Falta o seu ponto de saída em Meu negócio (com CEP ou endereço, não só a cidade).';
     case 'local_cliente':
       return 'Falta o endereço (CEP) do cliente para estimar a distância.';
   }

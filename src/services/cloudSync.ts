@@ -325,6 +325,24 @@ function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): 
   return error?.code === '42703' || error?.code === 'PGRST204';
 }
 
+/**
+ * O erro de coluna desconhecida é DESTA coluna? Com dois recuos na mesma tabela
+ * (ordens_servico: `asset_id` e `materiais`), o primeiro `if` não pode assumir que
+ * a coluna que falta é a dele — senão a nuvem COM `asset_id` e SEM `materiais`
+ * derrubava o `asset_id` do push pelo resto da sessão. O PostgREST nomeia a coluna
+ * ("Could not find the 'materiais' column…" / column "materiais" … does not
+ * exist); sem nome reconhecível na mensagem, cai no comportamento antigo (true).
+ */
+function erroDeColunaDesconhecidaDe(
+  error: { code?: string; message?: string } | null | undefined,
+  coluna: string,
+): boolean {
+  if (!erroDeColunaDesconhecida(error)) return false;
+  const msg = typeof error?.message === 'string' ? error.message : '';
+  const m = /['"]([A-Za-z0-9_]+)['"]/.exec(msg);
+  return !m || m[1] === coluna;
+}
+
 function agendamentoToRow(a: Agendamento): Record<string, unknown> {
   const row: Record<string, unknown> = {
     id: a.id,
@@ -1105,16 +1123,21 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       for (const c of COLUNAS_AGENDA_EXCECOES) delete (row as Record<string, unknown>)[c];
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
     }
-    if (error && table === 'ordens_servico' && !osSemColunaAsset && erroDeColunaDesconhecida(error)) {
-      // Servidor sem a migration do equipamento na OS: reenvia sem `asset_id`.
-      osSemColunaAsset = true;
-      delete (row as Record<string, unknown>).asset_id;
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
-    }
-    if (error && table === 'ordens_servico' && !osSemColunaMateriais && erroDeColunaDesconhecida(error)) {
-      // Servidor sem a migration da baixa de material: reenvia sem `materiais`.
-      osSemColunaMateriais = true;
-      delete (row as Record<string, unknown>).materiais;
+    // OS tem DOIS recuos (`asset_id` e `materiais`) e a nuvem pode estar sem um,
+    // sem o outro ou sem os dois — em qualquer ordem que o PostgREST reclamar. Até
+    // 2 voltas, cada uma tirando só a coluna que o erro nomeou.
+    for (let volta = 0; volta < 2 && error && table === 'ordens_servico'; volta++) {
+      if (!osSemColunaAsset && erroDeColunaDesconhecidaDe(error, 'asset_id')) {
+        // Servidor sem a migration do equipamento na OS: reenvia sem `asset_id`.
+        osSemColunaAsset = true;
+        delete (row as Record<string, unknown>).asset_id;
+      } else if (!osSemColunaMateriais && erroDeColunaDesconhecidaDe(error, 'materiais')) {
+        // Servidor sem a migration da baixa de material: reenvia sem `materiais`.
+        osSemColunaMateriais = true;
+        delete (row as Record<string, unknown>).materiais;
+      } else {
+        break;
+      }
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
     }
     if (error && table === 'agendamentos' && !agendaSemColunasEquipe && erroDeColunaDesconhecida(error)) {

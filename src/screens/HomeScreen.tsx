@@ -977,7 +977,7 @@ export default function HomeScreen() {
         ) : null}
 
         {/* RADAR DO TEMPO PARA VENDER (Onda I4) — some sozinho sem sinal real. */}
-        {!ehTecnico && !esperandoDownload ? (
+        {!ehTecnico && !papelCarregando && !esperandoDownload ? (
           <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.base }}>
             <RadarTempoCard clima={clima} />
           </View>

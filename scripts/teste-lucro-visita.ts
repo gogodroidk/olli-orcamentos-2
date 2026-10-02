@@ -110,6 +110,23 @@ console.log('\n3) faltou dado → incompleto, nunca lucro inventado');
   const semLocal = calcularLucroVisita({ valor: 200, materiais: [], negocio: { custoKm: 1 }, cliente: { lat: null, lon: null } });
   checar('custo por km > 0 sem base nem cliente = falta os dois',
     semLocal.estado === 'incompleto' ? semLocal.faltas.map((f) => f.tipo) : semLocal, ['base', 'local_cliente']);
+  // Ponto só pela CIDADE = centro do município: base e cliente na mesma cidade
+  // dariam "0 km" (deslocamento inventado). Conta como falta.
+  const soCidade = calcularLucroVisita({
+    valor: 200,
+    materiais: [],
+    negocio: { custoKm: 1, base: { lat: -23.55, lon: -46.63, geoPrecisao: 'cidade' } },
+    cliente: { lat: -23.55, lon: -46.63, geoPrecisao: 'cidade' },
+  });
+  checar('ponto só pela cidade não vira 0 km: falta base e local do cliente',
+    soCidade.estado === 'incompleto' ? soCidade.faltas.map((f) => f.tipo) : soCidade, ['base', 'local_cliente']);
+  const pelocep = calcularLucroVisita({
+    valor: 200,
+    materiais: [],
+    negocio: { custoKm: 1, base: { lat: -23.55, lon: -46.63, geoPrecisao: 'cep' } },
+    cliente: { lat: -23.56, lon: -46.64, geoPrecisao: 'rua' },
+  });
+  checar('ponto pelo CEP/rua calcula', pelocep.estado, 'completo');
   const semValor = calcularLucroVisita({ valor: undefined, materiais: [], negocio: { custoKm: 0 } });
   checar('sem preço = falta o valor', semValor.estado === 'incompleto' ? semValor.faltas.map((f) => f.tipo) : semValor, ['valor']);
   const baixaSemCusto = calcularLucroVisita({

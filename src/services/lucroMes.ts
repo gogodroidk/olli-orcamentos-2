@@ -37,7 +37,9 @@ export function custosDaEmpresa(e: Empresa | null | undefined): CustosNegocio {
   return {
     custoKm: e?.custoKm,
     comissaoPercentual: e?.comissaoPercentual,
-    base: e && typeof e.baseLat === 'number' && typeof e.baseLon === 'number' ? { lat: e.baseLat, lon: e.baseLon } : null,
+    base: e && typeof e.baseLat === 'number' && typeof e.baseLon === 'number'
+      ? { lat: e.baseLat, lon: e.baseLon, geoPrecisao: e.baseGeoPrecisao ?? null }
+      : null,
   };
 }
 
