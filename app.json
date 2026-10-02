@@ -3,7 +3,7 @@
     "name": "OLLI Orçamentos",
     "slug": "olli-orcamentos",
     "scheme": "olliorcamentos",
-    "version": "1.1.8",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -63,7 +63,7 @@
         "backgroundImage": "./assets/android-icon-background.png"
       },
       "package": "online.olliorcamentos.app",
-      "versionCode": 23,
+      "versionCode": 24,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
@@ -73,7 +73,9 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -82,6 +84,8 @@
     },
     "plugins": [
       "./plugins/withReleaseSigningGuard",
+      "./plugins/withGradleReleaseTweaks",
+      "./plugins/withBackupSemBanco",
       "expo-sqlite",
       "expo-sharing",
       [
@@ -136,9 +140,11 @@
       [
         "expo-secure-store",
         {
-          "faceIDPermission": false
+          "faceIDPermission": false,
+          "configureAndroidBackup": false
         }
       ],
+      "expo-iap",
       "expo-apple-authentication",
       "expo-asset",
       "@maplibre/maplibre-react-native",

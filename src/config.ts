@@ -9,7 +9,6 @@ declare const process: {
     EXPO_PUBLIC_WHATSAPP_SUPORTE?: string;
     EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID?: string;
     EXPO_PUBLIC_MAPS_KEY?: string;
-    EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY?: string;
   };
 };
 
@@ -84,15 +83,6 @@ export const GOOGLE_AGENDA_CLIENT_ID: string = process.env.EXPO_PUBLIC_GOOGLE_OA
  * "abrir no mapa", que já funciona hoje sem chave nenhuma.
  */
 export const EXPO_PUBLIC_MAPS_KEY: string = process.env.EXPO_PUBLIC_MAPS_KEY ?? '';
-
-/**
- * Chave PÚBLICA do SDK do RevenueCat para a Google Play (prefixo `goog_`). É a
- * chave que o próprio RevenueCat manda embutir no app — não dá acesso a nada no
- * servidor. Vazia = assinatura pela Play DESLIGADA: o Android segue só informando
- * os planos, como antes. Quem valida o formato e decide é `estadoPlayBilling`
- * (services/playBillingRegras.ts). Passo a passo em docs/GOOGLE_PLAY_BILLING.md.
- */
-export const REVENUECAT_GOOGLE_KEY: string = (process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY ?? '').trim();
 
 /**
  * Versão pública do app (mesmo valor de `expo.version` em app.json — o que a
