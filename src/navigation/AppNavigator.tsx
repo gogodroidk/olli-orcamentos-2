@@ -42,6 +42,7 @@ import HojeScreen from '../screens/HojeScreen';
 import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
 import AutopilotScreen from '../screens/AutopilotScreen';
+import ImportarScreen from '../screens/ImportarScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import PrepararNotaScreen from '../screens/PrepararNotaScreen';
@@ -151,6 +152,8 @@ export type RootStackParamList = {
   OlliVoz: undefined;
   OlliChat: undefined;
   Autopilot: undefined;
+  // Troque em 5 minutos: contatos (.vcf/CSV), planilha CSV/XLSX e foto de orçamento antigo (IA).
+  Importar: undefined;
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
   // Comprovante de controle de pragas (RDC 622, art. 19) do ofício de dedetização (gate `vertical: 'dedetizacao'`).
@@ -268,6 +271,7 @@ const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
 const AutopilotCentro = comCentroDesktop(AutopilotScreen);
+const ImportarCentro = comCentroDesktop(ImportarScreen);
 
 /**
  * Contas antigas podem ter uma linha `empresa` criada antes dos campos mínimos.
@@ -784,6 +788,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OlliVoz" component={OlliVozCentro} options={criar} />
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
       <Stack.Screen name="Autopilot" component={AutopilotCentro} />
+      <Stack.Screen name="Importar" component={ImportarCentro} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />

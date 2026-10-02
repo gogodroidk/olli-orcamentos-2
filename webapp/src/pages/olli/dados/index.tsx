@@ -26,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { agora, novoId } from "@/olli/contrato";
 import { useOlliList } from "@/olli/data";
-import { LIMITE_ARQUIVO_BYTES, type LinhaBruta, criarCsv, normalizarCabecalho, normalizarChave, numeroBr } from "@/olli/importacao/parser";
+import { CAMPOS_IMPORTACAO, LIMITE_ARQUIVO_BYTES, type CampoImportacao, type LinhaBruta, criarCsv, detectarModelo, mapeamentoInicial, normalizarChave, numeroBr, prepararLinhas } from "@/olli/importacao/parser";
 import { lerArquivoTabular } from "@/olli/importacao/arquivo";
 import { extrairOrcamentosOlli } from "@/olli/importacao/orcamento";
 import { useContextoDeEscrita, useExcluir, useSalvar } from "@/olli/mutacoes";
@@ -36,8 +36,9 @@ import { type LinhaAsset } from "@/pages/olli/equipamentos/equipamento";
 import { AutopilotPanel } from "@/olli/components/AutopilotPanel";
 import type { AutopilotPreview } from "@/olli/iaAutopilot";
 
+type DefinicaoCampo = (typeof CAMPOS_IMPORTACAO)["clientes"][number];
+
 type TipoImportacao = "clientes" | "produtos" | "servicos" | "orcamentos" | "fornecedor";
-type CampoImportacao = "nome" | "telefone" | "cpf" | "cnpj" | "endereco" | "cidade" | "estado" | "cep" | "descricao" | "marca" | "modelo" | "unidade" | "preco" | "custo";
 type AcaoPreview = "inserir" | "atualizar" | "ignorar" | "erro" | "ambiguo";
 
 interface Proposta {
@@ -47,57 +48,13 @@ interface Proposta {
 	objeto?: Cliente | ProdutoItem | ServicoItem | Orcamento;
 }
 
-const CAMPOS: Record<TipoImportacao, Array<{ id: CampoImportacao; rotulo: string; obrigatorio?: boolean; aliases: string[] }>> = {
-	clientes: [
-		{ id: "nome", rotulo: "Nome", obrigatorio: true, aliases: ["nome", "cliente", "razao social", "razao"] },
-		{ id: "telefone", rotulo: "Telefone", aliases: ["telefone", "celular", "whatsapp", "fone"] },
-		{ id: "cpf", rotulo: "CPF", aliases: ["cpf", "documento"] },
-		{ id: "cnpj", rotulo: "CNPJ", aliases: ["cnpj"] },
-		{ id: "endereco", rotulo: "Endereço", aliases: ["endereco", "logradouro", "rua"] },
-		{ id: "cidade", rotulo: "Cidade", aliases: ["cidade", "municipio"] },
-		{ id: "estado", rotulo: "UF", aliases: ["uf", "estado"] },
-		{ id: "cep", rotulo: "CEP", aliases: ["cep"] },
-	],
-	produtos: [
-		{ id: "nome", rotulo: "Produto", obrigatorio: true, aliases: ["nome", "produto", "descricao", "descrição", "item"] },
-		{ id: "marca", rotulo: "Marca", aliases: ["marca", "fabricante"] },
-		{ id: "modelo", rotulo: "Modelo", aliases: ["modelo", "referencia", "referência", "sku"] },
-		{ id: "descricao", rotulo: "Descrição", aliases: ["descricao", "descrição", "detalhes"] },
-		{ id: "unidade", rotulo: "Unidade", aliases: ["unidade", "un", "medida"] },
-		{ id: "preco", rotulo: "Preço de venda", aliases: ["preco", "preço", "valor", "venda", "preco venda"] },
-		{ id: "custo", rotulo: "Custo", aliases: ["custo", "preco custo", "preço custo"] },
-	],
-	servicos: [
-		{ id: "nome", rotulo: "Serviço", obrigatorio: true, aliases: ["nome", "servico", "serviço", "descricao", "descrição", "item"] },
-		{ id: "descricao", rotulo: "Descrição", aliases: ["descricao", "descrição", "detalhes"] },
-		{ id: "unidade", rotulo: "Unidade", aliases: ["unidade", "un", "medida"] },
-		{ id: "preco", rotulo: "Preço de venda", aliases: ["preco", "preço", "valor", "venda"] },
-		{ id: "custo", rotulo: "Custo", aliases: ["custo", "preco custo", "preço custo"] },
-	],
-	orcamentos: [],
-	fornecedor: [
-		{ id: "nome", rotulo: "Produto", obrigatorio: true, aliases: ["nome", "produto", "descricao", "descrição", "item"] },
-		{ id: "marca", rotulo: "Marca", aliases: ["marca", "fabricante"] },
-		{ id: "modelo", rotulo: "Modelo", aliases: ["modelo", "referencia", "referência", "sku"] },
-		{ id: "custo", rotulo: "Novo custo", obrigatorio: true, aliases: ["custo", "preco", "preço", "valor", "preco custo", "preço custo"] },
-	],
-};
+// Campos e apelidos de coluna vêm da fonte compartilhada com o app (src/services/importacao.ts).
+const CAMPOS: Record<TipoImportacao, DefinicaoCampo[]> = { ...CAMPOS_IMPORTACAO, orcamentos: [] };
 
 const MAX_AMOSTRA = 12;
 
 function valorDa(linha: LinhaBruta, mapeamento: Record<string, string>, campo: CampoImportacao): string {
 	return (mapeamento[campo] ? linha[mapeamento[campo]] : "")?.trim() ?? "";
-}
-
-function mapeamentoInicial(tipo: TipoImportacao, cabecalhos: string[]): Record<string, string> {
-	const usados = new Set<string>();
-	return Object.fromEntries(
-		CAMPOS[tipo].map((campo) => {
-			const achado = cabecalhos.find((cabecalho) => !usados.has(cabecalho) && campo.aliases.includes(normalizarCabecalho(cabecalho)));
-			if (achado) usados.add(achado);
-			return [campo.id, achado ?? ""];
-		}),
-	);
 }
 
 function chaveCatalogo(nome: string, marca?: string, modelo?: string): string {
@@ -207,7 +164,12 @@ export default function CentralDeDadosPage() {
 				};
 				const texto = (campo: CampoImportacao, anterior?: string) => valorDa(linha, mapeamento, campo) || anterior;
 				objeto.cpf = texto("cpf", base?.cpf) || undefined; objeto.cnpj = texto("cnpj", base?.cnpj) || undefined;
-				objeto.endereco = texto("endereco", base?.endereco) || undefined; objeto.cidade = texto("cidade", base?.cidade) || undefined;
+				// Rua + número + bairro viram um endereço só (o cadastro do app tem um campo de endereço).
+				const rua = valorDa(linha, mapeamento, "endereco");
+				const enderecoLinha = [[rua, valorDa(linha, mapeamento, "numero")].filter(Boolean).join(", "), valorDa(linha, mapeamento, "bairro")].filter(Boolean).join(" - ");
+				// Sem rua na linha, número/bairro soltos ("123", "Centro") NUNCA substituem o endereço completo já cadastrado.
+				objeto.endereco = (rua ? enderecoLinha : "") || base?.endereco || enderecoLinha || undefined; objeto.complemento = texto("complemento", base?.complemento) || undefined;
+				objeto.cidade = texto("cidade", base?.cidade) || undefined;
 				objeto.estado = texto("estado", base?.estado) || undefined; objeto.cep = texto("cep", base?.cep) || undefined;
 				return { linha: numeroLinha, acao: base ? "atualizar" : "inserir", motivo: base ? "Correspondência por documento ou nome + telefone." : "Novo cliente.", objeto };
 			}
@@ -349,11 +311,14 @@ export default function CentralDeDadosPage() {
 				toast.success(`${importados.length} orçamento${importados.length === 1 ? "" : "s"} carregado${importados.length === 1 ? "" : "s"} para conferência.`);
 				return;
 			}
-			const linhas = await lerArquivoTabular(arquivo);
-			if (!linhas.length) throw new Error("Não encontrei linhas de dados depois do cabeçalho.");
+			const lidas = await lerArquivoTabular(arquivo);
+			if (!lidas.length) throw new Error("Não encontrei linhas de dados depois do cabeçalho.");
+			// Modelo conhecido (OLLI, Google Contatos, Outlook) pré-mapeia as colunas; o usuário confere.
+			const modelo = detectarModelo(Object.keys(lidas[0] ?? {}));
+			const linhas = prepararLinhas(lidas, modelo);
 			setLinhasImportadas(linhas);
-			setMapeamento(mapeamentoInicial(tipo, Object.keys(linhas[0] ?? {})));
-			toast.success(`${linhas.length} linhas carregadas para conferência.`);
+			setMapeamento(mapeamentoInicial(tipo, Object.keys(linhas[0] ?? {}), modelo));
+			toast.success(`${linhas.length} linhas carregadas para conferência${modelo ? ` (formato ${modelo.rotulo})` : ""}.`);
 		} catch (erro) { toast.error((erro as Error).message || "Não consegui ler esse arquivo."); }
 		finally { setLendo(false); evento.target.value = ""; }
 	}
