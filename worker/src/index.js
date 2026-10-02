@@ -65,7 +65,7 @@ import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { receberPedidoEtiqueta, renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
-import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
+import { handleEtaAgora, handleEtaSaida, handleGeocodificarDesligado } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
 import { handleClima } from './clima.js';
 import { fonteDoCron, handleAlertas, processarAlertas } from './alertas.js';
@@ -139,10 +139,6 @@ const MAX_AUDIO_BODY_BYTES = 4_194_304;
 // arquivo decodificado continua limitado a 4 MiB pelo módulo; o teto de corpo
 // inclui a expansão base64 + JSON e impede bufferizações arbitrárias.
 const MAX_AUTOPILOT_BODY_BYTES = Math.ceil(IA_AUTOPILOT_MAX_BYTES / 3) * 4 + 32 * 1024;
-
-// /eta e /geocodificar recebem só coordenadas/endereço — corpo minúsculo por
-// natureza. Mesmo teto (4KB) das outras rotas de payload pequeno (equipe.js, link.js).
-const MAX_ETA_BODY_BYTES = 4096;
 
 /**
  * Lê o corpo até `max` bytes e diz se passou do teto. NÃO confia em
@@ -511,10 +507,10 @@ async function handleDiag(bodyText, env, user) {
   return json({ ok: true, diagnostico: diag, fonte: 'ia', provedor: provedorIA(env), baseConsultada });
 }
 
-// ─── ETA COM TRÂNSITO (Routes API) ───────────────────────────
-// POST /eta mora em etaSaida.js (`handleEtaAgora`), junto do /eta/saida: a
-// mesma chamada à Routes API, a mesma sanidade de distância e o motivo de a
-// rota continuar TRAFFIC_AWARE (SKU Pro) documentado num lugar só.
+// ─── ETA ESTIMADO (grátis, sem Google) ───────────────────────
+// POST /eta e POST /eta/saida moram em etaSaida.js: desde a Onda I2 (01/10/2026)
+// respondem com a estimativa sem trânsito de src/services/etaEstimado.ts — o
+// billing do Google está desligado e o dono proibiu pagar.
 
 // Consulta de CNPJ (BrasilAPI) para o CADASTRO MÁGICO do Onboarding: o app manda
 // só os 14 dígitos, o worker consulta a BrasilAPI (grátis, sem chave) e devolve a
@@ -650,49 +646,6 @@ async function gravarCacheCnpj(env, cnpj, empresa) {
       body: JSON.stringify({ cnpj, dados: { ...empresa, _v: CNPJ_CACHE_V }, atualizado_em: new Date().toISOString() }),
     });
   } catch { /* best-effort */ }
-}
-
-// Geocodificação (endereço em texto → lat/lng). Serve o ETA: o `Agendamento`
-// guarda só `endereco` (texto), e o /eta exige coordenadas. Mesma chave restrita
-// do /eta (agora liberada p/ Routes + Geocoding), sempre server-side — o app
-// manda o texto, nunca vê a chave. Enviesado ao Brasil (region=br) p/ desambiguar.
-async function handleGeocode(request, env) {
-  const user = await getUser(request, env);
-  if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
-  if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
-
-  // Teto de payload ANTES do parse — corpo minúsculo por natureza (1 endereço).
-  const corpo = await bodyMuitoGrande(request, MAX_ETA_BODY_BYTES);
-  if (corpo.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
-
-  // Rate limit por usuário ANTES do fetch pro Google: só a partir daqui a request
-  // pode custar 1 chamada à Geocoding API (paga). Mesmo binding do /eta — as duas
-  // rotas alimentam o mesmo fluxo (endereço → coordenada → rota) — e, agora,
-  // a mesma política FAIL-CLOSED, pelo mesmo motivo (ver `handleEtaAgora` em etaSaida.js).
-  const estadoLimite = await checarLimite(env.ETA_RL, user.id);
-  if (!deixaPassar(estadoLimite, { sensivel: true })) {
-    return json({ ok: false, erro: estadoLimite === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
-  }
-
-  const raw = parseJsonBody(corpo.raw);
-  const endereco = raw && typeof raw.endereco === 'string' ? raw.endereco.trim() : '';
-  if (endereco.length < 3) return json({ ok: false, erro: 'endereco_invalido' }, 400);
-  try {
-    const alvo = 'https://maps.googleapis.com/maps/api/geocode/json?address='
-      + encodeURIComponent(endereco)
-      + '&region=br&language=pt-BR&key=' + env.OLLI_ROUTES_API_KEY;
-    const resp = await fetch(alvo);
-    if (!resp.ok) return json({ ok: false, erro: 'geocode_indisponivel' }, 502);
-    const data = await resp.json().catch(() => ({}));
-    const r0 = data && data.status === 'OK' && Array.isArray(data.results) ? data.results[0] : null;
-    const loc = r0 && r0.geometry && r0.geometry.location;
-    if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) {
-      return json({ ok: false, erro: 'nao_encontrado' });
-    }
-    return json({ ok: true, lat: loc.lat, lng: loc.lng, formatado: r0.formatted_address || null });
-  } catch (e) {
-    return json({ ok: false, erro: 'geocode_falhou' });
-  }
 }
 
 // ─── VOZ → ITENS ─────────────────────────────────────────────
@@ -1175,21 +1128,17 @@ const handler = {
       return handleEtaAgora(request, env);
     }
 
-    // "A que horas eu preciso SAIR pra chegar às 15h" (docs/ENXAME/IDEIA_ETA_TRANSITO.md).
-    // Irmã do /eta acima, com duas diferenças que importam: manda `departureTime`
-    // (trânsito PREVISTO para a hora da saída — sem isso o cálculo da manhã usa o
-    // trânsito da manhã pra uma visita da tarde, e erra calado) e aceita endereço
-    // em TEXTO, com a origem vindo do cadastro em vez do GPS. Mesma chave secret,
-    // mesmo binding ETA_RL — mas fail-closed, porque cada chamada gasta dinheiro
-    // na Google. Ver o docblock de etaSaida.js.
+    // "A que horas eu preciso SAIR pra chegar às 15h" — estimativa sem trânsito
+    // (a mesma régua do app). Endereço em TEXTO não é mais geocodificado: era
+    // Google. Ver o docblock de etaSaida.js.
     if (url.pathname === '/eta/saida' && request.method === 'POST') {
       return handleEtaSaida(request, env);
     }
 
-    // Geocodificação (endereço → coordenada) — alimenta o /eta. Mesma proteção:
-    // exige login, chave server-side. O app cacheia por endereço p/ segurar cota.
+    // Geocodificação por texto (era Google Geocoding): DESLIGADA com o billing.
+    // Responde "não sei" com o motivo; o ponto do cliente vem do POST /geo (grátis).
     if (url.pathname === '/geocodificar' && request.method === 'POST') {
-      return handleGeocode(request, env);
+      return handleGeocodificarDesligado();
     }
 
     // Health check público (abrir no navegador mostra que está online). GET '/'

@@ -71,7 +71,9 @@
       ],
       "blockedPermissions": [
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -139,6 +141,7 @@
       ],
       "expo-apple-authentication",
       "expo-asset",
+      "@maplibre/maplibre-react-native",
       [
         "expo-build-properties",
         {

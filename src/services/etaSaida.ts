@@ -1,190 +1,139 @@
 /**
- * "A que horas eu preciso SAIR" — a CASCA (rede + cache) da Fase 1.
+ * "A que horas eu preciso SAIR" — a CASCA (base da empresa + montagem).
  *
- * Toda a decisão mora em `saidaCalculo.ts` (puro, testado de verdade por
- * `scripts/teste-eta-saida-app.ts`). Aqui só tem o que precisa de mundo
- * externo: `fetch`, sessão do Supabase e AsyncStorage.
+ * Toda a decisão mora em `saidaCalculo.ts` (puro, testado por
+ * `scripts/teste-eta-saida-app.ts`). Desde a Onda I2 (01/10/2026) nada aqui chama
+ * Google: a hora de sair é ESTIMADA no aparelho (`etaEstimado.ts`), sem custo e
+ * sem rede. A única rede que sobrou é localizar a BASE da empresa UMA vez, pelo
+ * mesmo serviço grátis que localiza os clientes (worker `POST /geo` → BrasilAPI +
+ * Nominatim/OpenStreetMap), e guardar o ponto no aparelho.
  *
- * CONTRATO (worker/src/etaSaida.js, seção 12.2 de docs/ENXAME/IDEIA_ETA_TRANSITO.md):
- *
- *   POST {DIAGNOSTICO_URL}/eta/saida       Authorization: Bearer <jwt do Supabase>
- *   { origem: "Rua X, 123, São Paulo/SP",     // texto OU {lat,lng}
- *     destino: "Rua Y, 456, Santo André/SP",
- *     chegarEm: "2026-07-18T18:00:00.000Z",   // ISO 8601 COM fuso — obrigatório
- *     modo: "planejamento" | "confirmacao" }  // obrigatório: decide o SKU
- *
- * Duas exigências do contrato que o app precisa respeitar ao pé da letra:
- *  1. `chegarEm` PRECISA de designador de fuso. `Date#toISOString()` termina em
- *     `Z`, então serve — mas montar a string à mão ("2026-07-18T15:00:00") faz
- *     o worker recusar com `chegar_em_sem_fuso`, e ele está certo: "15h" sem
- *     fuso pode ser 15h em qualquer lugar do planeta, e chegada ambígua erra a
- *     hora de sair por horas.
- *  2. `modo` não tem default. É de propósito: a escolha custa dinheiro
- *     (Essentials × Pro = metade do preço e o dobro da franquia grátis) e fica
- *     visível em quem chama, não escondida aqui.
- *
- * ─── CUSTO (é o que decide o desenho, não a elegância) ─────────────────────
- * A Routes API é o único terceiro caro por uso no OLLI. Duas travas AQUI:
- *  (a) cache local persistente de duração (AsyncStorage), com o MESMO TTL do
- *      worker — 30 dias para 'planejamento', 10 min para 'confirmacao';
- *  (b) o app nunca dispara isto em `useEffect` de tela. Quem chama é o ritual
- *      diário (1× por reagendamento, para a PRÓXIMA parada) e um toque
- *      explícito do prestador em "Atualizar". A alavanca de custo do lado caro
- *      não é cache — é CHAMAR MENOS (seção 12.4b do doc).
- *
- * NÃO PEDE LOCALIZAÇÃO. A origem vem do cadastro (visita anterior ou empresa).
- * `expo-location` não está instalado e permissão nova é passo de loja
- * (manifest + texto de propósito + Data safety + review). Esta feature não
- * precisa: onde o celular está às 7h não prevê de onde ele sai às 14h20.
+ * NÃO PEDE LOCALIZAÇÃO. A origem vem do cadastro (visita anterior ou a base):
+ * onde o celular está às 7h não diz de onde ele sai às 14h20.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DIAGNOSTICO_URL } from '../config';
-import { accessTokenAtual } from './eta';
+import type { Agendamento, Cliente, Empresa } from '../types';
 import { SAIDA_CACHE_KEY } from './storageKeys';
+import { geocodificarEndereco } from './cep';
+import { coordenadaValida, lerGeoPrecisao, textoComparavel } from '../utils/geoCliente';
 import {
-  cacheValido,
-  chaveTrajeto,
-  interpretarResposta,
-  MAX_HORIZONTE_MS,
-  MIN_ENDERECO,
-  montarSaida,
-  type DuracaoCacheada,
-  type ModoSaida,
+  estimarSaida,
+  origemParaVisita,
+  pontoDoAgendamento,
+  type PontoVisita,
   type ResultadoSaida,
 } from './saidaCalculo';
 
 export * from './saidaCalculo';
 
-/** Mesmo timeout do `/eta`: rota leve (uma chamada à Routes API), não é o diagnóstico por IA. */
-const TIMEOUT_MS = 15_000;
+/** O que guardamos da base: o ponto e a CHAVE do endereço que o produziu. */
+interface BaseGuardada {
+  chave: string;
+  lat: number;
+  lon: number;
+  precisao: string;
+}
 
-/** Teto de entradas no cache local. Prestador roda dezenas de trajetos, não milhares. */
-const MAX_ENTRADAS_CACHE = 40;
+/**
+ * Leitura da base, com os 3 estados da casa:
+ *  - `ok`            → o ponto da base (rua ou melhor);
+ *  - `sem_endereco`  → o cadastro não tem rua+cidade+UF, ou o mapa só achou a
+ *                      cidade (centro do município não é de onde ele sai);
+ *  - `indisponivel`  → não deu para perguntar agora (offline, worker fora).
+ */
+export type LeituraBase =
+  | { estado: 'ok'; ponto: PontoVisita }
+  | { estado: 'sem_endereco' }
+  | { estado: 'indisponivel' };
 
-type MapaCache = Record<string, DuracaoCacheada>;
+function chaveDaEmpresa(e: Empresa | null | undefined): string | null {
+  const rua = (e?.endereco ?? '').trim();
+  const cidade = (e?.cidade ?? '').trim();
+  const uf = (e?.estado ?? '').trim();
+  if (rua.length < 5 || !cidade || uf.length !== 2) return null;
+  return [rua, cidade, uf].map(textoComparavel).join('|');
+}
 
-async function lerCache(): Promise<MapaCache> {
+async function lerBaseGuardada(): Promise<BaseGuardada | null> {
   try {
     const raw = await AsyncStorage.getItem(SAIDA_CACHE_KEY);
     const obj = raw ? JSON.parse(raw) : null;
-    return obj && typeof obj === 'object' ? (obj as MapaCache) : {};
+    return obj && typeof obj === 'object' && typeof obj.chave === 'string' ? (obj as BaseGuardada) : null;
   } catch {
-    // Cache ilegível é cache vazio — nunca um erro que derruba o cálculo.
-    return {};
+    return null;
   }
 }
 
 /**
- * Grava a duração e poda o mapa pelo carimbo mais velho. Best-effort: falha ao
- * gravar cache só custa dinheiro na próxima chamada, nunca uma resposta errada.
+ * O ponto de onde o prestador sai de manhã. Usa o guardado quando o endereço da
+ * empresa não mudou; senão localiza de novo (rede, grátis). NUNCA lança.
  */
-async function gravarCache(chave: string, dados: DuracaoCacheada): Promise<void> {
+export async function pontoDaBase(empresa: Empresa | null | undefined): Promise<LeituraBase> {
   try {
-    const mapa = await lerCache();
-    mapa[chave] = dados;
-    const chaves = Object.keys(mapa);
-    if (chaves.length > MAX_ENTRADAS_CACHE) {
-      chaves
-        .sort((a, b) => Date.parse(mapa[a].calculadoEm) - Date.parse(mapa[b].calculadoEm))
-        .slice(0, chaves.length - MAX_ENTRADAS_CACHE)
-        .forEach((k) => delete mapa[k]);
+    const chave = chaveDaEmpresa(empresa);
+    if (!chave) return { estado: 'sem_endereco' };
+    const guardada = await lerBaseGuardada();
+    if (guardada && guardada.chave === chave) {
+      const coord = coordenadaValida(guardada.lat, guardada.lon);
+      const precisao = lerGeoPrecisao(guardada.precisao);
+      if (coord && precisao) return { estado: 'ok', ponto: { lat: coord.lat, lon: coord.lon, precisao } };
     }
-    await AsyncStorage.setItem(SAIDA_CACHE_KEY, JSON.stringify(mapa));
+    const r = await geocodificarEndereco({
+      endereco: empresa?.endereco ?? '',
+      cidade: empresa?.cidade ?? '',
+      estado: empresa?.estado ?? '',
+    });
+    if (r.estado === 'indisponivel') return { estado: 'indisponivel' };
+    if (r.estado !== 'ok' || r.precisao === 'cidade') return { estado: 'sem_endereco' };
+    const ponto: PontoVisita = { lat: r.lat, lon: r.lon, precisao: r.precisao };
+    try {
+      await AsyncStorage.setItem(SAIDA_CACHE_KEY, JSON.stringify({ chave, lat: r.lat, lon: r.lon, precisao: r.precisao }));
+    } catch {
+      // best-effort: sem guardar, só localiza de novo na próxima vez.
+    }
+    return { estado: 'ok', ponto };
   } catch {
-    // best-effort
+    return { estado: 'indisponivel' };
   }
 }
 
 export interface ParametrosSaida {
-  /** Texto do endereço de origem (cadastro — nunca GPS). `null` = não temos. */
-  origem: string | null;
-  /** Texto do endereço de destino. `null` = não temos. */
-  destino: string | null;
-  /** Horário marcado da visita. */
-  chegarEm: Date;
-  modo: ModoSaida;
-  /** `true` ignora o cache local (o prestador tocou "Atualizar" e quer o número de agora). */
-  forcar?: boolean;
+  proxima: Agendamento;
+  /** Agendamentos do MESMO dia (de onde sai a visita anterior). */
+  doDia: readonly Agendamento[];
+  base: PontoVisita | null;
+  /**
+   * `true` = `pontoDaBase` respondeu `indisponivel` (offline, worker fora). Quando
+   * a origem seria a base, o resultado é `indisponivel` ("não deu para estimar
+   * agora"), NUNCA `endereco_insuficiente` — mandar o prestador "completar o
+   * endereço da empresa" que já está certo é transformar "não sei" em "não tem".
+   */
+  baseIndisponivel?: boolean;
+  clientes: readonly Cliente[];
   agora?: Date;
 }
 
-/**
- * Calcula a hora de sair. NUNCA lança — sempre resolve um dos 3 estados.
- *
- * Ordem das checagens é intencional: tudo que dá para reprovar de graça
- * (endereço faltando, horário no passado, sem sessão, cache válido) acontece
- * ANTES do `fetch`. Chamada paga é o último recurso, não o primeiro.
- */
-export async function calcularSaida(p: ParametrosSaida): Promise<ResultadoSaida> {
+/** Um ponto qualquer só para perguntar "a origem desta visita seria a base?". */
+const BASE_SONDA: PontoVisita = { lat: -15.79, lon: -47.88, precisao: 'rua' };
+
+/** Calcula a hora de sair da `proxima`. Síncrono por natureza; NUNCA lança. */
+export function calcularSaida(p: ParametrosSaida): ResultadoSaida {
   const agora = p.agora ?? new Date();
-  try {
-    // ─── Endereço: reprovado aqui = zero chamada paga, e o estado é o
-    // acionável ("corrigir endereço"), não o genérico ("tente depois").
-    const origem = (p.origem ?? '').trim();
-    const destino = (p.destino ?? '').trim();
-    const semOrigem = origem.length < MIN_ENDERECO;
-    const semDestino = destino.length < MIN_ENDERECO;
-    if (semOrigem && semDestino) return { estado: 'endereco_insuficiente', qual: 'ambos' };
-    if (semOrigem) return { estado: 'endereco_insuficiente', qual: 'origem' };
-    if (semDestino) return { estado: 'endereco_insuficiente', qual: 'destino' };
-
-    const chegarMs = p.chegarEm?.getTime?.();
-    if (!Number.isFinite(chegarMs)) return { estado: 'indisponivel', erro: 'horario_invalido' };
-    // O worker recusaria os dois casos abaixo (`chegar_em_passado` /
-    // `chegar_em_distante`). Reprovar aqui evita a ida e volta e devolve o
-    // mesmo nome de erro, para o app não precisar aprender dois vocabulários.
-    if (chegarMs <= agora.getTime()) return { estado: 'indisponivel', erro: 'chegar_em_passado' };
-    if (chegarMs - agora.getTime() > MAX_HORIZONTE_MS) {
-      return { estado: 'indisponivel', erro: 'chegar_em_distante' };
-    }
-
-    const chave = chaveTrajeto({ origem, destino, chegarEm: p.chegarEm, modo: p.modo });
-    if (!p.forcar) {
-      const mapa = await lerCache();
-      const guardado = mapa[chave];
-      if (guardado && cacheValido(guardado.calculadoEm, p.modo, agora)) {
-        // O carimbo continua sendo o do cálculo ORIGINAL: número de ontem com a
-        // hora de hoje é a versão sofisticada de "erro vira vazio".
-        return montarSaida(guardado, p.chegarEm, agora, true);
-      }
-    }
-
-    if (!DIAGNOSTICO_URL) return { estado: 'indisponivel', erro: 'nao_configurado' };
-    const token = await accessTokenAtual();
-    if (!token) return { estado: 'indisponivel', erro: 'sem_sessao' };
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    try {
-      const r = await fetch(`${DIAGNOSTICO_URL}/eta/saida`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          origem,
-          destino,
-          // `toISOString()` termina em Z — o designador de fuso que o worker exige.
-          chegarEm: new Date(chegarMs).toISOString(),
-          modo: p.modo,
-        }),
-        signal: controller.signal,
-      });
-      // O worker responde os 3 estados com corpo JSON mesmo em 400/401/429, então
-      // o corpo manda; o status só decide quando não há corpo legível.
-      const corpo = await r.json().catch(() => null);
-      const { resultado, cachear } = interpretarResposta(corpo, r.status, p.chegarEm, agora);
-      if (cachear) await gravarCache(chave, cachear);
-      return resultado;
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch (erro) {
-    // Offline, DNS, abort do timeout: "não sei". Nunca um número.
-    console.log('[etaSaida] falha ao calcular a hora de sair:', erro);
-    return { estado: 'indisponivel', erro: 'rede' };
+  const inicio = new Date(p.proxima.inicio);
+  if (isNaN(inicio.getTime())) return { estado: 'indisponivel', erro: 'horario_invalido' };
+  const origem = origemParaVisita(p.proxima, p.doDia, p.base, p.clientes);
+  if (!origem && p.baseIndisponivel && origemParaVisita(p.proxima, p.doDia, BASE_SONDA, p.clientes)?.de === 'base') {
+    return { estado: 'indisponivel', erro: 'base_indisponivel' };
   }
+  return estimarSaida({
+    origem,
+    destino: pontoDoAgendamento(p.proxima, p.clientes),
+    chegarEm: inicio,
+    agora,
+  });
 }
 
-/** Esquece o cache local de duração (troca de conta — `clearAllLocalData` já apaga a chave). */
+/** Esquece a base guardada (troca de conta — `clearAllLocalData` já apaga a chave). */
 export async function limparCacheSaida(): Promise<void> {
   try {
     await AsyncStorage.removeItem(SAIDA_CACHE_KEY);

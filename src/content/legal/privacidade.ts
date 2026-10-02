@@ -48,9 +48,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '29 de setembro de 2026',
+  atualizadoEm: '1 de outubro de 2026',
   aviso:
-    'Documento atualizado em 29 de setembro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 1 de outubro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -197,6 +197,12 @@ export const PRIVACIDADE: LegalDoc = {
         'Sentry — monitoramento de erros e travamentos do aplicativo, para identificar e ' +
           'corrigir falhas técnicas. Recebe apenas dados técnicos do erro, sem o seu IP ou ' +
           'outros dados pessoais.',
+        'Serviços públicos de mapa, endereço e clima — para pôr os clientes no mapa, o nosso ' +
+          'servidor envia somente o endereço (rua, número, CEP, cidade e UF, sem nome nem ' +
+          'telefone) à BrasilAPI e ao Nominatim (OpenStreetMap); a previsão do tempo da visita ' +
+          'vem do MET Norway, consultado só com a coordenada. O mapa do aplicativo baixa as ' +
+          'imagens da região exibida direto do OpenFreeMap (dados © OpenStreetMap), que recebe o ' +
+          'endereço IP do aparelho e a área do mapa, nunca os dados dos seus clientes.',
       ],
     },
     {
