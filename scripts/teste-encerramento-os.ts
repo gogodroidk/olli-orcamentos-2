@@ -185,7 +185,8 @@ const tela = ler('src/screens/OrdemServicoScreen.tsx');
 const modal = ler('src/components/encerramento/EncerrarAtendimentoModal.tsx');
 ok('SQLite: coluna nova, migração v12 e leitura tolerante', () => {
   // A garantia da OS (Onda I3, v11) entrou antes; o encerramento é a v12.
-  assert.match(db, /asset_id TEXT,\s*(garantia TEXT,\s*garantia_de_os_id TEXT,\s*)?encerramento TEXT\s*\)/);
+  // Colunas mais novas (ex.: `materiais`, v13) podem vir depois do encerramento.
+  assert.match(db, /asset_id TEXT,\s*(garantia TEXT,\s*garantia_de_os_id TEXT,\s*)?encerramento TEXT\s*[,)]/);
   assert.ok(Number(/const SCHEMA_VERSION = (\d+);/.exec(db)?.[1]) >= 12, 'a versão do schema cobre o encerramento');
   assert.match(db, /if \(v < 12\) \{\s*await addColumnIfMissing\(database, 'ordens_servico', 'encerramento', 'TEXT'\);/);
   assert.match(db, /encerramento: lerEncerramento\(r\.encerramento\)/);

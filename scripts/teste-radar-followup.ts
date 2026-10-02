@@ -168,7 +168,8 @@ assert.match(
   'telas releem logo depois do pull, antes do push',
 );
 assert.match(ler('../src/database/database.ts'), /await esquecerDownloadInicial\(\);/, 'apagar dados também apaga o carimbo');
-assert.match(ler('../src/services/storageKeys.ts'), /ULTIMO_PULL_KEY,\s*\];/, 'diagnóstico do último pull some no logout');
+// Dentro da allow-list do logout (não importa a posição: a Onda I4 acrescentou chaves depois).
+assert.match(ler('../src/services/storageKeys.ts'), /APP_DATA_STORAGE_KEYS = \[[^\]]*\bULTIMO_PULL_KEY,[^\]]*\];/, 'diagnóstico do último pull some no logout');
 assert.match(
   sync,
   /if \(carimboConfirmadoPara !== null && carimboConfirmadoPara !== usuario\.id\) \{\s+carimboConfirmadoPara = null;\s+avisarEstadoPull\(\);/,

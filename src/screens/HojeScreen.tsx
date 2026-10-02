@@ -25,6 +25,7 @@ import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
 import { SeloConfirmacao } from '../components/vespera/SeloConfirmacao';
 import { CartaoVespera } from '../components/vespera/CartaoVespera';
 import { CartaoGarantias } from '../components/garantia/CartaoGarantias';
+import { MalaVesperaCard } from '../components/hoje/MalaVesperaCard';
 import { toast } from '../components/feedback';
 import { getAgendamentosDoDia, getVisitasSemBaixa, mudarStatusVisitaDoDia } from '../services/agenda';
 import { getCliente, getClientes, getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
@@ -1070,6 +1071,21 @@ export default function HojeScreen() {
 
         {/* GARANTIAS PARA CUIDAR (Onda I3) — só para quem vê a empresa inteira. */}
         <CartaoGarantias indice={ordem++} visivel={escopo.status === 'equipe'} />
+        {/* MALA DA VÉSPERA (Onda I4) — a partir das 19h, o que levar amanhã. */}
+        <MalaVesperaCard
+          agora={agora}
+          escopo={escopo}
+          envolver={(conteudo) => (
+            <Aparecer indice={ordem}>
+              <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'bag-personal-outline' }}>
+                <View style={styles.noTituloRow}>
+                  <Text style={styles.noTitulo}>Mala de amanhã</Text>
+                </View>
+                {conteudo}
+              </NoLinhaDoTempo>
+            </Aparecer>
+          )}
+        />
 
         {/* 3. CHECKLIST DO DIA */}
         <Aparecer indice={ordem++}>

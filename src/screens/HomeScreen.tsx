@@ -86,6 +86,8 @@ import { deveConvidarImportar } from '../utils/conviteImportar';
 import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton, curvas } from '../components/motion';
 import { toast } from '../components/feedback';
 import { ClimaDoDia } from '../components/rua/ClimaDoDia';
+import { RadarTempoCard } from '../components/rua/RadarTempoCard';
+import { QuantoSobrouCard } from '../components/dinheiro/QuantoSobrouCard';
 import { RotaDeHoje, type EstadoRota } from '../components/rua/RotaDeHoje';
 import { MiniMapaDia } from '../components/rua/MiniMapaDia';
 import { AtalhosRua, type Atalho } from '../components/rua/AtalhosRua';
@@ -996,6 +998,20 @@ export default function HomeScreen() {
             </View>
           </Aparecer>
         )}
+
+        {/* QUANTO SOBROU NO MÊS (Onda I4) — lucro real, só para quem vê valores. */}
+        {!ehTecnico && !papelCarregando && pode('ver_valores_agregados') && !esperandoDownload ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.base }}>
+            <QuantoSobrouCard onCompletar={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }} />
+          </View>
+        ) : null}
+
+        {/* RADAR DO TEMPO PARA VENDER (Onda I4) — some sozinho sem sinal real. */}
+        {!ehTecnico && !papelCarregando && !esperandoDownload ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.base }}>
+            <RadarTempoCard clima={clima} />
+          </View>
+        ) : null}
 
         {/* 5. ATALHOS DE 1 TOQUE */}
         <Text style={styles.sectionTitle} accessibilityRole="header">Atalhos</Text>

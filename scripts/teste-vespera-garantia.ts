@@ -301,7 +301,9 @@ ok('cloudSync: reagenda DEPOIS do cancelAll da agenda e leva a garantia com a es
   const sync = ler('src/services/cloudSync.ts');
   assert.match(sync, /m\.reagendarFollowUps\(\)\)[\s\S]{0,400}import\('\.\/confirmacaoVisita'\)[\s\S]{0,120}reagendarAvisoVespera\(\)[\s\S]{0,200}import\('\.\/garantias'\)[\s\S]{0,120}reagendarAvisosGarantia\(\)/);
   assert.match(sync, /garantia_ate: garantiaAteDaOS\(o\) \?\? null/);
-  assert.match(sync, /table === 'ordens_servico' && !osSemColunasGarantia && erroDeColunaDesconhecida\(error\)/);
+  // Recuo POR COLUNA (a OS tem vários degraus): o erro que nomeia uma coluna da
+  // garantia derruba só as colunas da garantia.
+  assert.match(sync, /!osSemColunasGarantia && COLUNAS_OS_GARANTIA\.some\(\(c\) => erroDeColunaDesconhecidaDe\(error, c\)\)/);
   assert.match(sync, /const garantia = o\.garantia \?\? garantiaLocal;/);
 });
 ok('SQLite v11 com as colunas da garantia', () => {

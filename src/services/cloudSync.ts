@@ -62,6 +62,7 @@ import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisual';
 import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCliente';
 import { garantiaAteDaOS } from '../utils/garantiaServico';
+import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from './verticais';
 import { lerEncerramento } from '../utils/encerramentoOS';
 import {
@@ -315,6 +316,12 @@ let agendaSemColunaExterna = false;
  * migration existir) e o pull PRESERVA o vínculo local em vez de apagá-lo.
  */
 let osSemColunaAsset = false;
+/**
+ * Nuvem ainda sem `ordens_servico.materiais` (migration 20261003104000, baixa leve
+ * de material da Onda I4): o push some com a coluna e o pull preserva a baixa
+ * local. Mesmo padrão de `osSemColunaAsset`.
+ */
+let osSemColunaMateriais = false;
 
 /**
  * GARANTIA da OS (migration 20261003103100): `garantia`, `garantia_ate` (último
@@ -336,6 +343,24 @@ let osSemColunaEncerramento = false;
 
 function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): boolean {
   return error?.code === '42703' || error?.code === 'PGRST204';
+}
+
+/**
+ * O erro de coluna desconhecida é DESTA coluna? Com dois recuos na mesma tabela
+ * (ordens_servico: `asset_id` e `materiais`), o primeiro `if` não pode assumir que
+ * a coluna que falta é a dele — senão a nuvem COM `asset_id` e SEM `materiais`
+ * derrubava o `asset_id` do push pelo resto da sessão. O PostgREST nomeia a coluna
+ * ("Could not find the 'materiais' column…" / column "materiais" … does not
+ * exist); sem nome reconhecível na mensagem, cai no comportamento antigo (true).
+ */
+function erroDeColunaDesconhecidaDe(
+  error: { code?: string; message?: string } | null | undefined,
+  coluna: string,
+): boolean {
+  if (!erroDeColunaDesconhecida(error)) return false;
+  const msg = typeof error?.message === 'string' ? error.message : '';
+  const m = /['"]([A-Za-z0-9_]+)['"]/.exec(msg);
+  return !m || m[1] === coluna;
 }
 
 function agendamentoToRow(a: Agendamento): Record<string, unknown> {
@@ -411,6 +436,8 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
     }),
     // Encerramento (ver osSemColunaEncerramento): objeto vai como jsonb.
     ...(osSemColunaEncerramento ? {} : { encerramento: o.encerramento ?? null }),
+    // Baixa de material (Onda I4): null = não informado; [] = "não usei material".
+    ...(osSemColunaMateriais ? {} : { materiais: Array.isArray(o.materiais) ? o.materiais : null }),
   };
 }
 
@@ -655,6 +682,7 @@ function rowToOrdemServico(row: any): OrdemServico {
   // Idem para a garantia (migration 20261003103100).
   if (row && typeof row === 'object' && 'cliente_nome' in row && !('garantia' in row)) osSemColunasGarantia = true;
   if (row && typeof row === 'object' && 'cliente_nome' in row && !('encerramento' in row)) osSemColunaEncerramento = true;
+  if (row && typeof row === 'object' && 'cliente_nome' in row && !('materiais' in row)) osSemColunaMateriais = true;
   return {
     id: row.id,
     numero: row.numero ?? '',
@@ -677,6 +705,7 @@ function rowToOrdemServico(row: any): OrdemServico {
     ...(typeof row.garantia_de_os_id === 'string' && row.garantia_de_os_id ? { garantiaDeOsId: row.garantia_de_os_id } : {}),
     // jsonb (nuvem) ou TEXT JSON (linha local): leitura tolerante, nunca lança.
     encerramento: lerEncerramento(row.encerramento),
+    materiais: lerMateriais(row.materiais),
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
     // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
@@ -1130,25 +1159,32 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       for (const c of COLUNAS_AGENDA_EXCECOES) delete (row as Record<string, unknown>)[c];
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
     }
-    if (error && table === 'ordens_servico' && !osSemColunasGarantia && erroDeColunaDesconhecida(error)) {
-      // Servidor sem a migration da garantia: reenvia sem as colunas (ver COLUNAS_OS_GARANTIA).
-      osSemColunasGarantia = true;
-      for (const c of COLUNAS_OS_GARANTIA) delete (row as Record<string, unknown>)[c];
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
-    }
-    // Escada da OS do degrau MAIS NOVO para o mais antigo: garantia (20261003103100),
-    // encerramento (20261003102500), equipamento (20261002153217). Assim um servidor
-    // que já tem o `asset_id` nunca perde o vínculo por causa de coluna mais nova.
-    if (error && table === 'ordens_servico' && !osSemColunaEncerramento && erroDeColunaDesconhecida(error)) {
-      // Servidor sem a migration do encerramento: reenvia sem `encerramento`.
-      osSemColunaEncerramento = true;
-      delete (row as Record<string, unknown>).encerramento;
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
-    }
-    if (error && table === 'ordens_servico' && !osSemColunaAsset && erroDeColunaDesconhecida(error)) {
-      // Servidor sem a migration do equipamento na OS: reenvia sem `asset_id`.
-      osSemColunaAsset = true;
-      delete (row as Record<string, unknown>).asset_id;
+    // A OS tem QUATRO degraus de recuo e a nuvem pode estar sem qualquer combinação
+    // deles, na ordem que o PostgREST reclamar. Até 4 voltas, cada uma tirando só a(s)
+    // coluna(s) que o erro NOMEOU. Erro sem nome de coluna cai no degrau mais novo
+    // primeiro: materiais (20261003104000), garantia (20261003103100), encerramento
+    // (20261003102500) e, por último, equipamento (20261002153217) — assim um
+    // servidor que já tem o `asset_id` nunca perde o vínculo por coluna mais nova.
+    for (let volta = 0; volta < 4 && error && table === 'ordens_servico'; volta++) {
+      if (!osSemColunaMateriais && erroDeColunaDesconhecidaDe(error, 'materiais')) {
+        // Servidor sem a migration da baixa de material: reenvia sem `materiais`.
+        osSemColunaMateriais = true;
+        delete (row as Record<string, unknown>).materiais;
+      } else if (!osSemColunasGarantia && COLUNAS_OS_GARANTIA.some((c) => erroDeColunaDesconhecidaDe(error, c))) {
+        // Servidor sem a migration da garantia: reenvia sem as colunas (ver COLUNAS_OS_GARANTIA).
+        osSemColunasGarantia = true;
+        for (const c of COLUNAS_OS_GARANTIA) delete (row as Record<string, unknown>)[c];
+      } else if (!osSemColunaEncerramento && erroDeColunaDesconhecidaDe(error, 'encerramento')) {
+        // Servidor sem a migration do encerramento: reenvia sem `encerramento`.
+        osSemColunaEncerramento = true;
+        delete (row as Record<string, unknown>).encerramento;
+      } else if (!osSemColunaAsset && erroDeColunaDesconhecidaDe(error, 'asset_id')) {
+        // Servidor sem a migration do equipamento na OS: reenvia sem `asset_id`.
+        osSemColunaAsset = true;
+        delete (row as Record<string, unknown>).asset_id;
+      } else {
+        break;
+      }
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
     }
     if (error && table === 'agendamentos' && !agendaSemColunasEquipe && erroDeColunaDesconhecida(error)) {
@@ -1602,15 +1638,20 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   let garantiaLocal: string | null = null;
   let garantiaDeLocal: string | null = null;
   let encerramentoLocal: string | null = null;
+  let materiaisLocal: string | null = null;
   try {
-    const loc = await db.getFirstAsync<{ atualizado_em: string; asset_id: string | null; garantia: string | null; garantia_de_os_id: string | null; encerramento: string | null }>(
-      'SELECT atualizado_em, asset_id, garantia, garantia_de_os_id, encerramento FROM ordens_servico WHERE id = ?', [o.id],
+    const loc = await db.getFirstAsync<{
+      atualizado_em: string; asset_id: string | null; garantia: string | null;
+      garantia_de_os_id: string | null; encerramento: string | null; materiais: string | null;
+    }>(
+      'SELECT atualizado_em, asset_id, garantia, garantia_de_os_id, encerramento, materiais FROM ordens_servico WHERE id = ?', [o.id],
     );
     if (loc?.atualizado_em && tsMaisNovo(loc.atualizado_em, o.atualizadoEm)) return;
     assetLocal = loc?.asset_id ?? null;
     garantiaLocal = loc?.garantia ?? null;
     garantiaDeLocal = loc?.garantia_de_os_id ?? null;
     encerramentoLocal = loc?.encerramento ?? null;
+    materiaisLocal = loc?.materiais ?? null;
   } catch {
     // sem linha local / erro de leitura → segue e grava (piso seguro)
   }
@@ -1627,19 +1668,23 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   // Encerramento: mesma regra do vínculo — nuvem VAZIA (sem a coluna ou OS enviada
   // antes da migration) nunca apaga a assinatura/os passos gravados no aparelho.
   const encerramento = o.encerramento ? JSON.stringify(o.encerramento) : encerramentoLocal;
+  // Baixa de material: mesma regra — nuvem VAZIA (sem a coluna, ou OS enviada antes
+  // dela) nunca apaga a baixa local. Não existe "desinformar" material na tela
+  // (o técnico só troca a lista ou marca "não usei material", que é `[]`).
+  const materiais = materiaisParaTexto(o.materiais) ?? materiaisLocal;
   // checklist/fotos como TEXT JSON (mesmo schema local de database.ts).
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento, materiais)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [o.id, o.numero, o.orcamentoId ?? null, o.clienteId ?? null, o.clienteNome,
      o.titulo, o.descricao ?? null, o.status, o.concluidoEm ?? null, o.tecnicoId ?? null, o.tecnicoNome ?? null,
      o.dataAgendada ?? null, JSON.stringify(o.checklist ?? []), JSON.stringify(o.fotos ?? []),
      o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null, assetId,
-     garantia, garantiaDeOsId, encerramento],
+     garantia, garantiaDeOsId, encerramento, materiais],
   );
 }
 

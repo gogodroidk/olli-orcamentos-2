@@ -66,6 +66,9 @@ import { chaveRascunho } from '../services/rascunhoCampo';
 import { EncerrarAtendimentoModal } from '../components/encerramento/EncerrarAtendimentoModal';
 import { DicaContextual } from '../components/DicaContextual';
 import { rotuloBotaoEncerrar } from '../utils/encerramentoOS';
+// Onda I4 (dinheiro e rotina): baixa leve de material e lucro real da visita.
+import { MaterialUsadoBloco } from '../components/dinheiro/MaterialUsadoBloco';
+import { LucroVisitaFaixa } from '../components/dinheiro/LucroVisitaFaixa';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -440,6 +443,15 @@ function DetalheOS({
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
   const [addingFoto, setAddingFoto] = useState(false);
   const [showAtribuir, setShowAtribuir] = useState(false);
+  // Dinheiro (custo do material, lucro) só para quem vê valores — o técnico da
+  // equipe registra o que saiu, mas não vê custo nem lucro.
+  const { pode: podeAcao } = usePermissao();
+  const podeVerValores = podeAcao('ver_valores_agregados');
+  const navDetalhe = useNavigation<Nav>();
+  const abrirMeuNegocio = useCallback(() => {
+    onFechar();
+    navDetalhe.navigate('MeuNegocio');
+  }, [onFechar, navDetalhe]);
 
   // Debounce do autosave do checklist para não gravar a cada toque.
   const checklistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -888,6 +900,22 @@ function DetalheOS({
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* Material usado — baixa leve (Onda I4): alimenta o lucro real. */}
+            <MaterialUsadoBloco
+              ordem={ordem}
+              podeVerCusto={podeVerValores}
+              ehRefrigeracao={(verticais ?? []).includes('refrigeracao')}
+              onSalvo={(atualizada) => {
+                setOrdem((prev) => (prev ? { ...prev, materiais: atualizada.materiais, atualizadoEm: atualizada.atualizadoEm } : prev));
+                onMudou();
+              }}
+            />
+
+            {/* Lucro real da visita — só com a OS concluída e para quem vê valores. */}
+            {concluida && podeVerValores ? (
+              <LucroVisitaFaixa ordem={ordem} onAbrirMeuNegocio={abrirMeuNegocio} />
+            ) : null}
 
             {/* Observações — só leitura (registradas na criação da OS) */}
             {ordem.observacoes ? (

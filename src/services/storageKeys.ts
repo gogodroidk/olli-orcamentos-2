@@ -262,6 +262,19 @@ export const GARANTIA_NOTIF_KEY = 'olli.garantia.notif';
 export const GARANTIA_FEITOS_KEY = 'olli.garantia.feitos';
 
 /**
+ * Mala da véspera (Onda I4, services/malaVespera): `{ dia, marcados[] }` — as
+ * caixinhas marcadas da lista de amanhã. Conveniência do aparelho, mas descreve o
+ * trabalho da conta → sai no logout.
+ */
+export const MALA_MARCADOS_KEY = 'olli.mala.marcados.v1';
+
+/**
+ * Radar do tempo para vender (Onda I4, services/radarTempo): qual sugestão foi
+ * mostrada e desde quando (limite de 1 por semana) e até quando está oculta.
+ */
+export const RADAR_TEMPO_KEY = 'olli.radarTempo.v1';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -304,4 +317,6 @@ export const APP_DATA_STORAGE_KEYS = [
   CAPTURA_OS_KEY,
   CLIMA_COORD_CIDADE_KEY,
   ULTIMO_PULL_KEY,
+  MALA_MARCADOS_KEY,
+  RADAR_TEMPO_KEY,
 ];

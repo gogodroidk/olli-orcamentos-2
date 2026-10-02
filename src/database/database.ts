@@ -21,6 +21,7 @@ import {
 import { criarGerenciadorDeConexao } from './conexao';
 import { geoAposEdicao, geoParaColunas, lerGeoDaLinha, precisaGeocodificar } from '../utils/geoCliente';
 import { geocodificarEndereco } from '../services/cep';
+import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from '../services/verticais';
 import { SQL_CONTAS_A_RECEBER } from './contasAReceberSql';
 import {
@@ -487,7 +488,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       asset_id TEXT,
       garantia TEXT,
       garantia_de_os_id TEXT,
-      encerramento TEXT
+      encerramento TEXT,
+      materiais TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_status ON ordens_servico (status);
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_tecnico ON ordens_servico (tecnico_id);
@@ -620,7 +622,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -757,6 +759,12 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   // nunca passou pelo fluxo.
   if (v < 12) {
     await addColumnIfMissing(database, 'ordens_servico', 'encerramento', 'TEXT');
+  }
+
+  // v < 13 — BAIXA LEVE DE MATERIAL por OS (Onda I4; espelha a migration da nuvem
+  // 20261003104000). TEXT JSON; NULL = "não informado" (≠ '[]', "não usei material").
+  if (v < 13) {
+    await addColumnIfMissing(database, 'ordens_servico', 'materiais', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -1967,6 +1975,7 @@ function rowToOrdemServico(r: any): OrdemServico {
     ...(r.garantia_de_os_id ? { garantiaDeOsId: r.garantia_de_os_id as string } : {}),
     // Leitura tolerante: JSON inválido vira "sem encerramento", nunca quebra a lista.
     encerramento: lerEncerramento(r.encerramento),
+    materiais: lerMateriais(r.materiais),
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
     excluidoEm: r.excluido_em ?? undefined,
@@ -2026,14 +2035,14 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento, materiais)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
      os.titulo, os.descricao ?? null, os.status, os.concluidoEm ?? null, os.tecnicoId ?? null, os.tecnicoNome ?? null,
      os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
      os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null,
      os.equipamentoId ?? null, os.garantia ?? null, os.garantiaDeOsId ?? null,
-     os.encerramento ? JSON.stringify(os.encerramento) : null],
+     os.encerramento ? JSON.stringify(os.encerramento) : null, materiaisParaTexto(os.materiais)],
   );
   // Espelho na nuvem pelo caminho PADRÃO de cloudSync (ordens_servico é SyncTable
   // de primeira classe: push/pull-no-login/tombstone/guard de timestamp + injeção
@@ -3095,8 +3104,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
         `INSERT OR REPLACE INTO ordens_servico
            (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
             tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-            criado_em, atualizado_em, garantia, garantia_de_os_id, encerramento)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            criado_em, atualizado_em, garantia, garantia_de_os_id, encerramento, materiais)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [os.id, os.numero ?? '', os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome ?? '',
          os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.concluidoEm ?? null, os.tecnicoId ?? null,
          os.tecnicoNome ?? null, os.dataAgendada ?? null,
@@ -3107,7 +3116,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          typeof os.garantia === 'string' && os.garantia.trim() ? os.garantia.trim().slice(0, 200) : null,
          typeof os.garantiaDeOsId === 'string' ? os.garantiaDeOsId : null,
          // Encerramento ilegível no backup some (lerEncerramento), não derruba o restore.
-         (() => { const enc = lerEncerramento(os.encerramento); return enc ? JSON.stringify(enc) : null; })()],
+         (() => { const enc = lerEncerramento(os.encerramento); return enc ? JSON.stringify(enc) : null; })(),
+         materiaisParaTexto(lerMateriais(os.materiais))],
       );
     }
     for (const e of equipamentos) {

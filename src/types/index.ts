@@ -195,6 +195,42 @@ export interface Empresa {
    * é só o texto do link embutido numa mensagem de WhatsApp via `abrirWhatsApp`.
    */
   linkGoogleAvaliacoes?: string;
+
+  // LUCRO REAL DA VISITA (Onda I4) — custos que o prestador informa UMA vez em
+  // Meu Negócio. Tudo opcional e no blob JSON (`empresa.dados`), sem migração.
+  // AUSENTE = não informado (o lucro diz o que falta, nunca chuta); 0 = "não
+  // tenho esse custo" (afirmação do prestador). Regra em services/lucroVisita.ts.
+  /** Quanto custa rodar 1 km (combustível ÷ consumo + desgaste), em R$. */
+  custoKm?: number;
+  /** Comissão paga por serviço (indicação, técnico, plataforma), em % do valor. */
+  comissaoPercentual?: number;
+  /**
+   * Ponto de SAÍDA (de onde o prestador sai para as visitas), achado pelo endereço
+   * do cadastro com o geocodificador grátis do worker (POST /geo). Usado só para
+   * ESTIMAR o deslocamento (linha reta × 1,4). Os três andam juntos.
+   */
+  baseLat?: number;
+  baseLon?: number;
+  baseGeoPrecisao?: GeoPrecisao;
+}
+
+/**
+ * Material/gás que SAIU numa OS (baixa leve — Onda I4). Não é estoque: é o
+ * registro do que foi usado, que alimenta o Lucro Real da Visita.
+ */
+export interface MaterialUsado {
+  id: string;
+  nome: string;
+  quantidade: number;
+  /** 'un', 'm', 'kg', 'g', 'L'… (texto livre curto). */
+  unidade: string;
+  /**
+   * Custo por unidade em R$. AUSENTE = não sabemos (o lucro avisa "falta o custo
+   * de X"); vem do catálogo de produtos quando o item foi escolhido de lá.
+   */
+  custoUnitario?: number;
+  /** Produto do catálogo de onde veio (soft ref), quando houver. */
+  produtoId?: string;
 }
 
 export interface Cliente {
@@ -896,6 +932,12 @@ export interface OrdemServico {
    * pelo fluxo (a verdade de toda OS anterior à migration 20261003102500).
    */
   encerramento?: EncerramentoOS;
+  /**
+   * Baixa leve de material/gás (Onda I4, migration 20261003104000). AUSENTE =
+   * não informado; `[]` = "não usei material" (afirmação do técnico). É o que o
+   * Lucro Real da Visita usa como custo de material quando existe.
+   */
+  materiais?: MaterialUsado[];
   criadoEm: string;
   atualizadoEm: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
