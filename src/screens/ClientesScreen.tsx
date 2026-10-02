@@ -499,7 +499,18 @@ export default function ClientesScreen() {
   return (
     <View style={styles.container}>
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
-      <GradientHeader title="Clientes" subtitle={`${clientes.length} cadastrado${clientes.length === 1 ? '' : 's'}`} onBack={() => goBackOrHome(nav)}>
+      <GradientHeader
+        title="Clientes"
+        subtitle={`${clientes.length} cadastrado${clientes.length === 1 ? '' : 's'}`}
+        onBack={() => goBackOrHome(nav)}
+        right={
+          // Troque em 5 minutos: contatos do celular, planilha ou foto de orçamento antigo.
+          <TouchableOpacity style={styles.importarBtn} activeOpacity={0.85} onPress={() => nav.navigate('Importar')} accessibilityRole="button" accessibilityLabel="Importar clientes do app antigo, da agenda ou de planilha">
+            <MaterialCommunityIcons name="database-import-outline" size={18} color="#fff" />
+            <Text style={styles.importarBtnTexto}>Importar</Text>
+          </TouchableOpacity>
+        }
+      >
         <View style={styles.searchBar}>
           <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} />
           <TextInput style={styles.searchInput} placeholder="Buscar por nome ou telefone..." value={query} onChangeText={handleSearch} placeholderTextColor={cores.onSurfaceMuted} />
@@ -578,7 +589,7 @@ export default function ClientesScreen() {
             </View>
           ) : null
         }
-        ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); setErrors({}); }} />}
+        ListEmptyComponent={<EmptyState icon="account-group-outline" title="Nenhum cliente" subtitle="Cadastre seus clientes para agilizar os orçamentos, ou toque em Importar (no topo) para trazer da agenda do celular, de uma planilha ou do app antigo." actionLabel="Novo cliente" onAction={() => { setEditing({}); setIsNew(true); setErrors({}); }} />}
       />
       )}
 
@@ -644,6 +655,13 @@ export default function ClientesScreen() {
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+  // Dentro do GradientHeader (sempre colorido) — glass branco fixo, como em Contratos.
+  importarBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.16)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)',
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, minHeight: 40,
+  },
+  importarBtnTexto: { color: '#fff', fontWeight: '800', fontSize: 13 },
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
