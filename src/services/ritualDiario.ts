@@ -11,7 +11,7 @@ import { orcamentosParaCobrar } from './radarCobranca';
 import { clientesParaReconquistar } from './radarClientes';
 import { gerarRelatorioDia, relatorioParaTexto } from './relatorioDia';
 import { formatCurrency } from '../utils/currency';
-import type { Agendamento, Cliente } from '../types';
+import type { Agendamento } from '../types';
 import {
   RITUAL_NOTIF_MAP_KEY,
   RITUAL_BOM_DIA_TOGGLE_KEY,
@@ -161,13 +161,25 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | nu
   try {
     const inicio = new Date(proxima.inicio);
     if (isNaN(inicio.getTime())) return null;
+    // "Hora de sair" é do Pro (`hora_de_sair`): no Grátis (ou plano não
+    // confirmado) o "Bom dia" sai exatamente como antes, sem a linha.
+    if ((await acessoRecursoAgora('hora_de_sair')) !== 'liberado') return null;
     const [empresa, clientes, doDia] = await Promise.all([
       getEmpresa().catch(() => null),
-      getClientes().catch(() => [] as Cliente[]),
+      getClientes().catch(() => null),
       getAgendamentosDoDia(inicio).catch(() => [] as Agendamento[]),
     ]);
+    // Sem conseguir ler os clientes não há como saber o local: "não sei", nunca
+    // "sem local no mapa".
+    if (!clientes) return null;
     const base = await pontoDaBase(empresa);
-    const r = calcularSaida({ proxima, doDia, base: base.estado === 'ok' ? base.ponto : null, clientes });
+    const r = calcularSaida({
+      proxima,
+      doDia,
+      base: base.estado === 'ok' ? base.ponto : null,
+      baseIndisponivel: base.estado === 'indisponivel',
+      clientes,
+    });
     return linhaBomDiaSaida(r, new Date());
   } catch {
     return null;
@@ -201,17 +213,21 @@ export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
     const inicio = proxima ? new Date(proxima.inicio) : null;
     const [empresa, clientes, doDia, temPermissao] = await Promise.all([
       getEmpresa().catch(() => null),
-      getClientes().catch(() => [] as Cliente[]),
+      getClientes().catch(() => null),
       inicio && !isNaN(inicio.getTime())
         ? getAgendamentosDoDia(inicio).catch(() => [] as Agendamento[])
         : Promise.resolve([] as Agendamento[]),
       temPermissaoNotificacao().catch(() => false),
     ]);
+    // Banco ilegível NÃO é "cliente sem local no mapa": sem os clientes, não
+    // recalcula e o aviso que já está agendado continua valendo.
+    if (!clientes) return;
     const base = await pontoDaBase(empresa);
     await reagendarAvisoSaida({
       proxima,
       doDia,
       base: base.estado === 'ok' ? base.ponto : null,
+      baseIndisponivel: base.estado === 'indisponivel',
       clientes,
       temPermissao,
       forcar,

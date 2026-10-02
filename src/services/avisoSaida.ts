@@ -226,6 +226,8 @@ export interface DadosAvisoSaida {
   doDia: readonly Agendamento[];
   /** Ponto de saída da empresa (`pontoDaBase`), para a 1ª visita do dia. `null` = sem base. */
   base: PontoVisita | null;
+  /** `true` = a base não pôde ser localizada AGORA (offline): é "não sei", não "falta endereço". */
+  baseIndisponivel?: boolean;
   clientes: readonly Cliente[];
   /** Já sabido por quem chama (`agenda.temPermissaoNotificacao`). Este módulo NUNCA pede permissão. */
   temPermissao: boolean;
@@ -296,7 +298,7 @@ export async function reagendarAvisoSaida(d: DadosAvisoSaida): Promise<Resultado
 
     // Estimativa no aparelho (sem trânsito, rotulada como tal): origem = visita
     // anterior do dia ou a base; destino = o ponto do cliente da visita.
-    const resultado = calcularSaida({ proxima, doDia: d.doDia, base: d.base, clientes: d.clientes, agora });
+    const resultado = calcularSaida({ proxima, doDia: d.doDia, base: d.base, baseIndisponivel: d.baseIndisponivel, clientes: d.clientes, agora });
 
     const registro: RegistroSalvo = {
       agendamentoId: proxima.id,

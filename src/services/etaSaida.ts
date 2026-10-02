@@ -102,17 +102,31 @@ export interface ParametrosSaida {
   /** Agendamentos do MESMO dia (de onde sai a visita anterior). */
   doDia: readonly Agendamento[];
   base: PontoVisita | null;
+  /**
+   * `true` = `pontoDaBase` respondeu `indisponivel` (offline, worker fora). Quando
+   * a origem seria a base, o resultado é `indisponivel` ("não deu para estimar
+   * agora"), NUNCA `endereco_insuficiente` — mandar o prestador "completar o
+   * endereço da empresa" que já está certo é transformar "não sei" em "não tem".
+   */
+  baseIndisponivel?: boolean;
   clientes: readonly Cliente[];
   agora?: Date;
 }
+
+/** Um ponto qualquer só para perguntar "a origem desta visita seria a base?". */
+const BASE_SONDA: PontoVisita = { lat: -15.79, lon: -47.88, precisao: 'rua' };
 
 /** Calcula a hora de sair da `proxima`. Síncrono por natureza; NUNCA lança. */
 export function calcularSaida(p: ParametrosSaida): ResultadoSaida {
   const agora = p.agora ?? new Date();
   const inicio = new Date(p.proxima.inicio);
   if (isNaN(inicio.getTime())) return { estado: 'indisponivel', erro: 'horario_invalido' };
+  const origem = origemParaVisita(p.proxima, p.doDia, p.base, p.clientes);
+  if (!origem && p.baseIndisponivel && origemParaVisita(p.proxima, p.doDia, BASE_SONDA, p.clientes)?.de === 'base') {
+    return { estado: 'indisponivel', erro: 'base_indisponivel' };
+  }
   return estimarSaida({
-    origem: origemParaVisita(p.proxima, p.doDia, p.base, p.clientes),
+    origem,
     destino: pontoDoAgendamento(p.proxima, p.clientes),
     chegarEm: inicio,
     agora,

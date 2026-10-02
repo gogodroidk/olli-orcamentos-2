@@ -86,11 +86,18 @@ function MapaNativo({ ML, pins, linha, interativo = true, onPinPress, selecionad
   const [falhou, setFalhou] = useState(false);
   const linhaVisivel = useLinhaAnimada(linha, chaveAnimacao);
 
-  const limites = useMemo(() => limitesDosPontos(pins), [pins]);
-  const padding = useMemo(() => {
-    const m = margens ?? { topo: 36, base: 36, lados: 36 };
-    return { top: m.topo, bottom: m.base, left: m.lados, right: m.lados };
-  }, [margens]);
+  // O enquadramento só muda quando as COORDENADAS mudam. Um array de pins novo a
+  // cada render (anel de chuva chegando, tela pai re-renderizando) não pode
+  // reenquadrar a câmera e jogar fora o arrasto/zoom que o prestador fez.
+  const chaveLimites = pins.map((p) => `${p.lon},${p.lat}`).join(';');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `chaveLimites` resume as coordenadas de `pins` de propósito.
+  const limites = useMemo(() => limitesDosPontos(pins), [chaveLimites]);
+  // Mesma regra: quem chama costuma passar `margens` como objeto literal (novo a
+  // cada render); a memória depende dos NÚMEROS, senão a câmera reenquadra sozinha.
+  const mTopo = margens?.topo ?? 36;
+  const mBase = margens?.base ?? 36;
+  const mLados = margens?.lados ?? 36;
+  const padding = useMemo(() => ({ top: mTopo, bottom: mBase, left: mLados, right: mLados }), [mTopo, mBase, mLados]);
 
   const dadosLinha = useMemo(
     () =>

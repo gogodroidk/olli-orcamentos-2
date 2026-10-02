@@ -169,7 +169,10 @@ export function pontoDoAgendamento(
   if (proprio.length >= MIN_ENDERECO) {
     const ruaCliente = textoComparavel(logradouroDoEndereco(c?.endereco));
     const ruaVisita = textoComparavel(logradouroDoEndereco(a.endereco));
-    const mesmoLugar = ruaCliente.length >= 3 && (ruaVisita.includes(ruaCliente) || ruaCliente.includes(ruaVisita));
+    // Os DOIS logradouros precisam existir: uma rua vazia está "contida" em
+    // qualquer outra, e a visita "', Centro'" viraria o ponto do cadastro.
+    const mesmoLugar = ruaCliente.length >= 3 && ruaVisita.length >= 3
+      && (ruaVisita.includes(ruaCliente) || ruaCliente.includes(ruaVisita));
     if (!mesmoLugar) return null;
   }
   return ponto;

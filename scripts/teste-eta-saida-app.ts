@@ -117,6 +117,7 @@ checar('ponto pelo CEP serve (é aproximado)', pontoDoCliente(cli({ geoPrecisao:
 checar('visita em OUTRO endereço não usa o ponto do cliente', pontoDoAgendamento(ag({ endereco: 'Av. Brasil, 500' }), [cli()]), null);
 checar('visita no mesmo endereço (com complemento) usa o ponto', pontoDoAgendamento(ag({ endereco: 'Rua das Flores, 123 - fundos' }), [cli()])?.precisao, 'numero');
 checar('sem cliente → null', pontoDoAgendamento(ag({ clienteId: undefined }), [cli()]), null);
+checar('visita com endereço próprio sem logradouro não herda o ponto do cadastro', pontoDoAgendamento(ag({ endereco: ', Centro, Santo André' }), [cli()]), null);
 
 console.log('\n3) A CONTA — estimativa com folga');
 const destino = pontoDoAgendamento(ag(), [cli()]);
@@ -231,6 +232,13 @@ checar('o aviso roda no reagendamento do ritual', /reagendarAvisoSaidaDoDia\(\)/
 checar('o ritual localiza a base antes de calcular', /pontoDaBase\(empresa\)/.test(ritualSrc), true);
 checarOrdem('roda ANTES do return dos toggles do ritual', ritualSrc, 'reagendarAvisoSaidaDoDia()', 'if (!bomDiaAtivo && !fecharDiaAtivo) return');
 checar('o Bom dia não ganha notificação nova', ritualSrc.split('scheduleNotificationAsync').length - 1, 2);
+const bomDiaSrc = (() => {
+  const i = ritualSrc.indexOf('async function linhaDeSaidaParaBomDia');
+  return i < 0 ? '' : ritualSrc.slice(i, ritualSrc.indexOf('export async function reagendarAvisoSaidaDoDia', i));
+})();
+checar('a linha "saia às" do Bom dia passa pelo gate Pro (hora_de_sair)', /acessoRecursoAgora\('hora_de_sair'\)\)\s*!==\s*'liberado'\) return null/.test(bomDiaSrc), true);
+checar('clientes ilegíveis não viram "sem local no mapa" (ritual)', /getClientes\(\)\.catch\(\(\) => \[\]/.test(ritualSrc), false);
+checar('base offline vira indisponível, não "falta endereço"', /baseIndisponivel: base\.estado === 'indisponivel'/.test(ritualSrc) && /base_indisponivel/.test(etaSaidaSrc), true);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'} — ${passes} asserções ok, ${falhas} falhas`);
 process.exit(falhas === 0 ? 0 : 1);

@@ -233,6 +233,13 @@ console.log('\n11) GRÁTIS DE VERDADE — nada de Google, atribuição visível'
   checar('dica da primeira vez', tela.includes('DicaContextual'), true);
   const app = JSON.parse(ler('../app.json'));
   checar('config plugin do MapLibre no app.json', app.expo.plugins.some((p: unknown) => (Array.isArray(p) ? p[0] : p) === '@maplibre/maplibre-react-native'), true);
+  // O AndroidManifest do MapLibre declara ACCESS_FINE/COARSE_LOCATION. O OLLI não
+  // usa a posição do aparelho no mapa (nem tem expo-location): sem bloquear, o APK
+  // novo pediria localização na Play sem uso, sem divulgação e sem Data safety.
+  const bloqueadas: string[] = app.expo.android.blockedPermissions ?? [];
+  checar('localização fina bloqueada no manifest (MapLibre não a traz para o APK)', bloqueadas.includes('android.permission.ACCESS_FINE_LOCATION'), true);
+  checar('localização aproximada bloqueada no manifest', bloqueadas.includes('android.permission.ACCESS_COARSE_LOCATION'), true);
+  checar('o mapa não usa a posição do usuário (UserLocation)', /UserLocation|showUserLocation/.test(semComentarios(mapa)), false);
 }
 
 console.log(`\n${passes} ok, ${falhas} falha(s)`);
