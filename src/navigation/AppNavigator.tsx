@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Easing, View, Text, StyleSheet } from 'react-native';
+import { Easing, View, Text, StyleSheet } from 'react-native';
 import {
   createBottomTabNavigator,
   type BottomTabBarButtonProps,
@@ -16,7 +16,6 @@ import { CURVA, DURACAO, TOQUE, useReduzirMovimento } from '../theme/motion';
 import { PressableAnimado } from '../components/motion/PressableAnimado';
 import { vibrar } from '../utils/haptico';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
-import { OlliButton } from '../components/OlliButton';
 import { SidebarNav } from '../components/web/SidebarNav';
 import type { Recurso } from '../services/entitlements';
 import type { VerticalId } from '../services/verticais';
@@ -78,7 +77,8 @@ import TecnicoHomeScreen from '../screens/TecnicoHomeScreen';
 import type { AjudaRouteParams } from '../screens/AjudaScreen';
 import { usePermissao } from '../hooks/usePermissao';
 import { getEmpresa } from '../database/database';
-import { camposPendentesPerfil, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
+import { estadoCadastroDaLeitura, type EstadoCadastroNegocio } from '../services/perfilOperacional';
+import { AvisoCompletarNegocio, CadastroNegocioProvider } from '../components/AvisoCompletarNegocio';
 import type { StatusOrcamento } from '../types';
 
 // Telas desktop (v4) — só montadas quando `ehDesktop` (web ≥ 1024px). No
@@ -290,38 +290,35 @@ const AutopilotCentro = comCentroDesktop(AutopilotScreen);
 const ImportarCentro = comCentroDesktop(ImportarScreen);
 
 /**
- * Contas antigas podem ter uma linha `empresa` criada antes dos campos mínimos.
- * Enquanto ela estiver incompleta, a porta das abas permanece fechada e aponta
- * para a edição do cadastro. O dado é relido ao voltar da tela, sem confiar num
- * flag local que poderia estar desatualizado.
+ * Cadastro do negócio incompleto NÃO fecha mais as abas (decisão de 02/10/2026).
  *
- * Revalidação SILENCIOSA (item 1.2 da onda 1): o card "Preparando seu espaço…"
- * aparece só na PRIMEIRA checagem. Antes, todo foco da rota 'Tabs' (voltar de
- * qualquer tela do stack) fazia `setEstado('verificando')`, o que desmontava o
- * <TabNavigator/> inteiro: a aba atual se perdia (Agenda → Início), as entradas
- * animadas rodavam de novo e tudo era buscado outra vez. Agora:
- * - depois de liberado, o foco relê o cadastro em segundo plano e só fecha a
- *   porta se faltar campo DE VERDADE;
- * - um erro de leitura nunca fecha a porta de quem já entrou (o aviso fica para
- *   a tela Meu Negócio);
- * - na 1ª checagem, erro é estado próprio ('erro'), não "cadastro incompleto":
- *   "não sei" não vira "falta preencher".
+ * Até a 1.1.8 este guard trocava o <TabNavigator/> inteiro por um cartão
+ * "Complete seu negócio para continuar" com um único botão — sem Conta, sem Sair,
+ * sem Excluir conta. Foi a causa da rejeição da Play ("o login não dá acesso ao
+ * app") e prendia 8 das 25 contas reais. Agora:
+ * - as abas SEMPRE renderizam;
+ * - o guard só MEDE o cadastro e publica no contexto (CadastroNegocioProvider);
+ *   o Início mostra o banner fixo "Complete seu negócio" (AvisoCompletarNegocio);
+ * - gerar/enviar orçamento, PDF ou recibo é que exige o cadastro completo
+ *   (services/exigirCadastro.ts), com aviso que leva ao Meu Negócio.
+ *
+ * Revalidação SILENCIOSA (item 1.2 da onda 1): cada foco da rota 'Tabs' (voltar
+ * do Meu Negócio, por exemplo) relê o cadastro em segundo plano, sem desmontar
+ * nada. Os três estados continuam: 'carregando' só existe antes da 1ª resposta;
+ * um erro de leitura mantém o último estado conhecido e, sem nenhum, vira 'erro'
+ * — "não sei" nunca vira "completo" (liberar envio) nem "incompleto" (mandar
+ * preencher o que talvez já esteja preenchido). A regra pura mora em
+ * `estadoCadastroDaLeitura` (services/perfilOperacional.ts).
  */
-type EstadoPerfilGuard = 'verificando' | 'liberado' | 'incompleto' | 'erro';
-
 function TabsComPerfilGuard() {
-  const nav = useNavigation<any>();
-  const cores = useCores();
-  const insets = useSafeAreaInsets();
-  const [estado, setEstado] = React.useState<EstadoPerfilGuard>('verificando');
-  const [pendentes, setPendentes] = React.useState<string[]>([]);
-  // Espelho do estado para o callback de foco (que é estável e não deve ser
-  // recriado a cada troca de estado — isso refaria a checagem em loop).
-  const estadoRef = React.useRef<EstadoPerfilGuard>('verificando');
+  const [estado, setEstado] = React.useState<EstadoCadastroNegocio>({ tipo: 'carregando' });
+  // Espelho do estado para o callback de foco (estável: recriá-lo a cada troca
+  // de estado refaria a checagem em loop).
+  const estadoRef = React.useRef<EstadoCadastroNegocio>({ tipo: 'carregando' });
   // Só a resposta da checagem MAIS RECENTE vale (focos rápidos em sequência).
   const checagemRef = React.useRef(0);
 
-  const mudarEstado = React.useCallback((novo: EstadoPerfilGuard) => {
+  const mudarEstado = React.useCallback((novo: EstadoCadastroNegocio) => {
     estadoRef.current = novo;
     setEstado(novo);
   }, []);
@@ -329,28 +326,14 @@ function TabsComPerfilGuard() {
   const verificar = React.useCallback(() => {
     checagemRef.current += 1;
     const id = checagemRef.current;
-    // "Verificando" só aparece enquanto ainda não se sabe nada (1ª checagem) ou
-    // quando a pessoa pede "Tentar de novo" depois de um erro. Quem já está
-    // liberado (ou já vê o card de pendência) revalida em silêncio.
-    if (estadoRef.current === 'erro') mudarEstado('verificando');
     getEmpresa()
       .then((empresa) => {
         if (id !== checagemRef.current) return;
-        // Instalação de desenvolvimento sem empresa segue compatível; contas
-        // autenticadas novas chegam aqui somente depois do Onboarding.
-        if (!empresa) {
-          mudarEstado('liberado');
-          return;
-        }
-        const faltantes = camposPendentesPerfil(empresa);
-        setPendentes(faltantes.map(campo => ROTULO_CAMPO_PERFIL[campo]));
-        mudarEstado(faltantes.length ? 'incompleto' : 'liberado');
+        mudarEstado(estadoCadastroDaLeitura({ ok: true, empresa }, estadoRef.current));
       })
       .catch(() => {
         if (id !== checagemRef.current) return;
-        // Erro de leitura não fecha a porta de quem já entrou.
-        if (estadoRef.current === 'liberado') return;
-        mudarEstado('erro');
+        mudarEstado(estadoCadastroDaLeitura({ ok: false }, estadoRef.current));
       });
   }, [mudarEstado]);
 
@@ -360,68 +343,33 @@ function TabsComPerfilGuard() {
     return () => { checagemRef.current += 1; };
   }, [verificar]));
 
-  if (estado === 'liberado') return <TabNavigator />;
-
-  const titulo = estado === 'verificando'
-    ? 'Preparando seu espaço…'
-    : estado === 'erro'
-      ? 'Não conseguimos abrir seu cadastro'
-      : 'Complete seu negócio para continuar';
-  const texto = estado === 'verificando'
-    ? 'Conferindo os dados que identificam sua empresa nos orçamentos.'
-    : estado === 'erro'
-      ? 'A leitura dos dados do negócio falhou. Tente de novo; se continuar, abra os dados do negócio.'
-      : pendentes.length
-        ? `Falta preencher: ${pendentes.join(', ')}.`
-        : 'Falta completar os dados do negócio.';
+  const contexto = React.useMemo(() => ({ estado, reler: verificar }), [estado, verificar]);
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: cores.background, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24, paddingHorizontal: 24 }}>
-      <View style={{ width: '100%', maxWidth: 460, padding: 24, borderRadius: 20, backgroundColor: cores.surface, borderWidth: 1, borderColor: cores.outline, alignItems: 'center' }}>
-        {estado === 'verificando' ? (
-          <ActivityIndicator size="large" color={cores.primary} />
-        ) : (
-          <MaterialCommunityIcons
-            name={estado === 'erro' ? 'alert-circle-outline' : 'store-cog-outline'}
-            size={44}
-            color={estado === 'erro' ? cores.danger : cores.primary}
-          />
-        )}
-        <Text style={{ marginTop: 16, color: cores.onSurface, fontWeight: '800', fontSize: 21, textAlign: 'center' }}>
-          {titulo}
-        </Text>
-        <Text style={{ marginTop: 8, color: cores.onSurfaceVariant, fontSize: 14, lineHeight: 21, textAlign: 'center' }}>
-          {texto}
-        </Text>
-        {estado === 'incompleto' && (
-          <OlliButton
-            label="Completar agora"
-            onPress={() => nav.navigate('MeuNegocio')}
-            fullWidth
-            style={{ marginTop: 20 }}
-          />
-        )}
-        {estado === 'erro' && (
-          <>
-            <OlliButton
-              label="Tentar de novo"
-              onPress={verificar}
-              fullWidth
-              style={{ marginTop: 20 }}
-            />
-            <OlliButton
-              label="Abrir dados do negócio"
-              variant="ghost"
-              onPress={() => nav.navigate('MeuNegocio')}
-              fullWidth
-              style={{ marginTop: 8 }}
-            />
-          </>
-        )}
-      </View>
-    </View>
+    <CadastroNegocioProvider value={contexto}>
+      <TabNavigator />
+    </CadastroNegocioProvider>
   );
 }
+
+/**
+ * Início com o banner "Complete seu negócio" preso no rodapé. Componente estável
+ * (criado uma vez, fora do render) para a aba não remontar a cada render. A home
+ * do técnico não leva o banner: quem completa o cadastro é o dono da empresa.
+ */
+function comAvisoCadastro<P extends object>(Tela: React.ComponentType<P>): React.ComponentType<P> {
+  function InicioComAvisoCadastro(props: P) {
+    return (
+      <View style={{ flex: 1 }}>
+        <Tela {...props} />
+        <AvisoCompletarNegocio />
+      </View>
+    );
+  }
+  return InicioComAvisoCadastro;
+}
+const HomeComAvisoCadastro = comAvisoCadastro(HomeScreen);
+const InicioDesktopComAvisoCadastro = comAvisoCadastro(InicioDesktopScreen);
 const ModelosDocumentoCentro = comCentroDesktop(ModelosDocumentoScreen);
 const CentralDocumentosCentro = comCentroDesktop(CentralDocumentosScreen);
 const DiagnosticoIACentro = comCentroDesktop(DiagnosticoIAScreen);
@@ -550,7 +498,7 @@ function TabNavigator() {
     ? HomeCarregando
     : papel === 'tecnico'
       ? TecnicoHomeScreen
-      : HomeScreen;
+      : HomeComAvisoCadastro;
 
   return (
     <Tab.Navigator
@@ -600,7 +548,7 @@ function TabNavigator() {
         // Desktop: dashboard (InicioDesktopScreen — tem guarda própria de papel).
         // Mobile: técnico vê a TecnicoHomeScreen (home do campo); os demais papéis
         // mantêm a HomeScreen; papel desconhecido vê uma Home neutra.
-        component={ehDesktop ? InicioDesktopScreen : homeMobile}
+        component={ehDesktop ? InicioDesktopComAvisoCadastro : homeMobile}
         options={{
           tabBarLabel: 'Início',
           tabBarIcon: ({ color, size }) => (

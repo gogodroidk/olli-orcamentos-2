@@ -43,6 +43,7 @@ import {
   type PassoEncerramento,
 } from '../../utils/encerramentoOS';
 import { getEmpresa, getOrcamento, getRecibo, getRecibosPorOrcamentoIds } from '../../database/database';
+import { conferirCadastroParaEnviar, motivoEnvioSegurado } from '../../services/exigirCadastro';
 import { finalizarEncerramentoOS, salvarEncerramentoOS } from '../../services/ordemServico';
 import {
   getReciboDoOrcamento, marcarReciboComoPdfEmitido, registrarPagamento, totalRecebidoDoOrcamento,
@@ -242,6 +243,10 @@ export function EncerrarAtendimentoModal({
   }
 
   async function gerarRecibo(recibo: Recibo) {
+    // Mesma porta do envio das telas (services/exigirCadastro.ts); aqui o motivo
+    // aparece no próprio passo, sem abrir outra folha por cima do modal.
+    const motivo = motivoEnvioSegurado(await conferirCadastroParaEnviar(), 'recibo');
+    if (motivo) { setErroPasso(motivo); return; }
     if (!empresa) { setErroPasso('Cadastre os dados da sua empresa em Meu Negócio para gerar o recibo.'); return; }
     setOcupado('recibo');
     setErroPasso(null);

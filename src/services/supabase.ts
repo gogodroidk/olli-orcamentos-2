@@ -14,13 +14,32 @@ import {
 } from './oauthRetorno';
 import { urlRecuperacaoSenha } from './acessoCodigo';
 import { decidirSessaoNoBoot, erroDeRenovacaoEhDeRede, interpretarSessaoGuardada, type DecisaoSessao } from './sessaoOffline';
+import { criarFetchResiliente } from './refreshResiliente';
+import { registrarHoraDoServidor } from './relogioServidor';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
 }
 
+/**
+ * Fetch de TODO o cliente (auth, banco, storage). Duas coisas além do fetch
+ * normal (ver services/refreshResiliente.ts):
+ *  - refresh recusado por "servidor ocupado" (429, 5xx, resposta estranha) não
+ *    vira logout: só a credencial morta (`invalid_grant`, refresh token
+ *    inexistente) desloga; o resto mantém a sessão e espera ≥ 30 s;
+ *  - o cabeçalho `Date` de cada resposta mede o relógio do celular (aviso de
+ *    data/hora errada e decisões que comparam datas com o servidor).
+ * O `fetch` global é lido na hora da chamada, não na criação, para não prender
+ * uma referência antiga caso algum polyfill o troque depois do import.
+ */
+const fetchDoCliente = criarFetchResiliente(
+  (input, init) => fetch(input, init),
+  { aoReceberDataServidor: registrarHoraDoServidor },
+);
+
 export const supabase: SupabaseClient | null = isSupabaseConfigured()
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { fetch: fetchDoCliente },
       auth: {
         storage: authStorage,
         autoRefreshToken: true,
@@ -238,10 +257,17 @@ export async function usuarioDaSessaoLocal(): Promise<{ id: string; email?: stri
  * convite para criar conta e vincular o que já fez. Import dinâmico do database
  * de propósito — evita um ciclo estático supabase → database → cloudSync → supabase.
  * Nunca lança: em erro devolve false (sem banner, degradação segura).
+ *
+ * Só vale num aparelho onde NINGUÉM nunca entrou (mapa de partições vazio). Se
+ * alguém já entrou, os dados no aparelho são de uma conta que já existe — a
+ * partição de quem saiu, ou o banco legado que o primeiro login adotou — e o
+ * convite a "criar conta" atrapalhava quem só queria entrar de novo. "Não sei"
+ * (mapa ilegível) também não mostra o banner.
  */
 export async function temDadosLocais(): Promise<boolean> {
   try {
     const db = await import('../database/database');
+    if ((await db.alguemJaEntrouNesteAparelho()) !== false) return false;
     const empresa = await db.getEmpresa();
     if (empresa !== null) return true;
     const orcamentos = await db.getOrcamentos();

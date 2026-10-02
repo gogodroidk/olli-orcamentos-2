@@ -29,6 +29,7 @@ import { OlliLogo } from './src/components/OlliLogo';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
+import { AvisoRelogioErrado } from './src/components/AvisoRelogioErrado';
 import { curvas } from './src/components/motion/curvas';
 import { DURACAO, MOLA, TOQUE, useReduzirMovimento } from './src/theme/motion';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -499,6 +500,12 @@ function AppConteudo() {
       // Sair da conta (em qualquer tela) volta SEMPRE para a porta: reset central
       // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
       // container já montou (isReady) — no boot deslogado a rota inicial já é Entrar.
+      //
+      // Quem emite SIGNED_OUT: o "Sair" explícito ou o servidor dizendo que a
+      // credencial morreu (invalid_grant, refresh token inexistente/já usado).
+      // 429, 5xx, falha de rede e relógio errado NÃO chegam aqui: o fetch do
+      // cliente os converte em "tente de novo" e a sessão continua guardada
+      // (services/refreshResiliente.ts, rejeição da Play de 02/10/2026).
       if (event === 'SIGNED_OUT') {
         usuarioDaSessao = null;
         resetarPlano();
@@ -647,6 +654,10 @@ function AppConteudo() {
                 </ErrorBoundary>
               </NavigationContainer>
             )}
+            {/* "Data e hora do celular erradas" (rejeição da Play, 02/10/2026): aviso
+                por cima das telas, que NÃO bloqueia nada — a sessão já aguenta o
+                relógio errado; o aviso só explica a lentidão e as datas tortas. */}
+            {ready && <AvisoRelogioErrado />}
             {/* Por cima do navegador até terminar o fade de saída (ver BrandSplash). */}
             {splashNaTela && (
               <BrandSplash saindo={ready} aoDesenhar={marcarSplashDesenhada} aoSair={tirarSplash} />

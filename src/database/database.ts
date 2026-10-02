@@ -149,6 +149,32 @@ async function lerMapaParticoes(): Promise<MapaParticoes> {
 }
 
 /**
+ * Alguém já entrou numa conta NESTE aparelho? Responde pelo mapa de partições
+ * (cada login registra a sua). Três estados: `true`, `false` e `null` = não sei
+ * (o AsyncStorage falhou ou o mapa está ilegível). Usado pelo banner de migração
+ * da tela Entrar: ele só faz sentido num aparelho onde ninguém nunca entrou — o
+ * banco "legado" é adotado pelo primeiro login, e depois de "Sair" a partição de
+ * quem saiu continua aberta, o que fazia a tela pedir "criar conta" a quem só
+ * queria entrar de novo (rejeição da Play, 02/10/2026).
+ */
+export async function alguemJaEntrouNesteAparelho(): Promise<boolean | null> {
+  let cru: string | null;
+  try {
+    cru = await AsyncStorage.getItem(DB_PARTICOES_KEY);
+  } catch {
+    return null;
+  }
+  if (!cru) return false;
+  try {
+    const mapa = JSON.parse(cru);
+    if (!mapa || typeof mapa !== 'object') return null;
+    return Object.keys(mapa).length > 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Garante que o banco ABERTO é a partição de `userId` — troca de arquivo se for
  * preciso. Chame no login, ANTES de qualquer leitura/sync (ver `syncOnLogin`).
  *
