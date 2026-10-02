@@ -244,6 +244,11 @@ export const CELEBRACOES_KEY = 'olli.orcamento.celebracoes';
  */
 export const VESPERA_NOTIF_KEY = 'olli.vespera.notif';
 export const VESPERA_ENVIADOS_KEY = 'olli.vespera.enviados';
+/**
+ * Último aviso das 18h agendado (`{ dia: 'YYYY-MM-DD' local, em: ms }`): um aviso
+ * por dia — voltar ao app entre 18h e 20h depois que ele saiu não dispara outro.
+ */
+export const VESPERA_AVISO_DIA_KEY = 'olli.vespera.avisoDia';
 
 /**
  * Garantia que se cuida sozinha (Onda I3): ids das notificações "a garantia vence
@@ -288,6 +293,7 @@ export const APP_DATA_STORAGE_KEYS = [
   CELEBRACOES_KEY,
   VESPERA_NOTIF_KEY,
   VESPERA_ENVIADOS_KEY,
+  VESPERA_AVISO_DIA_KEY,
   GARANTIA_NOTIF_KEY,
   GARANTIA_FEITOS_KEY,
   CAPTURA_OS_KEY,

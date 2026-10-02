@@ -49,7 +49,7 @@ export function CartaoGarantias({ indice, visivel = true }: { indice: number; vi
         ) : (
           <>
             <Text style={styles.sub}>
-              {n === 1 ? '1 cliente para chamar' : `${n} clientes para chamar`}
+              {n === 1 ? '1 garantia para cuidar' : `${n} garantias para cuidar`}
               {primeiro ? ` · ${primeiro.garantia.clienteNome || 'Cliente'}: ${rotuloItemGarantia(primeiro).toLowerCase()}` : ''}
             </Text>
             <DicaContextual

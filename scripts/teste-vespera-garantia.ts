@@ -28,11 +28,13 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
+  avisoVesperaJaSaiu,
   candidatosParaVaga,
   chaveConfirmacao,
   confirmacaoDaVisita,
   conteudoAvisoVespera,
   diaDaVisita,
+  diaLocalDoAparelho,
   fraseResumoFila,
   horarioAvisoVespera,
   idBaseDaVisita,
@@ -184,6 +186,22 @@ ok('18h de hoje; entre 18h e 20h em instantes; depois, silêncio', () => {
   assert.ok((horarioAvisoVespera(as19)?.getTime() ?? 0) - as19.getTime() <= 10_000);
   assert.equal(horarioAvisoVespera(new Date(2026, 9, 1, 21, 0)), null);
 });
+ok('um aviso por dia: voltar ao app entre 18h e 20h não repete o aviso', () => {
+  const as18 = new Date(2026, 9, 1, 18, 0);
+  const as1830 = new Date(2026, 9, 1, 18, 30);
+  const registro = { dia: diaLocalDoAparelho(as18), em: as18.getTime() };
+  assert.equal(avisoVesperaJaSaiu(registro, as1830), true);
+  // ainda pendente (agendado de manhã para as 18h): reagenda normalmente
+  assert.equal(avisoVesperaJaSaiu(registro, new Date(2026, 9, 1, 17, 0)), false);
+  // registro de ontem não segura o aviso de hoje
+  assert.equal(avisoVesperaJaSaiu(registro, new Date(2026, 9, 2, 18, 30)), false);
+  // registro torto = "não saiu"
+  assert.equal(avisoVesperaJaSaiu(null, as1830), false);
+  assert.equal(avisoVesperaJaSaiu({ dia: 1, em: 'x' }, as1830), false);
+  const svc = readFileSync('src/services/confirmacaoVisita.ts', 'utf8');
+  assert.match(svc, /avisoVesperaJaSaiu\(ultimo, agora\)/);
+  assert.match(svc, /VESPERA_AVISO_DIA_KEY, JSON\.stringify/);
+});
 ok('conteúdo só com algo a pedir (sinal real ou silêncio)', () => {
   assert.equal(conteudoAvisoVespera(resumoFila([])), null);
   assert.equal(conteudoAvisoVespera({ total: 2, confirmadas: 2, remarcar: 0, aguardando: 0, aPedir: 0, semTelefone: 0 }), null);
@@ -306,6 +324,8 @@ ok('worker: /v/ antes do gate da IA, com o teto por IP do link', () => {
   const v = idx.indexOf("url.pathname.startsWith('/v/')");
   assert.ok(v > 0 && v < idx.indexOf('IA_ROUTES.has(url.pathname)'));
   assert.match(idx.slice(v, v + 1200), /env\.LINK_RL\.limit/);
+  // "%E0" solto no caminho não pode virar URIError (500 + Sentry por requisição).
+  assert.match(idx.slice(v, v + 1600), /const tokenV = url\.pathname\.slice\(3\);/);
 });
 ok('migrations da frente com timestamp único 2026100310xxxx e sem dado semeado', () => {
   for (const nome of ['20261003103000_agendamentos_confirmacao.sql', '20261003103100_garantia_os_qr.sql']) {

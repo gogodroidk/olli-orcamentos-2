@@ -260,7 +260,7 @@ function ConfirmarVisitasConteudo() {
               </Aparecer>
             ))}
             <Text style={styles.rodape}>
-              O link mostra só o dia, a hora e o serviço, com a sua marca, e expira 2 horas depois do horário da visita.
+              O link mostra só o dia, a hora e o título da visita, com a sua marca, e expira 2 horas depois do horário da visita. Evite pôr endereço ou telefone no título.
             </Text>
           </>
         )}

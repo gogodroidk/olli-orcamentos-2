@@ -1144,7 +1144,9 @@ const handler = {
           // binding ausente: não bloqueia
         }
       }
-      const tokenV = decodeURIComponent(url.pathname.slice(3));
+      // Sem decodeURIComponent: o token válido é só hex (nada a decodificar), e um
+      // "%E0" solto lançava URIError → 500 + evento no Sentry por requisição.
+      const tokenV = url.pathname.slice(3);
       if (request.method === 'POST') return responderConfirmacao(tokenV, env, request);
       return renderConfirmacao(tokenV, env);
     }

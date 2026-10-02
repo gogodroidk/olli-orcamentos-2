@@ -179,7 +179,10 @@ await caso('confirmo grava confirmada com filtro de expiração no PATCH', async
   reset();
   const r = await responderConfirmacao(TOKEN, ENV, reqPost({ resposta: 'confirmo' }));
   assert.equal(r.status, 200);
-  assert.match(await r.text(), /Visita confirmada/);
+  const htmlOk = await r.text();
+  assert.match(htmlOk, /Visita confirmada/);
+  assert.match(htmlOk, /foi registrada/);
+  assert.ok(!/já sabe/.test(htmlOk));
   assert.equal(patches().length, 1);
   assert.match(patches()[0].url, /expira_em=gt\./);
   assert.match(patches()[0].url, /revogado_em=is\.null/);
@@ -192,7 +195,9 @@ await caso('remarcar grava remarcar e oferece combinar pelo WhatsApp oficial', a
   reset();
   const html = await (await responderConfirmacao(TOKEN, ENV, reqPost({ resposta: 'remarcar' }))).text();
   assert.equal(JSON.parse(patches()[0].body).status, 'remarcar');
-  assert.match(html, /remarcação enviado/);
+  assert.match(html, /remarcação registrado/);
+  // Ninguém é "avisado" na hora: a resposta aparece no app do prestador no sync.
+  assert.ok(!/foi avisado|já sabe/.test(html));
   assert.match(html, /wa\.me\/5511987654321/);
 });
 await caso('resposta inválida: 400, nada gravado', async () => {

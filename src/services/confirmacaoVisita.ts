@@ -21,13 +21,15 @@ import * as Notifications from 'expo-notifications';
 import { supabase, getCurrentUser } from './supabase';
 import { LINK_BASE_URL } from '../config';
 import { acessoRecursoAgora } from './planos';
-import { VESPERA_ENVIADOS_KEY, VESPERA_NOTIF_KEY } from './storageKeys';
+import { VESPERA_AVISO_DIA_KEY, VESPERA_ENVIADOS_KEY, VESPERA_NOTIF_KEY } from './storageKeys';
 import { diaNoBrasil, hojeNoBrasil, somarDias } from '../utils/contratoRecorrente';
 import { limitesDoDiaLocal } from '../utils/agendaDia';
 import {
   chaveConfirmacao,
+  avisoVesperaJaSaiu,
   conteudoAvisoVespera,
   diaDaVisita,
+  diaLocalDoAparelho,
   horarioAvisoVespera,
   idBaseDaVisita,
   linhaParaConfirmacao,
@@ -266,6 +268,16 @@ export async function reagendarAvisoVespera(agora: Date = new Date()): Promise<v
     if (!(await temPermissaoNotificacao())) return;
     const quando = horarioAvisoVespera(agora);
     if (!quando) return;
+    // Um aviso por dia: o das 18h já saiu (ou o "em instantes" de uma volta
+    // anterior ao app) → não repete a cada volta ao primeiro plano.
+    let ultimo: unknown = null;
+    try {
+      const raw = await AsyncStorage.getItem(VESPERA_AVISO_DIA_KEY);
+      ultimo = raw ? JSON.parse(raw) : null;
+    } catch {
+      ultimo = null;
+    }
+    if (avisoVesperaJaSaiu(ultimo, agora)) return;
 
     const amanhaLocal = new Date(agora.getTime() + 86_400_000);
     const { inicio, fim } = limitesDoDiaLocal(amanhaLocal);
@@ -305,6 +317,7 @@ export async function reagendarAvisoVespera(agora: Date = new Date()): Promise<v
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: quando, channelId: CANAL_ANDROID },
     });
     await AsyncStorage.setItem(VESPERA_NOTIF_KEY, id);
+    await AsyncStorage.setItem(VESPERA_AVISO_DIA_KEY, JSON.stringify({ dia: diaLocalDoAparelho(quando), em: quando.getTime() }));
   } catch {
     // best-effort: lembrete nunca trava o sync
   }

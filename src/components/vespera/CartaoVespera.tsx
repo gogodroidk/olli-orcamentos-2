@@ -15,6 +15,9 @@ import { diaNoBrasil, type OcorrenciaAgendamento } from '../../utils/contratoRec
 import { fraseResumoFila, montarFilaVespera, resumoFila } from '../../utils/confirmacaoVisita';
 import type { Cliente } from '../../types';
 
+/** A partir de que hora (do aparelho) o retrato de amanhã entra no Hoje. */
+const HORA_CARTAO_VESPERA = 14;
+
 /**
  * "CONFIRMAR VISITAS DE AMANHÃ" no Hoje (Onda I3, jogada 5) — o nó da linha do
  * tempo que o aviso das 18h abre. Mostra o retrato de amanhã (confirmadas,
@@ -43,9 +46,14 @@ export function CartaoVespera({ escopo, clientes, indice }: { escopo: EscopoAgen
 
   if (escopo.status !== 'equipe' && escopo.status !== 'propria') return null;
   if (visitas === 'carregando') return null;
+  // Tela limpa para quem está na rua: de manhã o Hoje é das visitas de HOJE. O
+  // retrato de amanhã aparece a partir das 14h (o aviso é às 18h) — antes disso,
+  // só se alguém já pediu para remarcar (aí é ação de verdade).
+  const daTarde = new Date().getHours() >= HORA_CARTAO_VESPERA;
 
   let corpo: React.ReactNode;
   if (visitas === 'erro') {
+    if (!daTarde) return null;
     corpo = <Text style={styles.sub}>Não consegui ler a agenda de amanhã agora. Puxe a tela para tentar de novo.</Text>;
   } else {
     const fila = montarFilaVespera({
@@ -56,6 +64,7 @@ export function CartaoVespera({ escopo, clientes, indice }: { escopo: EscopoAgen
     });
     if (fila.length === 0) return null;
     const r = resumoFila(fila);
+    if (!daTarde && r.remarcar === 0) return null;
     const pendentes = r.aPedir + r.semTelefone;
     corpo = (
       <>

@@ -297,6 +297,23 @@ export function horarioAvisoVespera(agora: Date): Date | null {
   return null;
 }
 
+/** 'YYYY-MM-DD' no relógio do aparelho (o mesmo do horário do aviso). */
+export function diaLocalDoAparelho(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * O aviso de HOJE já saiu? Um aviso por dia: o sync roda a cada volta do app ao
+ * primeiro plano, e sem esta trava cada volta entre 18h e 20h disparava outro
+ * "Confirmar visitas de amanhã" 5 s depois. Registro torto = "não saiu" (agenda).
+ */
+export function avisoVesperaJaSaiu(ultimo: unknown, agora: Date): boolean {
+  if (!ultimo || typeof ultimo !== 'object') return false;
+  const { dia, em } = ultimo as { dia?: unknown; em?: unknown };
+  if (typeof dia !== 'string' || typeof em !== 'number' || !Number.isFinite(em)) return false;
+  return dia === diaLocalDoAparelho(agora) && em <= agora.getTime();
+}
+
 /** Conteúdo do aviso. null = nada a pedir (sinal real ou silêncio). */
 export function conteudoAvisoVespera(r: ResumoFila): { titulo: string; corpo: string } | null {
   const aPedir = r.aPedir + r.semTelefone;

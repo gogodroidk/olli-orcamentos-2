@@ -334,7 +334,7 @@ function pageConfirmacao(linha, prestador, token, erro) {
         <form method="post" action="${acao}"><input type="hidden" name="resposta" value="confirmo"/><button class="btn btn-ok" type="submit">✓ Confirmo</button></form>
         <form method="post" action="${acao}"><input type="hidden" name="resposta" value="remarcar"/><button class="btn btn-rem" type="submit">Preciso remarcar</button></form>
       </div>
-      <div class="nota">Sua resposta vai só para ${esc(nomeDoPrestador(prestador))}. Esta página mostra apenas o dia e o horário da visita, sem nenhum dado pessoal.</div>
+      <div class="nota">Sua resposta vai só para ${esc(nomeDoPrestador(prestador))}. Esta página mostra apenas o dia, o horário e o serviço da visita: nada de endereço, telefone ou valores.</div>
     </div>
   </div>`;
   return shell(inner, prestador && prestador.corMarca);
@@ -347,14 +347,14 @@ function pageRespondida(linha, prestador) {
     return shell(`<div class="msg">
       <div class="msg-ic">✅</div>
       <div class="msg-t">Visita confirmada</div>
-      <div class="msg-s"><strong>${esc(nome)}</strong> já sabe que você confirmou${quando ? ` para ${esc(quando)}` : ''}. Até lá!</div>
+      <div class="msg-s">Sua confirmação${quando ? ` para ${esc(quando)}` : ''} foi registrada e aparece para <strong>${esc(nome)}</strong> na agenda. Até lá!</div>
     </div>`, prestador && prestador.corMarca);
   }
   const zap = botaoZap(prestador, `Combinar novo horário com ${nome}`, 'Olá! Pedi para remarcar a visita pelo link. Qual outro horário fica bom?');
   return shell(`<div class="msg">
     <div class="msg-ic">📅</div>
-    <div class="msg-t">Pedido de remarcação enviado</div>
-    <div class="msg-s"><strong>${esc(nome)}</strong> foi avisado e vai combinar um novo horário com você.</div>
+    <div class="msg-t">Pedido de remarcação registrado</div>
+    <div class="msg-s">Seu pedido aparece para <strong>${esc(nome)}</strong> na agenda.${zap ? ' Para combinar o novo horário mais rápido, chame no WhatsApp.' : ''}</div>
     ${zap ? `<div class="acoes">${zap}</div>` : ''}
   </div>`, prestador && prestador.corMarca);
 }
