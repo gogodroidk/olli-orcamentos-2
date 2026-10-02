@@ -27,6 +27,14 @@ export type LeituraPedidosQr =
   | { estado: 'erro' };
 
 const COLUNAS = 'id,asset_id,nome,telefone,mensagem,criado_em,atendido_em';
+/** Com o motivo (chamado de garantia, migration 20261003103100). */
+const COLUNAS_COM_MOTIVO = `${COLUNAS},motivo`;
+/** Servidor sem a coluna `motivo`: lê sem ela (o pedido vira "orçamento"). */
+let semColunaMotivo = false;
+
+function colunaDesconhecida(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '42703' || error?.code === 'PGRST204';
+}
 
 /** Tabela/coluna inexistente no servidor = migration ainda não aplicada. */
 function semMigration(error: { code?: string } | null | undefined): boolean {
@@ -41,18 +49,27 @@ export async function listarPedidosQr(
   opcoes: { equipamentoId?: string; soNovos?: boolean; limite?: number } = {},
 ): Promise<LeituraPedidosQr> {
   if (!supabase) return { estado: 'indisponivel' };
-  try {
-    let q = supabase
+  const cliente = supabase;
+  const consultar = (colunas: string) => {
+    let q = cliente
       .from('pedidos_orcamento_qr')
-      .select(COLUNAS)
+      .select(colunas)
       .order('criado_em', { ascending: false })
       .limit(Math.max(1, Math.min(100, opcoes.limite ?? 30)));
     if (opcoes.equipamentoId) q = q.eq('asset_id', opcoes.equipamentoId);
     if (opcoes.soNovos) q = q.is('atendido_em', null);
-    const { data, error } = await q;
+    return q;
+  };
+  try {
+    let { data, error } = await consultar(semColunaMotivo ? COLUNAS : COLUNAS_COM_MOTIVO);
+    if (error && !semColunaMotivo && colunaDesconhecida(error)) {
+      // A tabela existe, só falta a coluna da garantia: lê sem ela.
+      semColunaMotivo = true;
+      ({ data, error } = await consultar(COLUNAS));
+    }
     if (error) return semMigration(error) ? { estado: 'indisponivel' } : { estado: 'erro' };
     if (!Array.isArray(data)) return { estado: 'erro' };
-    const pedidos = (data as Record<string, unknown>[])
+    const pedidos = (data as unknown as Record<string, unknown>[])
       .map(rowParaPedido)
       .filter((p): p is PedidoOrcamentoQr => p !== null);
     return { estado: 'ok', pedidos };

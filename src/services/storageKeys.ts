@@ -241,6 +241,27 @@ export const FILA_FOTOS_PREFIX = 'olli.sync.fotos.v1.';
 export const CELEBRACOES_KEY = 'olli.orcamento.celebracoes';
 
 /**
+ * Confirmação de véspera (Onda I3): id da notificação das 18h ("Confirmar visitas
+ * de amanhã") e o registro local de "mandei o pedido" por visita
+ * (`chave da visita → ISO do envio`), para a fila mostrar "enviado" mesmo antes
+ * de o status voltar da nuvem.
+ */
+export const VESPERA_NOTIF_KEY = 'olli.vespera.notif';
+export const VESPERA_ENVIADOS_KEY = 'olli.vespera.enviados';
+/**
+ * Último aviso das 18h agendado (`{ dia: 'YYYY-MM-DD' local, em: ms }`): um aviso
+ * por dia — voltar ao app entre 18h e 20h depois que ele saiu não dispara outro.
+ */
+export const VESPERA_AVISO_DIA_KEY = 'olli.vespera.avisoDia';
+
+/**
+ * Garantia que se cuida sozinha (Onda I3): ids das notificações "a garantia vence
+ * em 7 dias" e os itens marcados "Feito" (`<osId>:<motivo>` → ISO).
+ */
+export const GARANTIA_NOTIF_KEY = 'olli.garantia.notif';
+export const GARANTIA_FEITOS_KEY = 'olli.garantia.feitos';
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -275,6 +296,11 @@ export const APP_DATA_STORAGE_KEYS = [
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
   CELEBRACOES_KEY,
+  VESPERA_NOTIF_KEY,
+  VESPERA_ENVIADOS_KEY,
+  VESPERA_AVISO_DIA_KEY,
+  GARANTIA_NOTIF_KEY,
+  GARANTIA_FEITOS_KEY,
   CAPTURA_OS_KEY,
   CLIMA_COORD_CIDADE_KEY,
   ULTIMO_PULL_KEY,

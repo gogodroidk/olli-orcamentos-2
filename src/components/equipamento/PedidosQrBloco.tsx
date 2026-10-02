@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, type StyleProp, type ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../../theme';
 import { vibrar } from '../../utils/haptico';
 import { abrirWhatsApp } from '../../utils/exportarDocumento';
@@ -12,6 +13,7 @@ import {
   mensagemRespostaPedidoQr,
   type LeituraPedidosQr,
 } from '../../services/pedidosQr';
+import { abrirOSDeGarantia } from '../../services/garantias';
 import type { PedidoOrcamentoQr } from '../../types';
 
 /**
@@ -51,6 +53,8 @@ export function PedidosQrBloco({
   const styles = useEstilos(criarEstilos);
   const [leitura, setLeitura] = useState<LeituraPedidosQr | null>(null);
   const [marcando, setMarcando] = useState<string | null>(null);
+  const [abrindoOS, setAbrindoOS] = useState<string | null>(null);
+  const nav = useNavigation<any>();
 
   const carregar = useCallback(async () => {
     setLeitura(await listarPedidosQr(
@@ -90,6 +94,38 @@ export function PedidosQrBloco({
     }
   }
 
+  /**
+   * Chamado de garantia → OS de RETORNO DE GARANTIA ligada ao equipamento e à OS
+   * original (Onda I3). O pedido sai da fila de novos; a OS abre na hora.
+   */
+  async function abrirOS(p: PedidoOrcamentoQr) {
+    if (abrindoOS) return;
+    setAbrindoOS(p.id);
+    try {
+      const r = await abrirOSDeGarantia(p);
+      vibrar('sucesso');
+      setLeitura((l) => {
+        if (!l || l.estado !== 'ok' || !r.pedidoMarcado) return l;
+        const quando = new Date().toISOString();
+        const pedidos = modo === 'aviso'
+          ? l.pedidos.filter((x) => x.id !== p.id)
+          : l.pedidos.map((x) => (x.id === p.id ? { ...x, atendidoEm: quando } : x));
+        return { estado: 'ok', pedidos };
+      });
+      if (!r.vinculada) {
+        Alert.alert('OS criada', 'Não achei uma garantia vigente deste equipamento neste aparelho, então a OS não ficou ligada a uma OS anterior. Confira o histórico.');
+      } else if (!r.pedidoMarcado) {
+        Alert.alert('OS criada', 'Não consegui marcar o chamado como atendido agora; ele segue como novo.');
+      }
+      nav.navigate('OrdemServico', { ordemId: r.os.id });
+    } catch (e: any) {
+      vibrar('erro');
+      Alert.alert('Não deu', e?.message ?? 'Não consegui abrir a OS de garantia. Tente de novo.');
+    } finally {
+      setAbrindoOS(null);
+    }
+  }
+
   // ── modo AVISO: some quando não há o que avisar ─────────────────────────
   if (modo === 'aviso') {
     if (!leitura || leitura.estado !== 'ok' || leitura.pedidos.length === 0) return null;
@@ -99,7 +135,12 @@ export function PedidosQrBloco({
         <View style={styles.topo}>
           <MaterialCommunityIcons name="qrcode-scan" size={18} color={cores.accentLight} />
           <Text style={styles.titulo}>
-            {n} pedido{n === 1 ? '' : 's'} de orçamento pela etiqueta QR
+            {(() => {
+              const g = leitura.pedidos.filter((x) => x.motivo === 'garantia').length;
+              if (g === n) return `${n} chamado${n === 1 ? '' : 's'} de garantia pela etiqueta QR`;
+              if (g > 0) return `${n} pedido${n === 1 ? '' : 's'} pela etiqueta QR · ${g} de garantia`;
+              return `${n} pedido${n === 1 ? '' : 's'} de orçamento pela etiqueta QR`;
+            })()}
           </Text>
         </View>
         {leitura.pedidos.slice(0, 3).map((p) => (
@@ -111,6 +152,8 @@ export function PedidosQrBloco({
             onResponder={() => responder(p)}
             onAtendido={() => atendido(p)}
             onAbrir={onAbrirEquipamento ? () => onAbrirEquipamento(p.equipamentoId) : undefined}
+            abrindoOS={abrindoOS === p.id}
+            onAbrirOS={p.motivo === 'garantia' ? () => void abrirOS(p) : undefined}
           />
         ))}
         {n > 3 ? <Text style={styles.mais}>+ {n - 3} na ficha de cada equipamento</Text> : null}
@@ -145,6 +188,8 @@ export function PedidosQrBloco({
             marcando={marcando === p.id}
             onResponder={() => responder(p)}
             onAtendido={p.atendidoEm ? undefined : () => atendido(p)}
+            abrindoOS={abrindoOS === p.id}
+            onAbrirOS={p.motivo === 'garantia' && !p.atendidoEm ? () => void abrirOS(p) : undefined}
           />
         ))
       )}
@@ -153,7 +198,7 @@ export function PedidosQrBloco({
 }
 
 function LinhaPedido({
-  pedido, equipamento, marcando, onResponder, onAtendido, onAbrir,
+  pedido, equipamento, marcando, onResponder, onAtendido, onAbrir, abrindoOS, onAbrirOS,
 }: {
   pedido: PedidoOrcamentoQr;
   equipamento?: string;
@@ -161,12 +206,21 @@ function LinhaPedido({
   onResponder: () => void;
   onAtendido?: () => void;
   onAbrir?: () => void;
+  abrindoOS?: boolean;
+  /** Só no chamado de garantia: vira OS de retorno de garantia ligada. */
+  onAbrirOS?: () => void;
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   return (
     <View style={styles.pedido}>
       <TouchableOpacity disabled={!onAbrir} onPress={onAbrir} activeOpacity={0.85}>
+        {pedido.motivo === 'garantia' ? (
+          <View style={styles.seloGarantia}>
+            <MaterialCommunityIcons name="shield-alert-outline" size={13} color={cores.warning} />
+            <Text style={[styles.seloGarantiaTxt, { color: cores.warning }]}>Chamado de garantia</Text>
+          </View>
+        ) : null}
         <Text style={styles.pedidoNome} numberOfLines={1}>
           {pedido.nome}{equipamento ? ` · ${equipamento}` : ''}
         </Text>
@@ -188,6 +242,12 @@ function LinhaPedido({
           </TouchableOpacity>
         ) : null}
       </View>
+      {onAbrirOS ? (
+        <TouchableOpacity style={styles.btnOS} onPress={onAbrirOS} disabled={abrindoOS} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Abrir OS de retorno de garantia">
+          <MaterialCommunityIcons name="clipboard-plus-outline" size={17} color={cores.accentLight} />
+          <Text style={styles.btnOkTxt}>{abrindoOS ? 'Abrindo…' : 'Abrir OS de garantia'}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -220,4 +280,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 10,
   },
   btnOkTxt: { color: c.accentLight, fontSize: 13.5, fontWeight: '800' },
+  btnOS: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 10,
+  },
+  seloGarantia: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  seloGarantiaTxt: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
 });

@@ -57,6 +57,7 @@ import { generateId } from '../utils/id';
 import { limparCapturaOS, marcarCapturaOS } from '../services/capturaFotoOSNativa';
 import { enviarFotosPendentes, garantirFotosNaFila, registrarFotoParaEnvio } from '../services/filaFotosNativa';
 import { SeloFoto, SeloSync, useEstadosFotos } from '../components/SeloSync';
+import { BlocoGarantiaOS } from '../components/garantia/BlocoGarantiaOS';
 import { useRascunhoCampo } from '../hooks/useRascunhoCampo';
 import { chaveRascunho } from '../services/rascunhoCampo';
 
@@ -872,6 +873,9 @@ function DetalheOS({
                 <Text style={styles.descricao}>{ordem.observacoes}</Text>
               </View>
             ) : null}
+
+            {/* Garantia da OS (Onda I3): prazo, até quando vale e retorno de garantia. */}
+            <BlocoGarantiaOS ordem={ordem} onAtualizada={(o) => { setOrdem(o); onMudou(); }} />
 
             {/* Concluir — grande, para o técnico fechar em 1 toque */}
             <OlliButton

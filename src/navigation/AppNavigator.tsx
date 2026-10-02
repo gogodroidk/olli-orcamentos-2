@@ -54,6 +54,8 @@ import VimDeOutroAppScreen from '../screens/VimDeOutroAppScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
+import ConfirmarVisitasScreen from '../screens/ConfirmarVisitasScreen';
+import GarantiasScreen from '../screens/GarantiasScreen';
 import EquipeScreen from '../screens/EquipeScreen';
 import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import MapaDiaScreen from '../screens/MapaDiaScreen';
@@ -175,6 +177,9 @@ export type RootStackParamList = {
   VimDeOutroApp: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
+  // Onda I3 — fila "Confirmar visitas de amanhã" (aviso das 18h) e garantias para cuidar.
+  ConfirmarVisitas: undefined;
+  Garantias: undefined;
   // Onda 2 — Equipe (empresa): gestão de membros/papéis/convites.
   Equipe: undefined;
   // Onda 2 — Equipe ao vivo: lista de técnicos + última localização + rota no mapa.
@@ -423,6 +428,8 @@ const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const VimDeOutroAppCentro = comCentroDesktop(VimDeOutroAppScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
+const ConfirmarVisitasCentro = comCentroDesktop(ConfirmarVisitasScreen);
+const GarantiasCentro = comCentroDesktop(GarantiasScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
 const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
@@ -801,6 +808,9 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
+      {/* Onda I3 — confirmação de véspera e garantia que se cuida sozinha. */}
+      <Stack.Screen name="ConfirmarVisitas" component={ConfirmarVisitasCentro} />
+      <Stack.Screen name="Garantias" component={GarantiasCentro} />
       {/* Onda 2 — Equipe (empresa) e aceite de convite (deep link). */}
       <Stack.Screen name="Equipe" component={EquipeCentro} />
       <Stack.Screen name="EquipeAoVivo" component={EquipeAoVivoCentro} />

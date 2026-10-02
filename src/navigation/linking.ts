@@ -90,6 +90,8 @@ export function criarLinkingConfig(
         Planos: 'planos',
         VimDeOutroApp: 'vim-de-outro-app',
         RelatorioDia: 'relatorio-do-dia',
+        ConfirmarVisitas: 'confirmar-visitas',
+        Garantias: 'garantias',
         CentralDocumentos: 'documentos',
         // Troque em 5 minutos (contatos, planilha e foto de orçamento antigo).
         Importar: 'importar',

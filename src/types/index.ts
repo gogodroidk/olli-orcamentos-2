@@ -878,6 +878,16 @@ export interface OrdemServico {
    * equipamento ligado (a verdade de toda OS anterior à migration 20261002153217).
    */
   equipamentoId?: string;
+  /**
+   * Prazo de garantia DESTA OS como o prestador escreveu ("90 dias", "6 meses").
+   * Nasce do orçamento de origem e é editável na OS. Ausente = a OS não declara
+   * garantia (o OLLI nunca inventa uma). O último dia é calculado na hora
+   * (`utils/garantiaServico.ts`) e vai para a nuvem em `garantia_ate`
+   * (migration 20261003103100).
+   */
+  garantia?: string;
+  /** Esta OS é RETORNO DE GARANTIA daquela (id da OS original). */
+  garantiaDeOsId?: string;
   criadoEm: string;
   atualizadoEm: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
@@ -900,6 +910,11 @@ export interface PedidoOrcamentoQr {
   criadoEm: string;
   /** ISO de quando o prestador marcou como atendido. Ausente = novo. */
   atendidoEm?: string;
+  /**
+   * 'garantia' = "Voltou o problema: chamar a garantia" (o worker só aceita com
+   * garantia vigente confirmada). Ausente/'orcamento' = pedido de orçamento.
+   */
+  motivo?: 'orcamento' | 'garantia';
 }
 
 export const STATUS_OS_LABELS: Record<StatusOS, string> = {
