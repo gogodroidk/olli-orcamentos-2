@@ -29,6 +29,15 @@ import type { PlanoId } from './entitlements';
  *    para todo envio do Grátis, sem teto.
  */
 export const TRIAL_PRO_DIAS = 14;
+/**
+ * Crédito de troca ("Vim de outro app"): quem já pagou outro app manda o
+ * comprovante e, depois da conferência MANUAL do admin, ganha o Pro por até este
+ * número de meses. Concessão de acesso, não venda. 1 crédito por conta.
+ * Paridade: migration 20261002153417_creditos_troca.sql e worker/src/creditoTroca.js.
+ */
+export const CREDITO_TROCA_MESES_MAX = 3;
+/** Pedidos no total por conta (recusado por print ilegível pode reenviar). */
+export const CREDITO_TROCA_PEDIDOS_MAX = 3;
 
 export type CanalEnvioOrcamento = 'pdf' | 'link' | 'whatsapp';
 export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';

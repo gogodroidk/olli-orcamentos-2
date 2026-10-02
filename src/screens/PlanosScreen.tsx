@@ -37,6 +37,7 @@ import {
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
+import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
 import {
   ESTADO_PLAY_BILLING,
@@ -700,6 +701,10 @@ export default function PlanosScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* Crédito de troca ("Vim de outro app"): concessão conferida à mão, não venda —
+            aparece igual em todas as plataformas. Pagante só vê se já tiver pedido. */}
+        <CreditoTrocaAtalho ocultarSemPedido={ehPagante} />
 
         {ehPagante ? (
           /* PAGANTE — sem propaganda: card discreto que leva à AssinaturaScreen. */

@@ -49,6 +49,7 @@ import CertificadoCaixaDaguaScreen from '../screens/CertificadoCaixaDaguaScreen'
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
 import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
+import VimDeOutroAppScreen from '../screens/VimDeOutroAppScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
@@ -166,6 +167,8 @@ export type RootStackParamList = {
     recurso: Recurso;
     plano: 'pro' | 'empresa';
   } | undefined;
+  // Crédito de troca ("Vim de outro app"): pedido com comprovante, conferido à mão.
+  VimDeOutroApp: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
   // Onda 2 — Equipe (empresa): gestão de membros/papéis/convites.
@@ -411,6 +414,7 @@ const CertificadoCaixaDaguaCentro = comCentroDesktop(CertificadoCaixaDaguaScreen
 const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
 const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
+const VimDeOutroAppCentro = comCentroDesktop(VimDeOutroAppScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
 const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
@@ -786,6 +790,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />
       <Stack.Screen name="Creditos" component={CreditosCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />
+      <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
       {/* Onda 2 — Equipe (empresa) e aceite de convite (deep link). */}

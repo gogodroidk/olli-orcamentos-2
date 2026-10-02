@@ -88,6 +88,7 @@ export function criarLinkingConfig(
         OlliVoz: 'olli-voz',
         OlliChat: 'olli-chat',
         Planos: 'planos',
+        VimDeOutroApp: 'vim-de-outro-app',
         RelatorioDia: 'relatorio-do-dia',
         CentralDocumentos: 'documentos',
         // Onda 2 — Equipe (empresa) + aceite de convite por deep link.
