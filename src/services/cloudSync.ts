@@ -61,6 +61,7 @@ import { dataBrParaIsoSeguro } from '../utils/date';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisual';
 import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCliente';
+import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from './verticais';
 import {
   erroEhColisaoNumero,
@@ -313,6 +314,12 @@ let agendaSemColunaExterna = false;
  * migration existir) e o pull PRESERVA o vínculo local em vez de apagá-lo.
  */
 let osSemColunaAsset = false;
+/**
+ * Nuvem ainda sem `ordens_servico.materiais` (migration 20261003104000, baixa leve
+ * de material da Onda I4): o push some com a coluna e o pull preserva a baixa
+ * local. Mesmo padrão de `osSemColunaAsset`.
+ */
+let osSemColunaMateriais = false;
 
 function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): boolean {
   return error?.code === '42703' || error?.code === 'PGRST204';
@@ -382,6 +389,8 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
     // Equipamento atendido (ver osSemColunaAsset): some do payload se a nuvem
     // ainda não tem a coluna.
     ...(osSemColunaAsset ? {} : { asset_id: o.equipamentoId ?? null }),
+    // Baixa de material (Onda I4): null = não informado; [] = "não usei material".
+    ...(osSemColunaMateriais ? {} : { materiais: Array.isArray(o.materiais) ? o.materiais : null }),
   };
 }
 
@@ -623,6 +632,7 @@ function rowToOrdemServico(row: any): OrdemServico {
   // Linha da NUVEM vinda de `select('*')` sem a coluna = servidor ainda sem a
   // migration 20261002153217 (a linha LOCAL do SQLite sempre tem `asset_id`).
   if (row && typeof row === 'object' && 'cliente_nome' in row && !('asset_id' in row)) osSemColunaAsset = true;
+  if (row && typeof row === 'object' && 'cliente_nome' in row && !('materiais' in row)) osSemColunaMateriais = true;
   return {
     id: row.id,
     numero: row.numero ?? '',
@@ -641,6 +651,7 @@ function rowToOrdemServico(row: any): OrdemServico {
     observacoes: row.observacoes ?? undefined,
     valor: row.valor ?? undefined,
     equipamentoId: row.asset_id ?? undefined,
+    materiais: lerMateriais(row.materiais),
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
     // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
@@ -1100,6 +1111,12 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       delete (row as Record<string, unknown>).asset_id;
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
     }
+    if (error && table === 'ordens_servico' && !osSemColunaMateriais && erroDeColunaDesconhecida(error)) {
+      // Servidor sem a migration da baixa de material: reenvia sem `materiais`.
+      osSemColunaMateriais = true;
+      delete (row as Record<string, unknown>).materiais;
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
     if (error && table === 'agendamentos' && !agendaSemColunasEquipe && erroDeColunaDesconhecida(error)) {
       // Servidor ainda sem a migration da agenda por técnico: reenvia sem as colunas
       // novas e segue assim até o próximo boot (ver COLUNAS_AGENDA_EQUIPE).
@@ -1548,12 +1565,14 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   // Anti-perda: se a OS local for mais nova, preserva a edição local (o técnico
   // pode ter tocado status/checklist/fotos offline entre o pull e a escrita).
   let assetLocal: string | null = null;
+  let materiaisLocal: string | null = null;
   try {
-    const loc = await db.getFirstAsync<{ atualizado_em: string; asset_id: string | null }>(
-      'SELECT atualizado_em, asset_id FROM ordens_servico WHERE id = ?', [o.id],
+    const loc = await db.getFirstAsync<{ atualizado_em: string; asset_id: string | null; materiais: string | null }>(
+      'SELECT atualizado_em, asset_id, materiais FROM ordens_servico WHERE id = ?', [o.id],
     );
     if (loc?.atualizado_em && tsMaisNovo(loc.atualizado_em, o.atualizadoEm)) return;
     assetLocal = loc?.asset_id ?? null;
+    materiaisLocal = loc?.materiais ?? null;
   } catch {
     // sem linha local / erro de leitura → segue e grava (piso seguro)
   }
@@ -1563,18 +1582,22 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   // atualizado_em — sem isto o pull seguinte zerava o vínculo para sempre). Não
   // existe fluxo de "desligar" a OS do equipamento: o vínculo só nasce no check-in.
   const assetId = o.equipamentoId ?? assetLocal;
+  // Baixa de material: mesma regra — nuvem VAZIA (sem a coluna, ou OS enviada antes
+  // dela) nunca apaga a baixa local. Não existe "desinformar" material na tela
+  // (o técnico só troca a lista ou marca "não usei material", que é `[]`).
+  const materiais = materiaisParaTexto(o.materiais) ?? materiaisLocal;
   // checklist/fotos como TEXT JSON (mesmo schema local de database.ts).
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em, asset_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id, materiais)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [o.id, o.numero, o.orcamentoId ?? null, o.clienteId ?? null, o.clienteNome,
      o.titulo, o.descricao ?? null, o.status, o.concluidoEm ?? null, o.tecnicoId ?? null, o.tecnicoNome ?? null,
      o.dataAgendada ?? null, JSON.stringify(o.checklist ?? []), JSON.stringify(o.fotos ?? []),
-     o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null, assetId],
+     o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null, assetId, materiais],
   );
 }
 

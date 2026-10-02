@@ -25,7 +25,8 @@ import { verticaisEfetivos } from './verticalSegmento';
 import { generateId } from '../utils/id';
 import { concluidoEmDaTransicao } from '../utils/ordemServicoStatus';
 import { montarOSDoOrcamento, proximoNumeroOSDasFontes } from '../utils/ordemServicoDoOrcamento';
-import type { OrdemServico, StatusOS, ItemChecklist } from '../types';
+import type { OrdemServico, StatusOS, ItemChecklist, MaterialUsado } from '../types';
+import { lerMateriais } from '../utils/materiaisOS';
 
 /** Todas as OS visíveis (o SELECT local já reflete o tenant/org via sync). */
 export async function getOrdens(): Promise<OrdemServico[]> {
@@ -236,6 +237,15 @@ export async function atribuirTecnico(id: string, tecnicoId: string, tecnicoNome
 /** Substitui o checklist inteiro da OS (o app envia a lista completa já mutada). */
 export async function atualizarChecklist(id: string, checklist: ItemChecklist[]): Promise<void> {
   await patchOrdem(id, { checklist: Array.isArray(checklist) ? checklist : [] });
+}
+
+/**
+ * Baixa leve de material (Onda I4): grava a lista do que SAIU nesta OS. `[]` é
+ * "não usei material" (afirmação), diferente de nunca ter informado. Itens sem
+ * nome/quantidade são descartados pela mesma regra do banco (`lerMateriais`).
+ */
+export async function atualizarMateriaisOS(id: string, materiais: MaterialUsado[]): Promise<OrdemServico> {
+  return patchOrdem(id, { materiais: lerMateriais(Array.isArray(materiais) ? materiais : []) ?? [] });
 }
 
 /** Anexa uma foto (uri) à OS, preservando as existentes e sem duplicar. */

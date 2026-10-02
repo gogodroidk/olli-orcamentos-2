@@ -19,6 +19,7 @@ import { OlliMascot } from '../components/OlliMascot';
 import { Aparecer, Skeleton } from '../components/motion';
 import { AcaoNo, NoLinhaDoTempo } from '../components/hoje/LinhaDoTempo';
 import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
+import { MalaVesperaCard } from '../components/hoje/MalaVesperaCard';
 import { toast } from '../components/feedback';
 import { getAgendamentosDoDia, getVisitasSemBaixa, mudarStatusVisitaDoDia } from '../services/agenda';
 import { getCliente, getClientes, getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
@@ -1047,6 +1048,22 @@ export default function HojeScreen() {
             </NoLinhaDoTempo>
           </Aparecer>
         ))}
+
+        {/* MALA DA VÉSPERA (Onda I4) — a partir das 19h, o que levar amanhã. */}
+        <MalaVesperaCard
+          agora={agora}
+          escopo={escopo}
+          envolver={(conteudo) => (
+            <Aparecer indice={ordem}>
+              <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'bag-personal-outline' }}>
+                <View style={styles.noTituloRow}>
+                  <Text style={styles.noTitulo}>Mala de amanhã</Text>
+                </View>
+                {conteudo}
+              </NoLinhaDoTempo>
+            </Aparecer>
+          )}
+        />
 
         {/* 3. CHECKLIST DO DIA */}
         <Aparecer indice={ordem++}>

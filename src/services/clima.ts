@@ -41,7 +41,7 @@ import {
   type FalhaClima,
 } from './climaTexto';
 
-export type { DadosClima, EstadoClima, FalhaClima, HoraChuva, MotivoFalhaClima } from './climaTexto';
+export type { DadosClima, DiaClima, EstadoClima, FalhaClima, HoraChuva, MotivoFalhaClima } from './climaTexto';
 export {
   textoClima,
   atribuicaoClima,

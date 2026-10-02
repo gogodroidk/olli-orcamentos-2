@@ -14,6 +14,8 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getEmpresa, saveEmpresa, getDepoimentos, saveDepoimento, deleteDepoimento } from '../database/database';
+import { CustosVisitaCard } from '../components/dinheiro/CustosVisitaCard';
+import { QuantoSobrouCard } from '../components/dinheiro/QuantoSobrouCard';
 import { consultarCnpj } from '../services/cnpj';
 import { deduzirVerticais, ferramentasSugeridas, verticalPorId } from '../services/verticais';
 import { SEGMENTO_PARA_VERTICAL, VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
@@ -702,6 +704,17 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             containerStyle={{ marginBottom: 0 }}
           />
         </View>
+
+        {/* QUANTO SOBROU NO MÊS — o resultado dos custos abaixo (Onda I4). */}
+        <View style={{ marginBottom: Spacing.base }}>
+          <QuantoSobrouCard />
+        </View>
+
+        {/* CUSTOS DA VISITA — Lucro real (Onda I4): custo por km, comissão e ponto de saída. */}
+        <CustosVisitaCard
+          empresa={empresa}
+          onMudar={(patch) => { setEmpresa(p => (p ? { ...p, ...patch } : p)); setDirty(true); }}
+        />
 
         {/* DEPOIMENTOS */}
         <View style={styles.card}>

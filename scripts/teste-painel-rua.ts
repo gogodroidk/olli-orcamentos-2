@@ -237,7 +237,9 @@ caso('clima vem do worker (useClimaDoDia) e mostra o crédito do MET Norway', ()
   assert.match(home, /useReservaClima\(empresa\?\.cidade, empresa\?\.estado, empresa\?\.endereco, leituraCadastro\)/);
   assert.match(reserva, /AsyncStorage\.setItem\(CLIMA_COORD_CIDADE_KEY/, 'cidade geocodificada uma vez por aparelho');
   assert.match(reserva, /cadastro === 'erro'[\s\S]{0,80}estado: 'falhou'/, 'cadastro ilegível não vira "sem cidade"');
-  assert.match(storageKeys, /CLIMA_COORD_CIDADE_KEY,\s*ULTIMO_PULL_KEY,\s*\];/, 'coordenada da cidade sai no logout');
+  // Chaves novas podem entrar depois (Onda I4: mala e radar do tempo); o que
+  // importa é a coordenada continuar DENTRO da lista de logout.
+  assert.match(storageKeys, /CLIMA_COORD_CIDADE_KEY,\s*ULTIMO_PULL_KEY,[^\]]*\];/, 'coordenada da cidade sai no logout');
 });
 
 caso('próxima parada: hora, endereço, "Traçar rota" e "Estou a caminho"', () => {

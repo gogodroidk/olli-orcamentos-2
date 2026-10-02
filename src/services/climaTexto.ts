@@ -70,6 +70,21 @@ export interface DadosClima {
   resumo: string;
   /** Crédito exigido pela CC BY 4.0: "Previsão: MET Norway". */
   atribuicao: string;
+  /**
+   * Resumo por dia, de hoje em diante (Onda I4 · Radar do Tempo). AUSENTE quando
+   * o worker ainda não manda o campo — e ausência é "não sei", nunca "tempo bom".
+   */
+  dias?: DiaClima[];
+}
+
+/** Um dia da previsão (relógio local). `null` = o MET não cobriu o bastante. */
+export interface DiaClima {
+  /** 'AAAA-MM-DD' local. */
+  data: string;
+  max: number | null;
+  min: number | null;
+  /** Chuva somada do dia em mm, ou `null` (≠ 0 mm). */
+  chuvaMm: number | null;
 }
 
 /** Os 3 estados que a UI enxerga. */
@@ -262,7 +277,29 @@ export function normalizarRespostaClima(data: unknown): DadosClima | null {
     atualizadoEm: typeof d.atualizadoEm === 'string' ? d.atualizadoEm : null,
     resumo: resumoClima({ temperatura, simbolo, max, chuvaPorHora }),
     atribuicao: ATRIBUICAO_CLIMA,
+    ...(Array.isArray(d.dias) ? { dias: lerDiasClima(d.dias) } : {}),
   };
+}
+
+/**
+ * Lê o resumo por dia do worker. Dia com data malformada é descartado; número
+ * inválido (ou chuva negativa) vira `null` — "não sei", nunca 0.
+ */
+export function lerDiasClima(lista: unknown[]): DiaClima[] {
+  const dias: DiaClima[] = [];
+  for (const x of lista) {
+    const o = x as any;
+    const data = typeof o?.data === 'string' ? o.data : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) continue;
+    const chuva = numOuNull(o?.chuvaMm);
+    dias.push({
+      data,
+      max: numOuNull(o?.max),
+      min: numOuNull(o?.min),
+      chuvaMm: chuva === null || chuva < 0 ? null : chuva,
+    });
+  }
+  return dias;
 }
 
 /**
