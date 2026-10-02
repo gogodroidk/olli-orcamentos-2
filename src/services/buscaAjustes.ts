@@ -87,6 +87,8 @@ export const SECAO_AJUSTES = {
 export const TERMOS_AJUSTE: Readonly<Record<string, readonly string[]>> = {
   perfil: ['nome', 'foto', 'avatar', 'email', 'telefone', 'perfil'],
   assinatura: ['plano', 'planos', 'pro', 'assinar', 'pagamento', 'cobranca'],
+  creditoTroca: ['credito de troca', 'troca', 'outro app', 'comprovante', 'concorrente', 'migrar'],
+  'ferramenta:importar': ['importar', 'migrar', 'planilha', 'excel', 'csv', 'xlsx', 'contatos', 'agenda', 'vcf', 'outro app'],
   equipe: ['equipe', 'tecnicos', 'convite', 'codigo', 'membros', 'empresa'],
   aparencia: ['tema', 'claro', 'escuro', 'modo', 'cor', 'dark', 'visual'],
   notifBomDia: ['manha', 'aviso', 'lembrete', 'ritual', 'notificacao'],

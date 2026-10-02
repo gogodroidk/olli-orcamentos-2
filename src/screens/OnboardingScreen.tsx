@@ -35,6 +35,7 @@ import { ONBOARDED_KEY } from '../services/onboarding';
 import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
+import { ConviteImportar } from '../components/ConviteImportar';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
@@ -315,12 +316,16 @@ export default function OnboardingScreen() {
    * volta com um toque, e o onboarding continua irretornável (o que era o ponto do
    * reset original).
    */
-  function irParaApp(comPrimeiroOrcamento = false) {
+  function irParaApp(destino: 'inicio' | 'orcamento' | 'importar' = 'inicio') {
+    // "importar" (quem veio de outro app): a mesma lógica do 1º orçamento — Tabs
+    // embaixo, a tela de trazer os dados por cima; voltar leva ao app normal.
     nav.dispatch(
       CommonActions.reset(
-        comPrimeiroOrcamento
+        destino === 'orcamento'
           ? { index: 1, routes: [{ name: 'Tabs' }, { name: 'NovoOrcamento' }] }
-          : { index: 0, routes: [{ name: 'Tabs' }] },
+          : destino === 'importar'
+            ? { index: 1, routes: [{ name: 'Tabs' }, { name: 'Importar' }] }
+            : { index: 0, routes: [{ name: 'Tabs' }] },
       ),
     );
   }
@@ -423,7 +428,12 @@ export default function OnboardingScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }
 
-  async function concluir() {
+  /**
+   * `destino`: "orcamento" (o padrão, ver irParaApp) ou "importar" — quem veio de
+   * outro app conclui o cadastro e cai direto em "Trazer meus dados". A conclusão é
+   * a MESMA nos dois (valida, salva e marca); só muda a tela de chegada.
+   */
+  async function concluir(destino: 'orcamento' | 'importar' = 'orcamento') {
     if (saving || imagemProcessando) return;
     // Revalida o perfil inteiro imediatamente antes da escrita. O wizard não
     // aceita mais ser "concluído" com campos operacionais vazios.
@@ -442,10 +452,11 @@ export default function OnboardingScreen() {
       if (!(await confirmarAusenciaAntesDeSalvar())) return;
       await salvarTudo();
       vibrar('sucesso');
-      track(Eventos.onboardingCompleted, { comServico: !!servNome.trim() });
+      track(Eventos.onboardingCompleted, { comServico: !!servNome.trim(), destino });
       await marcarConcluido();
-      // Concluiu = quer usar: cai no wizard do primeiro orçamento (ver irParaApp).
-      irParaApp(true);
+      // Concluiu = quer usar: cai no wizard do primeiro orçamento (ver irParaApp) —
+      // ou, para quem escolheu trazer os dados do app antigo, na importação.
+      irParaApp(destino);
     } catch {
       Alert.alert('Ops', 'Não consegui salvar agora. Tente novamente.');
     } finally {
@@ -727,6 +738,11 @@ export default function OnboardingScreen() {
             </View>
 
             <Assure icon="lightbulb-on-outline" text="Pode deixar em branco e cadastrar vários serviços depois, em “Serviços”." />
+
+            {/* QUEM VEIO DE OUTRO APP — em vez de digitar tudo de novo: conclui o
+                cadastro (mesma validação) e abre "Trazer meus dados". */}
+            <Text style={styles.outroAppTitulo}>Já usa outro app ou planilha?</Text>
+            <ConviteImportar onAbrir={() => { void concluir('importar'); }} />
           </AnimatedEntrance>
         )}
       </ScrollView>
@@ -750,7 +766,7 @@ export default function OnboardingScreen() {
                   variant="gradient" size="lg" fullWidth
                   loading={saving}
                   disabled={saving || !!imagemProcessando}
-                  onPress={concluir}
+                  onPress={() => { void concluir('orcamento'); }}
                   icon={<MaterialCommunityIcons name="check-circle" size={20} color={gradientes.sobreBrand} />}
                 />
               ) : (
@@ -911,6 +927,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   brandLabel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
 
   assure: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: Spacing.base, paddingHorizontal: 4 },
+  outroAppTitulo: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginTop: Spacing.xl, marginBottom: Spacing.sm },
   assureText: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
 
   footer: { paddingHorizontal: Spacing.base, paddingTop: 12, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },

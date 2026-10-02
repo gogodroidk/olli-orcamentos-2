@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, type StyleProp, type ViewStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, type Cores } from '../../theme';
 import { vibrar } from '../../utils/haptico';
@@ -35,6 +35,7 @@ export function PedidosQrBloco({
   nomeEquipamento,
   nomeEmpresa,
   onAbrirEquipamento,
+  style,
 }: {
   modo: 'equipamento' | 'aviso';
   equipamentoId?: string;
@@ -43,6 +44,8 @@ export function PedidosQrBloco({
   nomeEmpresa?: string;
   /** Só no modo aviso: tocar no pedido abre a ficha do equipamento. */
   onAbrirEquipamento?: (equipamentoId: string) => void;
+  /** Só no modo aviso: margem extra de quem encaixa (some junto com o aviso). */
+  style?: StyleProp<ViewStyle>;
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -92,7 +95,7 @@ export function PedidosQrBloco({
     if (!leitura || leitura.estado !== 'ok' || leitura.pedidos.length === 0) return null;
     const n = leitura.pedidos.length;
     return (
-      <View style={[styles.bloco, styles.blocoAviso]}>
+      <View style={[styles.bloco, styles.blocoAviso, style]}>
         <View style={styles.topo}>
           <MaterialCommunityIcons name="qrcode-scan" size={18} color={cores.accentLight} />
           <Text style={styles.titulo}>

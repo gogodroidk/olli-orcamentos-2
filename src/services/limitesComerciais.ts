@@ -63,10 +63,10 @@ export interface InicioTrialPro {
 export interface ReservaEnvioOrcamento {
   /**
    * Sempre `true` desde 01/10/2026: o Grátis é ilimitado e nenhum envio é barrado
-   * por cota. Tipado como `boolean` (e não `true`) só para o ramo de recusa das
-   * telas antigas continuar compilando — ver `mensagemBloqueioEnvio`.
+   * por cota. O tipo literal garante que nenhuma tela volte a ter um ramo de
+   * recusa (o último, o "Cota mensal utilizada" do detalhe, saiu em 02/10/2026).
    */
-  permitido: boolean;
+  permitido: true;
   planoEfetivo: PlanoId;
   /** Orçamentos distintos registrados neste mês (informativo). */
   usados: number;
@@ -79,11 +79,12 @@ export interface ReservaEnvioOrcamento {
    * - `plano_pago` / `trial_ativo`: plano que não precisa de registro;
    * - `sem_registro`: o registro falhou (rede, servidor, resposta estranha) — o
    *   envio segue, só não conta para o teste automático nem para o funil;
-   * - `ambiente_local`: sem Supabase configurado (desenvolvimento);
-   * - `cota_esgotada`: LEGADO. Nunca é produzido desde 01/10/2026; continua no tipo
-   *   só porque telas mais antigas ainda o comparam (ver VisualizarOrcamentoScreen).
+   * - `ambiente_local`: sem Supabase configurado (desenvolvimento).
+   *
+   * `cota_esgotada` de um servidor antigo nunca chega aqui: `interpretarReservaEnvio`
+   * o transforma em `sem_registro`.
    */
-  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local' | 'cota_esgotada';
+  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local';
 }
 
 function inteiroNaoNegativo(valor: unknown, fallback: number): number {
@@ -178,13 +179,4 @@ export function envioSemRegistro(): ReservaEnvioOrcamento {
 
 export function reservaAmbienteLocal(): ReservaEnvioOrcamento {
   return { ...envioSemRegistro(), motivo: 'ambiente_local' };
-}
-
-/**
- * Texto para quando um envio é recusado. Desde 01/10/2026 este módulo não recusa
- * envio nenhum (`permitido` é sempre `true`); a função fica porque telas antigas
- * ainda a importam no ramo de recusa, que ficou inalcançável.
- */
-export function mensagemBloqueioEnvio(_reserva: ReservaEnvioOrcamento): string {
-  return 'Não conseguimos concluir o envio agora. Verifique a conexão e tente novamente.';
 }

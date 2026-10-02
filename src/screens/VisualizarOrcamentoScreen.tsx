@@ -86,11 +86,8 @@ import {
 import { avisoTrialAutomatico } from '../services/ativacao';
 import { avisar } from './desktop/dialogo';
 import { recarregarPlanoGlobal } from '../hooks/usePlano';
-import {
-  mensagemBloqueioEnvio,
-  type CanalEnvioOrcamento,
-  type ReservaEnvioOrcamento,
-} from '../services/limitesComerciais';
+import type { CanalEnvioOrcamento, ReservaEnvioOrcamento } from '../services/limitesComerciais';
+import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
 
 // Recurso que remove o selo OLLI do PDF (Pro/Empresa). Frente C adiciona
 // 'remove_olli_brand' ao type Recurso; codificamos contra o NOME do contrato.
@@ -156,6 +153,12 @@ export default function VisualizarOrcamentoScreen() {
   const { temAcesso } = usePlano();
   const { pode: podePapel, carregando: carregandoPapel } = usePermissao();
   const podeFinanceiro = !carregandoPapel && podePapel('ver_valores_agregados');
+  // "Link do orçamento com pagamento na hora" (Pro). No Grátis o link sai sem o
+  // Pix ("combine com o prestador"): o dono fica sabendo AQUI, perto do envio, e
+  // não pelo cliente. Só quem decide o plano vê; carregando/liberado não desenham.
+  const { estado: estadoLinkPagamento } = useRecursoPlano('link_pagamento');
+  const avisaLinkPagamento = !carregandoPapel && podePapel('gerenciar_faturamento')
+    && (estadoLinkPagamento === 'bloqueado' || estadoLinkPagamento === 'indeterminado' || estadoLinkPagamento === 'em_breve');
 
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -374,19 +377,14 @@ export default function VisualizarOrcamentoScreen() {
     }
   }
 
+  /**
+   * Registra o envio (teste automático do Pro + funil). Desde 01/10/2026 o Grátis é
+   * ilimitado: o registro NUNCA barra o envio — se ele falhar, volta como
+   * `sem_registro` e o orçamento sai do mesmo jeito (ver limitesComerciais.ts).
+   */
   async function autorizarEntrega(canal: CanalEnvioOrcamento): Promise<ReservaEnvioOrcamento | null> {
     if (!orc) return null;
-    const reserva = await reservarEnvioOrcamento(orc.id, canal);
-    if (reserva.permitido) return reserva;
-    if (reserva.motivo === 'cota_esgotada') {
-      toast.info(mensagemBloqueioEnvio(reserva), {
-        titulo: 'Cota mensal utilizada',
-        acao: { rotulo: 'Ver planos', aoTocar: () => nav.navigate('Planos') },
-      });
-    } else {
-      toast.erro(mensagemBloqueioEnvio(reserva), { titulo: 'Não foi possível verificar a cota' });
-    }
-    return null;
+    return reservarEnvioOrcamento(orc.id, canal);
   }
 
   /**
@@ -445,9 +443,9 @@ export default function VisualizarOrcamentoScreen() {
    * o link falhar agora, cai no texto com os dados e "responda aprovado".
    *
    * Três etapas com tratamento próprio (antes um try só fazia a falha de uma
-   * parecer falha de outra): autorizar a cota, abrir o WhatsApp e, só quando o
-   * prestador CONFIRMAR que mandou ("Conseguiu enviar?"), consumir a cota e marcar
-   * "Enviado". Abrir o WhatsApp não é enviar.
+   * parecer falha de outra): registrar o envio, abrir o WhatsApp e, só quando o
+   * prestador CONFIRMAR que mandou ("Conseguiu enviar?"), confirmar o registro e
+   * marcar "Enviado". Abrir o WhatsApp não é enviar.
    */
   async function handleWhatsApp() {
     if (!orc || enviandoWhats) return;
@@ -462,7 +460,7 @@ export default function VisualizarOrcamentoScreen() {
       reserva = await autorizarEntrega('whatsapp');
     } catch {
       setEnviandoWhats(false);
-      toast.erro('Confira a conexão e tente de novo.', { titulo: 'Não foi possível verificar a cota' });
+      toast.erro('Confira a conexão e tente de novo.', { titulo: 'Não foi possível preparar o envio' });
       return;
     }
     if (!reserva) {
@@ -1114,6 +1112,19 @@ export default function VisualizarOrcamentoScreen() {
                 ))}
               </View>
             </OlliCard>
+          )}
+
+          {/* PAGAMENTO NO LINK — logo abaixo de "Fechar negócio", ANTES do 1º envio
+              (rascunho): é quando o dono decide como mandar. Depois de enviado não
+              repete em todo orçamento. Só com o link ligado (nuvem) e para o Grátis
+              (ou com o plano ilegível: "não consegui confirmar", nunca "você não
+              tem"). Pro: nada aqui. */}
+          {cardAcao === 'fechar' && orc.status === 'rascunho' && avisaLinkPagamento && linkConfigurado() && (
+            <Aparecer indice={1}>
+              <View style={styles.cartaoPlanoLink}>
+                <CartaoRecursoPlano recurso="link_pagamento" />
+              </View>
+            </Aparecer>
           )}
 
           {cardAcao === 'cobrar' && cobrancaPronta && (
@@ -1837,6 +1848,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
 
   closeCard: { padding: Spacing.base, marginBottom: 12, borderColor: c.strokeGlow },
+  cartaoPlanoLink: { marginBottom: 12 },
   closeTop: { flexDirection: 'row', alignItems: 'center' },
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
   closeIcon: {

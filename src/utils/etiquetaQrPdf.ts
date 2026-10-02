@@ -22,7 +22,7 @@ import { footerSeloOlliHtml } from './marcaOlli.ts';
  *  - DURABILIDADE: código curto legível (fallback quando o QR não lê) e a dica de
  *    plastificar no rodapé.
  *  - MARCA: logo e contato do PRESTADOR (nunca dado do cliente final). O selo
- *    "Gerado com OLLI" sai só no Grátis (`removerMarca` = Pro/Empresa), a mesma
+ *    "Feito com OLLI" sai só no Grátis (`removerMarca` = Pro/Empresa), a mesma
  *    regra dos outros documentos (RECURSO_REMOVE_MARCA).
  *  - IMPRESSÃO: HTML puro, QR inline (SVG, sem rede). Sai pelo mesmo
  *    exportarHtmlComoPdf (web: imprimir; nativo: expo-print).
@@ -70,7 +70,7 @@ export interface OpcoesEtiqueta {
   /** Cor da marca (#RGB/#RRGGBB). Inválida → azul OLLI. */
   corMarca?: string;
   tamanho?: TamanhoEtiqueta;
-  /** true (Pro/Empresa) tira o selo "Gerado com OLLI" da folha. */
+  /** true (Pro/Empresa) tira o selo "Feito com OLLI" da folha. */
   removerMarca?: boolean;
 }
 
