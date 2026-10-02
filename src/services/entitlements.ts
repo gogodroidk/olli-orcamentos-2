@@ -22,7 +22,7 @@ export type Recurso =
   | 'followup_automatico' // lembretes automáticos D+2/D+5 do orçamento sem resposta
   | 'link_pagamento'    // link do orçamento com o Pix do prestador (cliente paga no link)
   | 'clima_visita'      // inteligência: chuva na visita e remarcar por chuva
-  | 'hora_de_sair'      // inteligência: hora de sair com trânsito (Routes API)
+  | 'hora_de_sair'      // inteligência: hora de sair estimada + ordenar a rota do dia (grátis, no aparelho)
   | 'termometro_orcamento' // inteligência: termômetro do orçamento (quente/morno/frio)
   | 'relatorios'        // relatórios de faturamento e conversão
   | 'metas'             // metas de vendas e acompanhamento

@@ -84,6 +84,7 @@ import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton, curvas } from '.
 import { toast } from '../components/feedback';
 import { ClimaDoDia } from '../components/rua/ClimaDoDia';
 import { RotaDeHoje, type EstadoRota } from '../components/rua/RotaDeHoje';
+import { MiniMapaDia } from '../components/rua/MiniMapaDia';
 import { AtalhosRua, type Atalho } from '../components/rua/AtalhosRua';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
@@ -255,7 +256,7 @@ export default function HomeScreen() {
   const reservaClima = useReservaClima(empresa?.cidade, empresa?.estado, empresa?.endereco, leituraCadastro);
   const clima = useClimaDoDia(reservaClima.estado === 'ok' ? reservaClima.coord : null);
 
-  // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra shimmer).
+  // ETA ESTIMADO (sem trânsito) da próxima parada — `null` = ainda buscando (chip mostra shimmer).
   const [etaResultado, setEtaResultado] = useState<ResultadoEta | null>(null);
   const ultimaBuscaEtaRef = useRef(0);
   const paradaKeyRef = useRef('');
@@ -269,9 +270,9 @@ export default function HomeScreen() {
   const buscarEta = useCallback(async () => {
     ultimaBuscaEtaRef.current = Date.now();
     setEtaResultado(null);
-    const r = await getEtaAgendamento(proxima);
+    const r = await getEtaAgendamento(proxima, clientes);
     setEtaResultado(r);
-  }, [proxima]);
+  }, [proxima, clientes]);
 
   // Re-busca no máximo a cada 5 min, ou já se a parada mudou.
   useFocusEffect(
@@ -291,9 +292,9 @@ export default function HomeScreen() {
   }, [temEta, buscarEta]);
 
   // ─── "SAIA ÀS 14:23 PARA CHEGAR ÀS 15:00" ────────────────────────────────
-  // Só LÊ o que `services/avisoSaida.ts` já calculou (1× por parada, no ritual
-  // diário): cada cálculo é uma chamada paga da Routes API. `null` = nada foi
-  // tentado; um registro de FALHA aparece com o motivo.
+  // Só LÊ o que `services/avisoSaida.ts` já calculou (no ritual diário): é a
+  // estimativa sem trânsito feita no aparelho (Onda I2, grátis). `null` = nada
+  // foi tentado; um registro de FALHA aparece com o motivo.
   const [avisoSaida, setAvisoSaida] = useState<AvisoSaida | null>(null);
   const [recalculandoSaida, setRecalculandoSaida] = useState(false);
   // Sem registro de saída, o Grátis vê ONDE a hora de sair entraria ("Disponível no
@@ -313,7 +314,7 @@ export default function HomeScreen() {
     }, [lerSaida]),
   );
 
-  /** O ÚNICO caminho da Home que gasta uma chamada paga — e só porque ele tocou. */
+  /** Toque em "Atualizar": refaz a estimativa agora (ignora o intervalo automático). */
   const recalcularSaida = useCallback(async () => {
     if (recalculandoSaida) return;
     setRecalculandoSaida(true);
@@ -847,6 +848,20 @@ export default function HomeScreen() {
             )}
           </LinearGradient>
         </Aparecer>
+
+        {/* MINI-MAPA DO DIA (Onda I2) — 160 px com os pins e a linha; tocar abre o
+            Mapa do dia. Grátis (MapLibre + OpenFreeMap). Some nos estados que a
+            Rota de Hoje logo abaixo já explica (carregando, erro, nada hoje). */}
+        {!(esperandoDownload && !proxima) && !carregandoErro && (
+          <Aparecer indice={2}>
+            <MiniMapaDia
+              estado={rotaEstadoExibido}
+              paradas={rota}
+              clientes={clientes}
+              onAbrirMapa={() => nav.navigate('MapaDia', { dia: 'hoje' })}
+            />
+          </Aparecer>
+        )}
 
         {/* 3. ROTA DE HOJE — some só enquanto o hero já explica que os dados
             ainda estão vindo da nuvem (não dá para afirmar "nada hoje"). */}

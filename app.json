@@ -139,6 +139,7 @@
       ],
       "expo-apple-authentication",
       "expo-asset",
+      "@maplibre/maplibre-react-native",
       [
         "expo-build-properties",
         {

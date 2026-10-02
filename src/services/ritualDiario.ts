@@ -5,8 +5,8 @@ import { getAgendamentosDoDia, getProximaSaida, temPermissaoNotificacao } from '
 import { getClientes, getEmpresa } from '../database/database';
 import { reagendarAvisoSaida } from './avisoSaida';
 import { acessoRecursoAgora } from './planos';
-import { calcularSaida } from './etaSaida';
-import { enderecoDoAgendamento, linhaBomDiaSaida, origemParaVisita } from './saidaCalculo';
+import { calcularSaida, pontoDaBase } from './etaSaida';
+import { linhaBomDiaSaida } from './saidaCalculo';
 import { orcamentosParaCobrar } from './radarCobranca';
 import { clientesParaReconquistar } from './radarClientes';
 import { gerarRelatorioDia, relatorioParaTexto } from './relatorioDia';
@@ -149,16 +149,11 @@ function avancarSeDomingoMudo(d: Date, domingoAtivo: boolean): Date {
 }
 
 /**
- * "saia às 08h25 (32 min, sem trânsito)" para a primeira visita do dia — o
- * Toque 1 da seção 2 de docs/ENXAME/IDEIA_ETA_TRANSITO.md. `null` sempre que
- * não houver número REAL: sem endereço, sem rede, worker fora, cota estourada.
- *
- * Usa `modo:'planejamento'` (TRAFFIC_UNAWARE → SKU Essentials: metade do preço
- * e o dobro da franquia grátis) e o rótulo "sem trânsito" vai junto na frase,
- * escrito por `linhaBomDiaSaida`. É uma troca deliberada: às 7h da manhã isto é
- * panorama do dia, não a ordem de sair — a ordem de sair é o Toque 2, que paga
- * o SKU Pro para olhar o trânsito de verdade perto da hora. Dizer "sem
- * trânsito" na cara do usuário é o que torna a troca honesta em vez de barata.
+ * "saia às 08:25 (~32 min, estimativa, sem trânsito)" para a primeira visita do
+ * dia — o Toque 1 de docs/ENXAME/IDEIA_ETA_TRANSITO.md, agora ESTIMADO no
+ * aparelho (Onda I2: sem Google, sem custo). `null` sempre que não houver
+ * número: visita sem local no mapa, base da empresa desconhecida, horário ruim.
+ * O rótulo "estimativa, sem trânsito" vai junto na frase (`linhaBomDiaSaida`).
  *
  * NUNCA lança: qualquer falha vira `null` e o "Bom dia" sai como antes.
  */
@@ -171,18 +166,8 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | nu
       getClientes().catch(() => [] as Cliente[]),
       getAgendamentosDoDia(inicio).catch(() => [] as Agendamento[]),
     ]);
-    const origem = origemParaVisita(proxima, doDia, empresa, clientes);
-    // Sem origem ou sem destino não há chamada nenhuma: reprovar de graça é
-    // metade do controle de custo desta feature.
-    if (!origem) return null;
-    const destino = enderecoDoAgendamento(proxima, clientes);
-    if (!destino) return null;
-    const r = await calcularSaida({
-      origem: origem.endereco,
-      destino,
-      chegarEm: inicio,
-      modo: 'planejamento',
-    });
+    const base = await pontoDaBase(empresa);
+    const r = calcularSaida({ proxima, doDia, base: base.estado === 'ok' ? base.ponto : null, clientes });
     return linhaBomDiaSaida(r, new Date());
   } catch {
     return null;
@@ -197,15 +182,15 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | nu
  * Roda dentro do reagendamento do ritual, que já é o gatilho certo: acorda com
  * o app aberto e sessão válida, é cancela-e-recria, e não inventa mecanismo
  * novo. Também é exportada para a Home poder pedir um recálculo sob TOQUE do
- * prestador (`forcar`) — o único caminho que ignora o throttle de 4h, porque aí
- * quem pediu a chamada paga foi ele.
+ * prestador (`forcar`) — o único caminho que ignora o throttle, porque aí
+ * quem pediu foi ele.
  *
  * NUNCA lança.
  */
 export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
   try {
-    // "Hora de sair" é inteligência do Pro (`hora_de_sair`) — e cada cálculo é uma
-    // chamada PAGA da Routes API. Sem o recurso confirmado não calcula; e plano
+    // "Hora de sair" é inteligência do Pro (`hora_de_sair`). Sem o recurso
+    // confirmado não calcula; e plano
     // ilegível ou Grátis NÃO cancelam o que já está agendado: o aviso calculado
     // substituiu o lembrete fixo de 1h daquela visita, e apagá-lo deixaria o
     // prestador sem aviso nenhum. As próximas visitas seguem com o lembrete fixo.
@@ -222,7 +207,15 @@ export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
         : Promise.resolve([] as Agendamento[]),
       temPermissaoNotificacao().catch(() => false),
     ]);
-    await reagendarAvisoSaida({ proxima, doDia, empresa, clientes, temPermissao, forcar });
+    const base = await pontoDaBase(empresa);
+    await reagendarAvisoSaida({
+      proxima,
+      doDia,
+      base: base.estado === 'ok' ? base.ponto : null,
+      clientes,
+      temPermissao,
+      forcar,
+    });
   } catch {
     // best-effort: o lembrete fixo de 1h da agenda continua valendo.
   }

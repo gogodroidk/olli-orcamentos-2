@@ -45,19 +45,8 @@ export async function abrirRotaDoDia(enderecos: readonly (string | null | undefi
 }
 
 // ───────────────────────────────────────────────────────────────────────
-// PLANO FUTURO (nada disso é código agora — só o rumo, para quando o dono
-// ativar o billing no Google Cloud):
-//
-// 1) `npx expo install react-native-maps` (exige prebuild — projeto já é
-//    bare/prebuild-based, então roda no próximo build único do gate).
-// 2) Nova rota `POST /rota` no worker `olli-diagnostico`, proxyando a Routes
-//    API do Google (`computeRoutes`) com a key GUARDADA NO WORKER (nunca no
-//    app) — corpo com origem/destino, `routingPreference: 'TRAFFIC_AWARE'`,
-//    resposta com `routes[0].duration` e `routes[0].polyline.encodedPolyline`.
-// 3) Tela do agendamento passa a renderizar um <MapView> com a polyline e o
-//    tempo estimado considerando trânsito, usando `mapsEmbutidoDisponivel()`
-//    para decidir se mostra o mapa embutido ou só o botão de deep link atual.
-// 4) `EXPO_PUBLIC_MAPS_KEY` (Maps SDK for Android, client-side) e a key da
-//    Routes API no worker são CHAVES DIFERENTES — a segunda nunca entra no
-//    bundle do app.
+// MAPA EMBUTIDO (Onda I2, 01/10/2026): já existe e é GRÁTIS — MapLibre +
+// OpenFreeMap em `components/mapa/MapaBase`, com a ordenação e a hora de sair
+// estimadas no aparelho (`rotaOtimizar.ts`, `etaEstimado.ts`). O Google Routes
+// saiu (billing desligado). Este arquivo segue só com os deep links de navegação.
 // ───────────────────────────────────────────────────────────────────────

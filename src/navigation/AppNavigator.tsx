@@ -56,6 +56,7 @@ import EntrarScreen from '../screens/EntrarScreen';
 import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
 import EquipeScreen from '../screens/EquipeScreen';
 import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
+import MapaDiaScreen from '../screens/MapaDiaScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
@@ -178,6 +179,8 @@ export type RootStackParamList = {
   Equipe: undefined;
   // Onda 2 — Equipe ao vivo: lista de técnicos + última localização + rota no mapa.
   EquipeAoVivo: undefined;
+  // Onda I2 — Mapa do dia (MapLibre + OpenFreeMap, grátis): pins, rota e "Saia às".
+  MapaDia: { dia?: 'hoje' | 'amanha' } | undefined;
   // Aceite de convite de equipe (deep link olliorcamentos://convite/<token>).
   Convite: { token?: string };
   // Onda 4 — Ordens de serviço (OS mínima + app do técnico). Role-aware:
@@ -801,6 +804,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       {/* Onda 2 — Equipe (empresa) e aceite de convite (deep link). */}
       <Stack.Screen name="Equipe" component={EquipeCentro} />
       <Stack.Screen name="EquipeAoVivo" component={EquipeAoVivoCentro} />
+      {/* Onda I2 — Mapa do dia em tela cheia (sem o centro do desktop: o mapa ocupa tudo). */}
+      <Stack.Screen name="MapaDia" component={MapaDiaScreen} />
       <Stack.Screen name="Convite" component={ConviteCentro} />
       {/* Onda 4 — Ordens de serviço (gestão + app do técnico). */}
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />

@@ -98,6 +98,8 @@ export function criarLinkingConfig(
         // URL web /convite/<token>; o token entra em route.params.token.
         Equipe: 'equipe',
         EquipeAoVivo: 'equipe/ao-vivo',
+        // Onda I2 — Mapa do dia (grátis: MapLibre + OpenFreeMap).
+        MapaDia: 'mapa',
         Convite: 'convite/:token',
         // Onda 4 — Ordens de serviço (gestão + técnico). URL real /ordens.
         OrdemServico: 'ordens',

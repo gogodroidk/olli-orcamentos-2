@@ -126,15 +126,19 @@ export const PULSO_ULTIMO_KEY = 'olli.pulso.ultimo';
 export const FORMAS_PAGAMENTO_PADRAO_KEY = 'olli.orcamento.formasPagamentoPadrao';
 
 /**
- * Cache local de DURAÇÃO de trajeto do "a que horas eu preciso sair"
- * (services/etaSaida). Chave interna = origem+destino normalizados + faixa de
- * hora + tipo de dia; valor = o que a Routes API devolveu, com carimbo. Existe
- * por CUSTO: a Routes API é o único terceiro caro por uso do app (SKU Pro:
- * US$ 10 por 1.000 chamadas), e o mesmo trajeto se repete muito no dia a dia
- * de um prestador. Guarda ENDEREÇO DE CLIENTE normalizado → é dado de conta e
- * entra em APP_DATA_STORAGE_KEYS.
+ * Ponto da BASE da empresa (de onde o prestador sai de manhã) para a hora de sair
+ * ESTIMADA (services/etaSaida → `pontoDaBase`). Guarda a chave do endereço da
+ * empresa + lat/lon/precisão vindos do `POST /geo` grátis (BrasilAPI/Nominatim).
+ * Desde a Onda I2 não há mais cache de trajeto da Routes API (o Google saiu).
+ * É endereço da conta → entra em APP_DATA_STORAGE_KEYS.
  */
 export const SAIDA_CACHE_KEY = 'olli.saida.cache';
+/**
+ * Visitas marcadas como "horário combinado" no Mapa do Dia (ids), que a ordenação
+ * da rota nunca move. Preferência de uso do prestador neste aparelho; é dado de
+ * conta (ids de agendamento) → entra em APP_DATA_STORAGE_KEYS.
+ */
+export const ROTA_FIXAS_KEY = 'olli.rota.fixas';
 /**
  * Notificação "hora de sair" atualmente agendada + o último resultado de
  * cálculo (services/avisoSaida), incluindo os estados de FALHA. Guardar a
@@ -263,6 +267,7 @@ export const APP_DATA_STORAGE_KEYS = [
   PULSO_ULTIMO_KEY,
   FORMAS_PAGAMENTO_PADRAO_KEY,
   SAIDA_CACHE_KEY,
+  ROTA_FIXAS_KEY,
   SAIDA_AVISO_KEY,
   PLANO_CACHE_KEY,
   COBRANCAS_ENVIADAS_KEY,
