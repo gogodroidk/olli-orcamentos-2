@@ -93,6 +93,16 @@ function clampZoom(z: number): number {
 }
 
 /** Componente da web: um <iframe> cru para renderizar o HTML final do orçamento. */
+/**
+ * Única carga que o WebView da prévia aceita: o próprio documento (`about:blank` /
+ * `data:` do `source.html`). Qualquer link, redirecionamento ou iframe com outro
+ * destino é bloqueado. Conferida por texto em `scripts/teste-pdf-preview-seguro.ts`.
+ */
+function permitirCargaDaPrevia(req: { url?: string }): boolean {
+  const url = (req?.url ?? '').trim().toLowerCase();
+  return url === 'about:blank' || url.startsWith('data:text/html');
+}
+
 function PreviewWeb({ html }: { html: string }) {
   return React.createElement('iframe', {
     srcDoc: html,
@@ -320,7 +330,16 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
                         ) : (
                           WebView && (
                             <WebView
-                              originWhitelist={['*']}
+                              // Prévia = documento estático montado por nós (HTML com escape em
+                              // todo campo do usuário, sem <script>): nada aqui precisa de JS, de
+                              // origem externa nem de navegação. Trancado de propósito (defesa em
+                              // profundidade; se algum campo escapasse do escape, o HTML não
+                              // executa script nem leva o usuário para outra página).
+                              javaScriptEnabled={false}
+                              originWhitelist={['about:blank']}
+                              onShouldStartLoadWithRequest={permitirCargaDaPrevia}
+                              setSupportMultipleWindows={false}
+                              allowFileAccess={false}
                               source={{ html }}
                               style={styles.webview}
                             />
