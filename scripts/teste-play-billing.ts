@@ -77,8 +77,8 @@ checar('produto de outro app → null', produtoPlay('com.outro:mensal'), null);
 checar('plano básico inventado → null', produtoPlay('olli_pro:vitalicio'), null);
 checar('lixo → null', [produtoPlay(''), produtoPlay(null), produtoPlay('a:b:c')], [null, null, null]);
 {
-  const rc = ler('../worker/src/revenuecat.js');
-  checar('o worker importa o MESMO produtoPlay do app', rc.includes("import { produtoPlay } from '../../src/services/playBillingRegras.ts';"), true);
+  const play = ler('../worker/src/play.js');
+  checar('o worker importa o MESMO produtoPlay do app', play.includes("import { produtoPlay } from '../../src/services/playBillingRegras.ts';"), true);
 }
 
 console.log('\n4) Ofertas: preço vem da LOJA; desconhecido/sem preço não vira botão');

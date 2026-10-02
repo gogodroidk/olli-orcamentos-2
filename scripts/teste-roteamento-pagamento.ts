@@ -29,7 +29,7 @@
  * removidos, senão o próprio docblock que documenta a rota proibida derrubaria o teste
  * (e o remédio seria apagar a documentação — exatamente o contrário do que se quer).
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, relative, sep } from 'node:path';
 import { regrasDaLoja, textosDaLoja } from '../src/config/lojaRegras.ts';
@@ -237,21 +237,25 @@ for (const alvo of ALVOS) {
   checar('cartão (/stripe/*) só nos arquivos donos', comStripe, [...alvo.donosDoCartao].sort());
 }
 
-console.log('\n── Worker: /revenuecat/* só no arquivo dono ──');
+console.log('\n── Worker: /play/* só no arquivo dono (Play Billing direto) ──');
 {
-  // Do lado do servidor, a rota nova tem UM dono (revenuecat.js) e UM ponto de
-  // entrada (o roteador do index.js). Um segundo arquivo atendendo /revenuecat/
-  // seria um segundo caminho para gravar plano pago sem as guardas de lá.
-  const doWorker = readdirSync(join(RAIZ, 'worker/src'))
+  // Do lado do servidor, a assinatura da Play tem UM dono (play.js) e UM ponto de
+  // entrada (o roteador do index.js). Um segundo arquivo atendendo /play/ seria um
+  // segundo caminho para gravar plano pago sem as guardas de lá. O webhook do
+  // RevenueCat saiu junto com o SDK dele: a rota antiga não pode voltar.
+  const citam = (trecho: string) => readdirSync(join(RAIZ, 'worker/src'))
     .filter((n) => n.endsWith('.js'))
     .map((n) => `worker/src/${n}`)
-    .filter((rel) => semComentarios(readFileSync(join(RAIZ, rel), 'utf8')).includes("'/revenuecat/"))
+    .filter((rel) => semComentarios(readFileSync(join(RAIZ, rel), 'utf8')).includes(trecho))
     .sort();
-  checar('só index.js (roteia) e revenuecat.js (atende) citam /revenuecat/', doWorker, ['worker/src/index.js', 'worker/src/revenuecat.js']);
+  checar('só index.js (roteia) e play.js (atende) citam /play/', citam("'/play/"), ['worker/src/index.js', 'worker/src/play.js']);
+  checar('nenhum arquivo do worker roteia /revenuecat/', citam("'/revenuecat/"), []);
+  checar('revenuecat.js não existe mais', existsSync(join(RAIZ, 'worker/src/revenuecat.js')), false);
   const idx = readFileSync(join(RAIZ, 'worker/src/index.js'), 'utf8');
-  checar('index.js delega /revenuecat/ para handleRevenueCat', idx.includes("url.pathname.startsWith('/revenuecat/')") && idx.includes('return handleRevenueCat(request, env, url);'), true);
-  const rc = readFileSync(join(RAIZ, 'worker/src/revenuecat.js'), 'utf8');
-  checar('revenuecat.js não chama gateway de outro provedor', /api\.stripe\.com|mercadopago\.com|abacatepay\.com/.test(rc), false);
+  checar('index.js delega /play/ para handlePlay', idx.includes("url.pathname.startsWith('/play/')") && idx.includes('return handlePlay(request, env, url);'), true);
+  const play = readFileSync(join(RAIZ, 'worker/src/play.js'), 'utf8');
+  checar('play.js não chama gateway de outro provedor', /api\.stripe\.com|mercadopago\.com|abacatepay\.com/.test(play), false);
+  checar('play.js não expõe rota pública de RTDN (o RTDN chega por pull)', /\/play\/rtdn/.test(semComentarios(play)), false);
 }
 
 console.log('\n── Contrato de tipo do painel ──');
