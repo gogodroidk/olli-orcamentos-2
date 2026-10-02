@@ -10,7 +10,7 @@ import { usePlano } from '../hooks/usePlano';
 import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '../services/entitlements';
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
-import { ESTADO_PLAY_BILLING } from '../services/playBilling';
+import { vendaPlayConfirmada } from '../services/playBilling';
 import { track, Eventos } from '../services/analytics';
 
 /**
@@ -31,7 +31,8 @@ import { track, Eventos } from '../services/analytics';
  *   liberado      → o próprio recurso (`children`), sem custo nenhum.
  *
  * LOJAS: o botão "Ver o Pro" só aparece onde o app pode vender — na web, e no
- * Android quando a venda é pela própria Google Play (Play Billing ligado). No iOS
+ * Android quando a venda é pela própria Google Play (binário com Play Billing E
+ * servidor confirmando a venda ligada em `/play/config`). No iOS
  * e no Android sem Play Billing a peça só INFORMA (mesma regra de
  * `lembreteAssinaturaLoja.ts` e da PlanosScreen): nenhum caminho de pagamento
  * externo dentro do build das lojas.
@@ -43,7 +44,9 @@ import { track, Eventos } from '../services/analytics';
 /** Onde o app pode oferecer o plano (ver "LOJAS" acima). */
 function podeOferecerPlano(): boolean {
   if (Platform.OS === 'web') return true;
-  return Platform.OS === 'android' && ESTADO_PLAY_BILLING === 'ligado';
+  // Leitura síncrona e conservadora: antes da 1ª resposta do servidor, ou depois
+  // de um erro, é false — a peça só informa.
+  return Platform.OS === 'android' && vendaPlayConfirmada();
 }
 
 export interface UsoRecursoPlano {

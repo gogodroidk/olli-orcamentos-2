@@ -4,13 +4,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BorderRadius, Spacing, useCores, useEstilos, comAlfa, type Cores } from '../theme';
 import { OlliButton } from './OlliButton';
 import { AnimatedEntrance } from './AnimatedEntrance';
-import type { AcaoLembrete, UrgenciaLembrete } from '../services/lembreteAssinatura';
-import type { LembreteExibivel } from '../services/lembreteAssinaturaLoja';
+import type { UrgenciaLembrete } from '../services/lembreteAssinatura';
+import type { AcaoLembreteExibivel, LembreteExibivel } from '../services/lembreteAssinaturaLoja';
 
 interface Props {
   /** Já adaptado à plataforma (ver `useLembreteAssinatura`). `null` = nada. */
   lembrete: LembreteExibivel | null;
-  onAcao: (acao: AcaoLembrete) => void;
+  onAcao: (acao: AcaoLembreteExibivel) => void;
   onDispensar: () => void;
   /** Botão do teste grátis em andamento. */
   iniciandoTrial?: boolean;

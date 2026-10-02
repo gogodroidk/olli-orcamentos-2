@@ -2,12 +2,15 @@
  * Conta do usuário — OLLI (worker Cloudflare, SEM SDK).
  *
  *   POST /conta/excluir → exclui a conta do usuário logado (JWT). Cancela as
- *                         assinaturas ativas (Stripe E Mercado Pago) e SÓ ENTÃO
- *                         apaga o usuário em auth.users com SERVICE_ROLE (o cascade
- *                         das FKs limpa os dados). Se algum cancelamento falhar,
- *                         NADA é apagado (502 retryável): conta apagada com
- *                         assinatura viva = cartão cobrado sem ninguém para
- *                         cancelar. Apple + LGPD.
+ *                         assinaturas ativas (Stripe, Mercado Pago E Google Play),
+ *                         apaga os arquivos da organização no Storage (fotos,
+ *                         logos e documentos) e SÓ ENTÃO apaga o usuário em
+ *                         auth.users com SERVICE_ROLE (o cascade das FKs limpa os
+ *                         dados). Se algum cancelamento ou a limpeza dos arquivos
+ *                         falhar, a conta NÃO é apagada (502 retryável): conta
+ *                         apagada com assinatura viva = cobrança sem ninguém para
+ *                         cancelar; com arquivo órfão = a promessa de "exclui
+ *                         permanentemente" vira mentira. Apple + LGPD + Play.
  *
  * Segurança (mesmo modelo de stripe.js / equipe.js):
  *  - Exige JWT do Supabase (Authorization: Bearer <token>), validado em
@@ -26,6 +29,7 @@
 import { rateOkSensivel, cabeNoTeto, textoCabeNoTeto, TETO } from './rateLimit.js';
 import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { getAssinatura } from './stripe.js';
+import { cancelarPlayDoUsuario } from './play.js';
 import { parseJsonBody } from './util.js';
 
 const CORS = {
@@ -220,6 +224,111 @@ export async function excluirFeedbackDoUsuario(env, userId) {
     console.error('[olli-conta] excluir feedback erro:', e && (e.message || e));
     return false;
   }
+}
+
+// ─── ARQUIVOS NO STORAGE — fotos, logos e documentos ─────────
+/**
+ * Buckets privados do OLLI (migration 20260905140852): o PRIMEIRO segmento de cada
+ * objeto é o user_id do DONO do tenant (`<dono>/<categoria>/<uuid>.<ext>`; o
+ * comprovante do crédito de troca é `<user>/anexo/...`). Membro de equipe sobe no
+ * prefixo do dono, então o prefixo `<user.id>/` é exatamente o que pertence a
+ * esta conta/organização — arquivos que o membro subiu para a equipe de OUTRO dono
+ * ficam com aquele dono.
+ *
+ * `storage.objects` não tem FK para `auth.users`: o cascade NÃO apaga nada disso.
+ * Sem esta etapa a página /excluir-conta/ e a Segurança dos dados ("exclusão =
+ * Sim") mentiriam (R5 da auditoria de política).
+ */
+export const BUCKETS_DA_CONTA = Object.freeze(['olli-fotos', 'olli-logos', 'olli-documentos']);
+
+/** Teto de objetos por página da API de listagem do Storage. */
+const PAGINA_STORAGE = 1000;
+/** Profundidade máxima de pastas (hoje: <dono>/<categoria>/<arquivo> = 2). */
+const PROFUNDIDADE_STORAGE = 4;
+
+/**
+ * Lista TODOS os objetos (recursivo) sob `prefixo` num bucket. `null` = não sei
+ * (rede/API) — e "não sei" nunca vira "está vazio".
+ */
+async function listarObjetos(env, bucket, prefixo, nivel = 0) {
+  if (nivel > PROFUNDIDADE_STORAGE) return null;
+  const nomes = [];
+  for (let offset = 0; ; offset += PAGINA_STORAGE) {
+    let lista;
+    try {
+      const r = await fetch(`${env.SUPABASE_URL}/storage/v1/object/list/${encodeURIComponent(bucket)}`, {
+        method: 'POST',
+        headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ prefix: prefixo, limit: PAGINA_STORAGE, offset, sortBy: { column: 'name', order: 'asc' } }),
+      });
+      if (!r.ok) return null;
+      lista = await r.json().catch(() => null);
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(lista)) return null;
+    for (const item of lista) {
+      const nome = item && typeof item.name === 'string' ? item.name : '';
+      if (!nome || nome.includes('..')) continue;
+      const caminho = `${prefixo}${nome}`;
+      // Pasta = entrada sem id (a API do Storage lista um nível por vez).
+      if (item.id === null || item.id === undefined) {
+        const dentro = await listarObjetos(env, bucket, `${caminho}/`, nivel + 1);
+        if (dentro === null) return null;
+        nomes.push(...dentro);
+      } else {
+        nomes.push(caminho);
+      }
+    }
+    if (lista.length < PAGINA_STORAGE) return nomes;
+  }
+}
+
+/** Apaga em lote (a API aceita uma lista de caminhos). true só com 2xx. */
+async function apagarObjetos(env, bucket, caminhos) {
+  for (let i = 0; i < caminhos.length; i += PAGINA_STORAGE) {
+    try {
+      const r = await fetch(`${env.SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}`, {
+        method: 'DELETE',
+        headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ prefixes: caminhos.slice(i, i + PAGINA_STORAGE) }),
+      });
+      if (!r.ok) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Apaga `<userId>/` nos 3 buckets e CONFIRMA relendo (2xx no DELETE não prova que
+ * ficou vazio — mesmo cuidado de `excluirFeedbackDoUsuario`). Qualquer dúvida =
+ * false, e a exclusão da conta para com 502 para uma nova tentativa (idempotente:
+ * o que já saiu não volta).
+ */
+export async function apagarArquivosDoUsuario(env, userId) {
+  // O id vem do JWT validado; mesmo assim, nada de '/' ou '..' no prefixo.
+  if (!/^[A-Za-z0-9-]{1,64}$/.test(String(userId || ''))) return false;
+  const prefixo = `${userId}/`;
+  for (const bucket of BUCKETS_DA_CONTA) {
+    const nomes = await listarObjetos(env, bucket, prefixo);
+    if (nomes === null) {
+      console.error('[olli-conta] listar arquivos falhou:', bucket);
+      return false;
+    }
+    if (!nomes.length) continue;
+    if (!(await apagarObjetos(env, bucket, nomes))) {
+      console.error('[olli-conta] apagar arquivos falhou:', bucket, nomes.length);
+      return false;
+    }
+    const sobrou = await listarObjetos(env, bucket, prefixo);
+    if (sobrou === null || sobrou.length) {
+      console.error('[olli-conta] confirmar exclusão de arquivos falhou:', bucket, sobrou === null ? 'leitura' : sobrou.length);
+      return false;
+    }
+  }
+  return true;
 }
 
 // ─── SIGN IN WITH APPLE — revogação na exclusão de conta ─────
@@ -500,6 +609,25 @@ export async function handleContaExcluir(request, env) {
     if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
   }
 
+  // GOOGLE PLAY — mesma regra (decisão C12): cancela a renovação pela API da Play
+  // (`subscriptionsv2.cancel`) com a conta de serviço. Assinatura da Play viva numa
+  // conta apagada continuaria cobrando o cartão do Google todo mês. Não sei = 502.
+  const play = await cancelarPlayDoUsuario(env, user.id);
+  if (play !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
+
+  // Dados associados sem CASCADE: `feedback.user_id` usa ON DELETE SET NULL.
+  // Limpa enquanto o vínculo ainda existe; se não conseguirmos confirmar,
+  // preservamos a conta para uma tentativa segura. Vem ANTES do Storage: assim o
+  // único passo irreversível antes de apagar auth.users é o dos arquivos — uma
+  // falha aqui não deixa a conta viva e já sem fotos/logos/PDFs.
+  const feedbackExcluido = await excluirFeedbackDoUsuario(env, user.id);
+  if (!feedbackExcluido) return json({ ok: false, erro: 'falha_exclusao' }, 502);
+
+  // ARQUIVOS (fotos, logos, PDFs) — o cascade não alcança o Storage. Apaga ANTES
+  // do usuário; falhou = 502 e a conta fica, para uma nova tentativa.
+  const arquivos = await apagarArquivosDoUsuario(env, user.id);
+  if (!arquivos) return json({ ok: false, erro: 'falha_exclusao' }, 502);
+
   // SIGN IN WITH APPLE — revoga a autorização (Guideline 5.1.1(v)). Roda DEPOIS
   // dos bloqueios acima de propósito: só faz sentido revogar quando a exclusão
   // vai mesmo acontecer — revogar e então parar em `falha_cancelamento` deixaria
@@ -520,12 +648,6 @@ export async function handleContaExcluir(request, env) {
       );
     }
   }
-
-  // Dados associados sem CASCADE: `feedback.user_id` usa ON DELETE SET NULL.
-  // Limpa enquanto o vínculo ainda existe e só então apaga auth.users; se não
-  // conseguirmos confirmar, preservamos a conta para uma tentativa segura.
-  const feedbackExcluido = await excluirFeedbackDoUsuario(env, user.id);
-  if (!feedbackExcluido) return json({ ok: false, erro: 'falha_exclusao' }, 502);
 
   // Exclusão de verdade: apaga o usuário em auth.users (id vem do JWT validado).
   const ok = await excluirUsuarioAuth(env, user.id);

@@ -8,7 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online"
+        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online",
+        "ORG_GRADLE_PROJECT_openiapStore": "play"
       },
       "android": {
         "buildType": "apk"
@@ -20,7 +21,8 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online"
+        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online",
+        "ORG_GRADLE_PROJECT_openiapStore": "play"
       },
       "android": {
         "buildType": "apk"
@@ -32,7 +34,8 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online"
+        "EXPO_PUBLIC_DIAGNOSTICO_URL": "https://diagnostico.olliorcamentos.online",
+        "ORG_GRADLE_PROJECT_openiapStore": "play"
       },
       "android": {
         "buildType": "app-bundle",

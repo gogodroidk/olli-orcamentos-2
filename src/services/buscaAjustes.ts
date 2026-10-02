@@ -110,4 +110,5 @@ export const TERMOS_AJUSTE: Readonly<Record<string, readonly string[]>> = {
   sair: ['logout', 'deslogar', 'trocar de conta'],
   sairApagar: ['logout', 'limpar', 'apagar', 'celular', 'aparelho'],
   excluirConta: ['apagar', 'deletar', 'encerrar', 'cancelar conta'],
+  gerenciarPlay: ['play', 'google play', 'cancelar assinatura', 'assinatura', 'pagamento', 'cobranca'],
 };

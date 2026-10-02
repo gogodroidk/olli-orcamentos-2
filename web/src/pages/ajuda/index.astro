@@ -1,6 +1,7 @@
 ---
 import {
 	CATEGORIAS_AJUDA,
+	corpoVisivel,
 	getArtigosDaCategoria,
 } from "../../../../src/content/ajuda/index";
 import Footer from "../../components/Footer.astro";
@@ -59,7 +60,8 @@ const categorias = CATEGORIAS_AJUDA.map((cat) => ({
                 <p class="mt-1.5 text-sm leading-relaxed text-muted">{artigo.resumo}</p>
 
                 <div class="mt-5 space-y-4">
-                  {artigo.corpo.map((bloco) => (
+                  {/* Só o texto da WEB: os blocos das lojas (Google Play) ficam de fora. */}
+                  {corpoVisivel(artigo, "web").map((bloco) => (
                     <>
                       {bloco.tipo === 'paragrafo' && (
                         <p class="leading-relaxed text-slate">{bloco.conteudo}</p>

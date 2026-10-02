@@ -97,6 +97,7 @@ import { useSyncInicial } from '../hooks/useSyncInicial';
 import { useVerticais } from '../hooks/useVerticais';
 import { useLembreteAssinatura } from '../hooks/useLembreteAssinatura';
 import { track, Eventos } from '../services/analytics';
+import { useCadastroNegocio } from '../components/AvisoCompletarNegocio';
 
 /** Quantos clientes do radar o plano Grátis mostra completos (o resto vira teaser bloqueado). */
 const RADAR_GRATIS_QTD = 1;
@@ -179,6 +180,10 @@ const VEU_HERO = ['rgba(11,111,206,0.38)', 'rgba(52,198,217,0.08)'] as const;
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  // O banner fixo "Complete seu negócio" (AvisoCompletarNegocio, ~140 px) fica por
+  // cima do fim da lista: enquanto ele aparece, a lista ganha esse espaço a mais.
+  const { estado: estadoCadastro } = useCadastroNegocio();
+  const folgaBannerCadastro = estadoCadastro.tipo === 'incompleto' || estadoCadastro.tipo === 'erro' ? 150 : 0;
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   // Lembrete de assinatura (regra única em services/lembreteAssinatura.ts); relê a cada foco.
@@ -637,7 +642,7 @@ export default function HomeScreen() {
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} top={insets.top + 8} />}
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 116 }}
+        contentContainerStyle={{ paddingTop: insets.top + 14, paddingBottom: insets.bottom + 116 + folgaBannerCadastro }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >

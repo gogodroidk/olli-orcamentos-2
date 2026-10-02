@@ -3,7 +3,8 @@
  * no app (tema escuro) e na web (mesma tela).
  *
  * IMPORTANTE: este texto é um MODELO gerado para o produto. Ele reflete o que o
- * app realmente faz (Supabase, Cloudflare, Stripe, OpenRouter, etiqueta QR
+ * app realmente faz (Supabase, Cloudflare, Stripe, Google Play, Resend, login com
+ * Google, OpenRouter, armazenamento de fotos/logos/PDFs, denúncia de IA, etiqueta QR
  * pública, hash de IP nos scans, lixeira de 30 dias), mas DEVE ser revisado por
  * um advogado antes de publicar. Não é aconselhamento jurídico.
  *
@@ -48,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '1 de outubro de 2026',
+  atualizadoEm: '2 de outubro de 2026',
   aviso:
-    'Documento atualizado em 1 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 2 de outubro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -96,14 +97,20 @@ export const PRIVACIDADE: LegalDoc = {
           'categoria de dado, a finalidade e a base legal correspondente na LGPD.',
         'Nos aplicativos nativos, a recarga de créditos e a contratação ou alteração de planos ' +
           'não ficam disponíveis quando o app não oferece o sistema de cobrança da respectiva loja. ' +
-          'Os itens de pagamento abaixo só se aplicam quando você inicia uma compra pela versão web ' +
-          'ou por outro canal em que o checkout esteja explicitamente disponível.',
+          'No aplicativo Android, a assinatura dos planos pagos é cobrada e gerenciada pela Google Play, ' +
+          'quando essa opção estiver disponível. Os demais itens de pagamento abaixo só se aplicam quando você ' +
+          'inicia uma compra pela versão web ou por outro canal em que o checkout esteja explicitamente disponível.',
       ],
       tabela: [
         {
           dado: 'Cadastro: e-mail, nome e telefone',
           finalidade: 'Criar e autenticar a sua conta, dar suporte e enviar avisos essenciais do serviço.',
           base: 'Execução de contrato (art. 7º, V).',
+        },
+        {
+          dado: 'Login com o Google: nome, e-mail e foto do perfil da sua conta Google',
+          finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google". Recebemos do Google apenas o que identifica a conta (nome, e-mail e foto do perfil); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
+          base: 'Execução de contrato (art. 7º, V) e consentimento ao autorizar o login (art. 7º, I).',
         },
         {
           dado: 'Dados dos seus clientes (nome, telefone, endereço, CPF/CNPJ) que você digita',
@@ -117,8 +124,18 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Fotos que você tira ou anexa',
-          finalidade: 'Documentar serviços, equipamentos e ordens de serviço, e compor documentos.',
+          finalidade: 'Documentar serviços, equipamentos e ordens de serviço, e compor documentos. As fotos são enviadas e guardadas na nuvem, em armazenamento privado ligado à sua conta, para ficarem disponíveis nos seus dispositivos.',
           base: 'Consentimento ao autorizar a câmera/galeria e execução de contrato (art. 7º, I e V).',
+        },
+        {
+          dado: 'Logomarca e documentos em PDF que você gera ou anexa',
+          finalidade: 'Montar os seus orçamentos e recibos com a sua marca e guardar os documentos gerados. Ficam em armazenamento privado ligado à sua conta; o seu cliente só vê o que você decide enviar a ele (por exemplo, o orçamento em link).',
+          base: 'Execução de contrato (art. 7º, V).',
+        },
+        {
+          dado: 'Denúncia de resposta de IA (botão "Sinalizar")',
+          finalidade: 'Quando você toca em "Sinalizar" numa resposta da IA (Chat, Voz, Diagnóstico ou Autopilot) e confirma o aviso, enviamos para a nossa equipe revisar o texto gerado e o seu pedido. Se houver nome, endereço ou preço de cliente nesse texto, ele vai junto. Nada é enviado sem a sua confirmação.',
+          base: 'Consentimento ao confirmar o envio (art. 7º, I) e legítimo interesse em manter a IA segura e adequada (art. 7º, IX).',
         },
         {
           dado: 'Áudio de voz, quando você usa a OLLI por voz',
@@ -131,8 +148,13 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Legítimo interesse do empregador/contratante na gestão operacional da equipe em campo (art. 7º, IX), com uso restrito à finalidade de coordenação de rota/expediente. Você pode se opor a este tratamento a qualquer momento pelos canais de atendimento.',
         },
         {
-          dado: 'Dados de assinatura e de pagamento (via Stripe ou AbacatePay)',
-          finalidade: 'Processar pagamento no cartão ou no Pix, controlar o seu plano e emitir cobranças. O OLLI NÃO armazena o número do seu cartão nem os seus dados bancários.',
+          dado: 'Dados de assinatura e de pagamento (via Stripe, AbacatePay ou Google Play)',
+          finalidade: 'Processar pagamento no cartão ou no Pix (versão web) ou pela Google Play (aplicativo Android), controlar o seu plano e emitir cobranças. O OLLI NÃO armazena o número do seu cartão nem os seus dados bancários.',
+          base: 'Execução de contrato e cumprimento de obrigação legal/fiscal (art. 7º, V e II).',
+        },
+        {
+          dado: 'Histórico de compras na Google Play (Android): identificador da compra, plano contratado, estado e datas da assinatura',
+          finalidade: 'Confirmar com a Google Play que a assinatura existe, liberar o plano certo para a sua conta, renová-lo, suspendê-lo ou encerrá-lo conforme a Google informar (cancelamento, falha de pagamento, estorno) e permitir restaurar a assinatura em outro aparelho. Para a Google Play, a compra fica ligada à sua conta OLLI por um código irreversível (hash do identificador da conta), nunca pelo seu e-mail. Se você excluir a conta, a assinatura ativa na Google Play é cancelada e esses registros são apagados ou anonimizados, ressalvado o que a lei exigir guardar.',
           base: 'Execução de contrato e cumprimento de obrigação legal/fiscal (art. 7º, V e II).',
         },
         {
@@ -174,6 +196,10 @@ export const PRIVACIDADE: LegalDoc = {
           'Evite digitar ou ditar dados pessoais sensíveis desnecessários nos campos de IA. ' +
           'As respostas da IA são um apoio e podem conter erros — a decisão técnica é sempre ' +
           'sua, como profissional.',
+        'Em toda tela com resposta gerada por IA (Chat, Voz, Diagnóstico e Autopilot) há o botão ' +
+          '"Sinalizar", para você denunciar uma resposta errada, ofensiva ou imprópria sem sair do app. ' +
+          'Ao confirmar o aviso, o texto da resposta e o seu pedido seguem para a nossa equipe ' +
+          'revisar; sem a sua confirmação, nada é enviado.',
       ],
     },
     {
@@ -183,8 +209,19 @@ export const PRIVACIDADE: LegalDoc = {
           'infraestrutura do serviço, cada um tratando somente o necessário e sob contrato:',
       ],
       itens: [
-        'Supabase — banco de dados e autenticação na nuvem, com isolamento por usuário ' +
+        'Supabase — banco de dados, autenticação e armazenamento de arquivos (fotos, logomarcas ' +
+          'e PDFs, em depósito privado) na nuvem, com isolamento por usuário ' +
           '(Row Level Security), de forma que cada conta só enxerga os próprios dados.',
+        'Google — login com o Google ("Continuar com o Google"), quando você escolhe essa opção: ' +
+          'o Google confirma a sua identidade e nos informa o nome, o e-mail e a foto do perfil da conta. ' +
+          'O Google trata esse login conforme a própria política de privacidade.',
+        'Google Play — no aplicativo Android, cobrança e gestão das assinaturas dos planos pagos ' +
+          '(processador de pagamento da loja), quando essa opção estiver disponível. A Google ' +
+          'recebe os dados do pagamento, e o OLLI recebe da Google Play o histórico da compra ' +
+          '(plano, estado e datas da assinatura), sem acesso ao número do seu cartão.',
+        'Resend — envio de e-mails do serviço: confirmação de conta, recuperação de senha, ' +
+          'convite de equipe, boas-vindas, avisos de assinatura e resumos. Recebe o seu e-mail ' +
+          'e o conteúdo da mensagem enviada.',
         'Cloudflare — hospedagem do nosso servidor, da página pública da etiqueta QR e ' +
           'transcrição de áudio pelo Workers AI.',
         'Stripe — processamento de pagamentos e gestão de assinaturas iniciadas nos canais ' +

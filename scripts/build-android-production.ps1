@@ -104,7 +104,10 @@ if (Test-Path -LiteralPath $output) {
 
 Push-Location $androidRoot
 try {
-  & .\gradlew.bat --no-daemon bundleRelease
+  # Loja FIXA na Google Play: sem o pin, o resolvedor do expo-iap escolhe pela
+  # tarefa/aparelho conectado (Fire/Quest ligariam o SDK da Amazon/Horizon). O
+  # plugin do expo-iap 5.8.2 nao aceita pin 'play' no app.json, entao vai por -P.
+  & .\gradlew.bat --no-daemon -PopeniapStore=play bundleRelease
   if ($LASTEXITCODE -ne 0) {
     throw "O Gradle encerrou com codigo $LASTEXITCODE."
   }

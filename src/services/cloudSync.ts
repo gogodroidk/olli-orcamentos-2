@@ -64,6 +64,8 @@ import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCl
 import { garantiaAteDaOS } from '../utils/garantiaServico';
 import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from './verticais';
+import { empresaSemCadastro } from './perfilOperacional';
+import { decidirPushEmpresa, type EstadoEmpresaAntesDoPush } from './carimboEmpresa';
 import { lerEncerramento } from '../utils/encerramentoOS';
 import {
   erroEhColisaoNumero,
@@ -128,8 +130,11 @@ function remoteNome(table: SyncTable): string {
 // As tabelas com jsonb (`empresa`, `orcamentos`, `recibos`, `modelos`) guardam o
 // objeto completo do app em `dados`, e replicam as colunas que o painel lê.
 
+// Sem `atualizado_em`: o carimbo da empresa é do SERVIDOR (default now() no INSERT
+// e trigger `empresa_set_atualizado_em` BEFORE INSERT OR UPDATE — migration
+// 20261004110200). O relógio do aparelho pode estar dias adiantado.
 function empresaToRow(e: Empresa): Record<string, unknown> {
-  return { dados: e, atualizado_em: new Date().toISOString() };
+  return { dados: e };
 }
 
 function clienteToRow(c: Cliente): Record<string, unknown> {
@@ -920,6 +925,12 @@ export async function resolverEstadoEmpresaDaSessao(): Promise<EstadoEmpresaDaSe
         if (data) {
           const empresa = rowToEmpresa(data);
           if (!empresa) return 'nao_sei';
+          // Linha que existe mas não identifica negócio nenhum (só o segmento
+          // padrão — o caso da conta de revisão da Play) não é "tem": o dono vai
+          // ao Onboarding, que monta o cadastro. A guarda de envio deixa o
+          // Onboarding gravar por cima dela (decidirPushEmpresa). Para o membro
+          // de equipe nada muda: ele não escreve a empresa do dono.
+          if (alvo.souDono && empresaSemCadastro(empresa)) return 'nao_tem';
           await localUpsertEmpresa(empresa, (data as any)?.atualizado_em);
           return 'tem';
         }
@@ -1200,7 +1211,7 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       }
       return;
     }
-    if (table === 'empresa') await marcarEmpresaVistaAgora();
+    if (table === 'empresa') await marcarEmpresaComHoraDoServidor((row as Record<string, unknown>).user_id);
   } catch {
     // idem: silencioso
   }
@@ -1210,36 +1221,29 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
  * Decide se o push de `empresa` pode seguir. O terceiro estado é obrigatório:
  * erro ao consultar a nuvem não é prova de que a linha não existe e, portanto,
  * adia a escrita em vez de sobrescrever um cadastro que este aparelho nunca viu.
+ *
+ * A regra mora em `decidirPushEmpresa` (services/carimboEmpresa.ts, testada):
+ * sem carimbo, a nuvem que já tem empresa vence (aparelho novo de usuário
+ * existente — o P0 da auditoria); linha da nuvem sem cadastro nenhum pode ser
+ * sobrescrita; carimbo vindo do relógio adiantado de versão antiga não vale.
+ * `.eq(user_id)`: sem o filtro, um membro de equipe enxerga (RLS `empresa_select`
+ * → donos_visiveis) a linha do DONO além da própria, e o maybeSingle devolvia
+ * erro com 2 linhas — ou, pior, a resposta era sobre a empresa de OUTRA pessoa.
  */
-type EstadoEmpresaAntesDoPush = 'pode_escrever' | 'nuvem_mais_nova' | 'nao_sei';
-
 async function estadoEmpresaAntesDoPush(userId: string): Promise<EstadoEmpresaAntesDoPush> {
   try {
     if (!supabase) return 'nao_sei';
     const stampLocal = await AsyncStorage.getItem(EMPRESA_STAMP_KEY).catch(() => null);
-    if (!stampLocal) {
-      // Sem carimbo = este aparelho NUNCA puxou a empresa. Se a nuvem JÁ tem uma
-      // empresa, NÃO empurrar por cima: seria sobrescrever o cadastro real de um
-      // usuário existente que logou em aparelho novo (mecanismo do P0 da auditoria —
-      // o antigo "return false" era o piso INSEGURO). Devolver true faz o chamador
-      // puxar a nuvem em vez de empurrar, e o local converge. Se a nuvem não tem
-      // empresa, é usuário novo criando a dele → false libera o push (fluxo correto).
-      // `.eq(user_id)`: sem o filtro, um membro de equipe enxerga (RLS
-      // `empresa_select` → donos_visiveis) a linha do DONO além da própria, e o
-      // maybeSingle devolvia erro com 2 linhas — ou, pior, a resposta era sobre a
-      // empresa de OUTRA pessoa. Só perguntamos sobre a linha do nosso tenant.
-      const { data, error } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
-      if (error) return 'nao_sei';
-      return data ? 'nuvem_mais_nova' : 'pode_escrever';
-    }
     const { data, error } = await supabase
       .from('empresa')
-      .select('atualizado_em')
+      .select('atualizado_em, dados')
       .eq('user_id', userId)
       .maybeSingle();
     if (error) return 'nao_sei';
-    const remoto = (data as any)?.atualizado_em as string | undefined;
-    return tsMaisNovo(remoto, stampLocal) ? 'nuvem_mais_nova' : 'pode_escrever';
+    const remoto = data
+      ? { atualizadoEm: (data as any)?.atualizado_em as string | undefined, semCadastro: empresaSemCadastro(data) }
+      : null;
+    return decidirPushEmpresa(stampLocal, remoto);
   } catch {
     return 'nao_sei';
   }
@@ -1264,12 +1268,28 @@ async function pullEmpresaMaisNova(userId: string): Promise<void> {
   }
 }
 
-/** Grava o carimbo local de `empresa` = agora (última vez que vimos/escrevemos a nuvem). NUNCA lança. */
-async function marcarEmpresaVistaAgora(): Promise<void> {
+/**
+ * Depois de um envio aceito, o carimbo local de `empresa` passa a ser o
+ * `atualizado_em` que o SERVIDOR gravou (trigger `empresa_set_atualizado_em`),
+ * nunca o relógio do aparelho (ver services/carimboEmpresa.ts — foi assim que um
+ * celular adiantado empurrou a empresa vazia por cima da corrigida).
+ *
+ * Se a releitura falhar, o carimbo fica como estava: o próximo envio vê a nuvem
+ * "mais nova" (é a nossa própria escrita), puxa e converge — nada se perde,
+ * porque o que está na nuvem é exatamente o que este aparelho mandou. NUNCA lança.
+ */
+async function marcarEmpresaComHoraDoServidor(userIdDaLinha: unknown): Promise<void> {
   try {
-    await AsyncStorage.setItem(EMPRESA_STAMP_KEY, new Date().toISOString());
+    if (!supabase) return;
+    let userId = typeof userIdDaLinha === 'string' && userIdDaLinha ? userIdDaLinha : null;
+    if (!userId) userId = (await alvoEmpresa())?.userId ?? null;
+    if (!userId) return;
+    const { data, error } = await supabase.from('empresa').select('atualizado_em').eq('user_id', userId).maybeSingle();
+    const atualizadoEm = (data as any)?.atualizado_em;
+    if (error || typeof atualizadoEm !== 'string' || !atualizadoEm) return;
+    await AsyncStorage.setItem(EMPRESA_STAMP_KEY, atualizadoEm);
   } catch {
-    // Sem carimbo, o próximo push consulta a nuvem; se não conseguir, adia.
+    // Sem carimbo novo, o próximo push consulta a nuvem; se não conseguir, adia.
   }
 }
 
@@ -1471,6 +1491,18 @@ async function localMaisNovoRecibo(id: string, recebidoEm?: string): Promise<boo
  */
 async function localUpsertEmpresa(e: Empresa, recebidoEm?: string): Promise<void> {
   const db = await getDb();
+  // Vazio não apaga cadastro (mesma regra do trigger 20261004100000 no banco): uma
+  // linha da nuvem sem dado nenhum não sobrescreve a empresa que a pessoa acabou
+  // de preencher aqui (ex.: Onboarding salvo antes de o envio chegar à nuvem).
+  // O carimbo também não muda, para o próximo envio subir o cadastro local.
+  if (empresaSemCadastro(e)) {
+    const atual = await db.getFirstAsync<{ data: string }>('SELECT data FROM empresa LIMIT 1');
+    if (atual?.data) {
+      let local: unknown = null;
+      try { local = JSON.parse(atual.data); } catch { local = null; }
+      if (local && !empresaSemCadastro(local)) return;
+    }
+  }
   await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
     e.id ?? 'empresa_1',
     JSON.stringify(e),

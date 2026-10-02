@@ -136,7 +136,20 @@
     // Alertas oficiais INMET + Defesa Civil (cron 20/20 min → KV CACHE → GET /alertas).
     // Fontes públicas e grátis. "off" desliga a coleta E a rota (que passa a
     // responder "alertas_desligados" — nunca "sem alertas").
-    "ALERTAS_MODE": "production"
+    "ALERTAS_MODE": "production",
+    // Assinatura pela Google Play (Play Billing direto, worker/src/play.js).
+    // KILL SWITCH da VENDA: "on" | "off". Com "off" o GET /play/config diz
+    // ligado:false e o app mostra a venda como indisponível (nunca modo demo).
+    // NÃO bloqueia o POST /play/verificar: compra já paga sempre é registrada.
+    // O RTDN e a reconciliação seguem rodando com a credencial presente, para quem
+    // já assinou. Secrets (wrangler secret put): PLAY_SA_JSON (chave JSON da conta
+    // olli-play-verify@claude-motor) e PLAY_TESTE_PERMITIDOS (user_ids que podem
+    // fazer compra de teste). Ordem de ativação no HANDOFF da entrega da Play.
+    "PLAY_BILLING_MODE": "off",
+    "PLAY_PACKAGE_NAME": "online.olliorcamentos.app",
+    // Assinatura PULL do tópico do RTDN (projects/claude-motor/topics/olli-play-rtdn).
+    // O cron 7,27,47 puxa daqui (:07 e :47): sem endpoint público e sem cron novo.
+    "PLAY_PUBSUB_SUBSCRIPTION": "projects/claude-motor/subscriptions/olli-play-rtdn-worker"
   },
   // Staging is a separate Worker with no production custom domains. It inherits
   // the bindings/rate-limit shape above but overrides all environment identity
@@ -186,7 +199,12 @@
         "STRIPE_PRICE_EMPRESA_ANUAL": "price_1TqkxJ4zjAI9pGd7WyiqYhrn",
         "MP_WEBHOOK_REQUIRE_SIGNATURE": "true",
         // Staging não tem o KV CACHE: alertas ficam desligados (e dizem isso).
-        "ALERTAS_MODE": "off"
+        "ALERTAS_MODE": "off",
+        // Google Play DESLIGADA no staging, e SEM assinatura Pub/Sub: um pull daqui
+        // roubaria (e daria ack em) mensagens do RTDN de produção.
+        "PLAY_BILLING_MODE": "off",
+        "PLAY_PACKAGE_NAME": "online.olliorcamentos.app",
+        "PLAY_PUBSUB_SUBSCRIPTION": ""
       },
       "ai": { "binding": "AI" },
       "ratelimits": [
@@ -202,7 +220,8 @@
         { "name": "CEP_RL", "namespace_id": "2011", "simple": { "limit": 30, "period": 60 } },
         { "name": "ABACATE_RL", "namespace_id": "2012", "simple": { "limit": 12, "period": 60 } },
         { "name": "ABACATEHOOK_RL", "namespace_id": "2013", "simple": { "limit": 60, "period": 60 } },
-        { "name": "RCHOOK_RL", "namespace_id": "2014", "simple": { "limit": 60, "period": 60 } },
+        // (2014 era o RCHOOK_RL do RevenueCat, aposentado: buraco deliberado.)
+        { "name": "PLAY_RL", "namespace_id": "2015", "simple": { "limit": 10, "period": 60 } },
         { "name": "AUTH_EMAIL_RL", "namespace_id": "2021", "simple": { "limit": 5, "period": 60 } },
         { "name": "CLIMA_RL", "namespace_id": "2030", "simple": { "limit": 30, "period": 60 } },
         { "name": "ALERTAS_RL", "namespace_id": "2040", "simple": { "limit": 30, "period": 60 } },
@@ -271,10 +290,13 @@
     // propósito (volume real: unidades por dia); 429 só faz a AbacatePay reenviar.
     // Id novo (1013): não reaproveita o 1007.
     { "name": "ABACATEHOOK_RL", "namespace_id": "1013", "simple": { "limit": 60, "period": 60 } },
-    // /revenuecat/webhook por IP, conferido ANTES do Authorization secreto: barra
-    // quem tenta adivinhar o segredo. Teto alto de propósito (volume real: poucos
-    // eventos por assinante por mês); 429 só faz o RevenueCat reenviar.
-    { "name": "RCHOOK_RL", "namespace_id": "1014", "simple": { "limit": 60, "period": 60 } },
+    // (namespace_id 1014 era o RCHOOK_RL, do webhook do RevenueCat — aposentado
+    // com a troca para o Play Billing direto. Não reaproveitar: buraco deliberado,
+    // como o 1007.)
+    // POST /play/verificar por USUÁRIO. Fail-closed (rota de dinheiro: sem o
+    // binding, 503/429 — nunca "sem limite"). Uso legítimo: 1 compra + algumas
+    // restaurações ao abrir o app; 10/min é folga. Cada chamada vai ao Google.
+    { "name": "PLAY_RL", "namespace_id": "1015", "simple": { "limit": 10, "period": 60 } },
     // /auth/email-hook por DESTINATÁRIO (hash do e-mail), conferido depois da
     // assinatura: barra que um cadastro/"esqueci a senha" em loop vire bombardeio
     // na caixa de alguém e queime a cota da Resend. O próprio Supabase já segura

@@ -81,21 +81,23 @@ export default function EntrarScreen() {
   const [temApple, setTemApple] = useState(false);
   const [temLocais, setTemLocais] = useState(false);
 
-  // No mount: se já há dados locais (o usuário usou o app offline antes de a v3
-  // exigir conta), mostra o banner de migração e assume o modo "criar conta" —
-  // quem tem dados locais provavelmente ainda não tem conta.
   useEffect(() => {
     let vivo = true;
     appleSignInDisponivel().then((ok) => { if (vivo) setTemApple(ok); });
     return () => { vivo = false; };
   }, []);
 
+  // A tela SEMPRE abre em "Entrar" (rejeição da Play, 02/10/2026). Antes, dados
+  // no aparelho trocavam o modo para "criar conta" — e depois de "Sair" sempre há
+  // dados (a partição de quem saiu continua aqui): quem digitava e-mail e senha
+  // caía em "Faltou o nome" ou "e-mail já cadastrado" e não entrava. Os dados
+  // locais só acendem o banner de migração, que aparece se a pessoa escolher
+  // "Criar agora" (e só existe num aparelho onde ninguém nunca entrou — ver
+  // temDadosLocais).
   useEffect(() => {
     let vivo = true;
     temDadosLocais().then((tem) => {
-      if (!vivo || !tem) return;
-      setTemLocais(true);
-      setModo('signup');
+      if (vivo && tem) setTemLocais(true);
     });
     return () => { vivo = false; };
   }, []);
@@ -268,7 +270,7 @@ export default function EntrarScreen() {
         await entrarNoApp();
       }
       if (res === 'cancelado') {
-        Alert.alert('Login com o Google não concluído', mensagemErroOAuth('cancelado'));
+        Alert.alert('Login com a Apple não concluído', mensagemErroOAuth('cancelado', 'apple'));
       }
     } catch (e: any) {
       const { titulo, texto } = traduzirErroAuth(e);
@@ -441,7 +443,9 @@ export default function EntrarScreen() {
 
   // MOBILE (e web estreita): hero curto acima do card de login (layout original).
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // Android 15+ (targetSdk 36) é edge-to-edge: sem `behavior` o teclado cobria
+    // o campo Senha e o botão "Entrar" em telas pequenas.
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* HERO / CAPA (~45% da tela) */}
         <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.hero, { paddingTop: insets.top + 72 }]}>

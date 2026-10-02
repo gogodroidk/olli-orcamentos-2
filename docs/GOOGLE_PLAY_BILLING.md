@@ -1,213 +1,214 @@
-# Assinatura pela Google Play (RevenueCat) — passo a passo
+# Assinatura pela Google Play (Play Billing direto) — como funciona e como ligar
 
-Estado em 30/09/2026: **código pronto e DESLIGADO**. O Android da Play hoje não vende nada
-(regra da loja: bem digital só pelo Play Billing). Este documento é o que falta de **humano**
-para ligar a venda de Pro e Empresa pela própria Google Play.
+Estado em 02/10/2026: **app pronto na 1.2.0 (versionCode 24)**, com Play Billing **direto** pelo
+`expo-iap` 5.8.2 (Play Billing Library 9.1). **Sem RevenueCat e sem serviço de terceiro.** O lado do
+servidor (`worker/src/play.js`) entra na mesma release. A venda fica atrás de um **interruptor do
+servidor** (`PLAY_BILLING_MODE`): se o teste falhar, o app sai com a venda desligada e a tela diz que a
+assinatura pelo app está indisponível no momento. **Nunca modo demo.**
 
-## Como funciona (resumo de 1 minuto)
+## Como funciona (1 minuto)
 
 ```
-App Android ──(SDK react-native-purchases, appUserID = id do Supabase)──▶ Google Play (cobra)
-                                                                          │
-                                                RevenueCat valida o recibo com o Google
-                                                                          │
-                     POST https://diagnostico.olliorcamentos.online/revenuecat/webhook
-                     Authorization: Bearer <REVENUECAT_WEBHOOK_SECRET>
-                                                                          │
-                                    worker/src/revenuecat.js ──▶ public.assinaturas
-                                                                          │
-                                  o app relê o plano do SERVIDOR (nunca libera sozinho)
+App Android ──(expo-iap: requestPurchase, obfuscatedAccountId = sha256hex(user.id))──▶ Google Play (cobra)
+     │
+     │ purchaseUpdatedListener (compra PURCHASED)
+     ▼
+POST https://diagnostico.olliorcamentos.online/play/verificar     Authorization: Bearer <JWT do Supabase>
+     { purchaseToken, productId, basePlanId | null }      (montado por corpoVerificacaoPlay)
+     │
+     ▼
+worker/src/play.js ── subscriptionsv2.get (Google Play Developer API, conta de serviço)
+     │                confere pacote, produto do catálogo, obfuscatedExternalAccountId == sha256(userId do JWT)
+     │                grava public.assinaturas (+ play_compras) e reconhece (acknowledge)
+     ▼
+200 { ok:true, estado:'ativo', plano, vigenteAte }  ──▶  app chama finishTransaction  ──▶  relê o plano do SERVIDOR
+200 { ok:true, estado:'pendente'|'encerrado'|'sem_efeito', plano:null }  ──▶  "sem liberação" (texto neutro, sem finalizar)
+409 { ok:false, erro: 'token_de_outra_conta' }  ──▶  "Esta assinatura já está ligada a outra conta OLLI"
+
+Renovação, cancelamento, carência, suspensão, estorno:
+Google ──RTDN──▶ Pub/Sub (tópico olli-play-rtdn) ──pull pelo cron 7,27,47 (:07/:47)──▶ worker ──▶ subscriptionsv2.get ──▶ assinaturas
 ```
 
-- **Liga sozinho quando** o build Android tem `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` (chave pública
-  `goog_…`) e não está no Expo Go. Sem isso, a tela de Planos fica exatamente como antes.
-- **iOS continua sem compra.** A web continua vendendo por Stripe/Pix.
-- **Preço:** o app mostra o preço que a **Play devolve** (cadastrado no Play Console). Nenhum
-  número é digitado no app para a Play.
-- Código: `src/services/playBillingRegras.ts` (catálogo único, usado pelo app e pelo worker),
-  `src/services/playBilling.android.ts` (único arquivo que fala com o SDK),
-  `worker/src/revenuecat.js` (webhook), migration `20260930120400_assinaturas_revenuecat.sql`.
+- **Quem libera é o servidor.** O app nunca libera plano sozinho. Se o servidor não confirmar, a compra
+  fica sem reconhecimento e a própria Play **estorna em 3 dias** — melhor que cobrar sem entregar.
+- **Ligado** = Android + fora do Expo Go + módulo nativo `ExpoIap` no binário + `GET /play/config`
+  respondendo `{ ligado: true }`. Sem flag de build (o build local não lê o `env` do `eas.json`).
+- **Preço:** o app mostra **só** o preço que a Play devolve. No Android nunca aparece o preço da web
+  (nem com a venda desligada).
+- **iOS continua sem compra.** A web continua vendendo por Stripe/Pix. O painel web mostra
+  "Gerenciar na Google Play" para quem assinou no Android.
 
-## Catálogo — os IDs têm de ser EXATAMENTE estes
+## Catálogo (JÁ CRIADO no Play Console — não recriar; IDs não podem ser reutilizados)
 
-| Assinatura (Play Console) | Plano básico | Produto no RevenueCat | Entitlement | Plano OLLI |
+| Assinatura | Plano básico | Id lógico no app/worker | Plano OLLI | Preço na Play |
 |---|---|---|---|---|
-| `olli_pro` | `mensal` (renova a cada 1 mês) | `olli_pro:mensal` | `pro` | Pro |
-| `olli_pro` | `anual` (renova a cada 1 ano) | `olli_pro:anual` | `pro` | Pro |
-| `olli_empresa` | `mensal` | `olli_empresa:mensal` | `empresa` | Empresa |
-| `olli_empresa` | `anual` | `olli_empresa:anual` | `empresa` | Empresa |
+| `olli_pro` | `mensal` (P1M) | `olli_pro:mensal` | Pro | o da web: `PRECO_PRO.mensalCentavos` |
+| `olli_pro` | `anual` (P1Y) | `olli_pro:anual` | Pro | o da web: `PRECO_PRO.anualCentavos` |
+| `olli_empresa` | `mensal` (P1M) | `olli_empresa:mensal` | Empresa | o da web: `PRECO_EMPRESA.mensalCentavos` |
+| `olli_empresa` | `anual` (P1Y) | `olli_empresa:anual` | Empresa | o da web: `PRECO_EMPRESA.anualCentavos` |
 
-Qualquer outro ID não libera plano (o worker registra ALARME). Para mudar o catálogo, mude
-`ASSINATURA_PLAY_POR_PLANO` em `src/services/playBillingRegras.ts` — app e worker leem de lá.
+- Fonte única: `ASSINATURA_PLAY_POR_PLANO` em `src/services/playBillingRegras.ts` (app e worker leem
+  de lá). Produto desconhecido **não libera nada**.
+- Preços conferidos em `src/services/precosPlanos.ts` (dono decidiu: preço da Play = preço da web).
+  Se a fonte mudar, mude o Console junto — o app não tem número digitado para a Play.
+- **Sem teste grátis na Play** (decisão do dono). O app só vende a oferta-base de cada plano básico
+  (uma fase de preço); uma oferta com teste/preço de entrada **não vira botão** até existir o texto
+  exigido pela política.
+- País: **Brasil**.
 
----
+## O que já está configurado fora do código (02/10/2026)
 
-## Ordem dos passos humanos
-
-### 0. Pré-requisitos
-- Conta de desenvolvedor da Play com **perfil de pagamentos (comerciante)** ativo
-  (Play Console › Configuração › Perfil de pagamentos). Sem ele não dá para criar assinatura.
-- O PR deste recurso **mesclado na `main`** (produção só sai da `main`).
-
-### 1. Banco — aplicar a migration (antes de tudo que gera evento)
-`supabase/migrations/20260930120400_assinaturas_revenuecat.sql` (Management API ou MCP).
-Conferir:
-```sql
-select column_name from information_schema.columns
- where table_schema='public' and table_name='assinaturas' and column_name like 'revenuecat_%';
--- 4 linhas: revenuecat_evento_em, revenuecat_produto_id, revenuecat_transacao_id, revenuecat_vigencia_ate
-```
-Sem as colunas o webhook responde 503 (não decide às cegas) e o RevenueCat reenvia até 5 vezes.
-
-### 2. Play Console — criar as assinaturas
-1. É preciso que a Play conheça um AAB **com a permissão de faturamento**. Gere um build com o SDK
-   (passo 7 — pode ser ainda sem a chave) e suba na faixa **Teste interno**. Só depois disso o
-   menu de assinaturas libera.
-2. Play Console › (app OLLI) › **Monetizar › Produtos › Assinaturas › Criar assinatura**:
-   - ID `olli_pro`, nome "OLLI Pro".
-   - Dentro dela, **Adicionar plano básico**: ID `mensal`, tipo *Renovação automática*, período
-     *1 mês*; e ID `anual`, *Renovação automática*, *1 ano*.
-   - Preço de cada plano básico: o **mesmo valor da web**, lido de `src/services/precosPlanos.ts`
-     (`PRECO_PRO.mensalCentavos` e `PRECO_PRO.anualCentavos`, em centavos). Não copie de memória.
-   - **Ative** os dois planos básicos.
-3. Repita para `olli_empresa` (`PRECO_EMPRESA.mensalCentavos` / `PRECO_EMPRESA.anualCentavos`).
-4. Em cada assinatura, deixe **Período de carência** ligado (o padrão da Play). O worker mantém o
-   acesso durante a carência (evento `BILLING_ISSUE`) e só corta no `EXPIRATION`.
-5. Não crie oferta de teste grátis/introdutória agora (dá para ligar depois; o worker já trata
-   `period_type: TRIAL` como `trialing`).
-
-### 3. Google Cloud + Play Console — conta de serviço para o RevenueCat
-Segue o guia oficial "Creating Play Service Credentials" do RevenueCat. Em resumo:
-1. No Google Cloud (projeto `olli-orcamentos`), **ativar** as APIs *Google Play Android Developer
-   API* e *Cloud Pub/Sub API*.
-2. IAM › Contas de serviço › **Criar** (ex.: `revenuecat-play`), papéis *Pub/Sub Editor* e
-   *Monitoring Viewer*. Criar uma **chave JSON** e baixar. Guardar no cofre
-   (`CONFIG CLAUDE\credenciais-locais.env` aponta para o arquivo; nunca no repo).
-3. Play Console › **Usuários e permissões › Convidar novos usuários** › e-mail da conta de serviço,
-   com acesso ao app OLLI e as permissões: *Ver informações do app e baixar relatórios em massa*,
-   *Ver dados financeiros, pedidos e respostas a pesquisas de cancelamento*, *Gerenciar pedidos e
-   assinaturas*.
-4. A validação das credenciais pelo Google pode levar **até 36 horas**. Não é erro se o RevenueCat
-   disser "credentials not valid yet" no primeiro dia.
-
-### 4. RevenueCat — projeto, app e notificações
-1. Criar conta em app.revenuecat.com (e-mail do dono) › **Novo projeto** "OLLI".
-2. **Apps › + App › Google Play**: pacote `online.olliorcamentos.app`; subir o JSON do passo 3.
-3. Na mesma tela, **Google Real-Time Developer Notifications › Connect to Google**: o RevenueCat
-   gera um tópico Pub/Sub. Copiar o nome do tópico e colar em Play Console › **Monetizar ›
-   Configuração da monetização › Notificações do desenvolvedor em tempo real** › *Enviar mensagem
-   de teste* (tem de chegar no RevenueCat).
-4. **Project settings › General › Restore behavior = "Keep with original App User ID"**.
-   Obrigatório: com o padrão ("Transfer to new App User ID") uma mesma compra da Play poderia
-   virar plano de duas contas OLLI. Com "Keep", restaurar em outra conta dá o erro
-   `receipt_already_in_use`, que o app traduz para "esta assinatura já está ligada a outra conta
-   OLLI". Se um evento `TRANSFER` chegar mesmo assim, o worker registra ALARME e não mexe em plano.
-
-### 5. RevenueCat — produtos, entitlements e oferta
-1. **Product catalog › Products › Import** (ou + New) os 4 produtos da tabela acima
-   (`olli_pro:mensal`, `olli_pro:anual`, `olli_empresa:mensal`, `olli_empresa:anual`).
-2. **Entitlements**: criar `pro` (anexar `olli_pro:mensal` e `olli_pro:anual`) e `empresa`
-   (anexar `olli_empresa:mensal` e `olli_empresa:anual`).
-3. **Offerings**: criar `default` e marcá-la como **Current**. Adicionar 4 pacotes, um por produto
-   (identificador livre, ex.: `pro_mensal`, `pro_anual`, `empresa_mensal`, `empresa_anual`). O app
-   escolhe pelo **produto**, não pelo nome do pacote; produto fora do catálogo é ignorado.
-
-### 6. Chaves e webhook
-1. **Chave pública do SDK** (RevenueCat › Project settings › API keys › *Google Play* — começa com
-   `goog_`). É pública por natureza (vai dentro do app). Colocar em `eas.json`, no `env` dos
-   perfis `preview` e `production`:
-   `"EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY": "goog_..."`.
-   **Nunca** use a *Secret API key* (`sk_…`) no app — o app a recusa e fica desligado.
-2. **Segredo do webhook** (≥ 32 caracteres; menos que isso o worker fica desligado):
-   ```bash
-   openssl rand -hex 32            # guardar no cofre
-   cd worker && env -u CLOUDFLARE_API_TOKEN npx wrangler secret put REVENUECAT_WEBHOOK_SECRET
-   ```
-3. **Deploy do worker a partir da `main`** (`cd worker && npm ci && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy`).
-   O deploy também provisiona o limitador `RCHOOK_RL` (teto por IP do webhook).
-   Conferir que está desligado→ligado:
-   `curl -s -X POST https://diagnostico.olliorcamentos.online/revenuecat/webhook` → `401`
-   (sem o secret seria `503 {"erro":"revenuecat_desligado"}`).
-4. RevenueCat › **Integrations › Webhooks › + Add**:
-   - URL: `https://diagnostico.olliorcamentos.online/revenuecat/webhook`
-   - **Authorization header value**: `Bearer <o segredo do passo 2>` (com o "Bearer " na frente).
-   - Ambiente: *Production and Sandbox* (o worker ignora sandbox salvo no passo 8).
-   - Eventos: todos.
-   - **Send test event** → resposta `200 {"ok":true,"acao":"ignorar","motivo":"teste"}` e uma linha
-     em `webhook_events` com `origem='revenuecat'`.
-
-### 7. Build
-`eas build -p android --profile production` (ou `preview` para o teste interno) com a chave no
-`eas.json`. Testar o boot no emulador `olli_phone` antes de subir. Subir o AAB na faixa
-**Teste interno**. Expo Go **não** serve: lá o SDK simula compras e o app se desliga de propósito.
-
-### 8. Testar com licença de teste (sem cobrança real)
-1. Play Console › **Configuração › Teste de licença**: adicionar as contas Gmail de teste, resposta
-   `RESPOND_NORMALLY`. Essas contas também têm de estar na lista de testadores da faixa interna.
-2. Ligar a aceitação de sandbox no worker **só durante o teste**:
-   ```bash
-   cd worker && env -u CLOUDFLARE_API_TOKEN npx wrangler secret put REVENUECAT_ACEITAR_SANDBOX   # valor: true
-   ```
-3. No aparelho (logado na conta Google de teste e numa conta OLLI de teste):
-   - Planos › aba Mensal › **Assinar Pro — <preço da Play>/mês** → folha da Play mostra
-     "cartão de teste" → comprar. Em segundos o app diz **Plano liberado**.
-   - Conferir: `select plano,status,current_period_end,revenuecat_produto_id from public.assinaturas where user_id='<id>';`
-     e `select tipo,status,erro from public.webhook_events where origem='revenuecat' order by id desc limit 10;`
-   - Na licença de teste a assinatura mensal **renova a cada 5 minutos** (anual: 30 min), até 6
-     renovações — cada uma chega como `RENEWAL` e empurra `current_period_end`.
-   - Play Store › Pagamentos e assinaturas › cancelar → chega `CANCELLATION` (acesso continua até
-     o fim do ciclo) e depois `EXPIRATION` → a conta volta ao Grátis.
-   - Reembolso pelo Play Console (Gestão de pedidos › reembolsar) → `CANCELLATION` com
-     `CUSTOMER_SUPPORT` → plano encerrado na hora.
-   - Outro aparelho, mesma conta Google e mesma conta OLLI › **Restaurar compras da Google Play**.
-   - Mesma conta Google, **outra** conta OLLI › restaurar → mensagem "já está ligada a outra conta".
-   - Uma conta que já tem Pix/Stripe vigente: comprar pela Play não pode encurtar nem rebaixar o
-     plano (o worker preserva o maior nível e a maior vigência).
-4. **Desligar a aceitação de sandbox** ao terminar:
-   `cd worker && env -u CLOUDFLARE_API_TOKEN npx wrangler secret delete REVENUECAT_ACEITAR_SANDBOX`.
-
-### 9. Produção
-Promover o AAB para a faixa de produção. Acompanhar os primeiros dias:
-```sql
-select tipo, status, erro, count(*) from public.webhook_events
- where origem='revenuecat' group by 1,2,3 order by 4 desc;
--- status 'falhou' com erro = ALARME (produto desconhecido, id anônimo, TRANSFER…): olhar um a um
-```
-
----
-
-## Regras que o worker aplica (para quem for reconciliar)
-
-| Evento | O que acontece em `public.assinaturas` |
+| Item | Valor |
 |---|---|
-| `INITIAL_PURCHASE`, `RENEWAL`, `UNCANCELLATION`, `SUBSCRIPTION_EXTENDED`, `REFUND_REVERSED` | concede o plano do produto até `expiration_at_ms` (`trialing` se `period_type=TRIAL`) |
-| `CANCELLATION` (renovação desligada) | nada — o acesso segue até o fim do ciclo |
-| `CANCELLATION` com `cancel_reason=CUSTOMER_SUPPORT` (reembolso) ou vigência vencida | `canceled`, vigência = agora |
-| `EXPIRATION` | `canceled` na data da loja |
-| `BILLING_ISSUE` com carência | estende a vigência até o fim da carência (`active`) |
-| `PRODUCT_CHANGE`, `SUBSCRIPTION_PAUSED`, `TEMPORARY_ENTITLEMENT_GRANT`, outros | só trilha |
-| `TRANSFER`, produto desconhecido, id anônimo, loja ≠ Play | **ALARME** no log + `webhook_events.status='falhou'` |
-| `SANDBOX` sem `REVENUECAT_ACEITAR_SANDBOX=true` | ignorado |
+| Assinaturas | `olli_pro` e `olli_empresa`, base plans `mensal`/`anual` **ativos** |
+| RTDN | tópico `projects/claude-motor/topics/olli-play-rtdn` |
+| Assinatura Pub/Sub (PULL) | `projects/claude-motor/subscriptions/olli-play-rtdn-worker` |
+| Conta de serviço | `olli-play-verify@claude-motor.iam.gserviceaccount.com` (sem papéis no projeto; na Play: ver dados financeiros + gerenciar pedidos e assinaturas). Chave JSON local, vai no secret `PLAY_SA_JSON` |
+| Teste de licença | ligado (testadores com resposta LICENSED) |
 
-- **Prova de vínculo:** encerramento só age se o `original_transaction_id` do evento for o gravado
-  em `revenuecat_transacao_id`.
-- **Outra origem:** se `current_period_end` > `revenuecat_vigencia_ate`, quem sustenta o plano é
-  Stripe/Pix; o fim da Play não derruba nada. Na concessão sobre plano vigente de outra origem,
-  fica o maior nível e a maior vigência. As colunas `stripe_*`/`mp_*` nunca são tocadas.
-- **Fora de ordem:** evento com `event_timestamp_ms` mais velho que `revenuecat_evento_em` é ignorado.
-- **Idempotência:** `webhook_events (origem='revenuecat', event_id=event.id)`.
+## Worker — nomes (decisão C6)
 
-## Limites conhecidos (próximos passos, não bloqueiam)
-- Quem já é assinante não vê botão de compra na tela de Planos: **troca Pro → Empresa pela Play**
-  ainda não é oferecida no app (hoje: cancelar na Play e assinar o outro).
-- Quem tem **ao mesmo tempo** assinatura Stripe e Play numa conta: um evento tardio da Stripe para
-  aquela assinatura pode sobrescrever a linha (a Stripe não conhece as colunas da Play). Raro — o
-  Android não vende Stripe —, mas se aparecer, reconciliar à mão pelo `webhook_events`.
-- A taxa da Google para assinaturas é de 15%; o preço na Play pode ser ajustado no Play Console sem
-  novo build (o app mostra o que a loja devolver).
+| Tipo | Nome | Valor |
+|---|---|---|
+| secret | `PLAY_SA_JSON` | JSON da chave da `olli-play-verify@` (nunca no app, nunca no `eas.json`) |
+| secret | `PLAY_TESTE_PERMITIDOS` | user_ids que podem fazer compra de teste (licença) |
+| var | `PLAY_BILLING_MODE` | `off` \| `on` — o **kill switch da vitrine** lido por `GET /play/config`. Não bloqueia `/play/verificar` (compra já paga sempre é registrada) |
+| var | `PLAY_PACKAGE_NAME` | `online.olliorcamentos.app` |
+| var | `PLAY_PUBSUB_SUBSCRIPTION` | `projects/claude-motor/subscriptions/olli-play-rtdn-worker` |
 
-## Desligar (rollback)
-- Parar de vender: build sem `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` (a tela volta a só informar).
-- Parar de processar: desativar o webhook no RevenueCat ou apagar o secret
-  (`wrangler secret delete REVENUECAT_WEBHOOK_SECRET` → rota responde 503 "desligado").
-  Quem já assinou continua com o plano até a vigência gravada.
+Contrato que o app usa (`src/services/playBillingWorker.ts`):
+
+- `GET /play/config` → `{ ligado: boolean }`. Qualquer outra resposta = "não sei" → a tela mostra
+  "Tentar de novo", **nunca** vende nem diz "desligado".
+- `POST /play/verificar` (Bearer JWT) `{ purchaseToken, productId, basePlanId | null }` (o worker
+  aceita também o legado `produtoId: 'olli_pro:mensal'`) →
+  `200 { ok: true, estado: 'ativo', plano: 'pro'|'empresa', vigenteAte }` |
+  `200 { ok: true, estado: 'pendente'|'encerrado'|'sem_efeito', plano: null, vigenteAte: null }` (sem liberação) |
+  `409 { ok: false, erro: 'token_de_outra_conta' }` | `401` (sessão) | outro `4xx` (recusada: não repete,
+  não finaliza) | `429/5xx` (erro: tenta depois). O produto e o plano básico valem os da API do Google:
+  `basePlanId` errado ou ausente vindo do app só gera log no worker, nunca recusa.
+- O formato é UM só e mora em `playBillingRegras.ts` (`corpoVerificacaoPlay` monta o pedido,
+  `interpretarVerificacaoPlay` lê a resposta); `worker/scripts/teste-play-verificacao.js` importa as duas
+  e as roda contra o `handlePlay` real.
+
+## App — onde mora cada coisa
+
+| Arquivo | Papel |
+|---|---|
+| `src/services/playBillingRegras.ts` | Regras PURAS: catálogo, `estadoPlayBilling`, `pacotesDaLoja`/`ofertasDoCatalogo` (preço da loja), `comoComprarNaPlay` (troca = substituição), `traduzirFalhaPlay` (`ErrorCode` do expo-iap), `interpretarConfigPlay`/`interpretarVerificacaoPlay` (3+ estados), `donoDaCompraPlay`, `urlGerenciarNaPlay`. Também usado pelo worker e pelo painel (alias `@play-billing-regras`) |
+| `src/services/playBilling.android.ts` | **Único** arquivo que importa `expo-iap`: conexão, listeners, compra, restaurar, sincronizar, gerenciar |
+| `src/services/playBilling.ts` | Versão iOS/web: sempre desligada (mesma interface; o `tsc` confere) |
+| `src/services/playBillingWorker.ts` | `/play/config` e `/play/verificar` (padrão de `pixPlano.ts`) |
+| `src/screens/PlanosScreen.tsx` | Abas, preço da loja, termos antes de comprar, "Restaurar compras", "Gerenciar na Google Play"; sem venda = "Assinatura pelo app indisponível no momento", sem preço |
+| `src/screens/AssinaturaScreen.tsx` | "Gerenciar na Google Play" (deep link da Play); recibo no Android = só PDF de fatura paga |
+| `src/screens/ContaScreen.tsx` | Linha "Assinaturas na Google Play" (Android); aviso de cancelamento na exclusão |
+| `src/services/lembreteAssinaturaLoja.ts` | Android: assinante da Play só vê "Gerenciar na Google Play", nunca Pix |
+
+### Fluxos do app
+
+1. **Abrir Planos**: `GET /play/config` → (`ligado`) `initConnection` → `fetchProducts(['olli_pro','olli_empresa'], 'subs')`
+   → ofertas com o preço da loja. Estados: carregando / erro (+ "Tentar de novo") / sem login /
+   indisponível (servidor desligou) / ok.
+2. **Assinar**: o app mostra **antes** preço da loja, periodicidade, renovação automática e como
+   cancelar (política de assinaturas) → `requestPurchase` com `obfuscatedAccountId = sha256hex(user.id)`
+   (64 caracteres, sem PII) → o desfecho chega pelo listener → `/play/verificar` → `finishTransaction`.
+   - Já assina outro plano/período pela Play → **troca** (`purchaseToken` antigo +
+     `subscriptionProductReplacementParams`, modo `with-time-proration`: vale na hora, com crédito do
+     tempo pago). Nunca uma 2ª assinatura.
+   - Mesma assinatura e mesmo plano básico → "você já tem; restaure".
+   - Compra de **outra conta OLLI** nesta conta Google → recusada no app; o servidor também devolve 409.
+   - `pending`/`deferred-payment` → "pagamento em processamento", **nada é liberado**.
+   - Assinatura **suspensa** (`isSuspendedAndroid`) → não dá acesso; leva a "Gerenciar na Google Play".
+   - `billing-unavailable` (PBL 9) → "Play Store indisponível neste aparelho", nunca "sem plano".
+   - Quem já tem plano pago por Stripe, Pix ou concessão **não vê oferta de compra**. Quem assina
+     **pela Play** vê, abaixo de "Sua assinatura", a seção "Trocar de plano pela Google Play"
+     (Pro ↔ Empresa, mensal ↔ anual) — a Play Store não troca `olli_pro` por `olli_empresa` sozinha.
+3. **Restaurar compras**: `getAvailablePurchases({ includeSuspendedAndroid: true })` → cada compra do
+   OLLI desta conta vai ao `/play/verificar`. Funciona também com a venda **desligada** no servidor
+   (o botão continua na tela): quem já pagou precisa conseguir registrar a compra.
+4. **Sincronização silenciosa**: ao abrir o app (`INITIAL_SESSION`/`SIGNED_IN`) e ao voltar ao
+   primeiro plano (`AppState` active), no máximo 1×/min: compras ainda **não reconhecidas** vão ao
+   servidor (app morto no meio, rede, pendente que compensou) — inclusive com a venda desligada; só
+   para quando `/play/config` não responde ("não sei").
+   Sessão guardada sem token no momento (renovação em espera) é "não sei", nunca "sem login".
+5. **Gerenciar**: `deepLinkToSubscriptions({ skuAndroid, packageNameAndroid })`; sem produto conhecido,
+   `https://play.google.com/store/account/subscriptions?package=online.olliorcamentos.app`.
+6. **Excluir conta** (decisão C12): o servidor cancela a renovação da assinatura da Play
+   (`subscriptionsv2…:cancel`) e apaga `play_compras`; a tela avisa antes e leva à central da Play.
+
+### Regras de política (Android) que o código tranca
+
+- Nunca citar/linkar Pix, Stripe, cartão pela web, 12x ou "assine pelo site" (anti-steering vale no
+  Brasil até 30/09/2027). Gates: `scripts/teste-play-billing.ts`, `scripts/teste-roteamento-pagamento.ts`,
+  `scripts/teste-lembrete-assinatura-loja.ts`.
+- Sem venda = sem preço (nem o da web) e texto "indisponível no momento", sem convite a comprar fora.
+- Recibo de assinatura feita na web: no Android só o **PDF de fatura paga** (`/stripe/faturas?plataforma=android`),
+  nunca a página hospedada (que tem botão de pagar quando a fatura está em aberto).
+
+## Build (local, `C:\OLLI_REL`)
+
+1. `npm install` (troca `react-native-purchases` por `expo-iap@5.8.2` no `node_modules`).
+2. `npx expo prebuild -p android --clean --no-install`. Os plugins do `app.json` já aplicam:
+   - `expo-iap` (sem opções — a 5.8.2 só aceita pin `amazon`/`horizon` no plugin; a loja **Play** é
+     fixada por `-PopeniapStore=play` no `build-android-production.ps1` e por
+     `ORG_GRADLE_PROJECT_openiapStore=play` nos perfis do `eas.json`);
+   - `./plugins/withGradleReleaseTweaks` (`org.gradle.jvmargs` e `lint { checkReleaseBuilds false }`
+     — acabou o patch manual depois do prebuild);
+   - `./plugins/withBackupSemBanco` (backup automático só com preferências; o SQLite fica de fora;
+     `expo-secure-store` com `configureAndroidBackup: false`).
+3. `scripts\build-android-production.ps1`.
+4. Conferir no AAB: `versionCode 24`, `versionName 1.2.0`, `com.android.vending.BILLING` presente,
+   `USE_BIOMETRIC`/`USE_FINGERPRINT` ausentes, **uma só** `com.android.billingclient:billing` (9.1.0),
+   16 KB ok. `node scripts/verificar-config-release.mjs` confere a configuração versionada.
+
+## Ordem de ativação
+
+1. Migrations do servidor (`play_compras` e lembretes que reconhecem a Play).
+2. Secrets `PLAY_SA_JSON` e `PLAY_TESTE_PERMITIDOS`.
+3. Deploy do worker com `PLAY_BILLING_MODE=off` (avisar antes: o deploy cobra 1 crédito extra;
+   usar `env -u CLOUDFLARE_API_TOKEN`).
+4. "Enviar notificação de teste" do RTDN e conferir que chega pelo pull (o pull roda no cron
+   `7,27,47`: minutos :07 e :47; a reconciliação roda no :27 e, às 05:27 UTC, a varredura de
+   anuladas no lugar dela). Na assinatura `olli-play-rtdn-worker` do GCP, `ackDeadlineSeconds` ≥ 60.
+   Pré-requisito: a migration `20261004110200_empresa_carimbo_servidor.sql` também entra nesta leva.
+5. `PLAY_BILLING_MODE=on` e confirmar com os testadores de licença.
+6. Build vc24 → faixa alpha → teste com licença: compra, renovação acelerada (5 min), cancelamento,
+   expiração, estorno, restaurar em outro aparelho, 409 com outra conta, troca Pro↔Empresa.
+7. Produção com lançamento gradual. **Se o teste falhar:** manter `PLAY_BILLING_MODE=off` — o app sai
+   igual, dizendo que a assinatura pelo app está indisponível.
+
+## Desligar a venda a qualquer momento
+
+`PLAY_BILLING_MODE=off` no worker. O app relê `/play/config` ao abrir Planos e antes de cada compra:
+some o preço, somem as abas e o botão, e a tela diz "Assinatura pelo app indisponível no momento".
+Quem já assina continua com o plano (o servidor segue processando RTDN) e com o "Gerenciar na Google Play".
+O `off` NÃO bloqueia `POST /play/verificar`: uma compra paga segundos antes do desligamento ainda é
+registrada e reconhecida (senão a Play estornaria e o cliente ficaria sem o plano).
+
+## Vigência e folga de renovação
+
+- `revenuecat_vigencia_ate` = `expiryTime` **exato** da Play.
+- `current_period_end` (o que libera o plano) = `expiryTime + 2 h` quando a assinatura está ATIVA e
+  com renovação automática (`FOLGA_RENOVACAO_MS` em `play.js`). Sem isso o assinante caía para o
+  Grátis a cada renovação até o próximo pull do RTDN (até 40 min). Cancelada/carência: exata.
+- "A linha é da Play?" (`sustentadaPelaPlay` no worker e `v_play_sustenta` na migration 20261004110100)
+  aceita essa folga (2 h + 1 min).
+- Encerrar uma compra da Play com OUTRA compra da Play viva na mesma conta OLLI (duas contas Google)
+  não derruba o plano: a linha passa a apontar para a outra.
+
+## Tetos por invocação (plano Free: 50 subrequests)
+
+- RTDN e reconciliação: no máximo 3 itens por rodada (`PLAY_RTDN_MAX`/`PLAY_RECONCILIAR_MAX` acima de
+  3 são cortados).
+- Varredura de anuladas: orçamento de 40 subrequests; uma anulada nossa só é reivindicada se couber
+  tratá-la na mesma rodada.
+- **Medir o CPU** depois do deploy (`wrangler tail`, campo `cpuTime`) na invocação `7,27,47` (alertas
+  + Play juntos). Passando de ~8 ms, mover a Play para um cron próprio.
+
+## Limites conhecidos
+
+- A troca precisa do token da assinatura atual; se a loja não devolver, o app pede "Restaurar" e não
+  arrisca cobrança dupla.
+- Se a loja não informar o plano básico da assinatura ativa (`currentPlanId`), o app trata como "já
+  tem" (não troca mensal↔anual por segurança); o usuário troca pela central da Play.
+- Créditos de IA continuam sem compra no Android (seria produto consumível da Play; outro escopo).

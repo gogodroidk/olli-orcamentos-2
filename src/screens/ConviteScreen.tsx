@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,6 +17,7 @@ type Rota = RouteProp<RootStackParamList, 'Convite'>;
 
 type Estado =
   | { fase: 'processando' }
+  | { fase: 'confirmar'; token: string }
   | { fase: 'sucesso'; nomeOrg: string; papel: string }
   | { fase: 'precisa_login' }
   | { fase: 'erro'; mensagem: string };
@@ -25,9 +26,15 @@ type Estado =
  * ConviteScreen — aceite de convite de equipe (Onda 2).
  *
  * Alcançada por deep link (olliorcamentos://convite/<token>) ou pela ContaScreen
- * (colar o código). O token vem em route.params.token; ao montar, tenta aceitar
- * via aceitar_convite(token) (SECURITY DEFINER). Se não houver sessão, orienta o
- * login — o token fica preservado no param para o usuário reabrir depois de logar.
+ * (colar o código). O token vem em route.params.token. Se não houver sessão, orienta
+ * o login — o token fica preservado no param para o usuário reabrir depois de logar.
+ *
+ * ACEITE EXPLÍCITO (auditoria de segurança 02/10, S5): abrir o link NÃO entra na
+ * equipe. Um deep link `olliorcamentos://convite/<token>` pode ser tocado por engano
+ * (ou plantado por quem criou um convite aberto); entrar numa equipe leva os dados
+ * que a pessoa cadastrar para a empresa de outro. Por isso a tela só chama
+ * `aceitar_convite(token)` (SECURITY DEFINER) no toque em "Aceitar convite"; "Recusar"
+ * sai sem gravar nada em organizacao_membros.
  */
 export default function ConviteScreen() {
   const nav = useNavigation<Nav>();
@@ -52,18 +59,42 @@ export default function ConviteScreen() {
         if (vivo) setEstado({ fase: 'precisa_login' });
         return;
       }
-      try {
-        const org = await aceitarConvite(token);
-        await recarregarTipoConta();
-        vibrar('sucesso');
-        if (vivo) setEstado({ fase: 'sucesso', nomeOrg: org.nome, papel: rotuloPapel(org.papel) });
-      } catch (e: any) {
-        vibrar('erro');
-        if (vivo) setEstado({ fase: 'erro', mensagem: e?.message ?? 'Não consegui aceitar o convite agora.' });
-      }
+      // Só pergunta. Nada é gravado até o toque em "Aceitar convite".
+      if (vivo) setEstado({ fase: 'confirmar', token });
     })();
     return () => { vivo = false; };
   }, [tokenParam]);
+
+  // Trava síncrona contra toque duplo (o estado só muda no próximo render).
+  const aceitandoRef = useRef(false);
+  // A tela pode sair (voltar) enquanto o aceite está no servidor: nada de setState depois.
+  const montadoRef = useRef(true);
+  useEffect(() => () => { montadoRef.current = false; }, []);
+
+  async function aceitar(token: string) {
+    if (aceitandoRef.current) return;
+    aceitandoRef.current = true;
+    vibrar('selecao');
+    setEstado({ fase: 'processando' });
+    try {
+      const org = await aceitarConvite(token);
+      await recarregarTipoConta();
+      if (!montadoRef.current) return;
+      vibrar('sucesso');
+      setEstado({ fase: 'sucesso', nomeOrg: org.nome, papel: rotuloPapel(org.papel) });
+    } catch (e: any) {
+      if (!montadoRef.current) return;
+      vibrar('erro');
+      setEstado({ fase: 'erro', mensagem: e?.message ?? 'Não consegui aceitar o convite agora.' });
+    } finally {
+      aceitandoRef.current = false;
+    }
+  }
+
+  function recusar() {
+    // irParaApp já vibra: uma vibração por toque.
+    irParaApp();
+  }
 
   function irParaApp() {
     vibrar('selecao');
@@ -83,8 +114,38 @@ export default function ConviteScreen() {
             <View style={styles.iconWrap}>
               <MaterialCommunityIcons name="account-multiple-plus-outline" size={44} color={cores.accentLight} />
             </View>
-            <Text style={styles.titulo}>Entrando na equipe…</Text>
+            <Text style={styles.titulo}>Verificando o convite…</Text>
             <ActivityIndicator color={cores.accentLight} style={{ marginTop: Spacing.lg }} />
+          </>
+        )}
+
+        {estado.fase === 'confirmar' && (
+          <>
+            <View style={styles.iconWrap}>
+              <MaterialCommunityIcons name="account-multiple-plus-outline" size={44} color={cores.accentLight} />
+            </View>
+            <Text style={styles.titulo}>Entrar em uma equipe?</Text>
+            <Text style={styles.sub}>
+              Você recebeu um convite para fazer parte de uma equipe no OLLI. Ao aceitar, você passa a trabalhar na empresa de quem convidou e os dados que você cadastrar passam a ficar nessa equipe.
+            </Text>
+            <Text style={styles.sub}>Só aceite se você conhece quem enviou o convite.</Text>
+            <OlliButton
+              label="Aceitar convite"
+              variant="gradient"
+              size="lg"
+              fullWidth
+              onPress={() => { void aceitar(estado.token); }}
+              icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />}
+              style={{ marginTop: Spacing.xl, alignSelf: 'stretch' }}
+            />
+            <OlliButton
+              label="Recusar"
+              variant="outline"
+              size="lg"
+              fullWidth
+              onPress={recusar}
+              style={{ marginTop: Spacing.md, alignSelf: 'stretch' }}
+            />
           </>
         )}
 

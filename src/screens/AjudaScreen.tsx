@@ -23,7 +23,6 @@ import {
   CATEGORIAS_AJUDA, ARTIGOS_AJUDA, getCategoria, getArtigo, getArtigosDaCategoria,
   buscarArtigos, corpoVisivel, type AjudaArtigo, type AjudaBloco,
 } from '../content/ajuda';
-import { plataformaPodeVender } from '../services/lembreteAssinaturaLoja';
 import { ORDEM_COMO_FUNCIONA, verbeteDaTela, type TelaComoFunciona } from '../content/comoFunciona';
 import { FolhaComoFunciona } from '../components/ajuda/ComoFunciona';
 
@@ -93,7 +92,7 @@ export default function AjudaScreen() {
   }, []);
 
   const buscando = query.trim().length >= 2;
-  const resultados = useMemo(() => (buscando ? buscarArtigos(query) : []), [query, buscando]);
+  const resultados = useMemo(() => (buscando ? buscarArtigos(query, Platform.OS) : []), [query, buscando]);
 
   // Busca: registra 1x por pausa de digitação (evita evento por tecla).
   const debounceBusca = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -410,7 +409,7 @@ export default function AjudaScreen() {
 
             <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }}>
               <Text style={styles.modalResumo}>{artigo.resumo}</Text>
-              {corpoVisivel(artigo, plataformaPodeVender(Platform.OS)).map((b, i) => <Bloco key={i} bloco={b} />)}
+              {corpoVisivel(artigo, Platform.OS).map((b, i) => <Bloco key={i} bloco={b} />)}
 
               <View style={styles.duvidaBox}>
                 <Text style={styles.duvidaTitle}>Ainda com dúvida?</Text>

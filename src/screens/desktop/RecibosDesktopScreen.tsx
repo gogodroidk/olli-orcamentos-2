@@ -1,5 +1,5 @@
 import { formatarNumeroExibicao } from '../../utils/numeroDocumento';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet, type GestureResponderEvent } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,6 +14,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { getRecibos, getEmpresa } from '../../database/database';
 import { marcarReciboComoPdfEmitido } from '../../services/pagamentos';
+import { exigirCadastroParaEnviar } from '../../services/exigirCadastro';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { exportarHtmlComoPdf, abrirWhatsApp } from '../../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../../utils/reciboPdf';
@@ -154,25 +155,35 @@ export default function RecibosDesktopScreen() {
   // (pdfEmitido false ou true), igual à handleReenviar da tela mobile: só o
   // rótulo do botão muda. Na 1ª emissão (pdfEmitido ainda false), marca o
   // recibo como emitido ao concluir — mesmo efeito colateral da mobile.
+  // Trava SÍNCRONA de toque duplo: o `await` da porta do cadastro abre uma janela
+  // antes de `processandoId` valer (o estado só muda no próximo render).
+  const ocupadoRef = useRef(false);
   const handleGerarOuReenviar = useCallback(async (r: Recibo) => {
-    if (!empresa) {
-      avisar('Cadastre sua empresa antes', 'Para emitir recibos, cadastre os dados da sua empresa em Meu Negócio.');
-      return;
-    }
-    if (processandoId) return;
-    const primeiraEmissao = r.pdfEmitido === false;
-    setProcessandoId(r.id);
+    if (processandoId || ocupadoRef.current) return;
+    ocupadoRef.current = true;
     try {
-      const html = await buildHtml(r);
-      await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${formatarNumeroExibicao(r.numero)}` });
-      if (primeiraEmissao) {
-        await marcarReciboComoPdfEmitido(r);
-        await carregar();
+      // Porta única do envio de documento: cadastro incompleto segura o recibo.
+      if (!(await exigirCadastroParaEnviar('recibo'))) return;
+      if (!empresa) {
+        avisar('Cadastre sua empresa antes', 'Para emitir recibos, cadastre os dados da sua empresa em Meu Negócio.');
+        return;
       }
-    } catch (e: any) {
-      avisar('Erro', e?.message || 'Não foi possível gerar o PDF deste recibo agora.');
+      const primeiraEmissao = r.pdfEmitido === false;
+      setProcessandoId(r.id);
+      try {
+        const html = await buildHtml(r);
+        await exportarHtmlComoPdf(html, `Recibo-${r.numero}`, { dialogTitle: `Recibo ${formatarNumeroExibicao(r.numero)}` });
+        if (primeiraEmissao) {
+          await marcarReciboComoPdfEmitido(r);
+          await carregar();
+        }
+      } catch (e: any) {
+        avisar('Erro', e?.message || 'Não foi possível gerar o PDF deste recibo agora.');
+      } finally {
+        setProcessandoId(null);
+      }
     } finally {
-      setProcessandoId(null);
+      ocupadoRef.current = false;
     }
   }, [empresa, processandoId, buildHtml, carregar]);
 

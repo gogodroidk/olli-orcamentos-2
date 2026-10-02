@@ -29,7 +29,9 @@ import { AvisoCep } from '../components/AvisoCep';
 import { consultarCnpj } from '../services/cnpj';
 import { deduzirVerticais, verticalPorId, type VerticalId } from '../services/verticais';
 import { camposPendentesPerfil, perfilOperacionalCompleto } from '../services/perfilOperacional';
-import { getCurrentUser } from '../services/supabase';
+import { getCurrentUser, signOut } from '../services/supabase';
+import { abrirWhatsApp } from '../utils/exportarDocumento';
+import { WHATSAPP_SUPORTE } from '../config';
 import { track, Eventos } from '../services/analytics';
 import { ONBOARDED_KEY } from '../services/onboarding';
 import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
@@ -295,6 +297,33 @@ export default function OnboardingScreen() {
     return false;
   }
 
+  /**
+   * Saídas do cartão "Precisamos confirmar sua conta" (rejeição da Play,
+   * 02/10/2026): sem rede ou com a nuvem respondendo "não sei" a pessoa ficava
+   * presa logada, só com "Tentar novamente". "Sair" encerra a sessão deste
+   * aparelho (o App.tsx leva à tela Entrar no SIGNED_OUT); o suporte abre o
+   * WhatsApp oficial.
+   */
+  async function sairDaConta() {
+    vibrar('selecao');
+    try {
+      await signOut();
+    } catch {
+      Alert.alert('Não consegui sair agora', 'Confira a conexão e tente de novo.');
+    }
+  }
+
+  function falarComSuporte() {
+    vibrar('selecao');
+    if (!WHATSAPP_SUPORTE) {
+      Alert.alert('Suporte', 'O contato por WhatsApp não está disponível agora. Escreva para o e-mail de suporte que está na loja de aplicativos.');
+      return;
+    }
+    abrirWhatsApp(WHATSAPP_SUPORTE, 'Olá! Não consigo terminar de entrar no OLLI: o app pede para confirmar a conta.').catch(() => {
+      Alert.alert('Ops', 'Não consegui abrir o WhatsApp agora. Tente novamente.');
+    });
+  }
+
   function irParaTela(n: number) {
     setTela(n);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -379,7 +408,11 @@ export default function OnboardingScreen() {
               : 'Preciso de internet só agora, para confirmar se sua empresa já existe antes de criar outra. Seus dados neste aparelho continuam intactos.'}
           </Text>
           {!verificando && (
-            <OlliButton label="Tentar novamente" variant="gradient" size="lg" fullWidth onPress={verificarAcessoAoCadastro} />
+            <>
+              <OlliButton label="Tentar novamente" variant="gradient" size="lg" fullWidth onPress={verificarAcessoAoCadastro} />
+              <OlliButton label="Falar com o suporte" variant="outline" fullWidth onPress={falarComSuporte} style={{ marginTop: Spacing.sm }} />
+              <OlliButton label="Sair da conta" variant="ghost" fullWidth onPress={() => { void sairDaConta(); }} style={{ marginTop: Spacing.xs }} />
+            </>
           )}
         </View>
       </View>
@@ -395,7 +428,9 @@ export default function OnboardingScreen() {
   const total = totalRascunho(itens);
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    // Android 15+ (targetSdk 36) é edge-to-edge: o `adjustResize` pode não
+    // encolher a janela e o teclado cobria os campos. `height` no Android.
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={[styles.topo, { paddingTop: insets.top + 12 }]}>
         <PressableAnimado onPress={voltar} haptic="selection" hitSlop={10} style={styles.voltar} accessibilityLabel="Voltar">
           <MaterialCommunityIcons name="chevron-left" size={26} color={cores.onSurface} />
