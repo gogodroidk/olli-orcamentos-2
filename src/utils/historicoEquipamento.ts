@@ -135,6 +135,17 @@ export function prazoGarantia(texto?: string): { qtd: number; unidade: 'dia' | '
   return { qtd, unidade: u };
 }
 
+/**
+ * Último dia da garantia a partir do texto ("90 dias") e do dia em que o serviço
+ * terminou ('YYYY-MM-DD'). undefined quando o texto não traz prazo legível ou o
+ * dia é ilegível — nesse caso ninguém afirma até quando vale.
+ */
+export function fimDaGarantia(texto: string | undefined, desde: string): string | undefined {
+  const prazo = prazoGarantia(texto);
+  if (!prazo || !/^\d{4}-\d{2}-\d{2}$/.test(desde)) return undefined;
+  return somar(desde, prazo.qtd, prazo.unidade);
+}
+
 /** Data efetiva de fechamento de uma OS concluída. */
 function fechamento(os: OrdemServico): string {
   return os.concluidoEm || os.atualizadoEm || os.criadoEm;
@@ -208,7 +219,9 @@ export function montarHistoricoEquipamento(e: EntradaHistorico): HistoricoEquipa
   // Garantia: a do serviço concluído mais recente que tem texto de garantia.
   let garantia: GarantiaEquipamento | undefined;
   for (const os of concluidas) {
-    const texto = os.orcamentoId ? e.garantiaPorOrcamento?.[os.orcamentoId]?.trim() : undefined;
+    // A garantia escrita NA OS vence a do orçamento de origem (a OS é editável).
+    const texto = os.garantia?.trim()
+      || (os.orcamentoId ? e.garantiaPorOrcamento?.[os.orcamentoId]?.trim() : undefined);
     if (!texto) continue;
     const desde = diaDe(fechamento(os));
     const prazo = prazoGarantia(texto);

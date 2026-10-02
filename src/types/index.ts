@@ -1,4 +1,5 @@
 import type { GeoPrecisao } from '../utils/geoCliente.ts';
+import type { EncerramentoOS } from '../utils/encerramentoOS.ts';
 import type { VerticalId, FerramentaId } from '../services/verticais';
 
 /**
@@ -194,6 +195,42 @@ export interface Empresa {
    * é só o texto do link embutido numa mensagem de WhatsApp via `abrirWhatsApp`.
    */
   linkGoogleAvaliacoes?: string;
+
+  // LUCRO REAL DA VISITA (Onda I4) — custos que o prestador informa UMA vez em
+  // Meu Negócio. Tudo opcional e no blob JSON (`empresa.dados`), sem migração.
+  // AUSENTE = não informado (o lucro diz o que falta, nunca chuta); 0 = "não
+  // tenho esse custo" (afirmação do prestador). Regra em services/lucroVisita.ts.
+  /** Quanto custa rodar 1 km (combustível ÷ consumo + desgaste), em R$. */
+  custoKm?: number;
+  /** Comissão paga por serviço (indicação, técnico, plataforma), em % do valor. */
+  comissaoPercentual?: number;
+  /**
+   * Ponto de SAÍDA (de onde o prestador sai para as visitas), achado pelo endereço
+   * do cadastro com o geocodificador grátis do worker (POST /geo). Usado só para
+   * ESTIMAR o deslocamento (linha reta × 1,4). Os três andam juntos.
+   */
+  baseLat?: number;
+  baseLon?: number;
+  baseGeoPrecisao?: GeoPrecisao;
+}
+
+/**
+ * Material/gás que SAIU numa OS (baixa leve — Onda I4). Não é estoque: é o
+ * registro do que foi usado, que alimenta o Lucro Real da Visita.
+ */
+export interface MaterialUsado {
+  id: string;
+  nome: string;
+  quantidade: number;
+  /** 'un', 'm', 'kg', 'g', 'L'… (texto livre curto). */
+  unidade: string;
+  /**
+   * Custo por unidade em R$. AUSENTE = não sabemos (o lucro avisa "falta o custo
+   * de X"); vem do catálogo de produtos quando o item foi escolhido de lá.
+   */
+  custoUnitario?: number;
+  /** Produto do catálogo de onde veio (soft ref), quando houver. */
+  produtoId?: string;
 }
 
 export interface Cliente {
@@ -878,6 +915,29 @@ export interface OrdemServico {
    * equipamento ligado (a verdade de toda OS anterior à migration 20261002153217).
    */
   equipamentoId?: string;
+  /**
+   * Prazo de garantia DESTA OS como o prestador escreveu ("90 dias", "6 meses").
+   * Nasce do orçamento de origem e é editável na OS. Ausente = a OS não declara
+   * garantia (o OLLI nunca inventa uma). O último dia é calculado na hora
+   * (`utils/garantiaServico.ts`) e vai para a nuvem em `garantia_ate`
+   * (migration 20261003103100).
+   */
+  garantia?: string;
+  /** Esta OS é RETORNO DE GARANTIA daquela (id da OS original). */
+  garantiaDeOsId?: string;
+  /**
+   * "Encerrar atendimento" (encerramento em 60 s): passos feitos/pulados, a
+   * assinatura do cliente, o recibo e a próxima visita criados no fluxo. Regras e
+   * leitura tolerante em `utils/encerramentoOS.ts`. Ausente = a OS nunca passou
+   * pelo fluxo (a verdade de toda OS anterior à migration 20261003102500).
+   */
+  encerramento?: EncerramentoOS;
+  /**
+   * Baixa leve de material/gás (Onda I4, migration 20261003104000). AUSENTE =
+   * não informado; `[]` = "não usei material" (afirmação do técnico). É o que o
+   * Lucro Real da Visita usa como custo de material quando existe.
+   */
+  materiais?: MaterialUsado[];
   criadoEm: string;
   atualizadoEm: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */
@@ -900,6 +960,11 @@ export interface PedidoOrcamentoQr {
   criadoEm: string;
   /** ISO de quando o prestador marcou como atendido. Ausente = novo. */
   atendidoEm?: string;
+  /**
+   * 'garantia' = "Voltou o problema: chamar a garantia" (o worker só aceita com
+   * garantia vigente confirmada). Ausente/'orcamento' = pedido de orçamento.
+   */
+  motivo?: 'orcamento' | 'garantia';
 }
 
 export const STATUS_OS_LABELS: Record<StatusOS, string> = {

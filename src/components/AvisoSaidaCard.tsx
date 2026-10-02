@@ -15,10 +15,8 @@ import { RecursoPlanoChip } from './RecursoPlano';
  * na tela.
  *
  * PRESENTACIONAL: não busca nada. Recebe o resultado que `avisoSaida.ts` já
- * calculou e guardou. Isso é regra de custo, não de arquitetura: cada cálculo
- * é uma chamada da Routes API no SKU Pro (US$ 10 / 1.000), e um `useEffect`
- * que recalcula a cada foco de tela transformaria a feature numa conta aberta.
- * A única chamada paga a partir daqui é o toque explícito em "Atualizar".
+ * calculou e guardou. Desde a Onda I2 o número é ESTIMADO no aparelho (sem
+ * Google, sem custo) e a frase sempre diz "estimativa, sem trânsito".
  *
  * FUNCIONA NO APK — e isso é o ponto. O `EtaChip` que já existe fica escondido
  * no nativo (`temDestinoEta` devolve `false` enquanto `expo-location` não
@@ -39,7 +37,7 @@ import { RecursoPlanoChip } from './RecursoPlano';
 export interface AvisoSaidaCardProps {
   /** O que `lerAvisoSaida()` devolveu para a parada mostrada. `null` = nada tentado → não renderiza. */
   aviso: AvisoSaida | null;
-  /** Toque em "Atualizar" — o ÚNICO caminho daqui que gasta uma chamada paga. */
+  /** Toque em "Atualizar": refaz a estimativa agora (ignora o intervalo automático). */
   onAtualizar?: () => void;
   atualizando?: boolean;
   /** Injeção para teste; em produção é sempre o relógio real. */
@@ -97,7 +95,7 @@ function AvisoSaidaCardConteudo({ aviso, onAtualizar, atualizando, agora }: Avis
     // Tentar de novo não conserta um endereço: quem conserta é o prestador.
     mostrarAtualizar = false;
   } else {
-    icone = 'wifi-off';
+    icone = 'clock-alert-outline';
     // Diz o que aconteceu E o que continua valendo. Qual das duas frases é a
     // verdadeira depende de haver ou não um aviso calculado ainda na fila —
     // ver `textoIndisponivel`.
@@ -116,10 +114,10 @@ function AvisoSaidaCardConteudo({ aviso, onAtualizar, atualizando, agora }: Avis
           onPress={onAtualizar}
           disabled={atualizando}
           haptic="selection"
-          accessibilityLabel="Recalcular a hora de sair com o trânsito de agora"
+          accessibilityLabel="Recalcular a estimativa da hora de sair"
         >
           <Text style={[styles.botaoTexto, { color: t.fg }]}>
-            {atualizando ? 'Checando…' : 'Atualizar'}
+            {atualizando ? 'Calculando…' : 'Atualizar'}
           </Text>
         </OlliPressable>
       ) : null}

@@ -57,8 +57,18 @@ import { generateId } from '../utils/id';
 import { limparCapturaOS, marcarCapturaOS } from '../services/capturaFotoOSNativa';
 import { enviarFotosPendentes, garantirFotosNaFila, registrarFotoParaEnvio } from '../services/filaFotosNativa';
 import { SeloFoto, SeloSync, useEstadosFotos } from '../components/SeloSync';
+import { BlocoGarantiaOS } from '../components/garantia/BlocoGarantiaOS';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { useRascunhoCampo } from '../hooks/useRascunhoCampo';
 import { chaveRascunho } from '../services/rascunhoCampo';
+// Encerramento em 60 s: fluxo único de fim de atendimento (regra pura em utils/encerramentoOS).
+import { EncerrarAtendimentoModal } from '../components/encerramento/EncerrarAtendimentoModal';
+import { DicaContextual } from '../components/DicaContextual';
+import { rotuloBotaoEncerrar } from '../utils/encerramentoOS';
+// Onda I4 (dinheiro e rotina): baixa leve de material e lucro real da visita.
+import { MaterialUsadoBloco } from '../components/dinheiro/MaterialUsadoBloco';
+import { LucroVisitaFaixa } from '../components/dinheiro/LucroVisitaFaixa';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -277,6 +287,7 @@ export default function OrdemServicoScreen() {
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title={ehTecnico ? 'Minhas OS' : 'Ordens de serviço'}
+        comoFunciona="os"
         subtitle={ehTecnico ? 'Suas ordens em campo' : org?.nome}
         right={
           ehGestao ? (
@@ -382,6 +393,7 @@ export default function OrdemServicoScreen() {
           ordemId={detalheId}
           ehGestao={ehGestao}
           podeAtribuir={ehGestao && pode('ver_agenda_equipe')}
+          podeFaturar={pode('gerenciar_faturamento')}
           orgId={org?.id}
           onFechar={() => setDetalheId(null)}
           onMudou={() => load()}
@@ -407,11 +419,13 @@ export default function OrdemServicoScreen() {
 // Detalhe da OS — ações de campo (técnico) / gestão completa.
 // ─────────────────────────────────────────────────────────────
 function DetalheOS({
-  ordemId, ehGestao, podeAtribuir, orgId, onFechar, onMudou,
+  ordemId, ehGestao, podeAtribuir, podeFaturar, orgId, onFechar, onMudou,
 }: {
   ordemId: string;
   ehGestao: boolean;
   podeAtribuir: boolean;
+  /** Registrar pagamento e emitir recibo no "Encerrar atendimento". */
+  podeFaturar: boolean;
   orgId?: string;
   onFechar: () => void;
   onMudou: () => void;
@@ -419,6 +433,8 @@ function DetalheOS({
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<Nav>();
+  const [showEncerrar, setShowEncerrar] = useState(false);
   const [ordem, setOrdem] = useState<OrdemServico | null>(null);
   // Contato/endereço do cliente para Ligar/WhatsApp/Ir até lá — a OS não os
   // carrega (só clienteId), então buscamos o Cliente à parte quando há id.
@@ -427,6 +443,15 @@ function DetalheOS({
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
   const [addingFoto, setAddingFoto] = useState(false);
   const [showAtribuir, setShowAtribuir] = useState(false);
+  // Dinheiro (custo do material, lucro) só para quem vê valores — o técnico da
+  // equipe registra o que saiu, mas não vê custo nem lucro.
+  const { pode: podeAcao } = usePermissao();
+  const podeVerValores = podeAcao('ver_valores_agregados');
+  const navDetalhe = useNavigation<Nav>();
+  const abrirMeuNegocio = useCallback(() => {
+    onFechar();
+    navDetalhe.navigate('MeuNegocio');
+  }, [onFechar, navDetalhe]);
 
   // Debounce do autosave do checklist para não gravar a cada toque.
   const checklistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -644,6 +669,15 @@ function DetalheOS({
   const concluida = ordem?.status === 'concluida';
   const estadosFotos = useEstadosFotos(ordem?.fotos ?? []);
 
+  // Roteiro de dicas (I5): a 1ª OS aberta (fotos sem sinal) e a 1ª concluída
+  // (registrar o pagamento e mandar o recibo).
+  const temOrdem = !!ordem;
+  useEffect(() => {
+    if (!temOrdem) return;
+    registrarEventoDica('primeira_os_aberta');
+    if (concluida) registrarEventoDica('primeira_os_concluida');
+  }, [temOrdem, concluida]);
+
   return (
     <Modal visible animationType="slide" onRequestClose={onFechar} presentationStyle="fullScreen">
       <View style={styles.detalheContainer}>
@@ -671,6 +705,8 @@ function DetalheOS({
           >
             {/* Nuvem honesta (I0): pendências de envio + alerta >24h com [Tentar agora]. */}
             <SeloSync variante="cartao" />
+
+            <DicaDoRoteiro local="os" contexto={concluida ? ['primeira_os_concluida'] : ['primeira_os_aberta']} />
 
             {/* Resumo */}
             <View style={styles.bloco}>
@@ -865,6 +901,22 @@ function DetalheOS({
               </View>
             </View>
 
+            {/* Material usado — baixa leve (Onda I4): alimenta o lucro real. */}
+            <MaterialUsadoBloco
+              ordem={ordem}
+              podeVerCusto={podeVerValores}
+              ehRefrigeracao={(verticais ?? []).includes('refrigeracao')}
+              onSalvo={(atualizada) => {
+                setOrdem((prev) => (prev ? { ...prev, materiais: atualizada.materiais, atualizadoEm: atualizada.atualizadoEm } : prev));
+                onMudou();
+              }}
+            />
+
+            {/* Lucro real da visita — só com a OS concluída e para quem vê valores. */}
+            {concluida && podeVerValores ? (
+              <LucroVisitaFaixa ordem={ordem} onAbrirMeuNegocio={abrirMeuNegocio} />
+            ) : null}
+
             {/* Observações — só leitura (registradas na criação da OS) */}
             {ordem.observacoes ? (
               <View style={styles.bloco}>
@@ -873,21 +925,66 @@ function DetalheOS({
               </View>
             ) : null}
 
-            {/* Concluir — grande, para o técnico fechar em 1 toque */}
-            <OlliButton
-              label={concluida ? 'Serviço concluído' : 'Concluir serviço'}
-              variant={concluida ? 'success' : 'gradient'}
-              size="lg"
-              fullWidth
-              loading={salvandoStatus === 'concluida'}
-              disabled={concluida}
-              onPress={() => mudarStatus('concluida')}
-              icon={<MaterialCommunityIcons name="check-circle-outline" size={22} color="#fff" />}
-              style={{ marginTop: Spacing.sm }}
-            />
+            {/* Garantia da OS (Onda I3): prazo, até quando vale e retorno de garantia. */}
+            <BlocoGarantiaOS ordem={ordem} onAtualizada={(o) => { setOrdem(o); onMudou(); }} />
+
+            {/* Encerrar atendimento — o fluxo de 60 s (fotos, assinatura, cobrança,
+                recibo, próxima visita, avaliação), cada passo pulável e salvo no aparelho. */}
+            {ordem.status !== 'cancelada' ? (
+              <View style={{ gap: Spacing.sm, marginTop: Spacing.sm }}>
+                <DicaContextual
+                  id="os.encerrar.botao"
+                  texto="No fim do serviço, toque aqui: fotos, assinatura, Pix, recibo e próxima visita num fluxo só. Pode pular o que não precisar."
+                />
+                <OlliButton
+                  label={rotuloBotaoEncerrar(ordem.encerramento)}
+                  variant={ordem.encerramento?.finalizadoEm ? 'success' : 'gradient'}
+                  size="lg"
+                  fullWidth
+                  onPress={() => {
+                    vibrar('selecao');
+                    // Grava o checklist pendente ANTES: o fluxo devolve a OS do banco
+                    // (onAtualizada) e um toque ainda no debounce sumiria da tela.
+                    void descarregarChecklist().catch(() => {}).finally(() => setShowEncerrar(true));
+                  }}
+                  icon={<MaterialCommunityIcons name={ordem.encerramento?.finalizadoEm ? 'check-decagram-outline' : 'flag-checkered'} size={22} color="#fff" />}
+                />
+                {/* Atalho antigo de 1 toque: conclui sem o passo a passo. */}
+                {!concluida ? (
+                  <OlliButton
+                    label="Só concluir, sem o passo a passo"
+                    variant="ghost"
+                    size="md"
+                    fullWidth
+                    loading={salvandoStatus === 'concluida'}
+                    onPress={() => mudarStatus('concluida')}
+                  />
+                ) : null}
+              </View>
+            ) : null}
           </ScrollView>
         )}
       </View>
+
+      {/* Encerrar atendimento (fluxo de 60 s) */}
+      {showEncerrar && ordem && (
+        <EncerrarAtendimentoModal
+          visivel
+          ordem={ordem}
+          cliente={cliente}
+          podeFaturar={podeFaturar}
+          onTirarFoto={tirarFoto}
+          onAtualizada={(o) => { setOrdem(o); onMudou(); }}
+          onFechar={() => setShowEncerrar(false)}
+          onNavegar={(rota) => {
+            // O progresso já está gravado na OS: sair e voltar retoma do mesmo passo.
+            setShowEncerrar(false);
+            onFechar();
+            if (rota === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
+            else nav.navigate('MeuNegocio');
+          }}
+        />
+      )}
 
       {/* Modal atribuir técnico */}
       {showAtribuir && ordem && (

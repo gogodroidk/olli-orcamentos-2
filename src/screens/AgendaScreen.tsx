@@ -23,6 +23,8 @@ import { OlliInput } from '../components/OlliInput';
 import { FieldLabel } from '../components/FieldLabel';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliPressable } from '../components/OlliPressable';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
@@ -37,6 +39,7 @@ import { CampoVisitaExterna } from '../components/agenda/CampoVisitaExterna';
 import { SugestaoEncaixe } from '../components/agenda/SugestaoEncaixe';
 import { ClimaProximasVisitas } from '../components/agenda/ClimaProximasVisitas';
 import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
+import { SeloConfirmacao } from '../components/vespera/SeloConfirmacao';
 import { useEncaixe } from '../hooks/useEncaixe';
 import { sugerirVisitaExterna } from '../services/verticais';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -231,6 +234,8 @@ export default function AgendaScreen() {
       ]);
       setItens(data);
       setClientes(cls);
+      // Roteiro de dicas: a 1ª visita marcada apresenta o caminho até a aba Hoje.
+      if (data.some(a => a.status === 'agendado')) registrarEventoDica('primeira_visita_agendada');
     } catch {
       // erro de verdade (leitura falhou) — NUNCA vira "Nenhuma visita agendada" silencioso.
       setCarregandoErro(true);
@@ -1191,6 +1196,7 @@ export default function AgendaScreen() {
       {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
       <GradientHeader
         title="Agenda"
+        comoFunciona="agenda"
         subtitle={subtitulo}
         right={
           <TouchableOpacity
@@ -1262,6 +1268,7 @@ export default function AgendaScreen() {
           icon="gesture-swipe-vertical"
           texto="Troque entre Dia, Semana e Mês no topo. No Dia, segure um compromisso e arraste para mudar o horário."
         />
+        <DicaDoRoteiro local="agenda" />
       </View>
 
       {/* FILTROS — uma linha só: "Filtros" abre os chips (tipo, status e técnico).
@@ -1435,6 +1442,8 @@ function AgendaItem({ item, cor: corMarca, cliente, clientes, aoRemarcado, onPre
         ) : null}
         {/* CLIMA — só nas visitas das próximas 12h (some sozinho no resto). */}
         <ClimaDaVisita visita={item} cliente={cliente} clientes={clientes} aoRemarcado={aoRemarcado} style={styles.itemClima} />
+        {/* CONFIRMAÇÃO DE VÉSPERA (Onda I3): selo só quando há pedido para o horário atual. */}
+        {item.status === 'agendado' ? <SeloConfirmacao visita={item} style={styles.itemClima} /> : null}
         {item.status !== 'agendado' && (
           <View style={styles.statusLinha}>
             <MaterialCommunityIcons name={concluido ? 'check-circle' : 'close-circle'} size={13} color={concluido ? cores.success : cores.danger} />

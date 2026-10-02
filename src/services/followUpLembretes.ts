@@ -24,9 +24,11 @@
  * Quem pede é a Agenda ou o toggle em Conta. Sem permissão, os lembretes deste
  * módulo são cancelados e nada é agendado.
  *
- * PLANO: os lembretes D+2/D+5 são o "follow-up automático" do Pro
- * (`followup_automatico`). No Grátis só ficam o aviso de rascunhos e o "Cliente
- * aprovou/recusou". Plano que não deu para ler = não mexe (`followUpsDoPlano`).
+ * PLANO: os lembretes D+2/D+5 e o "Proposta vence amanhã" são o "follow-up
+ * automático" do Pro (`followup_automatico`). No Grátis só ficam o aviso de
+ * rascunhos e o "Cliente aprovou/recusou". Plano que não deu para ler = não mexe
+ * (`followUpsDoPlano`). Com o TERMÔMETRO (Pro) liberado, o texto do D+2/D+5
+ * acompanha o sinal do link (abriu e voltou ao preço, não abriu...).
  *
  * ERRO NUNCA VIRA VAZIO: se a leitura dos orçamentos, dos lembretes já agendados,
  * do plano ou do estado de "já avisados" falha, NADA é cancelado nem disparado — "não sei" não
@@ -41,6 +43,7 @@ import { temPermissaoNotificacao } from './agenda';
 import { getPreferenciasRitual } from './ritualDiario';
 import { RESPOSTAS_AVISADAS_KEY } from './storageKeys';
 import { acessoRecursoAgora } from './planos';
+import { termometrosSeLiberado } from './termometro';
 import {
   ORIGEM_FOLLOWUP,
   decidirAvisosDeResposta,
@@ -181,11 +184,14 @@ async function reagendarFollowUpsAgora(agora: Date): Promise<void> {
 
     const { domingo } = await getPreferenciasRitual();
     const prefs = { domingoAtivo: domingo };
+    // Termômetro (Pro): o texto do lembrete acompanha o sinal do link. Sem plano
+    // ou sem leitura = `null` e o texto de sempre (que não afirma nada).
+    const sinais = await termometrosSeLiberado(orcamentos, agora);
     // Follow-up automático é do Pro. Plano ilegível = não mexe em nada (nem nos
     // rascunhos: reconciliar só uma parte cancelaria os D+2/D+5 de quem paga).
     const plano = followUpsDoPlano(
       await acessoRecursoAgora('followup_automatico'),
-      planejarFollowUps(orcamentos, recibos, agora, prefs),
+      planejarFollowUps(orcamentos, recibos, agora, prefs, { sinais, avisoValidade: true }),
     );
     if (!plano) return;
     const rascunhos = planejarAvisoRascunhos(orcamentos, agora, prefs);
@@ -199,6 +205,29 @@ async function reagendarFollowUpsAgora(agora: Date): Promise<void> {
   } catch {
     // best-effort: lembrete nunca trava o sync
   }
+}
+
+/**
+ * "Cliente abriu seu orçamento agora" — sai NA HORA (o app está aberto: quem chama
+ * é o ouvinte do Realtime em `avisoAberturaCliente.ts`, que só existe com o app
+ * ativo). Mesmo canal do follow-up. Nunca pede permissão; sem ela, não avisa.
+ * NUNCA lança. Devolve se notificou.
+ */
+export async function avisarAberturaAgora(titulo: string, corpo: string, orcamentoId: string): Promise<boolean> {
+  if (!SUPORTADO) return false;
+  return naFila(async () => {
+    try {
+      if (!(await temPermissaoNotificacao())) return false;
+      await garantirCanalAndroid();
+      await Notifications.scheduleNotificationAsync({
+        content: { title: titulo, body: corpo, data: { origem: 'aberturaCliente', orcamentoId } },
+        trigger: { channelId: CANAL_FOLLOWUP_ANDROID_ID },
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**

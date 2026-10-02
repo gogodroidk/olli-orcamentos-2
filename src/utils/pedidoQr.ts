@@ -16,6 +16,7 @@ export function rowParaPedido(r: Record<string, unknown>): PedidoOrcamentoQr | n
     mensagem: typeof r.mensagem === 'string' && r.mensagem ? r.mensagem : undefined,
     criadoEm: typeof r.criado_em === 'string' ? r.criado_em : '',
     atendidoEm: typeof r.atendido_em === 'string' && r.atendido_em ? r.atendido_em : undefined,
+    ...(r.motivo === 'garantia' ? { motivo: 'garantia' as const } : {}),
   };
 }
 
@@ -23,6 +24,9 @@ export function rowParaPedido(r: Record<string, unknown>): PedidoOrcamentoQr | n
 export function mensagemRespostaPedidoQr(pedido: PedidoOrcamentoQr, nomeEquipamento: string, nomeEmpresa?: string): string {
   const primeiroNome = pedido.nome.trim().split(/\s+/)[0] || '';
   const quem = nomeEmpresa ? ` Aqui é da ${nomeEmpresa}.` : '';
+  if (pedido.motivo === 'garantia') {
+    return `Olá${primeiroNome ? `, ${primeiroNome}` : ''}!${quem} Recebemos seu chamado de garantia pela etiqueta do equipamento ${nomeEquipamento}. Vamos combinar a visita por aqui?`;
+  }
   return `Olá${primeiroNome ? `, ${primeiroNome}` : ''}!${quem} Recebemos seu pedido de orçamento pela etiqueta do equipamento ${nomeEquipamento}. Podemos combinar os detalhes por aqui?`;
 }
 

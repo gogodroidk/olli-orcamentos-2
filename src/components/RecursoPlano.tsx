@@ -142,10 +142,15 @@ interface PropsCartao {
   recurso: Recurso;
   /** Benefício específico da tela. Padrão: o `beneficio` da tabela única. */
   beneficio?: string;
+  /**
+   * Nome da peça na tela quando ela é PARTE de um recurso maior (ex.: "Quanto
+   * sobrou no mês" dentro de "Relatórios"). Padrão: o título da tabela única.
+   */
+  titulo?: string;
 }
 
 /** O cartão "Disponível no Pro" (ou o estado de carregando/indeterminado) — sem children. */
-export function CartaoRecursoPlano({ recurso, beneficio }: PropsCartao) {
+export function CartaoRecursoPlano({ recurso, beneficio, titulo }: PropsCartao) {
   const { estado, planoMinimo, recarregar } = useRecursoPlano(recurso);
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -189,7 +194,7 @@ export function CartaoRecursoPlano({ recurso, beneficio }: PropsCartao) {
           <MaterialCommunityIcons name="clock-outline" size={14} color={cores.onSurfaceVariant} />
           <Text style={styles.seloTxt}>EM BREVE</Text>
         </View>
-        <Text style={styles.titulo}>{rotulo.titulo}</Text>
+        <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
         <Text style={styles.texto}>Já faz parte do seu plano e chega numa próxima atualização.</Text>
       </View>
     );
@@ -200,7 +205,7 @@ export function CartaoRecursoPlano({ recurso, beneficio }: PropsCartao) {
         <MaterialCommunityIcons name="crown-outline" size={14} color={cores.accentLight} />
         <Text style={[styles.seloTxt, { color: cores.accentLight }]}>DISPONÍVEL NO {nome.toUpperCase()}</Text>
       </View>
-      <Text style={styles.titulo}>{rotulo.titulo}</Text>
+      <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
       {/* Nas lojas (APK/iOS) o benefício padrão sai sem Pix: ver `beneficioLoja`. */}
       <Text style={styles.texto}>{beneficio ?? (Platform.OS === 'web' ? beneficioRecurso(recurso) : beneficioRecursoLoja(recurso))}</Text>
       <Text style={styles.nota}>Seus dados continuam salvos, em qualquer plano.</Text>

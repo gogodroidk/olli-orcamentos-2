@@ -16,9 +16,16 @@ import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmC
 import { Motion, useReducedMotion } from '../theme/motion';
 import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
+import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { Aparecer, Skeleton } from '../components/motion';
 import { AcaoNo, NoLinhaDoTempo } from '../components/hoje/LinhaDoTempo';
 import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
+import { SeloConfirmacao } from '../components/vespera/SeloConfirmacao';
+import { CartaoVespera } from '../components/vespera/CartaoVespera';
+import { CartaoGarantias } from '../components/garantia/CartaoGarantias';
+import { MalaVesperaCard } from '../components/hoje/MalaVesperaCard';
 import { toast } from '../components/feedback';
 import { getAgendamentosDoDia, getVisitasSemBaixa, mudarStatusVisitaDoDia } from '../services/agenda';
 import { getCliente, getClientes, getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
@@ -381,6 +388,9 @@ const VisitaNaLinha = React.memo(function VisitaNaLinha({
             <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[a.tipo]}</Text>
           </View>
         )}
+        {/* CONFIRMAÇÃO DE VÉSPERA (Onda I3): "Confirmada pelo cliente" / "Pediu
+            para remarcar" / "Aguardando". Some sem pedido de confirmação. */}
+        {fase !== 'feita' ? <SeloConfirmacao visita={a} style={styles.visitaClima} /> : null}
         {/* CLIMA DA VISITA — só o que importa agora (some na visita feita/passada).
             Visita externa com chuva forte: tocar abre "Remarcar e avisar". */}
         {fase !== 'feita' ? (
@@ -704,6 +714,7 @@ export default function HojeScreen() {
       }
       // Sem previsão de chegada aqui: a mensagem sai sem horário (nada inventado).
       await abrirWhatsApp(telefone, mensagemEstouACaminho(a.clienteNome, null));
+      registrarEventoDica('primeiro_a_caminho');
     } catch {
       toast.erro('Não deu para abrir o WhatsApp agora. Tente de novo.');
     } finally {
@@ -820,8 +831,13 @@ export default function HojeScreen() {
                 </Text>
               ) : null}
             </View>
-            <OlliMascot size={40} onDark />
+            <View style={styles.headAcoes}>
+              <BotaoComoFunciona tela="hoje" />
+              <OlliMascot size={40} onDark />
+            </View>
           </View>
+          {/* Dica do momento (roteiro I5): "Estou a caminho" e chuva na visita. */}
+          <DicaDoRoteiro local="hoje" style={{ marginHorizontal: Spacing.base }} />
         </Aparecer>
 
         {/* ── LINHA DO TEMPO DO DIA ── */}
@@ -1048,6 +1064,29 @@ export default function HojeScreen() {
           </Aparecer>
         ))}
 
+        {/* CONFIRMAR VISITAS DE AMANHÃ (Onda I3) — some sem visita amanhã. */}
+        {!carregando && escopoPronto ? (
+          <CartaoVespera escopo={escopo} clientes={clientes} indice={ordem++} />
+        ) : null}
+
+        {/* GARANTIAS PARA CUIDAR (Onda I3) — só para quem vê a empresa inteira. */}
+        <CartaoGarantias indice={ordem++} visivel={escopo.status === 'equipe'} />
+        {/* MALA DA VÉSPERA (Onda I4) — a partir das 19h, o que levar amanhã. */}
+        <MalaVesperaCard
+          agora={agora}
+          escopo={escopo}
+          envolver={(conteudo) => (
+            <Aparecer indice={ordem}>
+              <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'bag-personal-outline' }}>
+                <View style={styles.noTituloRow}>
+                  <Text style={styles.noTitulo}>Mala de amanhã</Text>
+                </View>
+                {conteudo}
+              </NoLinhaDoTempo>
+            </Aparecer>
+          )}
+        />
+
         {/* 3. CHECKLIST DO DIA */}
         <Aparecer indice={ordem++}>
           <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'checkbox-marked-outline' }}>
@@ -1151,6 +1190,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: Spacing.lg },
+  headAcoes: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
   title: { fontSize: 24, fontWeight: '800', color: c.onBackground, marginTop: 3 },
   date: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },

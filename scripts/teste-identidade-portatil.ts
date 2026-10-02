@@ -15,7 +15,15 @@ assert.match(util, /data:image\/\$\{mime\};base64/);
 assert.match(util, /SaveFormat\.PNG/);
 assert.match(util, /SaveFormat\.JPEG/);
 
-for (const [nome, fonte] of [['Meu Negócio', negocio], ['Onboarding', onboarding]] as const) {
+// O onboarding em 4 telas (Onda I5) NÃO escolhe imagem nenhuma: logo e assinatura
+// foram para Meu Negócio (checklist de ativação do Início). Garantia mais forte que
+// "usa o conversor": sem seletor de imagem lá, nenhuma URI local pode vazar dali.
+assert.doesNotMatch(onboarding, /ImagePicker|launchImageLibraryAsync/,
+  'Onboarding não escolhe imagem (logo/assinatura ficam em Meu Negócio)');
+assert.doesNotMatch(onboarding, /logoUri|assinaturaUri/,
+  'Onboarding não grava logo nem assinatura');
+
+for (const [nome, fonte] of [['Meu Negócio', negocio]] as const) {
   assert.match(fonte, /imagemEscolhidaParaDataUri/,
     `${nome} precisa usar o conversor portátil`);
   assert.doesNotMatch(fonte, /\[field\]:\s*r\.assets\[0\]\.uri/,

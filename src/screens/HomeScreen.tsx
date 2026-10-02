@@ -70,6 +70,9 @@ import { AvisoSaidaCard } from '../components/AvisoSaidaCard';
 import { lerAvisoSaida, type AvisoSaida } from '../services/avisoSaida';
 import { reagendarAvisoSaidaDoDia } from '../services/ritualDiario';
 import { DicaContextual } from '../components/DicaContextual';
+import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
@@ -83,7 +86,10 @@ import { deveConvidarImportar } from '../utils/conviteImportar';
 import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton, curvas } from '../components/motion';
 import { toast } from '../components/feedback';
 import { ClimaDoDia } from '../components/rua/ClimaDoDia';
+import { RadarTempoCard } from '../components/rua/RadarTempoCard';
+import { QuantoSobrouCard } from '../components/dinheiro/QuantoSobrouCard';
 import { RotaDeHoje, type EstadoRota } from '../components/rua/RotaDeHoje';
+import { MiniMapaDia } from '../components/rua/MiniMapaDia';
 import { AtalhosRua, type Atalho } from '../components/rua/AtalhosRua';
 import { usePlano } from '../hooks/usePlano';
 import { usePermissao } from '../hooks/usePermissao';
@@ -255,7 +261,7 @@ export default function HomeScreen() {
   const reservaClima = useReservaClima(empresa?.cidade, empresa?.estado, empresa?.endereco, leituraCadastro);
   const clima = useClimaDoDia(reservaClima.estado === 'ok' ? reservaClima.coord : null);
 
-  // ETA com trânsito da próxima parada — `null` = ainda buscando (chip mostra shimmer).
+  // ETA ESTIMADO (sem trânsito) da próxima parada — `null` = ainda buscando (chip mostra shimmer).
   const [etaResultado, setEtaResultado] = useState<ResultadoEta | null>(null);
   const ultimaBuscaEtaRef = useRef(0);
   const paradaKeyRef = useRef('');
@@ -269,9 +275,9 @@ export default function HomeScreen() {
   const buscarEta = useCallback(async () => {
     ultimaBuscaEtaRef.current = Date.now();
     setEtaResultado(null);
-    const r = await getEtaAgendamento(proxima);
+    const r = await getEtaAgendamento(proxima, clientes);
     setEtaResultado(r);
-  }, [proxima]);
+  }, [proxima, clientes]);
 
   // Re-busca no máximo a cada 5 min, ou já se a parada mudou.
   useFocusEffect(
@@ -291,9 +297,9 @@ export default function HomeScreen() {
   }, [temEta, buscarEta]);
 
   // ─── "SAIA ÀS 14:23 PARA CHEGAR ÀS 15:00" ────────────────────────────────
-  // Só LÊ o que `services/avisoSaida.ts` já calculou (1× por parada, no ritual
-  // diário): cada cálculo é uma chamada paga da Routes API. `null` = nada foi
-  // tentado; um registro de FALHA aparece com o motivo.
+  // Só LÊ o que `services/avisoSaida.ts` já calculou (no ritual diário): é a
+  // estimativa sem trânsito feita no aparelho (Onda I2, grátis). `null` = nada
+  // foi tentado; um registro de FALHA aparece com o motivo.
   const [avisoSaida, setAvisoSaida] = useState<AvisoSaida | null>(null);
   const [recalculandoSaida, setRecalculandoSaida] = useState(false);
   // Sem registro de saída, o Grátis vê ONDE a hora de sair entraria ("Disponível no
@@ -313,7 +319,7 @@ export default function HomeScreen() {
     }, [lerSaida]),
   );
 
-  /** O ÚNICO caminho da Home que gasta uma chamada paga — e só porque ele tocou. */
+  /** Toque em "Atualizar": refaz a estimativa agora (ignora o intervalo automático). */
   const recalcularSaida = useCallback(async () => {
     if (recalculandoSaida) return;
     setRecalculandoSaida(true);
@@ -358,7 +364,10 @@ export default function HomeScreen() {
   const loadRota = useCallback(async () => {
     try {
       const doDia = await getAgendamentosDoDia();
-      setRota(montarRotaDoDia(doDia, new Date()));
+      const paradas = montarRotaDoDia(doDia, new Date());
+      setRota(paradas);
+      // Roteiro de dicas: o 1º dia com 2+ paradas apresenta a Rota de hoje.
+      if (paradas.length >= 2) registrarEventoDica('dia_com_varias_visitas');
       setRotaEstado('ok');
     } catch {
       // "Não consegui ler a agenda" nunca vira "nada hoje".
@@ -370,6 +379,7 @@ export default function HomeScreen() {
     setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
+      if (lista.length > 0) registrarEventoDica('primeiro_cliente_para_lembrar');
       // Grátis só precisa saber "tem mais 1 no radar" pra desenhar o teaser.
       setRadarTotal(lista.slice(0, 4));
     } catch {
@@ -384,6 +394,7 @@ export default function HomeScreen() {
     try {
       const lista = await orcamentosParaCobrar();
       setCobranca(lista);
+      if (lista.length > 0) registrarEventoDica('primeira_cobranca_atrasada');
     } catch {
       setCobrancaErro(true);
     } finally {
@@ -396,6 +407,7 @@ export default function HomeScreen() {
     try {
       const lista = await orcamentosParaFollowUp();
       setFollowUp(lista);
+      if (lista.length > 0) registrarEventoDica('primeiro_orcamento_parado');
     } catch {
       setFollowUpErro(true);
     } finally {
@@ -499,6 +511,7 @@ export default function HomeScreen() {
     const mensagem = mensagemEstouACaminho(proxima.clienteNome, temEta ? etaResultado : null);
     try {
       await abrirWhatsApp(telefoneProxima, mensagem);
+      registrarEventoDica('primeiro_a_caminho');
     } catch {
       toast.erro('Não deu para abrir o WhatsApp. Confira se ele está instalado.');
     } finally {
@@ -637,6 +650,7 @@ export default function HomeScreen() {
               {empresa?.nome ? <Text style={styles.company}>  ·  {empresa.nome}</Text> : null}
             </Text>
           </View>
+          <BotaoComoFunciona tela="inicio" style={styles.ajudaBtn} />
           <PressableAnimado
             style={styles.olliBtn}
             onPress={abrirOlli}
@@ -688,6 +702,10 @@ export default function HomeScreen() {
             />
           </Aparecer>
         ) : null}
+
+        {/* DICA DO MOMENTO (roteiro I5): Rota de hoje, proposta parada, cobrança,
+            cliente para lembrar — uma por vez, no máximo uma nova por dia. */}
+        <DicaDoRoteiro local="inicio" style={styles.lembreteAssinatura} />
 
         {/* 2. AGORA / PRÓXIMA PARADA */}
         <Aparecer indice={1}>
@@ -848,6 +866,20 @@ export default function HomeScreen() {
           </LinearGradient>
         </Aparecer>
 
+        {/* MINI-MAPA DO DIA (Onda I2) — 160 px com os pins e a linha; tocar abre o
+            Mapa do dia. Grátis (MapLibre + OpenFreeMap). Some nos estados que a
+            Rota de Hoje logo abaixo já explica (carregando, erro, nada hoje). */}
+        {!(esperandoDownload && !proxima) && !carregandoErro && (
+          <Aparecer indice={2}>
+            <MiniMapaDia
+              estado={rotaEstadoExibido}
+              paradas={rota}
+              clientes={clientes}
+              onAbrirMapa={() => nav.navigate('MapaDia', { dia: 'hoje' })}
+            />
+          </Aparecer>
+        )}
+
         {/* 3. ROTA DE HOJE — some só enquanto o hero já explica que os dados
             ainda estão vindo da nuvem (não dá para afirmar "nada hoje"). */}
         {!(esperandoDownload && !proxima) && !carregandoErro && (
@@ -966,6 +998,20 @@ export default function HomeScreen() {
             </View>
           </Aparecer>
         )}
+
+        {/* QUANTO SOBROU NO MÊS (Onda I4) — lucro real, só para quem vê valores. */}
+        {!ehTecnico && !papelCarregando && pode('ver_valores_agregados') && !esperandoDownload ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.base }}>
+            <QuantoSobrouCard onCompletar={() => { vibrar('selecao'); nav.navigate('MeuNegocio'); }} />
+          </View>
+        ) : null}
+
+        {/* RADAR DO TEMPO PARA VENDER (Onda I4) — some sozinho sem sinal real. */}
+        {!ehTecnico && !papelCarregando && !esperandoDownload ? (
+          <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.base }}>
+            <RadarTempoCard clima={clima} />
+          </View>
+        ) : null}
 
         {/* 5. ATALHOS DE 1 TOQUE */}
         <Text style={styles.sectionTitle} accessibilityRole="header">Atalhos</Text>
@@ -1326,6 +1372,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   topbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: 4 },
+  ajudaBtn: { marginRight: 6 },
   lembreteAssinatura: { marginHorizontal: Spacing.base, marginTop: Spacing.sm, marginBottom: Spacing.sm },
   pedidosQr: { marginTop: Spacing.lg, marginBottom: 0 },
   greeting: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '500' },

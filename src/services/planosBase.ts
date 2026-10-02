@@ -81,14 +81,19 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
     curto: 'aviso de chuva na visita',
   },
   hora_de_sair: {
-    titulo: 'Hora de sair com trânsito',
-    beneficio: 'O OLLI calcula a que horas sair para chegar no horário combinado.',
-    curto: 'hora de sair com trânsito',
+    titulo: 'Hora de sair e rota do dia (estimativa)',
+    beneficio: 'O OLLI estima a que horas sair e ordena as visitas do dia pelo caminho mais curto (sem trânsito ao vivo).',
+    curto: 'hora de sair e rota do dia',
   },
   termometro_orcamento: {
     titulo: 'Termômetro do orçamento (quente, morno ou frio)',
     beneficio: 'Veja quais orçamentos estão quentes pelo que o cliente fez no link.',
     curto: 'termômetro do orçamento',
+  },
+  vespera_garantia: {
+    titulo: 'Confirmação de véspera e garantia que se cuida sozinha',
+    beneficio: 'O cliente confirma a visita com 1 toque e o OLLI avisa antes de a garantia vencer.',
+    curto: 'confirmação de véspera e garantia',
   },
   ia_ilimitada: {
     titulo: 'IA incluída com uso justo diário (voz, chat e diagnóstico)',
@@ -209,8 +214,9 @@ const BULLETS_PRO: readonly BulletPlano[] = [
   bullet(ROTULO_RECURSO.remove_olli_brand.titulo, ['remove_olli_brand']),
   bullet(ROTULO_RECURSO.followup_automatico.titulo, ['followup_automatico']),
   bullet(ROTULO_RECURSO.link_pagamento.titulo, ['link_pagamento']),
-  bullet('Inteligência de campo: aviso de chuva na visita e hora de sair com trânsito', ['clima_visita', 'hora_de_sair']),
+  bullet('Inteligência de campo: aviso de chuva na visita, hora de sair estimada e rota do dia ordenada', ['clima_visita', 'hora_de_sair']),
   bullet(ROTULO_RECURSO.termometro_orcamento.titulo, ['termometro_orcamento']),
+  bullet(ROTULO_RECURSO.vespera_garantia.titulo, ['vespera_garantia']),
   bullet(
     'IA com uso justo diário, relatórios, metas, radar de clientes, relatório do dia e modelos premium de PDF',
     ['ia_ilimitada', 'relatorios', 'metas', 'radar_clientes', 'relatorio_dia', 'modelos_pdf_premium'],

@@ -337,21 +337,26 @@ const ler = (p: string) => readFileSync(p, 'utf8');
 const db = ler('src/database/database.ts');
 const sync = ler('src/services/cloudSync.ts');
 ok('schema local: asset_id no CREATE, na migração incremental e no save', () => {
-  assert.match(db, /excluido_em TEXT,\s*asset_id TEXT\s*\)/);
+  // asset_id logo depois de excluido_em; colunas mais novas (garantia da Onda I3,
+  // encerramento da OS, materiais da Onda I4) vêm depois.
+  assert.match(db, /excluido_em TEXT,\s*asset_id TEXT[,\s]/);
   assert.match(db, /addColumnIfMissing\(database, 'ordens_servico', 'asset_id', 'TEXT'\)/);
-  const versao = Number(/const SCHEMA_VERSION = (\d+);/.exec(db)?.[1]);
-  const bloco = new RegExp(`if \\(v < ${versao}\\) \\{\\s*await addColumnIfMissing\\(database, 'ordens_servico', 'asset_id'`);
-  assert.match(db, bloco, 'o bloco do asset_id é o da versão atual');
-  assert.match(db, /excluido_em, asset_id\)\s*VALUES \(\?(,\?){19}\)/);
+  // O bloco do asset_id é o da v10 (versões seguintes trouxeram garantia, encerramento e materiais).
+  assert.ok(Number(/const SCHEMA_VERSION = (\d+);/.exec(db)?.[1]) >= 10, 'a versão do schema nunca volta para antes do asset_id');
+  assert.match(db, /if \(v < 10\) \{\s*await addColumnIfMissing\(database, 'ordens_servico', 'asset_id'/, 'o bloco do asset_id existe');
+  assert.match(db, /excluido_em, asset_id(, garantia, garantia_de_os_id)?(, encerramento)?(, materiais)?\)\s*VALUES \(\?(,\?){19,23}\)/);
   assert.match(db, /equipamentoId: r\.asset_id \?\? undefined/);
 });
 ok('sync: escada da coluna ausente e pull que preserva o vínculo local', () => {
   assert.match(sync, /osSemColunaAsset \? \{\} : \{ asset_id: o\.equipamentoId \?\? null \}/);
-  assert.match(sync, /table === 'ordens_servico' && !osSemColunaAsset && erroDeColunaDesconhecida\(error\)/);
+  // Recuo POR COLUNA (a OS tem dois: asset_id e materiais): o erro tem de nomear
+  // `asset_id` para o push largá-lo — falta de `materiais` não derruba o vínculo.
+  assert.match(sync, /!osSemColunaAsset && erroDeColunaDesconhecidaDe\(error, 'asset_id'\)/);
+  assert.match(sync, /!osSemColunaMateriais && erroDeColunaDesconhecidaDe\(error, 'materiais'\)/);
   // Nuvem vazia nunca apaga o vínculo local (nem sem a coluna, nem com a linha
   // enviada antes da migration com o mesmo atualizado_em).
   assert.match(sync, /const assetId = o\.equipamentoId \?\? assetLocal;/);
-  assert.match(sync, /'SELECT atualizado_em, asset_id FROM ordens_servico WHERE id = \?'/);
+  assert.match(sync, /'SELECT atualizado_em, asset_id[^']*FROM ordens_servico WHERE id = \?'/);
 });
 ok('scanner usa a regra pura e a URL saiu do serviço com banco', () => {
   assert.match(ler('src/screens/EscanearQrScreen.tsx'), /import \{ extrairTokenQr \} from '\.\.\/utils\/qrEtiqueta'/);

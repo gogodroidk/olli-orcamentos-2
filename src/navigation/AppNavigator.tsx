@@ -54,8 +54,11 @@ import VimDeOutroAppScreen from '../screens/VimDeOutroAppScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import EntrarScreen from '../screens/EntrarScreen';
 import RelatorioDiaScreen from '../screens/RelatorioDiaScreen';
+import ConfirmarVisitasScreen from '../screens/ConfirmarVisitasScreen';
+import GarantiasScreen from '../screens/GarantiasScreen';
 import EquipeScreen from '../screens/EquipeScreen';
 import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
+import MapaDiaScreen from '../screens/MapaDiaScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
@@ -116,6 +119,11 @@ export type PrefillItem = {
    * continua sendo a autoridade: o prestador troca pelo preço dele.
    */
   precoSugerido?: number;
+  /**
+   * Item do catálogo do prestador que originou a sugestão (código de erro → orçamento
+   * casa a peça/mão de obra com o catálogo dele). Ausente = item avulso.
+   */
+  catalogoId?: string;
 };
 
 export type RootStackParamList = {
@@ -130,7 +138,8 @@ export type RootStackParamList = {
   // `exemploVertical` marca o orçamento de exemplo da ativação (services/ativacao.ts):
   // o editor mostra o aviso "é um exemplo, troque pelos seus valores".
   // `clienteNome` (Autopilot): cliente ainda sem cadastro — entra só o nome; o usuário liga ao cadastro no passo 1.
-  NovoOrcamento: { modeloId?: string; clienteId?: string; clienteNome?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[]; exemploVertical?: VerticalId };
+  // `laudoTecnico` (código de erro → orçamento): a descrição técnica do defeito, editável no passo de detalhes.
+  NovoOrcamento: { modeloId?: string; clienteId?: string; clienteNome?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[]; exemploVertical?: VerticalId; laudoTecnico?: string };
   EditarOrcamento: { orcamentoId: string };
   VisualizarOrcamento: { orcamentoId: string };
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
@@ -146,7 +155,9 @@ export type RootStackParamList = {
   MeuNegocio: undefined;
   ModelosDocumento: undefined;
   CentralDocumentos: undefined;
-  Diagnostico: undefined;
+  // `equipamentoId` (ficha do QR → "Código de erro deste equipamento"): o
+  // diagnóstico já sabe a marca, o cliente e o equipamento para o orçamento do defeito.
+  Diagnostico: { equipamentoId?: string } | undefined;
   DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;
@@ -174,10 +185,15 @@ export type RootStackParamList = {
   VimDeOutroApp: undefined;
   // Relatório do dia falado — sempre gera o dia corrente na hora, sem params.
   RelatorioDia: undefined;
+  // Onda I3 — fila "Confirmar visitas de amanhã" (aviso das 18h) e garantias para cuidar.
+  ConfirmarVisitas: undefined;
+  Garantias: undefined;
   // Onda 2 — Equipe (empresa): gestão de membros/papéis/convites.
   Equipe: undefined;
   // Onda 2 — Equipe ao vivo: lista de técnicos + última localização + rota no mapa.
   EquipeAoVivo: undefined;
+  // Onda I2 — Mapa do dia (MapLibre + OpenFreeMap, grátis): pins, rota e "Saia às".
+  MapaDia: { dia?: 'hoje' | 'amanha' } | undefined;
   // Aceite de convite de equipe (deep link olliorcamentos://convite/<token>).
   Convite: { token?: string };
   // Onda 4 — Ordens de serviço (OS mínima + app do técnico). Role-aware:
@@ -420,6 +436,8 @@ const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const VimDeOutroAppCentro = comCentroDesktop(VimDeOutroAppScreen);
 const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
+const ConfirmarVisitasCentro = comCentroDesktop(ConfirmarVisitasScreen);
+const GarantiasCentro = comCentroDesktop(GarantiasScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
 const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
@@ -798,9 +816,14 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
+      {/* Onda I3 — confirmação de véspera e garantia que se cuida sozinha. */}
+      <Stack.Screen name="ConfirmarVisitas" component={ConfirmarVisitasCentro} />
+      <Stack.Screen name="Garantias" component={GarantiasCentro} />
       {/* Onda 2 — Equipe (empresa) e aceite de convite (deep link). */}
       <Stack.Screen name="Equipe" component={EquipeCentro} />
       <Stack.Screen name="EquipeAoVivo" component={EquipeAoVivoCentro} />
+      {/* Onda I2 — Mapa do dia em tela cheia (sem o centro do desktop: o mapa ocupa tudo). */}
+      <Stack.Screen name="MapaDia" component={MapaDiaScreen} />
       <Stack.Screen name="Convite" component={ConviteCentro} />
       {/* Onda 4 — Ordens de serviço (gestão + app do técnico). */}
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />

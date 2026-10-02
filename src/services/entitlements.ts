@@ -22,8 +22,9 @@ export type Recurso =
   | 'followup_automatico' // lembretes automáticos D+2/D+5 do orçamento sem resposta
   | 'link_pagamento'    // link do orçamento com o Pix do prestador (cliente paga no link)
   | 'clima_visita'      // inteligência: chuva na visita e remarcar por chuva
-  | 'hora_de_sair'      // inteligência: hora de sair com trânsito (Routes API)
+  | 'hora_de_sair'      // inteligência: hora de sair estimada + ordenar a rota do dia (grátis, no aparelho)
   | 'termometro_orcamento' // inteligência: termômetro do orçamento (quente/morno/frio)
+  | 'vespera_garantia'  // inteligência: confirmação de véspera (/v/<token>) + garantia que se cuida sozinha
   | 'relatorios'        // relatórios de faturamento e conversão
   | 'metas'             // metas de vendas e acompanhamento
   | 'radar_clientes'    // radar de clientes sumidos (lista completa)
@@ -66,6 +67,7 @@ const RECURSOS_PRO: readonly Recurso[] = [
   'clima_visita',
   'hora_de_sair',
   'termometro_orcamento',
+  'vespera_garantia',
   'ia_ilimitada',
   'relatorios',
   'metas',
@@ -96,7 +98,8 @@ export const RECURSOS_EM_ORDEM: readonly Recurso[] = [...RECURSOS_PRO, ...RECURS
  * lista impede que a tela venda como pronto algo que o runtime ainda não faz.
  */
 export const RECURSOS_EM_BREVE: ReadonlySet<Recurso> = new Set<Recurso>([
-  'termometro_orcamento',
+  // 'termometro_orcamento' saiu daqui com a frente I2 (eventos do link /o/<token>,
+  // migration 20261003102000_orcamento_eventos.sql, cartão no detalhe e chip na lista).
   'mapa_equipe',
   'dashboard_empresa',
 ]);
@@ -135,6 +138,7 @@ export const RECURSOS_DO_TENANT: ReadonlySet<Recurso> = new Set<Recurso>([
   'clima_visita',
   'hora_de_sair',
   'termometro_orcamento',
+  'vespera_garantia',
   'followup_automatico',
   'pmoc_contratos',
 ]);

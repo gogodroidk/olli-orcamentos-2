@@ -21,6 +21,7 @@ import {
 import { criarGerenciadorDeConexao } from './conexao';
 import { geoAposEdicao, geoParaColunas, lerGeoDaLinha, precisaGeocodificar } from '../utils/geoCliente';
 import { geocodificarEndereco } from '../services/cep';
+import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from '../services/verticais';
 import { SQL_CONTAS_A_RECEBER } from './contasAReceberSql';
 import {
@@ -36,6 +37,7 @@ import {
 import { carimbarDecisao } from '../utils/orcamentoDecisao';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { generateId } from '../utils/id';
+import { lerEncerramento } from '../utils/encerramentoOS';
 
 /**
  * Espelha uma mutação local na nuvem (painel web) em background.
@@ -483,7 +485,11 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       criado_em TEXT NOT NULL,
       atualizado_em TEXT NOT NULL,
       excluido_em TEXT,
-      asset_id TEXT
+      asset_id TEXT,
+      garantia TEXT,
+      garantia_de_os_id TEXT,
+      encerramento TEXT,
+      materiais TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_status ON ordens_servico (status);
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_tecnico ON ordens_servico (tecnico_id);
@@ -616,7 +622,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 13;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -736,6 +742,29 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   // equipamento por `pmoc_ordens_geradas` e continuam assim.
   if (v < 10) {
     await addColumnIfMissing(database, 'ordens_servico', 'asset_id', 'TEXT');
+  }
+
+  // v < 11 — GARANTIA da OS (Onda I3, espelha a migration da nuvem
+  // 20261003103100): o prazo escrito na OS e o vínculo "retorno de garantia
+  // daquela OS". Sem backfill: nulo = a OS não declara garantia própria (a do
+  // orçamento de origem continua valendo na leitura).
+  if (v < 11) {
+    await addColumnIfMissing(database, 'ordens_servico', 'garantia', 'TEXT');
+    await addColumnIfMissing(database, 'ordens_servico', 'garantia_de_os_id', 'TEXT');
+  }
+
+  // v < 12 — "Encerrar atendimento" (encerramento em 60 s): o progresso do fluxo,
+  // a assinatura do cliente, o recibo e a próxima visita vivem na própria OS como
+  // TEXT JSON (espelha a migration da nuvem 20261003102500, jsonb). Nulo = a OS
+  // nunca passou pelo fluxo.
+  if (v < 12) {
+    await addColumnIfMissing(database, 'ordens_servico', 'encerramento', 'TEXT');
+  }
+
+  // v < 13 — BAIXA LEVE DE MATERIAL por OS (Onda I4; espelha a migration da nuvem
+  // 20261003104000). TEXT JSON; NULL = "não informado" (≠ '[]', "não usei material").
+  if (v < 13) {
+    await addColumnIfMissing(database, 'ordens_servico', 'materiais', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -1942,6 +1971,11 @@ function rowToOrdemServico(r: any): OrdemServico {
     observacoes: r.observacoes ?? undefined,
     valor: r.valor ?? undefined,
     equipamentoId: r.asset_id ?? undefined,
+    ...(r.garantia ? { garantia: r.garantia as string } : {}),
+    ...(r.garantia_de_os_id ? { garantiaDeOsId: r.garantia_de_os_id as string } : {}),
+    // Leitura tolerante: JSON inválido vira "sem encerramento", nunca quebra a lista.
+    encerramento: lerEncerramento(r.encerramento),
+    materiais: lerMateriais(r.materiais),
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
     excluidoEm: r.excluido_em ?? undefined,
@@ -2001,13 +2035,14 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em, asset_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento, materiais)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
      os.titulo, os.descricao ?? null, os.status, os.concluidoEm ?? null, os.tecnicoId ?? null, os.tecnicoNome ?? null,
      os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
      os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null,
-     os.equipamentoId ?? null],
+     os.equipamentoId ?? null, os.garantia ?? null, os.garantiaDeOsId ?? null,
+     os.encerramento ? JSON.stringify(os.encerramento) : null, materiaisParaTexto(os.materiais)],
   );
   // Espelho na nuvem pelo caminho PADRÃO de cloudSync (ordens_servico é SyncTable
   // de primeira classe: push/pull-no-login/tombstone/guard de timestamp + injeção
@@ -3069,15 +3104,20 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
         `INSERT OR REPLACE INTO ordens_servico
            (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
             tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-            criado_em, atualizado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            criado_em, atualizado_em, garantia, garantia_de_os_id, encerramento, materiais)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [os.id, os.numero ?? '', os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome ?? '',
          os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.concluidoEm ?? null, os.tecnicoId ?? null,
          os.tecnicoNome ?? null, os.dataAgendada ?? null,
          JSON.stringify(Array.isArray(os.checklist) ? os.checklist : []),
          JSON.stringify(Array.isArray(os.fotos) ? os.fotos : []),
          os.observacoes ?? null, os.valor ?? null,
-         os.criadoEm ?? new Date().toISOString(), os.atualizadoEm ?? new Date().toISOString()],
+         os.criadoEm ?? new Date().toISOString(), os.atualizadoEm ?? new Date().toISOString(),
+         typeof os.garantia === 'string' && os.garantia.trim() ? os.garantia.trim().slice(0, 200) : null,
+         typeof os.garantiaDeOsId === 'string' ? os.garantiaDeOsId : null,
+         // Encerramento ilegível no backup some (lerEncerramento), não derruba o restore.
+         (() => { const enc = lerEncerramento(os.encerramento); return enc ? JSON.stringify(enc) : null; })(),
+         materiaisParaTexto(lerMateriais(os.materiais))],
       );
     }
     for (const e of equipamentos) {

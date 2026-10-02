@@ -28,6 +28,8 @@ import {
   type Papel,
 } from '../services/equipe';
 import { LOCALIZACAO_DISPONIVEL } from '../services/localizacaoEquipe';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -196,6 +198,7 @@ function EquipeConteudo() {
               <MaterialCommunityIcons name="account-plus-outline" size={20} color={textoSobre(cores.accentLight)} />
               <Text style={styles.convidarBtnText}>Convidar para a equipe</Text>
             </TouchableOpacity>
+            <DicaDoRoteiro local="equipe" />
           </AnimatedEntrance>
         )}
 
@@ -349,6 +352,7 @@ function ModalConvite({ nomeOrg, onFechar }: { nomeOrg: string; onFechar: () => 
     try {
       const r = await criarConvite(papel, email.trim() || undefined);
       setResultado(r);
+      registrarEventoDica('primeiro_convite_equipe');
       vibrar('sucesso');
     } catch (e: any) {
       vibrar('erro');

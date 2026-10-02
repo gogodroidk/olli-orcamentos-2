@@ -38,6 +38,7 @@ import { abrirParticaoDoUsuario, getDb, getEmpresa } from './src/database/databa
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
+import { iniciarAvisoAberturaCliente } from './src/services/avisoAberturaCliente';
 import { iniciarAuthAutoRefreshNativo } from './src/services/authAutoRefresh';
 import { retomarCapturaOSInterrompida } from './src/services/capturaFotoOSNativa';
 import { sincronizarPagamentosPendentes } from './src/services/pagamentos';
@@ -165,10 +166,14 @@ type NotificacaoPendente = {
   ordemId?: string;
   agendamentoId?: string;
   ritual?: 'bomDia' | 'fecharDia';
-  /** Follow-up D+2/D+5 ou "Cliente aprovou/recusou" (services/followUpLembretes). */
+  /** Follow-up D+2/D+5, "Cliente aprovou/recusou" ou "Cliente abriu agora" (services/followUpLembretes). */
   orcamentoId?: string;
   /** Lembrete agrupado de follow-up ou aviso de rascunhos: abre a lista. */
   listaOrcamentos?: 'followUp' | 'rascunhos';
+  /** Onda I3: "Confirmar visitas de amanhã" (18h) → a fila. */
+  vespera?: boolean;
+  /** Onda I3: "Garantia vencendo em 7 dias" → as garantias para cuidar. */
+  garantia?: boolean;
 };
 
 /**
@@ -202,6 +207,8 @@ function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
   // stack raiz (não abas), então o navigate direto funciona com app frio ou quente.
   else if (data.orcamentoId) (navigationRef.navigate as any)('VisualizarOrcamento', { orcamentoId: data.orcamentoId });
   else if (data.listaOrcamentos) navigationRef.navigate('Orcamentos' as never);
+  else if (data.vespera) navigationRef.navigate('ConfirmarVisitas' as never);
+  else if (data.garantia) navigationRef.navigate('Garantias' as never);
 }
 
 /**
@@ -362,7 +369,7 @@ function AppConteudo() {
       if (!resposta) return;
       try {
         const data = resposta.notification.request.content.data as NotificacaoPendente;
-        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual && !data?.orcamentoId && !data?.listaOrcamentos) return;
+        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual && !data?.orcamentoId && !data?.listaOrcamentos && !data?.vespera && !data?.garantia) return;
         if (!navigationRef.isReady()) {
           notificacaoPendenteRef.current = data;
           return;
@@ -521,6 +528,12 @@ function AppConteudo() {
   // escrito offline ficava esperando o app ser morto e reaberto. Ver
   // services/religarSync.ts para o limite que este gatilho NÃO cobre.
   useEffect(() => iniciarReligarSync(sincronizarTudo), [sincronizarTudo]);
+
+  // "Cliente abriu seu orçamento agora" (termômetro, Pro): com o app ABERTO e
+  // logado, escuta os sinais do link do cliente (Realtime) e avisa na hora. Com o
+  // app no segundo plano a escuta desliga — não é push do servidor, e nenhum
+  // texto promete isso. Ver services/avisoAberturaCliente.ts.
+  useEffect(() => iniciarAvisoAberturaCliente(), []);
 
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar
   if (fontsLoaded) applyFontPatch();

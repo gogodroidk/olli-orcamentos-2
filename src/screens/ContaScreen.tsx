@@ -35,6 +35,9 @@ import type { VerticalId } from '../services/verticais';
 import { haCalculoParaOficio } from '../services/calculosOficio';
 import { salvarFotoPerfil, removerFotoPerfil, excluirConta } from '../services/conta';
 import { estaAtiva, ligarAjuda, desligarAjuda, resetarAjuda } from '../services/onboarding';
+import { registrarUsoDiario, resetarRoteiro } from '../services/dicasRoteiroStore';
+import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { PRECO_PRO, reais } from '../services/precosPlanos';
 import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, listarMembros, PAPEL_LABEL, type Organizacao } from '../services/equipe';
@@ -424,6 +427,8 @@ export default function ContaScreen() {
   }, [configured]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Roteiro de dicas: conta os dias de uso (a dica dos 30 dias mora aqui).
+  useFocusEffect(useCallback(() => { registrarUsoDiario(); }, []));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo backup/negócio atualizados que ainda não existiam localmente).
@@ -513,6 +518,7 @@ export default function ContaScreen() {
   /** "Rever apresentação e dicas": religa a ajuda, esquece dicas vistas e refaz o onboarding. */
   async function handleReverApresentacao() {
     await resetarAjuda();
+    await resetarRoteiro(); // as dicas por evento voltam, uma por dia
     setAjudaAtiva(true); // resetarAjuda religa a Central de Ajuda
     toast.sucesso('A apresentação e as dicas vão aparecer de novo na próxima vez que você abrir o app.');
   }
@@ -891,8 +897,16 @@ export default function ContaScreen() {
       >
         <View style={styles.headRow}>
           <Text style={styles.screenTitle} accessibilityRole="header">Conta</Text>
+          <BotaoComoFunciona tela="conta" style={styles.ajudaBtn} />
           <OlliMascot size={34} onDark />
         </View>
+
+        {/* Dica do momento (roteiro I5): 30 dias de uso → backup ligado. Só para quem
+            PODE ter o backup automático: membro de equipe (somente_dono) ou sem sessão
+            leria "uma cópia por dia fica guardada" e se acharia protegido sem estar. */}
+        {sessaoAtiva && motivoBackup === 'permitido' ? (
+          <DicaDoRoteiro local="conta" style={{ marginHorizontal: Spacing.base, marginBottom: Spacing.sm }} />
+        ) : null}
 
         {!carregando && !carregandoErro ? <CampoBuscaAjuste valor={busca} aoMudar={setBusca} /> : null}
 
@@ -1960,6 +1974,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
   screenTitle: { fontSize: 24, fontWeight: '800', color: c.onBackground, letterSpacing: 0 },
+  ajudaBtn: { marginLeft: 'auto', marginRight: 6 },
 
   profileCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, ...sombrasDe(c).sm },
   avatar: { width: 56, height: 56, borderRadius: 18, backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },

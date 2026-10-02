@@ -119,7 +119,9 @@ checar('dashboard Empresa está marcado em breve', disponibilidadeRecurso('empre
 checar('a tela lê a tabela única de planos', /from '\.\.\/services\/planosBase'/.test(tela), true);
 checar('app não vende mapa como pronto', planoBase('empresa').beneficios.includes('Equipe ao vivo no mapa (em breve)'), true);
 checar('app não vende dashboard como pronto', planoBase('empresa').beneficios.includes('Painel de gestão da empresa (em breve)'), true);
-checar('termômetro do orçamento ainda não sai como pronto', planoBase('pro').beneficios.some((b) => b.startsWith('Termômetro do orçamento') && b.endsWith('(em breve)')), true);
+// Termômetro entregue na frente I2 (sinais do link /o/<token> + cartão no detalhe):
+// sai no Pro como pronto, sem "(em breve)".
+checar('termômetro do orçamento sai como pronto no Pro', planoBase('pro').beneficios.some((b) => b.startsWith('Termômetro do orçamento') && !b.endsWith('(em breve)')), true);
 // GPS: o expo-location não está instalado. Nenhuma tela promete localização
 // "no próximo update" nem vende "onde cada técnico está agora" (faxina 30/09).
 checar('paywall do mapa não vende como pronto', beneficioRecurso('mapa_equipe').endsWith('(em breve).') && gatePro.includes('beneficioRecurso(r)'), true);
