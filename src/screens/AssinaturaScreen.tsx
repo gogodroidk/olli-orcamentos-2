@@ -17,8 +17,9 @@ import type { PlanoId } from '../services/planos';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 import { PixPlanoModal } from '../components/PixPlanoModal';
 import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
-import { ESTADO_PLAY_BILLING } from '../services/playBilling';
+import { ESTADO_PLAY_BILLING, gerenciarAssinaturaNaPlay } from '../services/playBilling';
 import { urlGerenciarNaPlay } from '../services/playBillingRegras';
+import { PLANOS_BASE } from '../services/planosBase';
 import { ANDROID_PACKAGE } from '../config';
 import {
   lerResumoAssinatura,
@@ -62,10 +63,15 @@ const ANUNCIA_TROCA_PLANO = Platform.OS !== 'ios';
 // `COMPRA_NO_APP` (iOS sem StoreKit: o upsell do Grátis não oferece assinar) e
 // `BUILD_PLAY_SEM_COMPRA_EXTERNA` (Android da Play: sem portal externo nem upsell;
 // status e recibos seguem visíveis) vêm de config/loja.ts — flag única do app.
-/** Venda pela própria Google Play ligada neste build (mesmo interruptor da
- * PlanosScreen). Só muda o upsell do Grátis: em vez de "não disponível", leva à
- * tela de Planos, onde a compra é feita pela Play. */
+/** Este binário sabe vender pela própria Google Play (mesmo interruptor da
+ * PlanosScreen; o servidor ainda pode desligar a venda — a tela de Planos diz).
+ * Só muda o upsell do Grátis: leva à tela de Planos, onde a compra é pela Play. */
 const VENDA_PELA_PLAY = ESTADO_PLAY_BILLING === 'ligado';
+
+/** O que o Pro oferece, da tabela única (`planosBase.ts`) — nunca escrito aqui.
+ * Sem o "Tudo do plano Grátis" (o card já diz que a pessoa está no Grátis). */
+const BENEFICIOS_PRO: readonly string[] =
+  (PLANOS_BASE.find((p) => p.id === 'pro')?.beneficios ?? []).filter((b) => b !== 'Tudo do plano Grátis');
 
 const PLANO_LABEL: Record<PlanoId, string> = { gratis: 'Grátis', pro: 'Pro', empresa: 'Empresa' };
 
@@ -497,8 +503,13 @@ export default function AssinaturaScreen() {
                         fullWidth
                         onPress={() => {
                           vibrar('selecao');
-                          Linking.openURL(urlGerenciarNaPlay(ANDROID_PACKAGE, produtoPlay)).catch(() => {
-                            Alert.alert('Google Play', 'Não consegui abrir a Play Store. Abra a Play Store › Pagamentos e assinaturas.');
+                          // Android: deep link da própria Play (central de assinaturas).
+                          // Web: a página de assinaturas da Play Store.
+                          const abrir = Platform.OS === 'android'
+                            ? gerenciarAssinaturaNaPlay(produtoPlay)
+                            : Linking.openURL(urlGerenciarNaPlay(ANDROID_PACKAGE, produtoPlay)).then(() => true, () => false);
+                          void abrir.then((ok) => {
+                            if (!ok) Alert.alert('Google Play', 'Não consegui abrir a Play Store. Abra a Play Store › Pagamentos e assinaturas.');
                           });
                         }}
                         icon={<MaterialCommunityIcons name="google-play" size={18} color={cores.primaryLight} />}
@@ -515,7 +526,7 @@ export default function AssinaturaScreen() {
                     <View style={styles.avisoCard}>
                       <MaterialCommunityIcons name="information-outline" size={20} color={cores.accentLight} />
                       <Text style={styles.avisoText}>
-                        O status da assinatura e os recibos continuam disponíveis. Este aplicativo Android não abre páginas externas para contratar ou alterar planos.
+                        O status da assinatura e os recibos em PDF das faturas pagas ficam disponíveis aqui.
                       </Text>
                     </View>
                   ) : (
@@ -564,13 +575,7 @@ export default function AssinaturaScreen() {
                       : 'O plano Pro oferece:'}
                   </Text>
                   <View style={styles.beneficios}>
-                    {[
-                      'IA incluída com uso justo diário (voz, chat e diagnóstico)',
-                      'Relatórios de faturamento e conversão',
-                      'Metas de vendas e acompanhamento',
-                      'PDF sem a marca OLLI e modelos premium',
-                      'Suporte prioritário no WhatsApp',
-                    ].map((b) => (
+                    {BENEFICIOS_PRO.map((b) => (
                       <View key={b} style={styles.beneficioRow}>
                         <MaterialCommunityIcons name="check-circle" size={17} color={cores.success} />
                         <Text style={styles.beneficioText}>{b}</Text>
@@ -578,10 +583,10 @@ export default function AssinaturaScreen() {
                     ))}
                   </View>
                   {BUILD_PLAY_SEM_COMPRA_EXTERNA && !VENDA_PELA_PLAY ? (
-                    <Text style={[styles.gerenciarHint, { marginTop: Spacing.base }]}>Consulte a comparação de planos no app. A contratação não está disponível neste aplicativo Android.</Text>
+                    <Text style={[styles.gerenciarHint, { marginTop: Spacing.base }]}>A assinatura pelo app está indisponível no momento.</Text>
                   ) : (
                     <OlliButton
-                      label={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}
+                      label={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}
                       variant="gradient"
                       size="lg"
                       fullWidth
@@ -615,7 +620,7 @@ export default function AssinaturaScreen() {
                           onPress={() => abrirRecibo(f)}
                           disabled={!f.recibo}
                           accessibilityRole="button"
-                          accessibilityLabel="Ver recibo"
+                          accessibilityLabel={BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Abrir o PDF do recibo' : 'Ver recibo'}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           <MaterialCommunityIcons name="receipt" size={18} color={f.recibo ? cores.accentLight : cores.onSurfaceMuted} />
@@ -624,7 +629,12 @@ export default function AssinaturaScreen() {
                     );
                   })}
                 </View>
-                <Text style={styles.faturasHint}>Toque no recibo para abrir o comprovante na Stripe.</Text>
+                <Text style={styles.faturasHint}>
+                  {/* Android: só o PDF de fatura paga, sem citar o processador (Payments policy). */}
+                  {BUILD_PLAY_SEM_COMPRA_EXTERNA
+                    ? 'Toque no recibo para abrir o PDF de uma fatura paga.'
+                    : 'Toque no recibo para abrir o comprovante na Stripe.'}
+                </Text>
               </AnimatedEntrance>
             )}
           </>

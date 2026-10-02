@@ -115,7 +115,9 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   // (`=== '/admin'` para a tela e `startsWith('/admin/')` para a API), e foi
   // isto que a primeira versão desta seção deixou passar.
   const DELEGADAS_EXATAS = ['/admin'];
-  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/revenuecat/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/'];
+  // `/play/` (worker/src/play.js: /play/config e /play/verificar) responde o próprio
+  // 405, como as demais rotas de dinheiro. `/revenuecat/` fica enquanto a rota existir.
+  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/revenuecat/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/'];
 
   // Rotas resolvidas no roteador de topo por igualdade de path.
   const exatas = new Set(

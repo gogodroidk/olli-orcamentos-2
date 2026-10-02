@@ -1,6 +1,7 @@
 import { Linking } from 'react-native';
 import { supabase, getCurrentUser } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
+import { BUILD_PLAY_SEM_COMPRA_EXTERNA } from '../config/loja';
 import { getPlanoCacheado, type PlanoId } from './planos';
 import { derivarPlanoEfetivo } from './planoEfetivo';
 import { obterEstadoOfertaComercial } from './cotaEnvios';
@@ -301,9 +302,18 @@ async function workerGet(caminho: string): Promise<any | null> {
   }
 }
 
-/** Histórico de faturas do usuário (mais recentes primeiro). [] em qualquer falha. */
+/**
+ * Histórico de faturas do usuário (mais recentes primeiro). [] em qualquer falha.
+ *
+ * Android da Google Play (Payments policy): o recibo é SÓ o PDF de fatura PAGA.
+ * A página hospedada da fatura tem botão de pagar quando ela está em aberto — isso
+ * seria link-out de pagamento dentro do app. O worker devolve o PDF com
+ * `?plataforma=android`, e aqui fatura não paga fica sem recibo (defesa dupla,
+ * cobre também um worker antigo).
+ */
 export async function getFaturas(): Promise<Fatura[]> {
-  const data = await workerGet('/stripe/faturas');
+  const rota = '/stripe/faturas';
+  const data = await workerGet(BUILD_PLAY_SEM_COMPRA_EXTERNA ? `${rota}?plataforma=android` : rota);
   if (!data || data.ok !== true || !Array.isArray(data.faturas)) return [];
   return data.faturas
     .map((f: any): Fatura | null => {
@@ -315,7 +325,7 @@ export async function getFaturas(): Promise<Fatura[]> {
         moeda: typeof f.moeda === 'string' ? f.moeda : 'brl',
         status: typeof f.status === 'string' ? f.status : null,
         pago: f.pago === true,
-        recibo: typeof f.recibo === 'string' ? f.recibo : null,
+        recibo: typeof f.recibo === 'string' && (!BUILD_PLAY_SEM_COMPRA_EXTERNA || f.pago === true) ? f.recibo : null,
         intervalo: f.intervalo === 'month' || f.intervalo === 'year' ? f.intervalo : null,
       };
     })

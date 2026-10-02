@@ -13,10 +13,10 @@ import {
   chaveDispensaLembrete,
   lembreteAssinatura,
   lembreteDispensado,
-  type AcaoLembrete,
   type Lembrete,
 } from '../services/lembreteAssinatura';
-import { lembreteParaPlataforma, type LembreteExibivel } from '../services/lembreteAssinaturaLoja';
+import { lembreteParaPlataforma, type AcaoLembreteExibivel, type LembreteExibivel } from '../services/lembreteAssinaturaLoja';
+import { gerenciarAssinaturaNaPlay } from '../services/playBilling';
 import { recarregarPlanoGlobal } from './usePlano';
 // Mesmo `confirmar`/`avisar` que o SinalizarIA usa: o host é montado em TODAS as
 // plataformas. Aqui só a WEB usa — lá o `Alert.alert` do RN não existe.
@@ -50,7 +50,7 @@ export interface UseLembreteAssinatura {
   /** "Agora não": grava o momento e esconde. No-op se o lembrete não é dispensável. */
   dispensar: () => void;
   /** Executa a ação de um botão da faixa. */
-  executar: (acao: AcaoLembrete) => void;
+  executar: (acao: AcaoLembreteExibivel) => void;
   /** `true` enquanto o teste do Pro está sendo iniciado. */
   iniciandoTrial: boolean;
 }
@@ -131,7 +131,7 @@ export function useLembreteAssinatura(): UseLembreteAssinatura {
       const escondido = lembreteDispensado(lembrete, dispensadoEm, agora);
       setEstado({
         estado: 'pronto',
-        lembrete: escondido ? null : lembreteParaPlataforma(lembrete, Platform.OS),
+        lembrete: escondido ? null : lembreteParaPlataforma(lembrete, Platform.OS, { renovaPelaPlay: resumo?.renovaPelaPlay === true }),
       });
     } catch {
       if (minha !== revisao.current) return;
@@ -183,7 +183,7 @@ export function useLembreteAssinatura(): UseLembreteAssinatura {
     ]);
   }, [executarInicioTrial]);
 
-  const executar = useCallback((acao: AcaoLembrete) => {
+  const executar = useCallback((acao: AcaoLembreteExibivel) => {
     // Defesa em profundidade: a adaptação da loja já tirou esses botões fora da
     // web; se algum voltar por engano, o clique não leva a lugar nenhum de compra.
     const podeVender = Platform.OS === 'web';
@@ -197,6 +197,13 @@ export function useLembreteAssinatura(): UseLembreteAssinatura {
         return;
       case 'iniciar_trial':
         if (!iniciandoTrial) pedirInicioTrial();
+        return;
+      case 'gerenciar_play':
+        // Central de assinaturas da própria Play (a adaptação à loja só cria esta
+        // ação no Android). Falhou ao abrir: diz onde ir, sem link de fora.
+        void gerenciarAssinaturaNaPlay(null).then((ok) => {
+          if (!ok) aviso('Google Play', 'Abra a Play Store › Pagamentos e assinaturas.');
+        });
         return;
     }
   }, [nav, iniciandoTrial, pedirInicioTrial]);

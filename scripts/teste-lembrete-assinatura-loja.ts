@@ -96,6 +96,22 @@ checar('trial_disponivel no Android → texto neutro (sem "pagamento" do item li
   'Sem cartão e sem cobrança automática. Depois, a conta volta ao Grátis — seus dados continuam salvos.');
 checar('"assinar" leve não aparece na loja', lembreteParaPlataforma(lembreteAssinatura(gratis(1))!, 'ios'), null);
 
+console.log('\nAndroid: assinante da Google Play só vê "Gerenciar na Google Play" (nunca Pix)');
+{
+  const vencendo = lembreteAssinatura(pagoPix(2)) as Lembrete;
+  const vencido = lembreteAssinatura(pagoPix(-3)) as Lembrete;
+  const play = { renovaPelaPlay: true };
+  for (const [nome, l] of [['renovar_pix', vencendo], ['plano_vencido', vencido]] as const) {
+    const x = lembreteParaPlataforma(l, 'android', play);
+    checar(`${nome}: CTA único "Gerenciar na Google Play"`, [x?.cta, x?.ctaSecundario], [{ rotulo: 'Gerenciar na Google Play', acao: 'gerenciar_play' }, null]);
+    checar(`${nome}: sem Pix/preço no texto`, /R\$|\bpix\b/i.test(`${x?.titulo} ${x?.texto}`), false);
+  }
+  checar('sem assinatura da Play → sem atalho para a Play', lembreteParaPlataforma(vencido, 'android', { renovaPelaPlay: false })?.cta ?? null, null);
+  checar('iOS nunca ganha atalho para outra loja', lembreteParaPlataforma(vencido, 'ios', play)?.cta ?? null, null);
+  checar('teste grátis não vira "Gerenciar na Google Play"', lembreteParaPlataforma(lembreteAssinatura(gratis(3, 'eligible'))!, 'android', play)?.cta?.acao, 'iniciar_trial');
+  checar('web segue intacta mesmo com contexto da Play', lembreteParaPlataforma(vencido, 'web', play), vencido);
+}
+
 console.log('\nweb');
 for (const [nome, entrada] of casos) {
   const l = lembreteAssinatura(entrada)!;

@@ -39,6 +39,7 @@ import { registrarUsoDiario, resetarRoteiro } from '../services/dicasRoteiroStor
 import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { PRECO_PRO, reais } from '../services/precosPlanos';
+import { gerenciarAssinaturaNaPlay } from '../services/playBilling';
 import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
 import { criarOrganizacao, aceitarConvite, extrairToken, listarMembros, PAPEL_LABEL, type Organizacao } from '../services/equipe';
 import { APP_VERSION, APP_VERSION_CODE } from '../config';
@@ -127,7 +128,14 @@ const TEXTO_AJUSTE = {
   sair: { titulo: 'Sair da conta', descricao: 'Seus dados continuam guardados neste aparelho' },
   sairApagar: { titulo: 'Sair e apagar dados deste aparelho', descricao: 'Deixa o celular limpo. Os dados na nuvem não são afetados' },
   excluirConta: { titulo: 'Excluir minha conta', descricao: 'Apaga a conta e os dados para sempre' },
+  gerenciarPlay: { titulo: 'Assinaturas na Google Play', descricao: 'Cancelar, pausar ou trocar a forma de pagamento' },
 } as const;
+
+/** Abre a central de assinaturas da Play Store (Android). */
+async function abrirAssinaturasNaPlay(): Promise<void> {
+  const ok = await gerenciarAssinaturaNaPlay(null);
+  if (!ok) toast.erro('Abra a Play Store › Pagamentos e assinaturas.', { titulo: 'Não consegui abrir a Google Play' });
+}
 
 /**
  * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
@@ -818,6 +826,7 @@ export default function ContaScreen() {
   const itensAjuste: ItemAjuste[] = [
     { id: 'perfil', secao: SECAO_AJUSTES.conta, titulo: 'Seu perfil', descricao: nomeExibido },
     { id: 'assinatura', secao: SECAO_AJUSTES.conta, titulo: 'Assinatura e planos' },
+    ...(Platform.OS === 'android' ? [{ id: 'gerenciarPlay', secao: SECAO_AJUSTES.conta, ...TEXTO_AJUSTE.gerenciarPlay }] : []),
     // Na busca só para o Grátis: para quem paga a linha pode nem existir (sem
     // pedido), e a busca nunca acha o que a tela não desenharia.
     ...(mostraCreditoTroca && !temAssinaturaPaga ? [{ id: 'creditoTroca', secao: SECAO_AJUSTES.conta, titulo: resumoPedidoTroca(null).titulo }] : []),
@@ -1062,14 +1071,17 @@ export default function ContaScreen() {
                   <MaterialCommunityIcons name="crown-outline" size={16} color={textoSobre(cores.accentLight)} />
                   <Text style={styles.proBadgeText}>OLLI PRO</Text>
                 </View>
-                <View style={styles.soonPill}><Text style={styles.soonPillText}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text></View>
+                {/* Android: sem o preço da web (Payments policy) — o preço é o da loja, na tela de Planos. */}
+                {BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
+                  <View style={styles.soonPill}><Text style={styles.soonPillText}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text></View>
+                )}
               </View>
               <Text style={styles.proTitle}>Leve o seu negócio ao próximo nível</Text>
               <Text style={styles.proSub}>
                 {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
                   ? 'Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.'
                   : Platform.OS === 'android'
-                    ? 'Relatórios avançados, metas de vendas e suporte prioritário. Neste aplicativo Android você pode consultar os planos, mas não contratar por fora da Google Play.'
+                    ? 'Relatórios avançados, metas de vendas e suporte prioritário. Veja o que cada plano libera.'
                     : 'Relatórios avançados, metas de vendas e suporte prioritário. A assinatura ainda não está disponível no iPhone.'}
               </Text>
               <OlliPressable
@@ -1085,6 +1097,21 @@ export default function ContaScreen() {
             </View>
           )}
         </Aparecer>
+        ) : null}
+
+        {/* GOOGLE PLAY (Android) — atalho fixo para a central de assinaturas da Play
+            Store: cancelar, pausar ou trocar a forma de pagamento. */}
+        {Platform.OS === 'android' && mostra('gerenciarPlay') ? (
+          <GrupoAjustes titulo="Google Play" indice={ind(1)}>
+            <LinhaAjuste
+              key="gerenciarPlay"
+              icone="google-play"
+              cor={cores.success}
+              {...TEXTO_AJUSTE.gerenciarPlay}
+              seta="externo"
+              onPress={() => { vibrar('selecao'); void abrirAssinaturasNaPlay(); }}
+            />
+          </GrupoAjustes>
         ) : null}
 
         {/* CRÉDITO DE TROCA — logo abaixo do plano, discreto: convite para quem veio
@@ -1732,17 +1759,22 @@ function ModalExcluirConta({
             ))}
 
             <Text style={styles.excluirNota}>
-              {/* "Assinatura → Gerenciar assinatura" não existe no Android da Play
-                  (a tela só mostra status): lá o texto não aponta para o botão. */}
+              {/* Android da Play: sem citar meio de pagamento de fora da loja; o aviso
+                  fala da assinatura da Google Play e leva à central da própria Play. */}
               {BUILD_PLAY_SEM_COMPRA_EXTERNA
-                ? 'Se você tem uma assinatura ativa no cartão, ela é cancelada automaticamente ao excluir a conta.'
+                ? 'Se você tem uma assinatura ativa, a renovação é cancelada ao excluir a conta, inclusive a assinatura feita pela Google Play. O tempo já pago não é devolvido automaticamente. '
                 : 'Se você tem uma assinatura ativa no cartão, ela será cancelada automaticamente ao excluir a conta. Você também pode cancelá-la antes em Assinatura → Gerenciar assinatura.'}
-              {/* A assinatura da Google Play é cobrada pela loja, e o OLLI não consegue
-                  cancelá-la por aqui: sem este aviso, a exclusão prometeria parar uma
-                  cobrança que continua. iOS: sem citar outra loja (Guideline 2.3.10). */}
-              {Platform.OS === 'ios'
-                ? ''
-                : ' Assinatura feita pela Google Play não é cancelada pela exclusão: cancele antes em Play Store › Pagamentos e assinaturas, senão a cobrança continua.'}
+              {BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
+                <Text style={styles.identidadeLink} onPress={() => { vibrar('selecao'); void abrirAssinaturasNaPlay(); }} accessibilityRole="link">
+                  Conferir em Assinaturas na Google Play
+                </Text>
+              ) : null}
+              {/* Web: quem assinou no app Android também tem a renovação da Play
+                  cancelada pela exclusão (o servidor cancela pela API da Play). iOS: sem
+                  citar outra loja (Guideline 2.3.10). */}
+              {Platform.OS === 'web'
+                ? ' Se você assinou pela Google Play (no app Android), a renovação de lá também é cancelada.'
+                : ''}
             </Text>
 
             {avisoEmpresa}
