@@ -27,6 +27,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BorderRadius, Spacing, comAlfa, useCores, useEstilos, type Cores } from '../../theme';
 import { Aparecer, PressableAnimado, Skeleton } from '../motion';
 import type { ResultadoClimaVisita, TomClimaVisita } from '../../services/climaVisitaRegra';
+import { RecursoPlanoChip } from '../RecursoPlano';
 
 export interface ClimaVisitaChipProps {
   analise: ResultadoClimaVisita;
@@ -81,7 +82,7 @@ function coresDoTom(tom: TomClimaVisita, c: Cores): { bg: string; fg: string; bo
   }
 }
 
-export function ClimaVisitaChip({ analise, onPress, mostrarAtribuicao = true, indice = 0 }: ClimaVisitaChipProps) {
+function ClimaVisitaChipConteudo({ analise, onPress, mostrarAtribuicao = true, indice = 0 }: ClimaVisitaChipProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
 
@@ -166,3 +167,17 @@ const criarEstilos = (c: Cores) =>
     linha: { color: c.onSurfaceVariant, fontSize: 12, marginTop: Spacing.xs, marginLeft: Spacing.xs },
     credito: { color: c.onSurfaceMuted, fontSize: 11, marginTop: 2, marginLeft: Spacing.xs },
   });
+
+/**
+ * Chuva na visita é inteligência do Pro (`clima_visita`, decisão de 01/10/2026).
+ * Com o recurso liberado (Pro/Empresa) é a peça de sempre; no Grátis vira o chip
+ * "Disponível no Pro"; com o plano ilegível, "plano não confirmado" — os 3 estados
+ * de `RecursoPlano.tsx`. Quem encaixa a peça numa tela não precisa saber de plano.
+ */
+export function ClimaVisitaChip(props: ClimaVisitaChipProps) {
+  return (
+    <RecursoPlanoChip recurso="clima_visita">
+      <ClimaVisitaChipConteudo {...props} />
+    </RecursoPlanoChip>
+  );
+}

@@ -8,6 +8,8 @@
  * Quatro estados, nunca colapsados: carregando · erro (com "Tentar de novo") ·
  * desligado (servidor sem o recurso — diz que está desligado, não finge) · valor.
  * Papel: contrato é dinheiro → técnico não vê esta tela (e a RLS não deixa ele gravar).
+ * Plano: PMOC/contratos são do Empresa (`pmoc_contratos`, 01/10/2026) — 3 estados em
+ * `@/olli/recursoPlano` (carregando · não confirmado · "Disponível no Empresa").
  */
 import type { ContratoRecorrente, Empresa, SituacaoContrato } from "@dominio";
 import { AlertTriangle, CalendarClock, FileSignature, Loader2, Pencil, PlugZap, Plus, RotateCw, Trash2 } from "lucide-react";
@@ -15,6 +17,7 @@ import { useMemo, useState } from "react";
 import { formatarMoeda } from "@/olli/components/campos";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
+import { CartaoRecursoPlanoPainel, useRecursoPlanoPainel } from "@/olli/recursoPlano";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -48,6 +51,7 @@ const VARIANTE: Record<SituacaoContrato, "success" | "warning" | "info" | "error
 
 export default function ContratosPage() {
 	const ctx = useContextoDeEscrita();
+	const recursoPlano = useRecursoPlanoPainel("pmoc_contratos");
 	const leitura = useContratos();
 	const empresaQ = useMinhaEmpresa();
 	const clientesQ = useOlliList<{ id: string; telefone: string | null }>("clientes", { colunas: "id, telefone" });
@@ -93,6 +97,12 @@ export default function ContratosPage() {
 				</Card>
 			</div>
 		);
+	}
+
+	// Plano depois do papel: o técnico já recebeu a frase dele acima; para quem
+	// administra, o recurso é do Empresa (o tenant decide — gestor de empresa paga entra).
+	if (recursoPlano.estado !== "liberado" && recursoPlano.estado !== "em_breve") {
+		return <CartaoRecursoPlanoPainel recurso="pmoc_contratos" uso={recursoPlano} />;
 	}
 
 	function linkCobranca(c: ContratoRecorrente): { url: string | null; alerta: string | null } {

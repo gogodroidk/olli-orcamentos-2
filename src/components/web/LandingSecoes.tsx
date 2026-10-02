@@ -17,7 +17,9 @@ import { Parallax } from './Parallax';
 import { useDefinirLimiarLanding, useLandingScrollY, useLimiarLandingRef } from './LandingScroll';
 import { abrirWhatsApp } from '../../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE } from '../../config';
-import { ORCAMENTOS_ENVIADOS_GRATIS_MES, TRIAL_PRO_DIAS } from '../../services/entitlements';
+import { TRIAL_PRO_DIAS } from '../../services/entitlements';
+import { FRASE_GRATIS, NOTA_SELO_GRATIS, planoBase } from '../../services/planosBase';
+import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos';
 
 const useNativeAnimations = Platform.OS !== 'web';
 
@@ -380,7 +382,7 @@ export function MockProdutoLanding({ ehDesktop }: { ehDesktop: boolean }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PLANOS — preview com preços reais (fonte: src/screens/PlanosScreen.tsx)
+// PLANOS — preview com preços reais (fonte: services/planosBase.ts + precosPlanos.ts)
 // ═══════════════════════════════════════════════════════════════════════════
 interface PlanoPreview {
   id: 'gratis' | 'pro' | 'empresa';
@@ -393,40 +395,28 @@ interface PlanoPreview {
   icone: keyof typeof MaterialCommunityIcons.glyphMap;
 }
 
-// Mesmos valores de src/screens/PlanosScreen.tsx (PLANOS_BASE) — manter
-// sincronizado com a tela de Planos, que é a fonte de verdade do checkout.
+// Tudo DERIVADO: nome, tagline e bullets da tabela única (`services/planosBase.ts`),
+// preço de `services/precosPlanos.ts` (conferido contra a Stripe). Nenhum "R$ 39" ou
+// "5 orçamentos" digitado aqui — o preview mostra os primeiros bullets de cada plano.
+function previewDe(id: PlanoPreview['id'], icone: PlanoPreview['icone'], bullets: string[]): PlanoPreview {
+  const p = planoBase(id);
+  const preco = id === 'pro' ? PRECO_PRO.mensalCentavos : id === 'empresa' ? PRECO_EMPRESA.mensalCentavos : 0;
+  return {
+    id,
+    nome: p.nome,
+    preco: reais(preco),
+    periodo: id === 'gratis' ? '' : '/mês',
+    destaque: p.destaque,
+    tagline: p.tagline,
+    icone,
+    bullets,
+  };
+}
 const PLANOS_PREVIEW: PlanoPreview[] = [
-  {
-    id: 'gratis',
-    nome: 'Grátis',
-    preco: 'R$ 0',
-    periodo: '',
-    tagline: 'Tudo pra começar a fechar negócio.',
-    icone: 'rocket-launch-outline',
-    bullets: [`${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`, 'Rascunhos, recibos, clientes e histórico sem limite', 'Diagnóstico offline por código de erro', 'Link do orçamento dentro da cota mensal'],
-  },
-  {
-    id: 'pro',
-    nome: 'Pro',
-    preco: 'R$ 39',
-    periodo: '/mês',
-    destaque: true,
-    tagline: 'Pra vender mais e ganhar tempo.',
-    icone: 'crown-outline',
-    bullets: ['Tudo do Grátis', 'Relatórios de faturamento e conversão', 'Metas de vendas por período', 'Suporte prioritário no WhatsApp'],
-  },
-  {
-    id: 'empresa',
-    nome: 'Empresa',
-    preco: 'R$ 99',
-    periodo: '/mês',
-    tagline: 'Pra equipes que atendem em campo todos os dias.',
-    icone: 'office-building-outline',
-    // Os 3 recursos de equipe ainda não existem — mesmo rótulo "(em breve)" da
-    // fonte de verdade (PlanosScreen.tsx PLANOS_BASE), pra não vender como
-    // pronto o que o checkout já avisa que ainda está chegando.
-    bullets: ['Tudo do Pro', 'Vários técnicos e permissões por papel', 'Equipe ao vivo no mapa (em breve)', 'Painel de gestão da equipe (em breve)'],
-  },
+  // Grátis: os 3 primeiros da alma do plano + a nota honesta do selo.
+  previewDe('gratis', 'rocket-launch-outline', [...planoBase('gratis').beneficios.slice(0, 3), NOTA_SELO_GRATIS]),
+  previewDe('pro', 'crown-outline', [...planoBase('pro').beneficios.slice(0, 4)]),
+  previewDe('empresa', 'office-building-outline', [...planoBase('empresa').beneficios.slice(0, 4)]),
 ];
 
 interface PlanosProps {
@@ -542,7 +532,7 @@ export function ProvaLanding() {
 export const FAQ_LANDING: readonly { pergunta: string; resposta: string }[] = [
   {
     pergunta: 'O OLLI é pago?',
-    resposta: `Não. O plano Grátis é permanente: rascunhos, recibos, clientes e histórico ficam sem limite, com ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês. Depois do primeiro envio, você pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática.`,
+    resposta: `Não. O plano Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, recibos, clientes e histórico também ficam sem limite. Depois do primeiro envio, você pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática.`,
   },
   {
     pergunta: 'Serve pra quem não é de refrigeração?',

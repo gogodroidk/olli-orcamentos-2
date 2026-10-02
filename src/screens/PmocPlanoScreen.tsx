@@ -38,6 +38,7 @@ import { FREQUENCIAS_PMOC, CATEGORIAS_HVAC } from '../types';
 import type {
   PmocPlano, PmocPlanoVersao, PmocPeriodicidade, SituacaoPmoc, Equipamento,
 } from '../types';
+import { TelaRecursoPlano } from '../components/RecursoPlano';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type PmocRoute = RouteProp<RootStackParamList, 'PmocPlano'>;
@@ -125,7 +126,7 @@ interface DadosPlano {
 // GuardaPapel segura fail-closed enquanto o papel carrega (estado neutro) e
 // nega o técnico (não gera nem edita plano).
 // ═════════════════════════════════════════════════════════════
-export default function PmocPlanoScreen() {
+function PmocPlanoScreenConteudo() {
   return (
     <GuardaPapel acao="ver_valores_agregados" area="Plano PMOC">
       <PmocPlanoConteudo />
@@ -1157,3 +1158,18 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   modalTitulo: { fontSize: 17, fontWeight: '800', color: c.onSurface },
   erroTexto: { color: c.danger, fontSize: 13, marginTop: 8 },
 });
+
+/**
+ * PMOC e contratos são do plano Empresa (`pmoc_contratos`, decisão do dono em
+ * 01/10/2026). Com o plano confirmado sem o recurso, a tela mostra "Disponível no
+ * Empresa"; com o plano ilegível, "não consegui confirmar seu plano" — os dados já
+ * cadastrados não são tocados, só ficam fora de alcance até o plano voltar.
+ * Membro de equipe vale pelo plano da EMPRESA (ver `RECURSOS_DO_TENANT`).
+ */
+export default function PmocPlanoScreen() {
+  return (
+    <TelaRecursoPlano recurso="pmoc_contratos" titulo="Plano PMOC">
+      <PmocPlanoScreenConteudo />
+    </TelaRecursoPlano>
+  );
+}

@@ -4,7 +4,7 @@ import { formatDate, formatDateBR, formatDateTime } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
 import { escapeHtml, safeHexColor } from './html';
-import { DEFAULT_ACCENT, monogramSvg } from './marcaOlli';
+import { DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
 import { formatarNumeroExibicao } from './numeroDocumento';
 
 // Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
@@ -579,10 +579,9 @@ export function gerarHtmlOrcamento(
   // orçamento; removerMarca só afeta a linha da marca OLLI.
   const rodapeContato = contatoEmpresa || empresa.nome;
 
-  // Marca OLLI discreta (apenas quando removerMarca é falsy). Texto fixo/controlado.
-  const brandOlliHtml = removerMarca
-    ? ''
-    : `<div class="brand-olli">Orçamento feito com OLLI · <a href="https://olliorcamentos.online">olliorcamentos.online</a></div>`;
+  // Selo "Feito com OLLI" (Grátis ilimitado): discreto, clicável e com UTM. Sai
+  // só quando removerMarca é falsy (Pro/Empresa removem). Marcação fixa/controlada.
+  const brandOlliHtml = removerMarca ? '' : `<div class="brand-olli">${seloOlliHtml('pdf_orcamento')}</div>`;
 
   // Escapa CADA parte antes de juntar com o <br/> (marcação fixa controlada).
   const clienteLinhas = [
@@ -727,8 +726,7 @@ export function gerarHtmlOrcamento(
   .footer-contact { font-size: 11px; color: #8A93A2; overflow-wrap: anywhere; }
   /* Marca OLLI — discreta e não intrusiva. Removida (removerMarca) para Pro/Empresa;
      NUNCA leva dado legal/PIX/validade junto (esses ficam no .footer-contact). */
-  .brand-olli { text-align: center; margin-top: 14px; font-size: 9.5px; letter-spacing: 0.3px; color: #C2C8D2; }
-  .brand-olli a { color: #C2C8D2; text-decoration: none; }
+  .brand-olli { text-align: center; margin-top: 14px; }
 
   /* Variantes escolhidas no app — cada modelo com identidade estrutural própria. */
   ${cssModelos(accent)}

@@ -7,15 +7,14 @@
  * link no cabeçalho List-Unsubscribe).
  *
  * Copy DERIVADA da fonte, nunca de memória (memória "copy derivada da fonte"):
- * preço vem de `src/services/precosPlanos.ts` na hora de renderizar e as frases
- * de cobrança repetem as da regra `src/services/lembreteAssinatura.ts` que a
- * faixa do app já mostra. Nada de urgência inventada, desconto ou prazo falso.
+ * as frases de cobrança repetem as da regra `src/services/lembreteAssinatura.ts`
+ * que a faixa do app já mostra. Nada de urgência inventada, desconto ou prazo
+ * falso. Desde 01/10/2026 (Grátis ilimitado) só a renovação vira e-mail.
  */
 
-import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO } from './emailLembretesPolicy.js';
 
-export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-09-29.v1';
+export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-01.v2';
 export const EMAIL_LEMBRETES_BRAND = 'OLLI Orçamentos';
 
 const INPUT_KEYS = Object.freeze([
@@ -145,51 +144,14 @@ function conteudoAtivacao(dados, appUrl) {
 
 function conteudoAssinatura(dados, appUrl) {
   exigir(objeto(dados) && typeof dados.tipo === 'string', 'dados_invalidos');
-  const preco = reais(PRECO_PRO.mensalCentavos);
   const motivo = 'Você recebe este aviso porque tem uma conta na OLLI Orçamentos.';
-  const planos = { rotulo: 'Ver o plano Pro', href: urlCom(appUrl, '/planos') };
   const renovar = { rotulo: 'Renovar com Pix', href: urlCom(appUrl, '/planos', { renovar: 'pix' }) };
 
-  if (dados.tipo === 'cota_quase') {
-    chavesExatas(dados, ['tipo', 'limite', 'usados', 'restantes'], 'dados_invalidos');
-    exigir(inteiroEntre(dados.limite, 1, 1000) && inteiroEntre(dados.usados, 0, 1000), 'dados_invalidos');
-    exigir(inteiroEntre(dados.restantes, 1, 2) && dados.usados + dados.restantes <= dados.limite, 'dados_invalidos');
-    const titulo = dados.restantes === 1
-      ? 'Falta 1 orçamento grátis este mês'
-      : `Faltam ${dados.restantes} orçamentos grátis este mês`;
-    return {
-      subject: titulo,
-      preview: `Você já enviou ${dados.usados} de ${dados.limite} orçamentos do plano Grátis.`,
-      titulo,
-      paragrafos: [
-        `Você já enviou ${dados.usados} de ${dados.limite} orçamentos do plano Grátis neste mês.`,
-        `No Pro (${preco}/mês, dá para pagar com Pix) é sem limite e sem a marca OLLI no PDF.`,
-      ],
-      passos: null,
-      cta: planos,
-      depois: ['No mês que vem o limite do Grátis recomeça.'],
-      motivo,
-    };
-  }
-
-  if (dados.tipo === 'cota_esgotada') {
-    chavesExatas(dados, ['tipo', 'limite', 'usados', 'restantes'], 'dados_invalidos');
-    exigir(inteiroEntre(dados.limite, 1, 1000) && inteiroEntre(dados.usados, dados.limite, 1000) && dados.restantes === 0, 'dados_invalidos');
-    const titulo = `Você usou os ${dados.limite} orçamentos grátis deste mês`;
-    return {
-      subject: titulo,
-      preview: `Para continuar enviando agora, o Pro custa ${preco}/mês e aceita Pix.`,
-      titulo,
-      paragrafos: [
-        `Para continuar enviando orçamentos agora, assine o Pro por ${preco}/mês — pode pagar com Pix.`,
-        'Seus clientes e orçamentos continuam salvos, e no mês que vem o limite do Grátis recomeça.',
-      ],
-      passos: null,
-      cta: planos,
-      depois: [],
-      motivo,
-    };
-  }
+  // Grátis ILIMITADO desde 01/10/2026: os avisos de cota (cota_quase/cota_esgotada)
+  // não existem mais. Um pedido desses que ainda esteja na fila (enfileirado antes
+  // do deploy) NÃO pode sair dizendo "você usou os 5 orçamentos" — falha com um
+  // código próprio e o consumer o descarta (dead_letter), em vez de mentir.
+  exigir(dados.tipo !== 'cota_quase' && dados.tipo !== 'cota_esgotada', 'tipo_descontinuado');
 
   if (dados.tipo === 'renovar_pix' || dados.tipo === 'plano_vencido') {
     chavesExatas(dados, ['tipo', 'plano', 'venceEm', 'momento', 'sequencia'], 'dados_invalidos');
