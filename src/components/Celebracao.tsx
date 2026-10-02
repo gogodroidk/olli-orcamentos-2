@@ -1,51 +1,73 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { View, Animated, StyleSheet, Easing, Platform, AccessibilityInfo } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import { View, StyleSheet, AccessibilityInfo } from 'react-native';
+import Animated, {
+  Extrapolation,
+  cancelAnimation,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../utils/haptico';
 import { Typography, useCores, useGradientes, useEstilos, sombrasDe, type Cores } from '../theme';
-import { Motion, useReducedMotion } from '../theme/motion';
+import { DISTANCIA, Motion, useReduzirMovimento } from '../theme/motion';
+import { curvas } from './motion/curvas';
 
 interface Props {
   visible: boolean;
-  tipo: 'gerado' | 'aprovado';
+  tipo: 'gerado' | 'aprovado' | 'pago';
   onDone?: () => void;
 }
 
-const useNativeAnimations = Platform.OS !== 'web';
+/** Confete curto: poucas peças, uma rajada só (sem loop). */
 const N_PARTICULAS = 14;
 
 const TEXTOS: Record<Props['tipo'], string> = {
   gerado: 'Orçamento salvo!',
   aprovado: 'Negócio fechado!',
+  pago: 'Pagamento recebido!',
 };
 
 interface Particula {
-  angulo: number;
-  distancia: number;
+  id: number;
+  dx: number;
+  dy: number;
   cor: string;
   rotacaoFinal: number;
 }
 
 function gerarParticulas(coresParticula: string[]): Particula[] {
-  return Array.from({ length: N_PARTICULAS }).map((_, i) => ({
-    angulo: (Math.PI * 2 * i) / N_PARTICULAS + (Math.random() * 0.5 - 0.25),
-    distancia: 70 + Math.random() * 55,
-    cor: coresParticula[i % coresParticula.length],
-    rotacaoFinal: Math.random() * 360,
-  }));
+  return Array.from({ length: N_PARTICULAS }).map((_, i) => {
+    const angulo = (Math.PI * 2 * i) / N_PARTICULAS + (Math.random() * 0.5 - 0.25);
+    const distancia = 70 + Math.random() * 55;
+    return {
+      id: i,
+      dx: Math.cos(angulo) * distancia,
+      dy: Math.sin(angulo) * distancia,
+      cor: coresParticula[i % coresParticula.length],
+      rotacaoFinal: Math.random() * 360,
+    };
+  });
 }
 
 /**
- * Overlay de celebração — orçamento gerado / negócio aprovado.
- * Não bloqueia toque (pointerEvents="none") e se desmonta sozinha via onDone.
+ * Overlay de celebração — orçamento gerado, negócio aprovado ou pagamento quitado.
+ *
+ * Reanimated na UI thread, só `transform`/`opacity`, uma rajada de
+ * `Motion.dur.celebrate` (sem loop). Não bloqueia toque (pointerEvents="none") e
+ * avisa o fim por `onDone`. Com "Reduzir movimento" não desenha nada: fica o
+ * háptico de sucesso e o anúncio do leitor de tela, e `onDone` sai na hora.
  */
 export function Celebracao({ visible, tipo, onDone }: Props) {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
-  const progress = useRef(new Animated.Value(0)).current;
-  const reduzirMovimento = useReducedMotion();
+  const reduzir = useReduzirMovimento();
+  const progresso = useSharedValue(0);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
   // '#F7B23B' é um dourado de confete decorativo, sem chave semântica no tema
@@ -54,11 +76,10 @@ export function Celebracao({ visible, tipo, onDone }: Props) {
     () => [cores.accent, cores.success, cores.primaryLight, '#F7B23B'],
     [cores],
   );
-  const particulas = useMemo(() => gerarParticulas(coresParticula), [visible, coresParticula]);
+  // Peças novas a cada celebração; fora dela, nenhuma.
+  const particulas = useMemo(() => (visible ? gerarParticulas(coresParticula) : []), [visible, coresParticula]);
 
-  // Feedback semântico e háptico acontece uma vez por celebração. Fica em um
-  // efeito separado porque a preferência de movimento é resolvida de forma
-  // assíncrona e pode mudar enquanto o overlay está visível.
+  // Háptico e anúncio: uma vez por celebração, com ou sem movimento.
   useEffect(() => {
     if (!visible) return;
     vibrar('sucesso');
@@ -67,96 +88,47 @@ export function Celebracao({ visible, tipo, onDone }: Props) {
 
   useEffect(() => {
     if (!visible) {
-      progress.setValue(0);
+      cancelAnimation(progresso);
+      progresso.set(0);
       return;
     }
-
-    progress.setValue(0);
-    if (reduzirMovimento) {
-      const id = setTimeout(() => onDoneRef.current?.(), 0);
+    const terminar = () => onDoneRef.current?.();
+    if (reduzir) {
+      const id = setTimeout(terminar, 0);
       return () => clearTimeout(id);
     }
+    progresso.set(0);
+    progresso.set(withTiming(1, { duration: Motion.dur.celebrate, easing: curvas.decelerate }, (fim) => {
+      if (fim) scheduleOnRN(terminar);
+    }));
+    return () => cancelAnimation(progresso);
+  }, [visible, reduzir, progresso]);
 
-    const animation = Animated.timing(progress, {
-      toValue: 1,
-      duration: Motion.dur.celebrate,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: useNativeAnimations,
-    });
-    animation.start(({ finished }) => {
-      if (finished) onDoneRef.current?.();
-    });
-    return () => animation.stop();
-  }, [visible, tipo, reduzirMovimento, progress]);
+  const estiloCheck = useAnimatedStyle(() => {
+    const p = progresso.get();
+    return {
+      opacity: interpolate(p, [0, 0.15, 0.85, 1], [0, 1, 1, 0], Extrapolation.CLAMP),
+      transform: [{ scale: interpolate(p, [0, 0.35, 0.55, 1], [0.6, 1.08, 1, 1], Extrapolation.CLAMP) }],
+    };
+  });
+  const estiloTexto = useAnimatedStyle(() => {
+    const p = progresso.get();
+    return {
+      opacity: interpolate(p, [0, 0.3, 0.85, 1], [0, 1, 1, 0], Extrapolation.CLAMP),
+      transform: [{ translateY: interpolate(p, [0, 0.3], [DISTANCIA.entrada, 0], Extrapolation.CLAMP) }],
+    };
+  });
 
-  if (!visible || reduzirMovimento) return null;
-
-  const checkScale = progress.interpolate({
-    inputRange: [0, 0.35, 0.55, 1],
-    outputRange: [0, 1.1, 1, 1],
-    extrapolate: 'clamp',
-  });
-  const checkOpacity = progress.interpolate({
-    inputRange: [0, 0.15, 0.85, 1],
-    outputRange: [0, 1, 1, 0],
-    extrapolate: 'clamp',
-  });
-  const textoOpacity = progress.interpolate({
-    inputRange: [0, 0.3, 0.85, 1],
-    outputRange: [0, 1, 1, 0],
-    extrapolate: 'clamp',
-  });
-  const textoTranslateY = progress.interpolate({
-    inputRange: [0, 0.3],
-    outputRange: [10, 0],
-    extrapolate: 'clamp',
-  });
+  if (!visible || reduzir) return null;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <View style={styles.centro}>
-        {particulas.map((p, i) => {
-          const tx = progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, Math.cos(p.angulo) * p.distancia],
-            extrapolate: 'clamp',
-          });
-          const ty = progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, Math.sin(p.angulo) * p.distancia],
-            extrapolate: 'clamp',
-          });
-          const opacity = progress.interpolate({
-            inputRange: [0, 0.2, 0.9, 1],
-            outputRange: [0, 1, 1, 0],
-            extrapolate: 'clamp',
-          });
-          const rotate = progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: ['0deg', `${p.rotacaoFinal}deg`],
-          });
-          return (
-            <Animated.View
-              key={i}
-              style={[
-                styles.particula,
-                {
-                  backgroundColor: p.cor,
-                  opacity,
-                  transform: [{ translateX: tx }, { translateY: ty }, { rotate }],
-                },
-              ]}
-            />
-          );
-        })}
+        {particulas.map((p) => (
+          <PecaConfete key={p.id} particula={p} progresso={progresso} estilo={styles.particula} />
+        ))}
 
-        <Animated.View
-          style={[
-            styles.checkCircle,
-            sombrasDe(cores).glowCyan,
-            { opacity: checkOpacity, transform: [{ scale: checkScale }] },
-          ]}
-        >
+        <Animated.View style={[styles.checkCircle, sombrasDe(cores).glowCyan, estiloCheck]}>
           <LinearGradient
             colors={gradientes.success}
             start={{ x: 0, y: 0 }}
@@ -164,24 +136,38 @@ export function Celebracao({ visible, tipo, onDone }: Props) {
             style={styles.checkGradient}
           >
             {/* Branco fixo: o gradiente de sucesso é calibrado por contraste
-                contra branco (ver criarGradientes), então o ícone fica legível
-                em qualquer modo sem precisar de token. */}
-            <MaterialCommunityIcons name="check-bold" size={54} color="#fff" />
+                contra branco (ver criarGradientes). */}
+            <MaterialCommunityIcons name={tipo === 'pago' ? 'cash-check' : 'check-bold'} size={54} color="#fff" />
           </LinearGradient>
         </Animated.View>
 
-        <Animated.Text
-          style={[
-            Typography.h3,
-            styles.texto,
-            { opacity: textoOpacity, transform: [{ translateY: textoTranslateY }] },
-          ]}
-        >
+        <Animated.Text style={[Typography.h3, styles.texto, estiloTexto]}>
           {TEXTOS[tipo]}
         </Animated.Text>
       </View>
     </View>
   );
+}
+
+function PecaConfete({ particula, progresso, estilo }: {
+  particula: Particula;
+  progresso: SharedValue<number>;
+  estilo: object;
+}) {
+  const { dx, dy, rotacaoFinal } = particula;
+  const animado = useAnimatedStyle(() => {
+    const p = progresso.get();
+    // Rajada para fora e uma leve "queda" no fim (p²): confete, não fogos.
+    return {
+      opacity: interpolate(p, [0, 0.15, 0.75, 1], [0, 1, 1, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateX: dx * p },
+        { translateY: dy * p + DISTANCIA.deslize * p * p },
+        { rotate: `${rotacaoFinal * p}deg` },
+      ],
+    };
+  });
+  return <Animated.View style={[estilo, { backgroundColor: particula.cor }, animado]} />;
 }
 
 const criarEstilos = (c: Cores) =>
@@ -207,12 +193,11 @@ const criarEstilos = (c: Cores) =>
       position: 'absolute',
       width: 8,
       height: 8,
-      borderRadius: 4,
+      borderRadius: 2,
     },
     texto: {
       marginTop: 18,
-      // Antes era '#fff' cravado — mas este texto flutua sobre a tela por trás
-      // (sem fundo próprio), então precisa seguir a tinta do modo atual.
+      // Flutua sobre a tela por trás (sem fundo próprio): segue a tinta do modo.
       color: c.onSurface,
       textAlign: 'center',
     },

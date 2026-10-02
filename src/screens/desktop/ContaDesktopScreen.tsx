@@ -754,7 +754,9 @@ export default function ContaDesktopScreen() {
                       <Text style={styles.perfilNome} numberOfLines={1}>{user.email}</Text>
                       <View style={styles.conectadoLinha}>
                         <View style={styles.conectadoDot} />
-                        <Text style={styles.conectadoTexto}>Conectado à nuvem</Text>
+                        {/* A sessão é lida localmente e não prova conexão: "Conectado à
+                            nuvem" ficava verde até offline (paridade com a Conta mobile). */}
+                        <Text style={styles.conectadoTexto}>Conta conectada neste aparelho</Text>
                       </View>
                     </View>
                   </View>

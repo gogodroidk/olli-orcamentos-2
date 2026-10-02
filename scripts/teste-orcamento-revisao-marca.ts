@@ -50,11 +50,12 @@ assert.doesNotMatch(database, /mudouConteudoProtegido && propostaJaEnviada/);
 assert.match(step4, /nav\.navigate\('ModelosDocumento'\)/);
 assert.doesNotMatch(step4, /set\('modeloPdf'|set\('corMarca'/);
 
-// Home e Agenda usam as novas hierarquias, sem o antigo seletor Dia/Semana/Mês.
+// Home e Agenda usam as novas hierarquias, sem o antigo seletor de MODOS. Desde a
+// 2.9 a Agenda troca Dia/Semana/Mês pelo controle segmentado (SeletorVisao).
 assert.match(home, /Aprovado neste mês/);
 assert.match(home, /Conversão do mês/);
 assert.match(agenda, /weekStrip/);
-assert.match(agenda, /calendar-month-outline/);
+assert.match(agenda, /<SeletorVisao /);
 assert.doesNotMatch(agenda, /const MODOS/);
 
 // CNPJ e marca por IA existem no app e na web; a IA só sugere campos curtos.
