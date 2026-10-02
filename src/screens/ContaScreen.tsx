@@ -901,8 +901,12 @@ export default function ContaScreen() {
           <OlliMascot size={34} onDark />
         </View>
 
-        {/* Dica do momento (roteiro I5): 30 dias de uso → backup ligado. */}
-        <DicaDoRoteiro local="conta" style={{ marginHorizontal: Spacing.base, marginBottom: Spacing.sm }} />
+        {/* Dica do momento (roteiro I5): 30 dias de uso → backup ligado. Só para quem
+            PODE ter o backup automático: membro de equipe (somente_dono) ou sem sessão
+            leria "uma cópia por dia fica guardada" e se acharia protegido sem estar. */}
+        {sessaoAtiva && motivoBackup === 'permitido' ? (
+          <DicaDoRoteiro local="conta" style={{ marginHorizontal: Spacing.base, marginBottom: Spacing.sm }} />
+        ) : null}
 
         {!carregando && !carregandoErro ? <CampoBuscaAjuste valor={busca} aoMudar={setBusca} /> : null}
 

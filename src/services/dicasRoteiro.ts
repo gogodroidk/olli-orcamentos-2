@@ -215,7 +215,7 @@ export const ROTEIRO_DICAS: readonly DicaDoRoteiro[] = [
     evento: 'primeiro_convite_equipe',
     local: 'equipe',
     titulo: 'Convite criado',
-    texto: 'Quem entra como Técnico vê só as ordens de serviço dele. Se alguém sair da equipe, você desativa por aqui.',
+    texto: 'Quem entra como Técnico vê as ordens de serviço dele e a própria agenda, sem relatórios nem os números da equipe. Se alguém sair, você desativa por aqui.',
     icone: 'account-plus-outline',
   },
   {

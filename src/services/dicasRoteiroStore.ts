@@ -90,17 +90,22 @@ export function ouvirRoteiro(fn: () => void): () => void {
  */
 export async function dicaParaLocal(local: LocalDica, contexto?: readonly EventoDica[]): Promise<Escolha | null> {
   try {
-    const [estado, ajudaAtiva] = await Promise.all([ler(), estaAtiva()]);
+    const ajudaAtiva = await estaAtiva();
     const candidatas = ROTEIRO_DICAS.filter((d) => d.local === local);
     const vistasLista = await Promise.all(candidatas.map(async (d) => ((await dicaFoiVista(d.id)) ? d.id : null)));
     const vistas = new Set(vistasLista.filter((v): v is string => !!v));
     const hoje = diaLocal();
-    const escolha = escolherDica({ estado, local, hoje, vistas, ajudaAtiva, contexto });
-    if (escolha?.nova) {
-      await mudar((e) => marcarApresentada(e, escolha.dica.id, hoje));
-      track(Eventos.dicaMostrada, { id: escolha.dica.id, numero: escolha.dica.numero });
-    }
-    return escolha;
+    // Escolher e gravar a apresentação DENTRO da fila: duas telas montadas (ex.:
+    // Início e Hoje) que reavaliam no mesmo instante não ganham, cada uma, uma
+    // dica "nova" no mesmo dia — a segunda já enxerga a apresentação da primeira.
+    let escolha: Escolha | null = null;
+    await mudar((e) => {
+      escolha = escolherDica({ estado: e, local, hoje, vistas, ajudaAtiva, contexto });
+      return escolha?.nova ? marcarApresentada(e, escolha.dica.id, hoje) : e;
+    });
+    const final = escolha as Escolha | null;
+    if (final?.nova) track(Eventos.dicaMostrada, { id: final.dica.id, numero: final.dica.numero });
+    return final;
   } catch {
     return null;
   }

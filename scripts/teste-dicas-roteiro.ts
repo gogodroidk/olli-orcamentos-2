@@ -208,7 +208,8 @@ caso('encaixe: todo evento do roteiro é registrado por alguma tela', () => {
 
 caso('encaixe: todo lugar do roteiro tem uma <DicaDoRoteiro>', () => {
   for (const local of new Set(ROTEIRO_DICAS.map((d) => d.local))) {
-    assert.ok(TODO_SRC.includes(`<DicaDoRoteiro local="${local}"`) || TODO_SRC.includes(`<DicaDoRoteiro\n              local="${local}"`), `${local}: sem DicaDoRoteiro`);
+    // \s+ e não "\n" literal: no Windows (autocrlf) o checkout vem com CRLF.
+    assert.ok(new RegExp(`<DicaDoRoteiro\\s+local="${local}"`).test(TODO_SRC), `${local}: sem DicaDoRoteiro`);
   }
 });
 
