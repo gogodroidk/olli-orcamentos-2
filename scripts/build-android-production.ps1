@@ -46,7 +46,7 @@ if (-not (Test-Path -LiteralPath $keystorePath)) {
   throw 'O arquivo da assinatura de producao nao existe no caminho configurado.'
 }
 
-$keyInfo = & keytool -list -keystore $keystorePath -alias $keystoreAlias -storepass:env OLLI_UPLOAD_KEYSTORE_PASSWORD 2>&1
+$keyInfo = & { $ErrorActionPreference = 'Continue'; & keytool -list -keystore $keystorePath -alias $keystoreAlias -storepass:env OLLI_UPLOAD_KEYSTORE_PASSWORD 2>&1 | ForEach-Object { "$_" } }
 if ($LASTEXITCODE -ne 0) {
   $safeError = $keyInfo -join ' '
   foreach ($secretName in $required) {
@@ -60,7 +60,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $certificateFile = [System.IO.Path]::GetTempFileName()
 try {
-  $null = & keytool -exportcert -keystore $keystorePath -alias $keystoreAlias -storepass:env OLLI_UPLOAD_KEYSTORE_PASSWORD -file $certificateFile 2>&1
+  $null = & { $ErrorActionPreference = 'Continue'; & keytool -exportcert -keystore $keystorePath -alias $keystoreAlias -storepass:env OLLI_UPLOAD_KEYSTORE_PASSWORD -file $certificateFile 2>&1 | ForEach-Object { "$_" } }
   if ($LASTEXITCODE -ne 0) {
     throw 'Nao foi possivel exportar o certificado publico para validar sua identidade.'
   }
@@ -119,7 +119,7 @@ if (-not (Test-Path -LiteralPath $output)) {
   throw 'A compilacao terminou sem produzir o arquivo AAB esperado.'
 }
 
-$signatureCheck = & jarsigner -verify -strict -keystore $keystorePath -storepass:env OLLI_UPLOAD_KEYSTORE_PASSWORD $output $keystoreAlias 2>&1
+$signatureCheck = & { $ErrorActionPreference = 'Continue'; & jarsigner -verify -strict -keystore $keystorePath -storepass:env OLLI_UPLOAD_KEYSTORE_PASSWORD $output $keystoreAlias 2>&1 | ForEach-Object { "$_" } }
 if ($LASTEXITCODE -ne 0) {
   throw 'O AAB foi criado, mas a assinatura final nao corresponde a chave oficial do OLLI.'
 }
