@@ -272,10 +272,6 @@ export function temTermometro(status: StatusOrcamento): boolean {
   return ABERTOS.has(status);
 }
 
-function ymdLocal(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 /** Dias de calendário de hoje até `ymd` (0 = hoje, 1 = amanhã, <0 = passou). null = ilegível. */
 export function diasAteValidade(ymd: string | null, agora: Date): number | null {
   if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
