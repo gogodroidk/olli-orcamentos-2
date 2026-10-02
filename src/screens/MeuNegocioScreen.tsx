@@ -31,7 +31,7 @@ import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
 import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
-import { camposPendentesPerfil, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
+import { camposPendentesPerfil, completarPerfilDeduzido, juntarPendentes, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
 import { isValidCNPJ } from '../utils/masks';
 import { normalizarChavePix } from '../utils/pixBrCode';
 
@@ -170,7 +170,10 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     setErroCarga(false);
     // Instalação nova ainda sem empresa: inicializa um registro em branco para
     // o formulário aparecer e poder SALVAR (saveEmpresa cria o registro de fato).
-    const empresaCarregada = emp ?? empresaEmBranco();
+    // O que dá para deduzir do que já existe entra preenchido (tipo de serviço a
+    // partir do segmento, "autônomo" sem CNPJ): antes o chip do segmento aparecia
+    // marcado e o salvar acusava "tipo de serviço" pendente (8 contas presas).
+    const empresaCarregada = completarPerfilDeduzido(emp ?? empresaEmBranco());
     setEmpresa(empresaCarregada);
     temEmpresaRef.current = true;
     setDirty(false);
@@ -238,7 +241,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     if (pendentes.length > 0) {
       Alert.alert(
         'Complete os dados essenciais',
-        `Antes de usar a plataforma, preencha: ${pendentes.map(campo => ROTULO_CAMPO_PERFIL[campo]).join(', ')}.`,
+        `Seus orçamentos e recibos saem com esses dados. Falta preencher: ${juntarPendentes(pendentes.map(campo => ROTULO_CAMPO_PERFIL[campo]))}.`,
       );
       return;
     }
@@ -248,7 +251,8 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     }
     setSalvando(true);
     try {
-      await saveEmpresa(empresa);
+      // Grava também o que foi deduzido (mesma regra do contador de pendências).
+      await saveEmpresa(completarPerfilDeduzido(empresa));
       void recarregarVerticais(); // atualiza o gate de ferramentas por ofício na hora
       vibrar('sucesso');
       setDirty(false);

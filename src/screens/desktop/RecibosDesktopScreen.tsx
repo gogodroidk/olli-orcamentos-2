@@ -14,6 +14,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { getRecibos, getEmpresa } from '../../database/database';
 import { marcarReciboComoPdfEmitido } from '../../services/pagamentos';
+import { exigirCadastroParaEnviar } from '../../services/exigirCadastro';
 import { onSyncAplicado } from '../../services/cloudSync';
 import { exportarHtmlComoPdf, abrirWhatsApp } from '../../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../../utils/reciboPdf';
@@ -155,6 +156,8 @@ export default function RecibosDesktopScreen() {
   // rótulo do botão muda. Na 1ª emissão (pdfEmitido ainda false), marca o
   // recibo como emitido ao concluir — mesmo efeito colateral da mobile.
   const handleGerarOuReenviar = useCallback(async (r: Recibo) => {
+    // Porta única do envio de documento: cadastro incompleto segura o recibo.
+    if (!(await exigirCadastroParaEnviar('recibo'))) return;
     if (!empresa) {
       avisar('Cadastre sua empresa antes', 'Para emitir recibos, cadastre os dados da sua empresa em Meu Negócio.');
       return;

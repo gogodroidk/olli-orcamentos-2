@@ -40,6 +40,7 @@ import { formatDateTime, nowISO } from '../utils/date';
 import { formatarDataBR } from '../utils/formatarData';
 import { generateId } from '../utils/id';
 import { baseParaNovoDocumento, type ModoNovoDocumento } from '../utils/novoDocumento';
+import { exigirCadastroParaEnviar } from '../services/exigirCadastro';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
 import {
   montarMensagemCobranca,
@@ -430,7 +431,10 @@ export default function VisualizarOrcamentoScreen() {
   }
 
   async function handleShare() {
-    if (!orc || !empresa) return;
+    if (!orc || sharing) return;
+    // Cadastro do negócio incompleto segura o PDF (o app não fecha mais por isso).
+    if (!(await exigirCadastroParaEnviar('orcamento'))) return;
+    if (!empresa) return;
     setSharing(true);
     setOverlayInfo({ titulo: 'Gerando seu orçamento...', subtitulo: 'Deixando bonito para o cliente...' });
     let reserva: ReservaEnvioOrcamento | null = null;
@@ -474,6 +478,7 @@ export default function VisualizarOrcamentoScreen() {
       toast.info(`Cadastre o WhatsApp de ${orc.clienteNome} para enviar por aqui.`);
       return;
     }
+    if (!(await exigirCadastroParaEnviar('orcamento'))) return;
     setEnviandoWhats(true);
     let reserva: ReservaEnvioOrcamento | null = null;
     try {
@@ -556,6 +561,7 @@ export default function VisualizarOrcamentoScreen() {
 
   async function handleLinkCliente() {
     if (!orc) return;
+    if (!(await exigirCadastroParaEnviar('orcamento'))) return;
     if (!linkConfigurado()) {
       toast.info(
         'Para enviar um link onde o cliente aprova com 1 toque, ative o backup na nuvem (tela Conta). Por enquanto, use o WhatsApp ou o PDF.',
