@@ -39,6 +39,7 @@
  * Também serve o LINK PÚBLICO do cliente (sem login):
  *   GET  /o/<token> → página do orçamento (aprovar/recusar/WhatsApp)
  *   POST /o/<token> → grava a resposta do cliente
+ *   POST /o/<token>/sinal → métrica do termômetro (abriu, tempo, viu o preço)
  *
  * POST /voz também aceita um modo CONVERSA (Tier B, docs/ENXAME/OLLI_VOZ_CONVERSA.md):
  * corpo com `conversa: [{papel:'user'|'olli', texto}]` em vez de `transcript` →
@@ -52,7 +53,7 @@
 import * as Sentry from '@sentry/cloudflare';
 import { limparBreadcrumbSentry, limparEventoSentry } from '../../src/services/sentryScrub.ts';
 import { capturarExcecao, conectarSentry } from '../../src/services/sentryCaptura.ts';
-import { renderLinkPage, responderLink } from './link.js';
+import { limparEventosAntigos, registrarSinal, renderLinkPage, responderLink } from './link.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
@@ -955,6 +956,9 @@ const handler = {
     // clientes por minuto e no máximo 10 consultas ao Nominatim — a política dele
     // (1 req/s) vale para o OLLI inteiro, não por usuário. Ver geoClientes.js.
     ctx.waitUntil(processarGeoClientes(env));
+    // Termômetro do orçamento (LGPD): apaga eventos de interação com mais de 180
+    // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
+    ctx.waitUntil(limparEventosAntigos(env, agendado));
   },
 
   async fetch(request, env) {
@@ -1053,6 +1057,20 @@ const handler = {
 
     // ── LINK PÚBLICO DO CLIENTE (sem login, antes do gate da IA) ──
     if (url.pathname.startsWith('/o/')) {
+      // Sinal do termômetro (beacon da própria página): POST /o/<token>/sinal.
+      // Só métrica de interação, com balde de rate limit próprio (ver link.js).
+      const sinal = /^\/o\/([^/]+)\/sinal$/.exec(url.pathname);
+      if (sinal) {
+        if (request.method !== 'POST') {
+          return new Response('Método não suportado', {
+            status: 405,
+            headers: { Allow: 'POST', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+          });
+        }
+        let tokenSinal = '';
+        try { tokenSinal = decodeURIComponent(sinal[1]); } catch { tokenSinal = ''; }
+        return registrarSinal(tokenSinal, request, env);
+      }
       const token = decodeURIComponent(url.pathname.slice(3));
       if (request.method === 'GET') {
         // O GET é caminho de ESCRITA service-role (trilha 'visualizado':

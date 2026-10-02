@@ -206,7 +206,8 @@
         { "name": "AUTH_EMAIL_RL", "namespace_id": "2021", "simple": { "limit": 5, "period": 60 } },
         { "name": "CLIMA_RL", "namespace_id": "2030", "simple": { "limit": 30, "period": 60 } },
         { "name": "ALERTAS_RL", "namespace_id": "2040", "simple": { "limit": 30, "period": 60 } },
-        { "name": "NOMINATIM_RL", "namespace_id": "2045", "simple": { "limit": 50, "period": 60 } }
+        { "name": "NOMINATIM_RL", "namespace_id": "2045", "simple": { "limit": 50, "period": 60 } },
+        { "name": "SINAL_RL", "namespace_id": "2092", "simple": { "limit": 40, "period": 60 } }
       ]
     }
   },
@@ -297,6 +298,12 @@
     // e quem estoura é bloqueado por IP. 50/min fica abaixo disso somando a rota
     // /geo e o backfill do cron. FAIL-CLOSED: sem este binding o worker não chama
     // o Nominatim (ver geoClientes.js). Id 1045 longe das sequências em uso.
-    { "name": "NOMINATIM_RL", "namespace_id": "1045", "simple": { "limit": 50, "period": 60 } }
+    { "name": "NOMINATIM_RL", "namespace_id": "1045", "simple": { "limit": 50, "period": 60 } },
+    // POST /o/<token>/sinal por IP (termômetro do orçamento: abriu, tempo, viu o
+    // preço). Balde PRÓPRIO, separado do LINK_RL, para o beacon não gastar a cota
+    // de quem vai tocar em "Aprovar". Rota de métrica: sem o binding ela segue
+    // (o teto de 120 eventos/hora por link, no banco, continua valendo). Id 1092
+    // longe das faixas em uso por outras frentes.
+    { "name": "SINAL_RL", "namespace_id": "1092", "simple": { "limit": 40, "period": 60 } }
   ]
 }

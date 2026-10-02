@@ -24,10 +24,21 @@
  *     única vez por orçamento: o conjunto de ids já avisados é persistido POR
  *     CONTA. Resposta antiga (fora da janela de 48h) entra no conjunto em
  *     silêncio — instalar a versão nova não pode despejar o histórico inteiro.
+ *  5. O TEXTO LÊ O COMPORTAMENTO (termômetro, Pro). Com o sinal do link em mãos,
+ *     o lembrete diz o que fazer: abriu 3x e voltou ao preço → "oferecer
+ *     parcelar"; tocou em Aprovar e não concluiu → "pergunte se ficou dúvida";
+ *     não abriu → "reenvie ou ligue". Sem sinal, o texto de sempre (que não
+ *     afirma nada sobre abrir).
+ *  6. VENCE AMANHÃ. Proposta esperando resposta ganha "Proposta vence amanhã" às
+ *     09h da véspera da validade (ou "vence hoje" às 09h do dia, se a véspera já
+ *     passou). Se cair no mesmo horário do D+2/D+5 do mesmo orçamento, sai só o
+ *     de validade — dois avisos do mesmo orçamento no mesmo minuto é barulho.
  */
 import type { Orcamento, Recibo } from '../types/index.ts';
 import { orcamentosComPagamento, propostaExpirada, validaAteYmd } from './radarFollowUpRegra.ts';
 import { formatCurrency } from '../utils/currency.ts';
+import { formatarNumeroExibicao } from '../utils/numeroDocumento.ts';
+import type { EstadoTermometro } from './termometroRegra.ts';
 
 const MS_POR_HORA = 3_600_000;
 const MS_POR_DIA = 86_400_000;
@@ -145,11 +156,38 @@ function listaDeNomes(nomes: string[]): string {
   return `${visiveis.join(', ')} e mais ${nomes.length - visiveis.length}`;
 }
 
-function textoFollowUpUnico(o: Orcamento, item: ItemFollowUpPlanejado): { titulo: string; corpo: string } {
+function textoFollowUpUnico(
+  o: Orcamento,
+  item: ItemFollowUpPlanejado,
+  sinal?: EstadoTermometro | null,
+): { titulo: string; corpo: string } {
   const nome = primeiroNome(o);
   const n = item.diasSemMovimento;
   const dias = `${n} ${plural(n, 'dia', 'dias')}`;
   const titulo = `Orçamento nº ${o.numero} sem resposta`;
+  // Termômetro (Pro): o texto acompanha o que o cliente FEZ no link.
+  if (sinal?.tipo === 'medido') {
+    const r = sinal.resumo;
+    switch (sinal.acao.tipo) {
+      case 'oferecer_parcelar':
+        return {
+          titulo,
+          corpo: `${nome} abriu o orçamento ${r.aberturas} ${plural(r.aberturas, 'vez', 'vezes')} e voltou ao preço (${valorTexto(o)}). Que tal oferecer parcelar? Toque para ver.`,
+        };
+      case 'ajudar_fechar':
+        return {
+          titulo,
+          corpo: `${nome} tocou em Aprovar e não concluiu (${valorTexto(o)}). Pergunte se ficou alguma dúvida. Toque para ver.`,
+        };
+      case 'reenviar':
+        return {
+          titulo,
+          corpo: `${nome} ainda não abriu o link do orçamento (${valorTexto(o)}) — ${dias}. Reenvie ou ligue. Toque para ver o orçamento.`,
+        };
+      default:
+        break;
+    }
+  }
   // Honestidade: o app só sabe que NÃO HÁ SINAL de abertura do link — quem mandou
   // só o PDF pelo WhatsApp também cai aqui. Nunca afirmamos "o cliente não abriu".
   const corpo =
@@ -224,15 +262,26 @@ export function selecionarFollowUps(
  * notificação agrupada ("3 orçamentos esperando resposta") — mandar 3 alertas às
  * 09h pelo mesmo assunto é barulho. Um só = abre o orçamento; agrupado = abre a lista.
  */
+export interface OpcoesFollowUp {
+  /** Termômetro por orçamento (só quando o plano libera e a leitura funcionou). */
+  sinais?: ReadonlyMap<string, EstadoTermometro> | null;
+  /** Inclui o "Proposta vence amanhã" (item 6). */
+  avisoValidade?: boolean;
+}
+
 export function planejarFollowUps(
   orcamentos: readonly Orcamento[],
   recibos: readonly Pick<Recibo, 'orcamentoId' | 'estornadoEm' | 'excluidoEm'>[],
   agora: Date,
   prefs: PreferenciasSilencio,
+  opcoes: OpcoesFollowUp = {},
 ): NotificacaoPlanejada[] {
   const porId = new Map(orcamentos.map((o) => [o.id, o] as const));
   const porHorario = new Map<number, ItemFollowUpPlanejado[]>();
+  const validade = opcoes.avisoValidade ? selecionarAvisosValidade(orcamentos, recibos, agora, prefs) : [];
+  const chaveValidade = new Set(validade.map((v) => `${v.orcamentoId}|${v.alvo.getTime()}`));
   for (const item of selecionarFollowUps(orcamentos, recibos, agora, prefs)) {
+    if (chaveValidade.has(`${item.orcamentoId}|${item.alvo.getTime()}`)) continue;
     const grupo = porHorario.get(item.alvo.getTime()) ?? [];
     grupo.push(item);
     porHorario.set(item.alvo.getTime(), grupo);
@@ -242,7 +291,7 @@ export function planejarFollowUps(
     const alvo = grupo[0].alvo;
     if (grupo.length === 1) {
       const o = porId.get(grupo[0].orcamentoId) as Orcamento;
-      const { titulo, corpo } = textoFollowUpUnico(o, grupo[0]);
+      const { titulo, corpo } = textoFollowUpUnico(o, grupo[0], opcoes.sinais?.get(o.id));
       resultado.push(planejada(alvo, titulo, corpo, { orcamentoId: o.id }));
       continue;
     }
@@ -256,7 +305,63 @@ export function planejarFollowUps(
       ),
     );
   }
+  for (const v of validade) {
+    const o = porId.get(v.orcamentoId) as Orcamento;
+    const quando = v.venceHoje ? 'hoje' : 'amanhã';
+    resultado.push(
+      planejada(
+        v.alvo,
+        `Proposta vence ${quando}`,
+        `Orçamento nº ${formatarNumeroExibicao(o.numero)} de ${primeiroNome(o)} (${valorTexto(o)}) vale até ${quando}. Avise o cliente antes que vença. Toque para ver.`,
+        { orcamentoId: o.id },
+      ),
+    );
+  }
   return resultado;
+}
+
+// ─── 6) Proposta vence amanhã ─────────────────────────────────────────────────
+
+/** Status em que a proposta está com o cliente (vale avisar que vai vencer). */
+const ESPERANDO_RESPOSTA: ReadonlySet<string> = new Set(['enviado', 'visualizado', 'em_negociacao', 'aguardando_assinatura']);
+
+export interface AvisoValidadePlanejado {
+  orcamentoId: string;
+  alvo: Date;
+  /** `true` = o aviso cai no próprio último dia ("vence hoje"). */
+  venceHoje: boolean;
+}
+
+/**
+ * "Proposta vence amanhã": 09h da véspera do último dia válido; se a véspera já
+ * passou (ou o domingo mudo a empurrou para o próprio dia), 09h do último dia, com
+ * o texto "vence hoje". Sem validade legível, pagamento registrado, lixeira ou
+ * status fora de "esperando resposta" = sem aviso. Nunca no passado.
+ */
+export function selecionarAvisosValidade(
+  orcamentos: readonly Orcamento[],
+  recibos: readonly Pick<Recibo, 'orcamentoId' | 'estornadoEm' | 'excluidoEm'>[],
+  agora: Date,
+  prefs: PreferenciasSilencio,
+): AvisoValidadePlanejado[] {
+  const pagos = orcamentosComPagamento(recibos);
+  const avisos: AvisoValidadePlanejado[] = [];
+  for (const o of orcamentos) {
+    if (o.excluidoEm || pagos.has(o.id) || !ESPERANDO_RESPOSTA.has(o.status)) continue;
+    const ymd = validaAteYmd(o);
+    if (!ymd) continue;
+    const [y, m, d] = ymd.split('-').map(Number);
+    const ultimoDia = new Date(y, m - 1, d, HORA_FOLLOWUP, 0, 0, 0);
+    const vespera = pularDomingoMudo(diaMaisHora(ultimoDia, -1, HORA_FOLLOWUP), prefs);
+    const doDia = ultimoDia.getDay() === 0 && !prefs.domingoAtivo ? null : ultimoDia;
+    let alvo: Date | null = null;
+    if (vespera.getTime() > agora.getTime() && !propostaExpirada(ymd, vespera)) alvo = vespera;
+    else if (doDia && doDia.getTime() > agora.getTime()) alvo = doDia;
+    if (!alvo) continue;
+    avisos.push({ orcamentoId: o.id, alvo, venceHoje: diasDeCalendario(alvo, ultimoDia) === 0 });
+  }
+  avisos.sort((a, b) => a.alvo.getTime() - b.alvo.getTime() || a.orcamentoId.localeCompare(b.orcamentoId));
+  return avisos;
 }
 
 /**

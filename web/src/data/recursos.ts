@@ -15,10 +15,10 @@
  *
  * ═══ "EM BREVE" É VERDADE, NÃO FALTA ═══
  *
- * `entitlements` concede `mapa_equipe`, `dashboard_empresa` e `termometro_orcamento`,
- * mas o produto ainda não os entrega. Vender "(em breve)" como pronto é o erro que esta
- * landing já cometeu. Por isso o comparativo os mostra como "Em breve", não como ✓ —
- * três estados, nunca dois.
+ * `entitlements` concede recursos que o produto ainda não entrega (hoje `mapa_equipe` e
+ * `dashboard_empresa` — a lista viva é `RECURSOS_EM_BREVE`). Vender "(em breve)" como
+ * pronto é o erro que esta landing já cometeu. Por isso o comparativo os mostra como
+ * "Em breve", não como ✓ — três estados, nunca dois.
  */
 import {
 	IA_USOS_GRATIS_MES,

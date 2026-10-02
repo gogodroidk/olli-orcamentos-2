@@ -133,7 +133,9 @@ function sbHeaders(env, extra = {}) {
 // `user_id` (dono do link) entra para a página ler o PLANO de quem publicou: é ele
 // que decide o selo "Feito com OLLI" e o "Pagar com Pix" (ver o topo do arquivo).
 // A coluna existe desde o schema base (a RLS `orcamentos_publicos_owner` usa ela).
-const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente,user_id';
+// `orcamento_id` (schema base) entra para o sinal do termômetro saber de qual
+// orçamento do dono é a interação (POST /o/<token>/sinal); nunca vai para o HTML.
+const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente,user_id,orcamento_id';
 // Coluna do "Já paguei" (migration 20260930120300_link_pagamento_informado.sql).
 // Pedida numa 1ª tentativa; se o banco ainda não tem a coluna (PostgREST 400), a
 // leitura cai para SELECT_COLS e a linha volta marcada `_semPagamentoInformado` —
@@ -439,6 +441,152 @@ async function registrarEvento(env, token, evento, extra = {}) {
     });
   } catch {
     // trilha é best-effort: engolir qualquer erro
+  }
+}
+
+// ─── SINAIS DE INTERAÇÃO — o TERMÔMETRO do orçamento ─────────
+// POST /o/<token>/sinal  (navigator.sendBeacon da própria página do cliente)
+//
+// Só MÉTRICA de interação (migration 20261003102000_orcamento_eventos.sql): abriu,
+// tempo visível, viu o preço, tocou em aprovar/pagar. Nada de IP (nem hash), nada
+// de user-agent, nada de texto livre — o corpo aceito é {tipo, sessao, segundos}
+// e qualquer outro campo é ignorado. `sessao` é aleatória, gerada na aba e só
+// serve para "recarregar a página" não contar como nova abertura.
+//
+// Quem conta "abriu" é o JavaScript da página: o pré-visualizador do WhatsApp não
+// executa script, então a prévia do link na conversa não vira abertura falsa.
+//
+// Nunca derruba nada: a página do cliente não espera esta resposta (beacon) e a
+// gravação é best-effort. Resposta 204 quando aceitou; erros com código honesto.
+
+export const TIPOS_SINAL = Object.freeze(['abertura', 'tempo', 'preco_visto', 'clique_aprovar', 'clique_pagar']);
+const SESSAO_RE = /^[0-9a-f]{16}$/;
+/** Teto de segundos de UM envio de 'tempo' (aba esquecida aberta não vira 8 horas). */
+export const MAX_SEGUNDOS_POR_ENVIO = 1800;
+/** Teto de eventos por link por hora: acima disso é robô ou bug, não cliente. */
+export const TETO_SINAIS_POR_HORA = 120;
+/** Eventos mais velhos que isto são apagados pelo job diário (LGPD: retenção). */
+export const DIAS_RETENCAO_SINAIS = 180;
+
+/**
+ * Valida o corpo de um sinal. PURA. Devolve `{ tipo, sessao, segundos }` ou `null`
+ * (corpo inválido). `segundos` só existe em 'tempo' (inteiro 1..1800, arredondado
+ * e com teto); nos demais é sempre `null`, mesmo que o corpo mande outra coisa.
+ */
+export function lerSinal(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const tipo = typeof body.tipo === 'string' ? body.tipo : '';
+  if (!TIPOS_SINAL.includes(tipo)) return null;
+  const sessao = typeof body.sessao === 'string' && SESSAO_RE.test(body.sessao) ? body.sessao : null;
+  if (!sessao) return null;
+  let segundos = null;
+  if (tipo === 'tempo') {
+    const n = Number(body.segundos);
+    if (!Number.isFinite(n) || n < 1) return null;
+    segundos = Math.min(MAX_SEGUNDOS_POR_ENVIO, Math.round(n));
+  }
+  return { tipo, sessao, segundos };
+}
+
+/** Já passou do teto de eventos deste link na última hora? Falha de leitura = "sim" (não grava). */
+async function sinaisDemaisNaUltimaHora(env, token, agora = new Date()) {
+  try {
+    const desde = new Date(agora.getTime() - 3_600_000).toISOString();
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/orcamento_eventos` +
+        `?token=eq.${encodeURIComponent(token)}` +
+        `&criado_em=gte.${encodeURIComponent(desde)}` +
+        `&select=id&limit=${TETO_SINAIS_POR_HORA + 1}`,
+      { headers: sbHeaders(env) },
+    );
+    if (!r.ok) return { erro: true, status: r.status };
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr)) return { erro: true, status: 502 };
+    return { erro: false, demais: arr.length > TETO_SINAIS_POR_HORA };
+  } catch {
+    return { erro: true, status: 503 };
+  }
+}
+
+export async function registrarSinal(token, request, env) {
+  if (!validToken(token)) return json({ ok: false, erro: 'token_invalido' }, 400);
+  // Rate limit PRÓPRIO por IP (SINAL_RL), separado do LINK_RL: o beacon não pode
+  // gastar a cota de quem vai tocar em "Aprovar" logo depois. Rota de métrica, não
+  // de dinheiro: limiter indisponível deixa passar (o teto por link abaixo segura).
+  if (env.SINAL_RL) {
+    const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+    try {
+      const { success } = await env.SINAL_RL.limit({ key: ip });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch {
+      // binding com problema: segue para o teto por link
+    }
+  }
+  let body = null;
+  try {
+    const raw = await request.text();
+    if (raw.length > 512) return json({ ok: false, erro: 'payload_grande' }, 413);
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    body = null;
+  }
+  const sinal = lerSinal(body);
+  if (!sinal) return json({ ok: false, erro: 'sinal_invalido' }, 400);
+
+  const row = await getRow(env, token);
+  if (row && row.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (!row) return json({ ok: false, erro: 'nao_encontrado' }, 404);
+  if (!UUID_RE.test(String(row.user_id || '')) || !row.orcamento_id) {
+    return json({ ok: false, erro: 'indisponivel' }, 503);
+  }
+
+  const teto = await sinaisDemaisNaUltimaHora(env, token);
+  // Tabela ausente (migration não aplicada) ou backend fora: o termômetro está
+  // DESLIGADO e a resposta diz isso — nunca finge que gravou.
+  if (teto.erro) return json({ ok: false, erro: 'termometro_indisponivel' }, 503);
+  if (teto.demais) return json({ ok: false, erro: 'muitos_sinais' }, 429);
+
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/orcamento_eventos`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        token,
+        user_id: row.user_id,
+        orcamento_id: row.orcamento_id,
+        tipo: sinal.tipo,
+        sessao: sinal.sessao,
+        segundos: sinal.segundos,
+      }),
+    });
+    if (!r.ok) return json({ ok: false, erro: 'termometro_indisponivel' }, 503);
+  } catch {
+    return json({ ok: false, erro: 'termometro_indisponivel' }, 503);
+  }
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+}
+
+/**
+ * Retenção (LGPD): apaga eventos de interação com mais de 180 dias. Chamado pelo
+ * cron de minuto, mas só age às 06:17 UTC (uma vez por dia). Best-effort: tabela
+ * ausente ou backend fora = tenta no dia seguinte. Devolve se rodou.
+ */
+export function horaDeLimparSinais(agora) {
+  return agora.getUTCHours() === 6 && agora.getUTCMinutes() === 17;
+}
+
+export async function limparEventosAntigos(env, agora = new Date()) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return false;
+  if (!horaDeLimparSinais(agora)) return false;
+  try {
+    const limite = new Date(agora.getTime() - DIAS_RETENCAO_SINAIS * 86_400_000).toISOString();
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/orcamento_eventos?criado_em=lt.${encodeURIComponent(limite)}`,
+      { method: 'DELETE', headers: sbHeaders(env, { Prefer: 'return=minimal' }) },
+    );
+    return r.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -820,6 +968,70 @@ function blocoPagamento(row, d, total, numero, nomePrestador) {
     </div>`;
 }
 
+/**
+ * Script dos SINAIS do termômetro (ver `registrarSinal`). Exportado para o teste.
+ * Só métrica: abriu (1x por aba), segundos com a página visível, o total ficou na
+ * tela por 1,5 s, tocou em aprovar/pagar. Beacon para o mesmo domínio (o CSP já
+ * restringe a `connect-src 'self'`); sem cookie, sem armazenamento além do
+ * sessionStorage da aba. Qualquer falha é silenciosa: a página nunca depende disso.
+ */
+export function scriptSinais() {
+  return `
+    (function(){
+      var destino = location.pathname.replace(/\\/+$/, '') + '/sinal';
+      var chave = 'olli_sessao_' + location.pathname;
+      var sessao = '';
+      try { sessao = sessionStorage.getItem(chave) || ''; } catch(e){}
+      var nova = !/^[0-9a-f]{16}$/.test(sessao);
+      if (nova) {
+        try {
+          var bytes = new Uint8Array(8);
+          crypto.getRandomValues(bytes);
+          sessao = '';
+          for (var i = 0; i < bytes.length; i++) { sessao += ('0' + bytes[i].toString(16)).slice(-2); }
+          try { sessionStorage.setItem(chave, sessao); } catch(e){}
+        } catch(e){ return; }
+      }
+      function sinal(tipo, segundos){
+        var corpo = JSON.stringify(segundos ? { tipo: tipo, sessao: sessao, segundos: segundos } : { tipo: tipo, sessao: sessao });
+        try { if (navigator.sendBeacon && navigator.sendBeacon(destino, corpo)) return; } catch(e){}
+        try { fetch(destino, { method: 'POST', body: corpo, keepalive: true, headers: { 'Content-Type': 'text/plain' } }).catch(function(){}); } catch(e){}
+      }
+      window.olliSinal = sinal;
+      if (nova) sinal('abertura');
+
+      var visivelDesde = document.visibilityState === 'visible' ? Date.now() : 0;
+      var acumulado = 0;
+      function fecharTempo(){
+        if (visivelDesde) { acumulado += (Date.now() - visivelDesde) / 1000; visivelDesde = 0; }
+        var s = Math.min(${MAX_SEGUNDOS_POR_ENVIO}, Math.round(acumulado));
+        acumulado = 0;
+        if (s >= 2) sinal('tempo', s);
+      }
+      document.addEventListener('visibilitychange', function(){
+        if (document.visibilityState === 'hidden') fecharTempo();
+        else if (!visivelDesde) visivelDesde = Date.now();
+      });
+      window.addEventListener('pagehide', fecharTempo);
+
+      var preco = document.getElementById('preco');
+      var vistas = 0;
+      var espera = null;
+      if (preco && 'IntersectionObserver' in window) {
+        new IntersectionObserver(function(entradas){
+          entradas.forEach(function(e){
+            if (e.isIntersecting && e.intersectionRatio >= 0.6) {
+              if (!espera) espera = setTimeout(function(){
+                espera = null;
+                if (vistas < 12) { vistas++; sinal('preco_visto'); }
+              }, 1500);
+            } else if (espera) { clearTimeout(espera); espera = null; }
+          });
+        }, { threshold: [0, 0.6, 1] }).observe(preco);
+      }
+    })();`;
+}
+
 function pageOrcamento(row, preSelecao = '') {
   const d = (row && typeof row.dados === 'object' && row.dados) ? row.dados : {};
   const prestador = (d.prestador && typeof d.prestador === 'object') ? d.prestador : {};
@@ -958,7 +1170,7 @@ function pageOrcamento(row, preSelecao = '') {
         ${validadePill}
       </div>
       ${itens.length ? `<div class="items">${itensHtml}</div>` : ''}
-      <div class="total"><span class="total-l">TOTAL</span><span class="total-v">${formatBRL(total)}</span></div>
+      <div class="total" id="preco"><span class="total-l">TOTAL</span><span class="total-v">${formatBRL(total)}</span></div>
       ${condsHtml}
       ${actionsHtml}
       <div class="foot">enviado com segurança pela OLLI</div>
@@ -1002,6 +1214,7 @@ function pageOrcamento(row, preSelecao = '') {
       alvos.forEach(function(b){ b.style.opacity='.5'; b.style.pointerEvents='none'; });
       var corpo = { acao: acao };
       if (acao === 'recusar' && motivo){ corpo.mensagem = motivo; }
+      if (acao === 'aprovar' && window.olliSinal){ window.olliSinal('clique_aprovar'); }
       try {
         var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo) });
         var j = await r.json();
@@ -1027,6 +1240,7 @@ function pageOrcamento(row, preSelecao = '') {
       var t = document.getElementById('pixCodigo');
       var b = document.getElementById('btnCopiar');
       if (!t) return;
+      if (window.olliSinal){ window.olliSinal('clique_pagar'); }
       var ok = function(){ if (b){ b.textContent = 'Código copiado ✓'; } };
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1042,6 +1256,7 @@ function pageOrcamento(row, preSelecao = '') {
     async function informarPagamento(){
       if (avisando) return;
       avisando = true;
+      if (window.olliSinal){ window.olliSinal('clique_pagar'); }
       var b = document.getElementById('btnPaguei');
       if (b){ b.style.opacity='.5'; b.style.pointerEvents='none'; }
       try {
@@ -1077,6 +1292,7 @@ function pageOrcamento(row, preSelecao = '') {
       var b = document.getElementById('btnAprovar');
       if (b) { b.classList.add('destacado'); if (b.focus) b.focus(); }
     })();
+${scriptSinais()}
   </script>`;
 
   // Selo: só some com plano CONFIRMADO sem selo. Linha sem regras = selo fica.

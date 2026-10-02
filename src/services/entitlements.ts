@@ -96,7 +96,8 @@ export const RECURSOS_EM_ORDEM: readonly Recurso[] = [...RECURSOS_PRO, ...RECURS
  * lista impede que a tela venda como pronto algo que o runtime ainda não faz.
  */
 export const RECURSOS_EM_BREVE: ReadonlySet<Recurso> = new Set<Recurso>([
-  'termometro_orcamento',
+  // 'termometro_orcamento' saiu daqui com a frente I2 (eventos do link /o/<token>,
+  // migration 20261003102000_orcamento_eventos.sql, cartão no detalhe e chip na lista).
   'mapa_equipe',
   'dashboard_empresa',
 ]);
