@@ -116,6 +116,18 @@ for (const xml of [backup.XML_BACKUP, backup.XML_EXTRACAO]) {
   if (!xml.includes('<exclude domain="sharedpref" path="SecureStore"/>')) throw new Error('withBackupSemBanco: o SecureStore precisa ficar fora do backup');
   if (/domain="(?:file|database|root|external)"/.test(xml.replace(/<!--[\s\S]*?-->/g, ''))) throw new Error('withBackupSemBanco: o banco do app não pode entrar no backup');
 }
+// O release NUNCA pode sair com a chave de debug: o template do Expo tem as formas
+// `signingConfig signingConfigs.debug` e `signingConfig = signingConfigs.debug`, e a
+// segunda escapou do plugin em 02/10/2026 (AAB 1.2.0 saiu com CN=Android Debug).
+if (!plugin.includes('signingConfig\\s*=?\\s*signingConfigs\\.debug')) {
+  throw new Error('withReleaseSigningGuard: a remoção do signingConfig de debug não cobre a forma `signingConfig = ...`');
+}
+if (androidGradle) {
+  const blocoRelease = androidGradle.match(/buildTypes\s*\{[\s\S]*?\brelease\s*\{([\s\S]*?)\n\s{8}\}/);
+  if (blocoRelease && /signingConfig\s*=?\s*signingConfigs\.debug/.test(blocoRelease[1])) {
+    throw new Error('android/app/build.gradle: buildTypes.release ainda usa signingConfigs.debug — rode o prebuild de novo');
+  }
+}
 if (androidGradle && !androidGradle.includes(tweaks.MARCADOR) && !/lint \{\s*checkReleaseBuilds false/.test(androidGradle)) {
   throw new Error('android/app/build.gradle: falta o lint de release desligado (rode o prebuild com o plugin)');
 }
