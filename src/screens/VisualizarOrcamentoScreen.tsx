@@ -2,7 +2,7 @@ import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Share, ActivityIndicator, Image, Modal, RefreshControl,
+  Share, ActivityIndicator, Image, Modal, RefreshControl, Linking,
   type LayoutChangeEvent,
 } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
@@ -45,9 +45,16 @@ import {
   montarMensagemCobranca,
   montarMensagemCobrancaLink,
   montarMensagemEnvioOrcamento,
+  montarMensagemFollowUpOrcamento,
   montarMensagemLinkOrcamento,
   montarMensagemPedidoAvaliacao,
 } from '../utils/mensagensOrcamento';
+import { CartaoTermometro } from '../components/orcamento/Termometro';
+import { DicaContextual } from '../components/DicaContextual';
+import { useTermometro } from '../hooks/useTermometro';
+import { termometroDe } from '../services/termometro';
+import { mensagemDaAcao, temTermometro, type AcaoTermometro } from '../services/termometroRegra';
+import { validaAteYmd } from '../services/radarFollowUpRegra';
 import { PixCobrancaModal } from '../components/PixCobrancaModal';
 import {
   escutarMudancasDoLink,
@@ -159,6 +166,11 @@ export default function VisualizarOrcamentoScreen() {
   const { estado: estadoLinkPagamento } = useRecursoPlano('link_pagamento');
   const avisaLinkPagamento = !carregandoPapel && podePapel('gerenciar_faturamento')
     && (estadoLinkPagamento === 'bloqueado' || estadoLinkPagamento === 'indeterminado' || estadoLinkPagamento === 'em_breve');
+  // TERMÔMETRO (Pro): o que o cliente fez no link — abriu, voltou ao preço, tocou
+  // em aprovar. Só lê quando o plano libera; os outros estados do plano mostram o
+  // CartaoRecursoPlano (carregando / não confirmado / disponível no Pro).
+  const { estado: estadoTermometroPlano } = useRecursoPlano('termometro_orcamento');
+  const termometro = useTermometro(estadoTermometroPlano === 'liberado', orcamentoId);
 
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -910,6 +922,10 @@ export default function VisualizarOrcamentoScreen() {
       : null,
   });
 
+  // Termômetro deste orçamento (regra pura em termometroRegra.ts). `null` = ainda sem leitura.
+  const estadoTermometro = termometro.leitura ? termometroDe(orc, termometro.leitura) : null;
+  const mostraTermometro = temTermometro(orc.status);
+
   /** Onde o card do cabeçalho termina na rolagem: dali para baixo, a faixa compacta aparece. */
   function aoMedirCabecalho(e: LayoutChangeEvent) {
     const { y, height } = e.nativeEvent.layout;
@@ -926,6 +942,47 @@ export default function VisualizarOrcamentoScreen() {
    * depois do "Conseguiu enviar?", o QR abre para mandar o código SOZINHO numa
    * segunda mensagem. Nunca o código no meio do texto.
    */
+  /**
+   * A ação que o termômetro sugeriu. Reenviar usa o MESMO envio pelo WhatsApp com
+   * o link (reaproveita o token, confirma "Conseguiu enviar?"); proposta vencida
+   * vira revisão; o resto abre o WhatsApp do cliente com o texto já escrito pelo
+   * sinal (o prestador revisa e envia — nada sai sozinho).
+   */
+  async function agirPeloTermometro(acao: AcaoTermometro) {
+    if (!orc) return;
+    if (acao.tipo === 'reenviar') {
+      await handleWhatsApp();
+      return;
+    }
+    if (acao.tipo === 'renovar') {
+      await handleCriarRevisao();
+      return;
+    }
+    const telefone = (orc.clienteTelefone || '').trim();
+    if (!telefone) {
+      toast.info(`Cadastre o WhatsApp de ${orc.clienteNome} para falar por aqui.`);
+      return;
+    }
+    const mensagem =
+      mensagemDaAcao(acao.tipo, orc, {
+        validaAte: validaAteYmd(orc),
+        contato: empresa?.telefone || empresa?.whatsapp || null,
+      }) ?? montarMensagemFollowUpOrcamento(orc, empresa);
+    try {
+      await abrirWhatsApp(telefone, mensagem);
+    } catch {
+      toast.erro('Confira se o WhatsApp está instalado e tente de novo.', { titulo: 'Não consegui abrir o WhatsApp' });
+    }
+  }
+
+  function ligarParaCliente() {
+    const digitos = (orc?.clienteTelefone || '').replace(/\D/g, '');
+    if (!digitos) return;
+    Linking.openURL(`tel:${digitos}`).catch(() => {
+      toast.erro('Não consegui abrir o discador agora.', { titulo: 'Ligar' });
+    });
+  }
+
   async function handleCobrar() {
     if (!orc || !cobrancaPronta || cobrando) return;
     const telefone = (orc.clienteTelefone || '').trim();
@@ -1227,6 +1284,39 @@ export default function VisualizarOrcamentoScreen() {
                 )}
               </View>
             </OlliCard>
+          )}
+
+          {/* TERMÔMETRO (Jogada 9) — quente/morno/frio com o porquê, o que o cliente
+              fez no link e a próxima ação já escrita. Só para proposta esperando
+              resposta; o plano decide entre o cartão e o "Disponível no Pro". */}
+          {mostraTermometro && (
+            <Aparecer indice={1}>
+              <OlliCard style={{ padding: Spacing.base, marginBottom: 12 }}>
+                <Text style={styles.cardTitle}>Termômetro</Text>
+                {estadoTermometroPlano === 'liberado' ? (
+                  <>
+                  {/* Dica só para quem TEM o termômetro: no "Disponível no Pro" ela
+                      explicaria um cartão que a pessoa não está vendo. */}
+                  <DicaContextual
+                    id="orcamento.termometro"
+                    icon="thermometer"
+                    texto="Aqui você vê quando o link foi aberto e se voltaram ao preço. O botão embaixo é o próximo passo sugerido por isso."
+                  />
+                  <CartaoTermometro
+                    leitura={termometro.estado}
+                    estado={estadoTermometro}
+                    agora={new Date()}
+                    aoTentarDeNovo={termometro.recarregar}
+                    aoAgir={(acao) => { void agirPeloTermometro(acao); }}
+                    aoLigar={orc.clienteTelefone ? ligarParaCliente : undefined}
+                    agindo={enviandoWhats || duplicando}
+                  />
+                  </>
+                ) : (
+                  <CartaoRecursoPlano recurso="termometro_orcamento" />
+                )}
+              </OlliCard>
+            </Aparecer>
           )}
 
           {/* LINHA DO TEMPO — criado, enviado, visualizado, aprovação, pago. Junta o
