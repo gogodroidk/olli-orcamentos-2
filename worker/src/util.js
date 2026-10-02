@@ -8,7 +8,7 @@
 
 /**
  * MÉTODOS ACEITOS POR ROTA — só das rotas resolvidas no roteador de topo
- * (index.js). As delegadas (/admin, /stripe/, /mp/, /equipe/, /conta/, /o/, /q/)
+ * (index.js). As delegadas (/admin, /stripe/, /mp/, /equipe/, /conta/, /o/, /q/, /e/)
  * respondem o próprio 405 e nunca chegam a esta tabela.
  *
  * POR QUE EXISTE. O roteador julgava o MÉTODO antes da EXISTÊNCIA: um único

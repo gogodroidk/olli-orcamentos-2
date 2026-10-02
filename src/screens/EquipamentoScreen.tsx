@@ -43,8 +43,23 @@ import type {
 } from '../types';
 // Superfície pré-existente (só leitura — o seletor de cliente reusa a busca do app).
 import { searchClientes, getEmpresa } from '../database/database';
-import { montarHtmlEtiqueta, montarHtmlEtiquetasLote } from '../utils/etiquetaQrPdf';
+import {
+  montarHtmlEtiqueta,
+  montarHtmlEtiquetasLote,
+  TAMANHOS_ETIQUETA,
+  TAMANHO_ETIQUETA_PADRAO,
+  etiquetasPorLinha,
+  type TamanhoEtiqueta,
+} from '../utils/etiquetaQrPdf';
 import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
+import { opcoesEtiquetaDaEmpresa } from '../services/etiquetaEquipamento';
+import { nomeDoEquipamento, type TecnicoAtendimento } from '../services/atendimentoEquipamento';
+import { pullAll } from '../services/cloudSync';
+import { getCurrentUser } from '../services/supabase';
+import { usePlano } from '../hooks/usePlano';
+import { RECURSO_REMOVE_MARCA } from '../services/planos';
+import { FichaAtendimentoEquipamento } from '../components/equipamento/FichaAtendimentoEquipamento';
+import { PedidosQrBloco } from '../components/equipamento/PedidosQrBloco';
 // Helper de foto já usado no app (câmera/galeria + compressão + storage permanente).
 // CUIDADO: adicionarFotoEquip do service MESCLA [...atuais, ...novas], não substitui.
 import {
@@ -123,6 +138,16 @@ export default function EquipamentoScreen() {
   const insets = useSafeAreaInsets();
   // Atalho para os Planos PMOC (Fase 2): só quem gerencia planos vê (o técnico não).
   const { pode } = usePermissao();
+  // Selo "Gerado com OLLI" na folha de etiquetas: só no Grátis (mesma regra dos PDFs).
+  const { temAcesso } = usePlano();
+  const removerMarca = temAcesso(RECURSO_REMOVE_MARCA);
+  // Nome da empresa para a mensagem de resposta aos pedidos pela etiqueta (best-effort).
+  const [nomeEmpresa, setNomeEmpresa] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let vivo = true;
+    getEmpresa().then((e) => { if (vivo) setNomeEmpresa(e?.nome || undefined); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
 
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -160,16 +185,41 @@ export default function EquipamentoScreen() {
   // qrToken. Espera a lista carregar; se o QR não for de um equipamento deste
   // aparelho (outra empresa, ou ainda não sincronizado aqui), avisa. Limpa o
   // param depois de tratar para não reabrir a cada foco.
+  // Se o token não está no aparelho (cadastrado em outro celular/no painel e ainda
+  // não baixado), puxa da nuvem UMA vez antes de desistir — o técnico em campo não
+  // deveria ter que lembrar de "sincronizar" para o check-in funcionar.
   const abrirToken = route.params?.abrirToken;
+  const [buscandoQr, setBuscandoQr] = useState(false);
   useEffect(() => {
     if (!abrirToken || carregando) return;
-    const alvo = equipamentos.find((e) => e.qrToken && e.qrToken === abrirToken);
+    nav.setParams({ abrirToken: undefined });
+    const alvo = equipamentos.find((e) => e.qrToken && e.qrToken === abrirToken && !e.excluidoEm);
     if (alvo) {
       setDetalheId(alvo.id);
-    } else {
-      Alert.alert('QR não reconhecido', 'Este equipamento não está neste aparelho. Sincronize e tente de novo.');
+      return;
     }
-    nav.setParams({ abrirToken: undefined });
+    setBuscandoQr(true);
+    (async () => {
+      try {
+        await pullAll();
+        const lista = await getEquipamentos();
+        const achado = lista.find((e) => e.qrToken && e.qrToken === abrirToken && !e.excluidoEm);
+        if (achado) {
+          lista.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
+          setEquipamentos(lista);
+          setDetalheId(achado.id);
+        } else {
+          Alert.alert(
+            'QR não reconhecido',
+            'Esta etiqueta não é de um equipamento da sua conta (ou foi substituída). Confira se é a etiqueta certa.',
+          );
+        }
+      } catch {
+        Alert.alert('Sem conexão', 'Não consegui conferir este QR na nuvem agora. Tente de novo quando tiver sinal.');
+      } finally {
+        setBuscandoQr(false);
+      }
+    })();
   }, [abrirToken, carregando, equipamentos, nav]);
 
   const refresh = async () => {
@@ -200,6 +250,14 @@ export default function EquipamentoScreen() {
     setDetalheId(id);
   }
 
+  const nomePorId = useCallback(
+    (id: string) => {
+      const e = equipamentos.find((x) => x.id === id);
+      return e ? nomeDoEquipamento(e) : 'equipamento';
+    },
+    [equipamentos],
+  );
+
   // Impressão em LOTE das etiquetas QR (respeita o filtro/busca atual, então dá
   // pra imprimir só os equipamentos de um cliente/local buscando antes).
   const [imprimindoLote, setImprimindoLote] = useState(false);
@@ -208,7 +266,7 @@ export default function EquipamentoScreen() {
     [filtrados],
   );
 
-  async function imprimirEtiquetas() {
+  function imprimirEtiquetas() {
     if (imprimindoLote) return;
     const comQr = filtrados.filter((e) => e.qrToken && !e.qrRevogadoEm);
     if (comQr.length === 0) {
@@ -216,10 +274,23 @@ export default function EquipamentoScreen() {
       return;
     }
     vibrar('selecao');
+    Alert.alert(
+      'Tamanho do adesivo',
+      `${comQr.length} etiqueta${comQr.length === 1 ? '' : 's'} numa folha A4. Escolha o tamanho do adesivo:`,
+      [
+        ...(Object.keys(TAMANHOS_ETIQUETA) as TamanhoEtiqueta[]).map((t) => ({
+          text: TAMANHOS_ETIQUETA[t].rotulo,
+          onPress: () => { void gerarFolhaEtiquetas(comQr, t); },
+        })),
+        { text: 'Cancelar', style: 'cancel' as const },
+      ],
+    );
+  }
+
+  async function gerarFolhaEtiquetas(comQr: Equipamento[], tamanho: TamanhoEtiqueta) {
     setImprimindoLote(true);
     try {
-      let empresa: string | undefined;
-      try { empresa = (await getEmpresa())?.nome || undefined; } catch { /* segue sem */ }
+      const opcoes = await opcoesEtiquetaDaEmpresa(tamanho, removerMarca);
       const { html } = montarHtmlEtiquetasLote(
         comQr.map((e) => ({
           titulo: e.codigoInterno
@@ -229,7 +300,7 @@ export default function EquipamentoScreen() {
           subtitulo: e.localizacao || undefined,
           qrToken: e.qrToken,
         })),
-        { empresa },
+        opcoes,
       );
       await exportarHtmlComoPdf(html, 'etiquetas-equipamentos', {
         dialogTitle: 'Etiquetas de equipamentos',
@@ -395,19 +466,35 @@ export default function EquipamentoScreen() {
       </View>
 
       {/* DICA (1º uso) — a etiqueta QR da porta física.
-          A página pública `/q/<token>` (worker/src/pmoc.js) mostra DE PROPÓSITO só o
-          mínimo: prestador, código, categoria, situação e um contato. Nada de
-          histórico, cliente, endereço, contrato ou valores — é uma etiqueta colada
-          numa porta, qualquer um escaneia. E o `qrToken` nasce vazio: o backend o
-          gera no primeiro sync (services/equipamentos.ts). O texto abaixo precisa
-          respeitar as duas coisas. */}
+          A página pública `/q/<token>` (worker/src/pmoc.js) mostra a marca do
+          prestador, código/tipo/situação, as DATAS da última manutenção e da
+          próxima recomendada, e os botões "Chamar no WhatsApp" e "Pedir orçamento".
+          Nada de cliente, endereço, contrato ou valores — é uma etiqueta colada numa
+          porta, qualquer um escaneia. E o `qrToken` nasce vazio: o backend o gera no
+          primeiro sync (services/equipamentos.ts). O texto abaixo respeita as duas coisas. */}
       <View style={{ paddingHorizontal: Spacing.base }}>
         <DicaContextual
           id="equipamento.etiqueta-qr"
           icon="qrcode"
-          texto="Depois de sincronizar com a nuvem, cada equipamento ganha uma etiqueta QR para colar na porta. Quem escanear vê a identificação do aparelho e como falar com o responsável pela manutenção."
+          texto="Depois de sincronizar com a nuvem, cada equipamento ganha uma etiqueta QR para colar na máquina. O cliente escaneia e vê a última manutenção, a próxima recomendada e pode pedir orçamento a você. Você escaneia e já inicia o atendimento."
         />
       </View>
+
+      {buscandoQr ? (
+        <View style={{ paddingHorizontal: Spacing.base, paddingBottom: 8 }}>
+          <Text style={{ fontSize: 13, color: cores.onSurfaceVariant }}>Conferindo o QR na nuvem…</Text>
+        </View>
+      ) : null}
+
+      {/* Pedidos NOVOS de orçamento pela etiqueta (some quando não há nada). */}
+      {!carregando && !equipamentosErro ? (
+        <PedidosQrBloco
+          modo="aviso"
+          nomeEquipamento={nomePorId}
+          nomeEmpresa={nomeEmpresa}
+          onAbrirEquipamento={(id) => abrirDetalhe(id)}
+        />
+      ) : null}
 
       {carregando ? (
         <View style={{ paddingHorizontal: Spacing.base, paddingTop: 8, gap: 12 }}>
@@ -452,6 +539,8 @@ export default function EquipamentoScreen() {
       {detalheId && (
         <DetalheEquipamento
           equipamentoId={detalheId}
+          removerMarca={removerMarca}
+          nomeEmpresa={nomeEmpresa}
           onFechar={() => setDetalheId(null)}
           onEditar={(eq) => { setDetalheId(null); setEditando(eq); }}
           onMudou={() => load()}
@@ -481,9 +570,11 @@ export default function EquipamentoScreen() {
 // Detalhe do equipamento — dados + fotos + etiqueta/QR + revogar.
 // ═════════════════════════════════════════════════════════════
 function DetalheEquipamento({
-  equipamentoId, onFechar, onEditar, onMudou, onRemovido,
+  equipamentoId, removerMarca, nomeEmpresa, onFechar, onEditar, onMudou, onRemovido,
 }: {
   equipamentoId: string;
+  removerMarca: boolean;
+  nomeEmpresa?: string;
   onFechar: () => void;
   onEditar: (eq: Equipamento) => void;
   onMudou: () => void;
@@ -499,6 +590,28 @@ function DetalheEquipamento({
   const [addingFoto, setAddingFoto] = useState(false);
   const [revogando, setRevogando] = useState(false);
   const [showEtiqueta, setShowEtiqueta] = useState(false);
+  // Técnico de equipe que faz o check-in: a OS nova sai atribuída a ele (senão
+  // some da lista "minhas OS" dele). Gestão/conta pessoal: sem atribuição automática.
+  const { papel } = usePermissao();
+  const [tecnico, setTecnico] = useState<TecnicoAtendimento | undefined>(undefined);
+  useEffect(() => {
+    if (papel !== 'tecnico') { setTecnico(undefined); return; }
+    let vivo = true;
+    getCurrentUser()
+      .then((u) => {
+        if (!vivo || !u?.id) return;
+        const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+        const nome = [meta.nome, meta.full_name, meta.name].find((v) => typeof v === 'string' && v.trim()) as string | undefined;
+        setTecnico({ id: u.id, nome: nome || u.email?.split('@')[0] || undefined });
+      })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [papel]);
+
+  function abrirOS(ordemId: string) {
+    onFechar();
+    nav.navigate('OrdemServico', { ordemId });
+  }
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -653,6 +766,14 @@ function DetalheEquipamento({
             }}
             showsVerticalScrollIndicator={false}
           >
+            {/* Check-in pelo QR: Iniciar atendimento + histórico (OS, PMOC, garantia, fotos). */}
+            <FichaAtendimentoEquipamento
+              equipamento={eq}
+              tecnico={tecnico}
+              podeAtender={!eq.excluidoEm && !['retirado', 'substituido', 'descartado'].includes(eq.situacao)}
+              onAbrirOS={abrirOS}
+            />
+
             {/* Ficha técnica */}
             <View style={styles.bloco}>
               <Text style={styles.blocoTitulo}>Ficha técnica</Text>
@@ -726,7 +847,7 @@ function DetalheEquipamento({
               ) : eq.qrToken ? (
                 <>
                   <Text style={styles.vazioTexto}>
-                    A etiqueta física leva ao histórico deste equipamento quando escaneada.
+                    Quem escanear vê sua marca, a última manutenção, a próxima recomendada e pode pedir orçamento. Você escaneia e inicia o atendimento.
                   </Text>
                   <TouchableOpacity
                     style={styles.acaoLinha}
@@ -744,6 +865,16 @@ function DetalheEquipamento({
                 </Text>
               )}
             </View>
+
+            {/* Pedidos de orçamento feitos pela etiqueta deste equipamento. */}
+            {eq.qrToken ? (
+              <PedidosQrBloco
+                modo="equipamento"
+                equipamentoId={eq.id}
+                nomeEquipamento={() => titulo}
+                nomeEmpresa={nomeEmpresa}
+              />
+            ) : null}
 
             {/* Ações */}
             <View style={{ gap: 10 }}>
@@ -797,6 +928,7 @@ function DetalheEquipamento({
           titulo={titulo}
           subtitulo={[eq.localizacao, eq.patrimonio].filter(Boolean).join(' · ') || undefined}
           qrToken={eq.qrToken}
+          removerMarca={removerMarca}
           onFechar={() => setShowEtiqueta(false)}
         />
       )}
@@ -808,27 +940,29 @@ function DetalheEquipamento({
 // Sheet da etiqueta — mostra a URL pública + botões copiar/compartilhar.
 // ─────────────────────────────────────────────────────────────
 function EtiquetaSheet({
-  titulo, subtitulo, qrToken, onFechar,
+  titulo, subtitulo, qrToken, removerMarca, onFechar,
 }: {
   titulo: string;
   subtitulo?: string;
   qrToken: string;
+  removerMarca: boolean;
   onFechar: () => void;
 }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const url = urlEtiqueta(qrToken);
   const [imprimindo, setImprimindo] = useState(false);
+  const [tamanho, setTamanho] = useState<TamanhoEtiqueta>(TAMANHO_ETIQUETA_PADRAO);
+  const [copias, setCopias] = useState(1);
 
   async function imprimir() {
     if (imprimindo) return;
     vibrar('selecao');
     setImprimindo(true);
     try {
-      // Nome da empresa no rodapé da etiqueta (best-effort — não bloqueia).
-      let empresa: string | undefined;
-      try { empresa = (await getEmpresa())?.nome || undefined; } catch { /* segue sem */ }
-      const html = montarHtmlEtiqueta({ titulo, subtitulo, qrToken }, { empresa });
+      // Logo, nome, contato e cor do prestador (best-effort — nunca bloqueia).
+      const opcoes = await opcoesEtiquetaDaEmpresa(tamanho, removerMarca);
+      const html = montarHtmlEtiqueta({ titulo, subtitulo, qrToken }, { ...opcoes, copias });
       await exportarHtmlComoPdf(html, `etiqueta-${qrToken.slice(-6)}`, {
         dialogTitle: `Etiqueta ${titulo}`,
       });
@@ -883,9 +1017,48 @@ function EtiquetaSheet({
               <MaterialCommunityIcons name="qrcode" size={64} color={cores.accentLight} />
             </View>
             <Text style={styles.etiquetaHint}>
-              Imprima a etiqueta com o QR para colar na máquina. Quem escanear cai no
-              histórico deste equipamento. Também dá para copiar ou compartilhar o link.
+              Imprima a etiqueta com sua marca para colar na máquina. O cliente escaneia e
+              vê a última manutenção, a próxima recomendada e pode pedir orçamento a você.
             </Text>
+            <View style={styles.chipsWrap}>
+              {(Object.keys(TAMANHOS_ETIQUETA) as TamanhoEtiqueta[]).map((t) => {
+                const ativo = tamanho === t;
+                return (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.chip, ativo && styles.chipActive]}
+                    onPress={() => { vibrar('selecao'); setTamanho(t); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: ativo }}
+                  >
+                    <Text style={[styles.chipLabel, ativo && styles.chipLabelActive]}>{TAMANHOS_ETIQUETA[t].rotulo}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.copiasRow}>
+              <Text style={styles.copiasLabel}>Cópias na folha</Text>
+              <TouchableOpacity
+                style={styles.copiasBtn}
+                onPress={() => setCopias((n) => Math.max(1, n - 1))}
+                accessibilityRole="button"
+                accessibilityLabel="Menos cópias"
+              >
+                <MaterialCommunityIcons name="minus" size={18} color={cores.accentLight} />
+              </TouchableOpacity>
+              <Text style={styles.copiasValor}>{copias}</Text>
+              <TouchableOpacity
+                style={styles.copiasBtn}
+                onPress={() => setCopias((n) => Math.min(40, n + 1))}
+                accessibilityRole="button"
+                accessibilityLabel="Mais cópias"
+              >
+                <MaterialCommunityIcons name="plus" size={18} color={cores.accentLight} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setCopias(etiquetasPorLinha(tamanho) * 2)} accessibilityRole="button">
+                <Text style={styles.copiasAtalho}>{etiquetasPorLinha(tamanho) * 2} (2 linhas)</Text>
+              </TouchableOpacity>
+            </View>
             <OlliButton
               label="Imprimir etiqueta (PDF)"
               variant="gradient"
@@ -1497,6 +1670,14 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 13,
   },
   etiquetaBtnText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
+  copiasRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  copiasLabel: { flex: 1, fontSize: 13.5, fontWeight: '700', color: c.onSurface },
+  copiasBtn: {
+    width: 36, height: 36, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: c.surface, borderWidth: 1, borderColor: c.strokeGlow,
+  },
+  copiasValor: { minWidth: 24, textAlign: 'center', fontSize: 16, fontWeight: '800', color: c.onSurface },
+  copiasAtalho: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
 
   // Form
   formLabel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 8 },

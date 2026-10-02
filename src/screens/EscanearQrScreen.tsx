@@ -9,6 +9,7 @@ import { Spacing, Fonts, BorderRadius, useCores, useEstilos, type Cores } from '
 import { OlliButton } from '../components/OlliButton';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
+import { extrairTokenQr } from '../utils/qrEtiqueta';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -23,22 +24,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * A permissão de câmera é pedida na hora (nunca no boot).
  */
 
-/** Extrai o token opaco do conteúdo do QR: só a etiqueta do OLLI ou um token cru. */
-export function extrairTokenQr(data: string): string | null {
-  const cru = (data ?? '').trim();
-  if (!cru) return null;
-  // Só casa a etiqueta do OLLI: https://<algo>.olliorcamentos.(online|app)/q/<token>.
-  // Um QR de OUTRO site com um caminho /q/... NÃO casa (o host tem que ser o nosso).
-  // Regex (sem depender do URL do Hermes, que é parcial) em vez de String.match(/\/q\//).
-  const m = cru.match(/^https?:\/\/[a-z0-9.-]*olliorcamentos\.(?:online|app)\/q\/([^/?#\s]+)/i);
-  if (m) {
-    try { return decodeURIComponent(m[1]); } catch { return m[1]; }
-  }
-  // Não-URL: aceita um token cru (sem barras/esquema, tamanho plausível). Uma URL
-  // alheia tem ':' e '/', então falha aqui também.
-  if (/^[A-Za-z0-9_-]{8,}$/.test(cru)) return cru;
-  return null;
-}
+// A regra de leitura mora em utils/qrEtiqueta (pura, testada); reexportada aqui
+// para quem já importava daqui.
+export { extrairTokenQr };
 
 export default function EscanearQrScreen() {
   const nav = useNavigation<Nav>();
