@@ -33,6 +33,8 @@ interface Props {
   refreshControl?: React.ReactElement<any>;
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   paddingInferior: number;
+  /** Conteúdo acima da grade, dentro da mesma rolagem (ex.: o cartão de clima das próximas visitas). */
+  cabecalho?: React.ReactNode;
 }
 
 /**
@@ -42,7 +44,7 @@ interface Props {
  * (`onRemarcar`). Só transform/opacity animam; a posição real vem do horário
  * gravado depois de salvar.
  */
-export function GradeDia({ dia, itens, corDe, onAbrir, onRemarcar, podeArrastar, refreshControl, onScroll, paddingInferior }: Props) {
+export function GradeDia({ dia, itens, corDe, onAbrir, onRemarcar, podeArrastar, refreshControl, onScroll, paddingInferior, cabecalho }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const scrollRef = useRef<ScrollView>(null);
@@ -68,16 +70,19 @@ export function GradeDia({ dia, itens, corDe, onAbrir, onRemarcar, podeArrastar,
   const yDe = useCallback((min: number) => ((min - de * 60) / 60) * PX_HORA, [de]);
 
   // Abre já no ponto útil: o "agora" (hoje) ou o 1º compromisso. Uma vez por dia.
+  // O que fica acima da grade (cabeçalho + "Dia todo") entra na conta: espera a
+  // 1ª medida dele para o "agora" continuar no mesmo ponto da tela.
+  const [alturaTopo, setAlturaTopo] = useState<number | null>(null);
   const diaChave = `${dia.getFullYear()}-${dia.getMonth()}-${dia.getDate()}`;
   const rolouPara = useRef<string | null>(null);
   useEffect(() => {
-    if (rolouPara.current === diaChave) return;
+    if (rolouPara.current === diaChave || alturaTopo === null) return;
     rolouPara.current = diaChave;
     const alvo = ehHoje ? agoraMin : blocos[0]?.iniMin ?? 8 * 60;
-    const y = Math.max(0, yDe(alvo) - PX_HORA * 0.75);
+    const y = Math.max(0, alturaTopo + yDe(alvo) - PX_HORA * 0.75);
     const t = setTimeout(() => scrollRef.current?.scrollTo({ y, animated: false }), 0);
     return () => clearTimeout(t);
-  }, [diaChave, ehHoje, agoraMin, blocos, yDe]);
+  }, [diaChave, ehHoje, agoraMin, blocos, yDe, alturaTopo]);
 
   const horas = useMemo(() => Array.from({ length: ate - de + 1 }, (_, i) => de + i), [de, ate]);
   const larguraArea = Math.max(0, largura - COLUNA_HORAS - 6);
@@ -93,25 +98,31 @@ export function GradeDia({ dia, itens, corDe, onAbrir, onRemarcar, podeArrastar,
       onScroll={onScroll}
       scrollEventThrottle={16}
     >
-      {diaTodo.length > 0 ? (
-        <View style={styles.diaTodoLinha}>
-          <Text style={styles.diaTodoRotulo}>Dia todo</Text>
-          <View style={{ flex: 1, gap: 6 }}>
-            {diaTodo.map((a) => (
-              <PressableAnimado
-                key={a.id}
-                style={[styles.diaTodoChip, { borderLeftColor: corDe(a) }]}
-                onPress={() => onAbrir(a)}
-                haptic="selection"
-                accessibilityLabel={`${a.titulo}, dia todo, ${a.clienteNome}`}
-              >
-                <Text style={[styles.blocoTitulo, a.status === 'cancelado' && styles.riscado]} numberOfLines={1}>{a.titulo}</Text>
-                <Text style={styles.blocoSub} numberOfLines={1}>{a.clienteNome}</Text>
-              </PressableAnimado>
-            ))}
+      <View onLayout={(e: LayoutChangeEvent) => {
+        const h = e.nativeEvent.layout.height;
+        setAlturaTopo((a) => (a === null ? h : a));
+      }}>
+        {cabecalho}
+        {diaTodo.length > 0 ? (
+          <View style={styles.diaTodoLinha}>
+            <Text style={styles.diaTodoRotulo}>Dia todo</Text>
+            <View style={{ flex: 1, gap: 6 }}>
+              {diaTodo.map((a) => (
+                <PressableAnimado
+                  key={a.id}
+                  style={[styles.diaTodoChip, { borderLeftColor: corDe(a) }]}
+                  onPress={() => onAbrir(a)}
+                  haptic="selection"
+                  accessibilityLabel={`${a.titulo}, dia todo, ${a.clienteNome}`}
+                >
+                  <Text style={[styles.blocoTitulo, a.status === 'cancelado' && styles.riscado]} numberOfLines={1}>{a.titulo}</Text>
+                  <Text style={styles.blocoSub} numberOfLines={1}>{a.clienteNome}</Text>
+                </PressableAnimado>
+              ))}
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
 
       <View style={{ height: alturaGrade + 12 }} onLayout={(e: LayoutChangeEvent) => setLargura(e.nativeEvent.layout.width)}>
         {horas.map((h) => (

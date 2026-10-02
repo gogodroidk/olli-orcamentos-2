@@ -1,8 +1,8 @@
 /**
  * Campo "Serviço externo?" da visita (Onda I1 — chuva na visita). Componente
  * ISOLADO, pronto para encaixar no formulário da Agenda (celular e desktop) e no
- * Painel da Rua: as telas da agenda estão com outra equipe agora, então este
- * arquivo não toca nenhuma delas.
+ * Painel da Rua. Encaixado na Agenda (celular e desktop): o valor vai para
+ * `Agendamento.externa` e liga o "Remarcar por chuva" do `ClimaDaVisita`.
  *
  * TRÊS estados, de propósito: "Não sei" (undefined), "Externa" (true) e "Interna"
  * (false). "Não sei" NÃO é "interna": sem resposta, o app não pode afirmar que a
@@ -60,10 +60,10 @@ export function CampoVisitaExterna({ valor, sugestao, onChange, rotulo = 'Servi�
         </View>
       ) : (
         <Text style={[styles.ajuda, { marginTop: Spacing.xs }]}>
-          {/* Copy honesta: o aviso de chuva que usa este campo ainda não existe —
-              nada de prometer "o OLLI sugere remarcar" antes de ele estar no ar. */}
+          {/* Copy honesta: o aviso só existe quando o cliente tem localização
+              (o chip de clima diz quando não tem) e a previsão sai 12h antes. */}
           {valor === true
-            ? 'Marcada como externa: serviço que a chuva pode atrapalhar.'
+            ? 'Com chuva forte prevista no horário (e o endereço do cliente localizado), o OLLI sugere avisar e remarcar.'
             : valor === false
               ? 'A chuva não muda esta visita.'
               : 'Sem resposta, o OLLI não sabe se a chuva atrapalha esta visita.'}

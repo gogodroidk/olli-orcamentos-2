@@ -18,9 +18,10 @@ import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
 import { Aparecer, Skeleton } from '../components/motion';
 import { AcaoNo, NoLinhaDoTempo } from '../components/hoje/LinhaDoTempo';
+import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
 import { toast } from '../components/feedback';
 import { getAgendamentosDoDia, getVisitasSemBaixa, mudarStatusVisitaDoDia } from '../services/agenda';
-import { getCliente, getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
+import { getCliente, getClientes, getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
 import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { mensagemEstouACaminho } from '../services/eta';
@@ -35,7 +36,7 @@ import type { OcorrenciaAgendamento } from '../utils/contratoRecorrente';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import {
-  Agendamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
+  Agendamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, type Cliente,
 } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
@@ -316,6 +317,11 @@ interface VisitaNaLinhaProps {
   onAbrir: (a: OcorrenciaAgendamento) => void;
   onConcluir: (a: OcorrenciaAgendamento) => void;
   onEstouACaminho: (a: OcorrenciaAgendamento) => void;
+  /** Cadastro do cliente da visita (ponto para o clima, WhatsApp para remarcar). */
+  cliente: Cliente | null;
+  clientes: Cliente[];
+  /** Depois de remarcar por chuva: relê o dia. */
+  aoRemarcado: () => void;
 }
 
 /**
@@ -326,7 +332,7 @@ interface VisitaNaLinhaProps {
  *  - mais tarde/feita → compacto; o toque abre a visita na Agenda.
  */
 const VisitaNaLinha = React.memo(function VisitaNaLinha({
-  item, agora, baixando, avisando, onAbrir, onConcluir, onEstouACaminho,
+  item, agora, baixando, avisando, onAbrir, onConcluir, onEstouACaminho, cliente, clientes, aoRemarcado,
 }: VisitaNaLinhaProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -375,6 +381,11 @@ const VisitaNaLinha = React.memo(function VisitaNaLinha({
             <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[a.tipo]}</Text>
           </View>
         )}
+        {/* CLIMA DA VISITA — só o que importa agora (some na visita feita/passada).
+            Visita externa com chuva forte: tocar abre "Remarcar e avisar". */}
+        {fase !== 'feita' ? (
+          <ClimaDaVisita visita={a} cliente={cliente} clientes={clientes} aoRemarcado={aoRemarcado} style={styles.visitaClima} />
+        ) : null}
       </OlliPressable>
 
       {(fase === 'agora' || fase === 'sem_baixa') && (
@@ -465,6 +476,8 @@ export default function HojeScreen() {
   const podeValores = pode('ver_valores_agregados');
 
   const [itens, setItens] = useState<OcorrenciaAgendamento[]>([]);
+  // Cadastro dos clientes: o ponto (clima da visita) e o WhatsApp (remarcar por chuva).
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   // Visitas de DIAS ANTERIORES que terminaram e seguem "agendado" (ninguém deu
   // baixa). As de hoje já aparecem na própria linha do tempo como "Sem baixa".
   const [semBaixaAntigas, setSemBaixaAntigas] = useState<Agendamento[]>([]);
@@ -521,13 +534,15 @@ export default function HojeScreen() {
   const load = useCallback(async () => {
     setCarregandoErro(false);
     try {
-      const [ag, semBaixa, assinatura, datasCriacao, raw] = await Promise.all([
+      const [ag, semBaixa, assinatura, datasCriacao, raw, cls] = await Promise.all([
         getAgendamentosDoDia(),
         getVisitasSemBaixa(),
         getOrcamentosAgregadoPorStatus(['aguardando_assinatura']),
         getOrcamentosDatasCriacao(),
         AsyncStorage.getItem(CHECKLIST_KEY),
+        getClientes(),
       ]);
+      setClientes(cls);
       const agoraLeitura = new Date();
       diaCarregadoRef.current = format(agoraLeitura, 'yyyy-MM-dd');
       setAgora(agoraLeitura);
@@ -639,6 +654,8 @@ export default function HojeScreen() {
     linha.forEach((i, k) => { if (i.fase !== 'proxima' && i.fase !== 'depois') idx = k; });
     return idx;
   }, [linha]);
+
+  const clientePorId = useMemo(() => new Map(clientes.map(c => [c.id, c] as const)), [clientes]);
 
   const abrirVisita = useCallback((a: OcorrenciaAgendamento) => {
     (nav as any).navigate('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId: a.id } });
@@ -1023,6 +1040,9 @@ export default function HojeScreen() {
                 onAbrir={abrirVisita}
                 onConcluir={concluirVisita}
                 onEstouACaminho={estouACaminho}
+                cliente={item.visita.clienteId ? clientePorId.get(item.visita.clienteId) ?? null : null}
+                clientes={clientes}
+                aoRemarcado={load}
               />
             </NoLinhaDoTempo>
           </Aparecer>
@@ -1190,6 +1210,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   textoFeito: { color: c.onSurfaceMuted },
   tipoChip: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2, marginTop: 8 },
   tipoChipText: { fontSize: 11, fontWeight: '800' },
+  visitaClima: { marginTop: 10 },
   acoesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
 
   checklistCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
