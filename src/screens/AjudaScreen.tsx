@@ -24,6 +24,8 @@ import {
   buscarArtigos, corpoVisivel, type AjudaArtigo, type AjudaBloco,
 } from '../content/ajuda';
 import { plataformaPodeVender } from '../services/lembreteAssinaturaLoja';
+import { ORDEM_COMO_FUNCIONA, verbeteDaTela, type TelaComoFunciona } from '../content/comoFunciona';
+import { FolhaComoFunciona } from '../components/ajuda/ComoFunciona';
 
 /**
  * Params aceitos por esta tela. Copie esta linha para `RootStackParamList` (em
@@ -70,6 +72,7 @@ export default function AjudaScreen() {
   const [query, setQuery] = useState('');
   const [categoriaAtiva, setCategoriaAtiva] = useState<string | null>(route.params?.categoriaId ?? null);
   const [artigo, setArtigo] = useState<AjudaArtigo | null>(null);
+  const [telaComoFunciona, setTelaComoFunciona] = useState<TelaComoFunciona | null>(null);
 
   const [formAberto, setFormAberto] = useState(false);
   const [formNome, setFormNome] = useState('');
@@ -353,9 +356,43 @@ export default function AjudaScreen() {
                 </AnimatedEntrance>
               );
             })}
+
+            {/* COMO FUNCIONA — o mesmo verbete do "?" de cada tela, para quem pulou. */}
+            <Text style={[styles.sectionTitle, { marginTop: Spacing.lg }]}>Como funciona cada tela</Text>
+            <View style={styles.telasGrade}>
+              {ORDEM_COMO_FUNCIONA.map((t, idx) => {
+                const v = verbeteDaTela(t);
+                return (
+                  <AnimatedEntrance key={t} index={Math.min(idx, 8)}>
+                    <TouchableOpacity
+                      style={styles.telaChip}
+                      onPress={() => { vibrar('selecao'); setTelaComoFunciona(t); track(Eventos.comoFuncionaAberto, { tela: t, origem: 'central' }); }}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Como funciona: ${v.titulo}`}
+                    >
+                      <MaterialCommunityIcons name={(v.passos[0]?.icone ?? 'help-circle-outline') as keyof typeof MaterialCommunityIcons.glyphMap} size={16} color={cores.accentLight} />
+                      <Text style={styles.telaChipText}>{v.titulo}</Text>
+                    </TouchableOpacity>
+                  </AnimatedEntrance>
+                );
+              })}
+            </View>
           </View>
         )}
       </ScrollView>
+
+      {telaComoFunciona ? (
+        <FolhaComoFunciona
+          tela={telaComoFunciona}
+          visivel
+          aoFechar={() => setTelaComoFunciona(null)}
+          aoAbrirGuia={(artigoId) => {
+            const a = getArtigo(artigoId);
+            if (a) abrirArtigo(a);
+          }}
+        />
+      ) : null}
 
       {/* ─── DETALHE DO ARTIGO ─── */}
       <Modal visible={!!artigo} animationType="slide" onRequestClose={() => setArtigo(null)}>
@@ -440,6 +477,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
 
   sectionTitle: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginBottom: 10 },
+  telasGrade: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  telaChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface },
+  telaChipText: { fontSize: 13, fontWeight: '700', color: c.onSurface },
 
   breadcrumb: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 6 },
   breadcrumbText: { fontSize: 13.5, fontWeight: '700', color: c.accentLight },

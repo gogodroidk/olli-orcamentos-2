@@ -27,6 +27,7 @@ import { alternativasDoEncaixe, climaMereceEspaco, visitaParaClima } from '../..
 import { duracaoEstimadaMin, semHoraMarcada } from '../../utils/agendaDominio';
 import type { OcorrenciaAgendamento } from '../../utils/contratoRecorrente';
 import type { Cliente } from '../../types';
+import { registrarEventoDica } from '../../services/dicasRoteiroStore';
 
 export interface ClimaDaVisitaProps {
   visita: OcorrenciaAgendamento;
@@ -76,6 +77,13 @@ export function ClimaDaVisita({ visita, cliente, clientes, aoRemarcado, mostrarA
       .catch(() => { if (vivo) setEmpresaNome(''); });
     return () => { vivo = false; };
   }, [etapa, empresaNome]);
+
+  // Roteiro de dicas (I5): a 1ª visita externa com chuva forte ou alerta destrava
+  // a dica "toque no aviso para remarcar" na aba Hoje.
+  const sugereRemarcar = visita.status === 'agendado' && analise.sugerirRemarcar;
+  useEffect(() => {
+    if (sugereRemarcar) registrarEventoDica('primeira_chuva_prevista');
+  }, [sugereRemarcar]);
 
   // Visita concluída/cancelada não tem mais o que prever.
   if (visita.status !== 'agendado') return null;

@@ -604,6 +604,7 @@ export default function OrcamentosScreen() {
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title="Orçamentos"
+        comoFunciona="orcamentos"
         subtitle={clienteId && clienteNome ? `de ${clienteNome}` : undefined}
         right={
           <TouchableOpacity style={styles.newBtn} onPress={() => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {})} activeOpacity={0.85}>

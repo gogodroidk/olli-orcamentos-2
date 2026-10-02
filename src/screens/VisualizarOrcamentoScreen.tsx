@@ -9,7 +9,7 @@ import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, comAlfa, textoSobre, corStatusOrcamento, type Cores } from '../theme';
+import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, corStatusOrcamento, type Cores } from '../theme';
 import { OlliCard } from '../components/OlliCard';
 import { OlliButton } from '../components/OlliButton';
 import { GradientHeader } from '../components/GradientHeader';
@@ -88,6 +88,10 @@ import { avisar } from './desktop/dialogo';
 import { recarregarPlanoGlobal } from '../hooks/usePlano';
 import type { CanalEnvioOrcamento, ReservaEnvioOrcamento } from '../services/limitesComerciais';
 import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
+import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { eventoDoStatusOrcamento, type EventoDica } from '../services/dicasRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 
 // Recurso que remove o selo OLLI do PDF (Pro/Empresa). Frente C adiciona
 // 'remove_olli_brand' ao type Recurso; codificamos contra o NOME do contrato.
@@ -134,6 +138,7 @@ export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const cores = useCores();
+  const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   // Contraste garantido contra a superfície real do menu (ver corStatusOrcamento
   // em StatusBadge) — precisa de `cores`, por isso vive no componente e não como
@@ -308,6 +313,9 @@ export default function VisualizarOrcamentoScreen() {
       // Aprovou pelo link com a tela aberta: depois da festa, os próximos passos.
       if (motivo) void celebrar(motivo, motivo === 'aprovado' ? () => abrirProximosRef.current() : undefined);
       setOrc(o);
+      // Roteiro de dicas: o 1º envio, a 1ª abertura do link e a 1ª aprovação.
+      const eventoDica = eventoDoStatusOrcamento(o.status);
+      if (eventoDica) registrarEventoDica(eventoDica);
       setEmpresa(e);
       setDepoimentos(deps);
       setVersoes(vs);
@@ -998,6 +1006,7 @@ export default function VisualizarOrcamentoScreen() {
         compact
         right={(
           <View style={styles.topoAcoes}>
+            <BotaoComoFunciona tela="detalhe_orcamento" cor={gradientes.sobreHeader} />
             <BotaoTopo
               icon="share-variant"
               label="Compartilhar orçamento"
@@ -1054,6 +1063,15 @@ export default function VisualizarOrcamentoScreen() {
               </CabecalhoStatus>
             </Aparecer>
           </View>
+
+          {/* Dica do momento (roteiro I5): só a do status atual deste orçamento. */}
+          {eventoDoStatusOrcamento(orc.status) ? (
+            <DicaDoRoteiro
+              local="detalhe"
+              contexto={[eventoDoStatusOrcamento(orc.status) as EventoDica]}
+              style={{ marginBottom: Spacing.md }}
+            />
+          ) : null}
 
           {/* CARD DE AÇÃO POR STATUS — antes da aprovação, fechar; com saldo aberto,
               cobrar; aprovado e sem saldo, o próximo passo (agendar, avaliação). */}

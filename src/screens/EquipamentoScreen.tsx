@@ -16,6 +16,8 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
@@ -305,6 +307,7 @@ export default function EquipamentoScreen() {
       await exportarHtmlComoPdf(html, 'etiquetas-equipamentos', {
         dialogTitle: 'Etiquetas de equipamentos',
       });
+      registrarEventoDica('primeiro_qr');
     } catch {
       Alert.alert('Não deu para gerar', 'Tente novamente.');
     } finally {
@@ -373,6 +376,7 @@ export default function EquipamentoScreen() {
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title="Equipamentos"
+        comoFunciona="equipamento"
         subtitle="Inventário HVAC · PMOC"
         right={
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -478,6 +482,7 @@ export default function EquipamentoScreen() {
           icon="qrcode"
           texto="Depois de sincronizar com a nuvem, cada equipamento ganha uma etiqueta QR para colar na máquina. O cliente escaneia e vê a última manutenção, a próxima recomendada e pode pedir orçamento a você. Você escaneia e já inicia o atendimento."
         />
+        <DicaDoRoteiro local="equipamento" />
       </View>
 
       {buscandoQr ? (
@@ -966,6 +971,7 @@ function EtiquetaSheet({
       await exportarHtmlComoPdf(html, `etiqueta-${qrToken.slice(-6)}`, {
         dialogTitle: `Etiqueta ${titulo}`,
       });
+      registrarEventoDica('primeiro_qr');
     } catch {
       Alert.alert('Não deu para gerar', 'Tente novamente em instantes.');
     } finally {

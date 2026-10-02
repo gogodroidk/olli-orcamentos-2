@@ -1,41 +1,48 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image,
-  ActivityIndicator, KeyboardAvoidingView, Platform,
+  View, Text, StyleSheet, ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
-import { vibrar } from '../utils/haptico';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre, sobreSecundario, type Cores } from '../theme';
+import { vibrar } from '../utils/haptico';
+import {
+  Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos, sombrasDe, comAlfa, textoSobre,
+  sobreSecundario, type Cores,
+} from '../theme';
+import { DURACAO, MOLA, useReduzirMovimento } from '../theme/motion';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliMascot } from '../components/OlliMascot';
 import { AuroraBackground } from '../components/AuroraBackground';
-import { StepIndicator } from '../components/StepIndicator';
-import { AnimatedEntrance } from '../components/AnimatedEntrance';
-import { saveEmpresa, saveServico } from '../database/database';
-import { Empresa, ServicoItem, Segmento, SEGMENTOS } from '../types';
-import { generateId } from '../utils/id';
-import { nowISO } from '../utils/date';
-import { isValidCNPJ, isValidCPF } from '../utils/masks';
+import { Aparecer, ContadorAnimado, PressableAnimado } from '../components/motion';
+import { curvas } from '../components/motion/curvas';
+import { saveEmpresa } from '../database/database';
+import { Empresa } from '../types';
+import { isValidCNPJ } from '../utils/masks';
 import { useCepLookup } from '../services/cep';
 import { AvisoCep } from '../components/AvisoCep';
 import { consultarCnpj } from '../services/cnpj';
-import { deduzirVerticais, verticalPorId, ferramentasSugeridas, type VerticalId } from '../services/verticais';
-import { SEGMENTO_PARA_VERTICAL, VERTICAL_PARA_SEGMENTO } from '../services/verticalSegmento';
+import { deduzirVerticais, verticalPorId, type VerticalId } from '../services/verticais';
 import { camposPendentesPerfil, perfilOperacionalCompleto } from '../services/perfilOperacional';
 import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { ONBOARDED_KEY } from '../services/onboarding';
 import { resolverEstadoEmpresaDaSessao } from '../services/cloudSync';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
 import { ConviteImportar } from '../components/ConviteImportar';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
+import { AVISO_EXEMPLO } from '../services/ativacao';
+import {
+  OFICIOS_ONBOARDING, camposDoOficio, itensIniciais, nomeDoNegocio, oficioPorVertical,
+  paramsPrimeiroOrcamento, telefoneNormalizado, totalRascunho, validarBase,
+  type CampoBase, type DadosBase, type ItemRascunho,
+} from '../services/onboardingRapido';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 
@@ -47,50 +54,44 @@ export function onboardedKeyForUser(userId: string): string {
   return `${ONBOARDED_KEY}.${userId}`;
 }
 
-/** Empresa em branco (mesma base de MeuNegocioScreen) para o 1º cadastro. */
-function empresaEmBranco(): Empresa {
-  return {
-    id: 'empresa_1',
-    nome: '', especialidade: '', slogan: '', cnpj: '', cpf: '',
-    endereco: '', cidade: '', estado: '', telefone: '', whatsapp: '',
-    site: '', email: '', chavePix: '', normas: '', nomePrestador: '',
-  };
-}
-
 /**
- * Partes do endereço coletadas separadamente para um cadastro completo. O tipo
- * Empresa guarda só `endereco` (string), `cidade` e `estado`, então as partes de
- * logradouro são compostas numa única string ao concluir (ver `montarEndereco`).
- * `cep` não é persistido no tipo — serve à busca automática (ViaCEP).
+ * ONBOARDING EM 4 TELAS (Onda I5.2) — termina com o PRIMEIRO ORÇAMENTO pronto.
+ *
+ *   0. Olá           — a OLLI se apresenta (o mascote entra com mola).
+ *   1. Seu ofício    — um toque num ícone grande.
+ *   2. Você e a base — nome, WhatsApp, cidade (o CEP preenche). Uma linha de "por quê".
+ *   3. 1º orçamento  — itens do ofício com valor de exemplo, editáveis, e o total.
+ *
+ * A regra mora em `services/onboardingRapido.ts` (testada). Logo, Pix, assinatura e
+ * o endereço completo ficam para o checklist do Início — sem travar ninguém.
+ *
+ * O portão de 3 estados continua o mesmo de antes: o formulário só existe depois
+ * que a AUSÊNCIA da empresa foi confirmada na conta. "Não sei" mostra retry —
+ * nunca uma empresa em branco por cima de um cadastro que ainda não baixou.
  */
-interface EnderecoForm {
-  cep: string;
-  rua: string;
-  numero: string;
-  complemento: string;
-  bairro: string;
-}
+const TOTAL_TELAS = 4;
+/** Nome estável de cada tela (chave dos pontos de progresso). */
+const NOMES_TELAS = ['ola', 'oficio', 'base', 'orcamento'] as const;
 
-/**
- * Compõe a string de `endereco` (logradouro) a partir das partes. Ex.:
- * "Rua das Flores, 120 — Apto 2 (Centro)". Cidade/UF vão em campos próprios.
- */
-function montarEndereco(e: EnderecoForm): string {
-  const ruaNum = [e.rua.trim(), e.numero.trim()].filter(Boolean).join(', ');
+/** Partes do endereço que o CEP traz (o número o prestador completa depois em Meu Negócio). */
+interface EnderecoCep { cep: string; rua: string; bairro: string }
+
+function montarEndereco(e: EnderecoCep): string {
   const partes: string[] = [];
-  if (ruaNum) partes.push(ruaNum);
-  if (e.complemento.trim()) partes.push(`— ${e.complemento.trim()}`);
+  if (e.rua.trim()) partes.push(e.rua.trim());
   if (e.bairro.trim()) partes.push(`(${e.bairro.trim()})`);
   return partes.join(' ').trim();
 }
 
-// Etapas do cadastro completo. Rótulos curtos para o StepIndicator.
-const STEPS = ['Empresa', 'Você', 'Endereço', 'Visual', 'Serviço'];
-const ULTIMO = STEPS.length - 1;
-
-type Errors = Partial<Record<string, string>>;
-
-// VERTICAL_PARA_SEGMENTO vive em services/verticalSegmento.ts (compartilhado com MeuNegócio).
+const BASE_VAZIA: DadosBase = {
+  tipoNegocio: undefined,
+  nomePrestador: '',
+  nomeNegocio: '',
+  whatsapp: '',
+  cnpj: '',
+  cidade: '',
+  estado: '',
+};
 
 export default function OnboardingScreen() {
   const nav = useNavigation<Nav>();
@@ -98,188 +99,121 @@ export default function OnboardingScreen() {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
-  // Ink de contraste sobre `accentLight` (chip ativo) — substitui '#0A1626' fixo.
-  const textoSobreAccent = textoSobre(cores.accentLight);
 
-  const [welcomed, setWelcomed] = useState(false);
-
-  const [step, setStep] = useState(0);
+  const [tela, setTela] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [imagemProcessando, setImagemProcessando] = useState<'logoUri' | 'assinaturaUri' | null>(null);
-  const [errors, setErrors] = useState<Errors>({});
-  const scrollRef = useRef<ScrollView>(null);
   const [acessoCadastro, setAcessoCadastro] = useState<'verificando' | 'liberado' | 'bloqueado'>('verificando');
   const verificacaoRef = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
 
-  // dados da empresa (acumulados ao longo das etapas)
-  const [emp, setEmp] = useState<Empresa>(empresaEmBranco());
-  // Pre-preenche o WhatsApp com o telefone informado no cadastro (user_metadata)
-  // — o usuario nao precisa digitar duas vezes. Best-effort, nunca bloqueia.
-  React.useEffect(() => {
+  // Tela 1 — ofício.
+  const [vertical, setVertical] = useState<VerticalId | null>(null);
+  const [erroOficio, setErroOficio] = useState(false);
+  // Tela 2 — você e a base.
+  const [base, setBase] = useState<DadosBase>(BASE_VAZIA);
+  const [errors, setErrors] = useState<Partial<Record<CampoBase, string>>>({});
+  const [end, setEnd] = useState<EnderecoCep>({ cep: '', rua: '', bairro: '' });
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [cnpjInfo, setCnpjInfo] = useState<string | null>(null);
+  // Tela 3 — o primeiro orçamento.
+  const [itens, setItens] = useState<ItemRascunho[]>([]);
+  const [clienteNome, setClienteNome] = useState('');
+
+  // Nome e telefone do cadastro (user_metadata) entram sozinhos. Best-effort.
+  useEffect(() => {
     (async () => {
       try {
         const u = await getCurrentUser();
         const meta = u?.user_metadata as { telefone?: string; phone?: string; full_name?: string; name?: string } | undefined;
         const tel = meta?.telefone ?? meta?.phone ?? '';
         const nome = meta?.full_name ?? meta?.name ?? '';
-        if (tel) setEmp(p2 => (p2.whatsapp?.trim() ? p2 : { ...p2, whatsapp: tel, telefone: p2.telefone || tel }));
-        if (nome) setEmp(p2 => (p2.nomePrestador?.trim() ? p2 : { ...p2, nomePrestador: nome }));
-      } catch { /* sem sessao/erro: segue vazio */ }
+        setBase(p => ({
+          ...p,
+          whatsapp: p.whatsapp.trim() ? p.whatsapp : tel,
+          nomePrestador: p.nomePrestador.trim() ? p.nomePrestador : nome,
+        }));
+      } catch { /* sem sessão: segue vazio */ }
     })();
   }, []);
-  // partes do endereço (compostas em emp.endereco ao concluir)
-  const [end, setEnd] = useState<EnderecoForm>({ cep: '', rua: '', numero: '', complemento: '', bairro: '' });
-  // CNPJ: cadastro mágico (autofill + dedução da vertical).
-  const [cnpjLoading, setCnpjLoading] = useState(false);
-  const [cnpjInfo, setCnpjInfo] = useState<string | null>(null);
-  // último serviço (opcional)
-  const [servNome, setServNome] = useState('');
-  const [servPreco, setServPreco] = useState(0);
 
-  /**
-   * O formulário só existe depois que a ausência da empresa foi confirmada na
-   * conta certa. Em aparelho novo/offline, `nao_sei` mostra retry; nunca permite
-   * montar uma empresa em branco por cima de um cadastro remoto que ainda não
-   * conseguimos baixar.
-   */
   async function verificarAcessoAoCadastro() {
     const verificacao = ++verificacaoRef.current;
     setAcessoCadastro('verificando');
     const estado = await resolverEstadoEmpresaDaSessao();
     if (verificacao !== verificacaoRef.current) return;
-
     if (estado === 'tem') {
-      // A empresa real já foi aplicada ao SQLite pelo resolver. O flag é só de
-      // experiência; falhar ao gravá-lo não justifica esconder dados existentes.
+      // A empresa real já foi aplicada ao SQLite pelo resolver.
       try {
         const usuario = await getCurrentUser();
         if (usuario?.id) await AsyncStorage.setItem(onboardedKeyForUser(usuario.id), '1');
       } catch { /* tenta de novo no próximo boot */ }
-      irParaApp();
+      irParaApp('inicio');
       return;
     }
     setAcessoCadastro(estado === 'nao_tem' ? 'liberado' : 'bloqueado');
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     void verificarAcessoAoCadastro();
     return () => { verificacaoRef.current += 1; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setField = useCallback((field: keyof Empresa, value: string) => {
-    setEmp(p => ({ ...p, [field]: value }));
+  const setCampo = useCallback(<K extends CampoBase>(campo: K, valor: DadosBase[K]) => {
+    setBase(p => ({ ...p, [campo]: valor }));
+    setErrors(p => (p[campo] ? { ...p, [campo]: undefined } : p));
   }, []);
 
-  const clearError = useCallback((key: string) => {
-    setErrors(p => (p[key] ? { ...p, [key]: undefined } : p));
-  }, []);
-
-  function chooseSegmento(id: Segmento) {
-    vibrar('selecao');
-    const vertical = SEGMENTO_PARA_VERTICAL[id];
-    setEmp(p => ({
-      ...p,
-      segmento: id,
-      verticais: [vertical],
-      ferramentasAtivas: ferramentasSugeridas([vertical]),
-    }));
-    clearError('segmento');
-  }
-
-  // ─── CEP: busca automática ao completar 8 dígitos ──────────────
-  //
-  // ESTA TELA TINHA A TERCEIRA FORMA DE FAZER ISSO, e as duas diferenças eram
-  // defeito, não estilo:
-  //
-  //  (1) SOBRESCREVIA o que o usuário digitou. Era `cidade: r.endereco.cidade
-  //      || p.cidade`, que só respeita o valor dele quando o CEP NÃO traz
-  //      cidade — ou seja, quase nunca. O comentário acima daquelas linhas
-  //      dizia "só completa o que está vazio"; o código fazia o oposto. O
-  //      caminho real: o cadastro mágico por CNPJ preenchia cidade/UF da sede
-  //      (corretos), o prestador descia e digitava o CEP da OFICINA, e a
-  //      cidade da sede era apagada em silêncio — a mesma cidade que vira o
-  //      FORO do contrato (`foroPadrao`, utils/contratoPdf.ts) e o cabeçalho de
-  //      todo documento. `mesclarEndereco` já resolve isso há três telas: campo
-  //      com conteúdo NÃO é tocado, divergência vira pergunta com botão.
-  //
-  //  (2) NÃO TINHA GUARDA DE CORRIDA. Duas consultas no ar (apagou um dígito e
-  //      digitou outro) e a mais lenta vencia, com a frase "Endereço
-  //      encontrado" por cima do endereço errado. O `pedidoRef` do hook
-  //      descarta resposta velha.
-  //
-  // O <AvisoCep> traz de brinde o que o `<Text>` único daqui não tinha: ícone
-  // próprio e `accessibilityRole="alert"` separando "esse CEP não existe" de
-  // "não consegui consultar". Nada aqui bloqueia digitação — segue atalho.
+  // ─── CEP: mesma busca das outras telas (campo com conteúdo não é tocado) ───
   const endRef = useRef(end);
   endRef.current = end;
-  const empRef = useRef(emp);
-  empRef.current = emp;
+  const baseRef = useRef(base);
+  baseRef.current = base;
   const { estadoCep, enderecoCep, divergencias, onCepChange, usarDoCep } = useCepLookup(
     (campos, achado) => {
       setEnd(p => ({
         ...p,
-        // `campos` só traz o que o mesclador LIBEROU (campo que estava vazio).
-        // `rua` é o `endereco` do mesclador — mesmo campo, outro nome aqui.
         ...(campos.endereco !== undefined ? { rua: campos.endereco } : null),
-        // Bairro não passa pelo mesclador (o cadastro de cliente não tem esse
-        // campo, então `CamposEndereco` não o carrega). Mesma regra aplicada à
-        // mão, explícita: só entra em campo vazio.
         ...(!p.bairro.trim() && achado.bairro ? { bairro: achado.bairro } : null),
       }));
-      setEmp(p => ({
+      setBase(p => ({
         ...p,
         ...(campos.cidade !== undefined ? { cidade: campos.cidade } : null),
         ...(campos.estado !== undefined ? { estado: campos.estado } : null),
       }));
+      setErrors(p => ({ ...p, cidade: undefined, estado: undefined }));
       vibrar('selecao');
     },
-    () => ({ endereco: endRef.current.rua, cidade: empRef.current.cidade, estado: empRef.current.estado }),
-    // Fluxo único: uma empresa só, sem troca de registro — a chave é constante.
-    // O parâmetro é obrigatório justamente para esta decisão ser declarada, e
-    // não esquecida, em cada tela nova que usar o hook.
+    () => ({ endereco: endRef.current.rua, cidade: baseRef.current.cidade, estado: baseRef.current.estado }),
     'onboarding',
   );
 
-  // ─── CNPJ: cadastro mágico (F1 da estratégia) ──────────────────
-  // Preenche a empresa pela BrasilAPI (via worker) e DEDUZ a vertical pelo CNAE,
-  // pré-selecionando o segmento. Só preenche campo VAZIO (nunca sobrescreve o que
-  // o usuário já digitou). Nunca lança; cada estado do serviço vira um aviso.
+  // ─── CNPJ: preenche nome/cidade e sugere o ofício pelo CNAE (só campo vazio) ───
   async function buscarCnpj() {
-    const digits = emp.cnpj.replace(/\D/g, '');
+    const digits = base.cnpj.replace(/\D/g, '');
     if (digits.length !== 14) {
       setErrors(p => ({ ...p, cnpj: 'Informe o CNPJ com 14 dígitos para buscar.' }));
       return;
     }
     setCnpjLoading(true);
     setCnpjInfo(null);
-    clearError('cnpj');
     const r = await consultarCnpj(digits);
     if (r.estado === 'ok') {
       const e = r.empresa;
-      const verticais = deduzirVerticais(e.cnaePrincipal.codigo, e.cnaesSecundarios.map(c => c.codigo));
-      const principal = verticais[0];
+      const deduzidas = deduzirVerticais(e.cnaePrincipal.codigo, e.cnaesSecundarios.map(c => c.codigo));
       const nomeEmpresa = e.nomeFantasia || e.razaoSocial;
-      setEmp(p => ({
+      setBase(p => ({
         ...p,
-        tipoNegocio: 'empresa',
-        nome: p.nome.trim() || nomeEmpresa,
-        segmento: p.segmento ?? VERTICAL_PARA_SEGMENTO[principal] ?? 'outro',
-        // Persiste a vertical deduzida (F1 do SISTEMA_SUPERIOR): vira o "ofício" da
-        // empresa (editável depois), e alimenta o gate de ferramentas por segmento.
-        verticais: (p.verticais && p.verticais.length) ? p.verticais : verticais,
-        ferramentasAtivas: (p.ferramentasAtivas && p.ferramentasAtivas.length) ? p.ferramentasAtivas : ferramentasSugeridas(verticais),
+        nomeNegocio: p.nomeNegocio.trim() || nomeEmpresa,
         cidade: p.cidade.trim() || e.municipio,
         estado: p.estado.trim() || e.uf,
       }));
-      setEnd(p => ({
-        ...p,
-        rua: p.rua.trim() || e.logradouro,
-        bairro: p.bairro.trim() || e.bairro,
-      }));
+      setEnd(p => ({ ...p, rua: p.rua.trim() || e.logradouro, bairro: p.bairro.trim() || e.bairro }));
+      const principal = deduzidas[0];
       setCnpjInfo(
-        principal === 'geral'
-          ? `Achei ${nomeEmpresa}. Confira os dados abaixo.`
-          : `Achei ${nomeEmpresa} — detectei ${verticalPorId(principal).label}. Confira e ajuste se precisar.`,
+        vertical || principal === 'geral'
+          ? `Achei ${nomeEmpresa}. Confira os dados.`
+          : `Achei ${nomeEmpresa}. Pelo CNPJ, parece ${verticalPorId(principal).label}.`,
       );
       vibrar('selecao');
     } else if (r.estado === 'nao_encontrado') {
@@ -287,42 +221,21 @@ export default function OnboardingScreen() {
     } else if (r.estado === 'invalido') {
       setCnpjInfo('O CNPJ precisa ter 14 dígitos.');
     } else {
-      setCnpjInfo('Não consegui buscar agora — você pode preencher na mão.');
+      setCnpjInfo('Não consegui buscar agora. Você pode preencher na mão.');
     }
     setCnpjLoading(false);
   }
 
-  // Marca como concluído e PROPAGA falha. O helper geral é best-effort para dicas,
-  // mas aqui a navegação depende da persistência ter funcionado de verdade.
-  async function marcarConcluido() {
-    const usuario = await getCurrentUser();
-    if (!usuario?.id) throw new Error('sessao_indeterminada');
-    await AsyncStorage.setItem(onboardedKeyForUser(usuario.id), '1');
-  }
-
   /**
-   * Sai do onboarding. `comPrimeiroOrcamento` manda o usuário direto para o wizard.
-   *
-   * POR QUE (prioridade 11 do plano): a meta declarada é "onboarding mágico terminando
-   * em 1º ORÇAMENTO ENVIADO", com 5 minutos até o primeiro — e a ativação do produto é
-   * definida como "orçamento real enviado em até 7 dias". Terminar o cadastro e largar
-   * a pessoa na home das abas deixa justamente o passo que ATIVA por conta dela: ela
-   * acabou de dizer o nome do negócio e até um serviço, e a recompensa disso é
-   * uma tela de menu. O caminho mais curto entre "configurei" e "vi valor" é o
-   * orçamento — então é nele que o onboarding desemboca.
-   *
-   * `index: 1` com Tabs ABAIXO, e não um reset só para o wizard: o botão voltar leva
-   * para o app normal. É um convite, não um sequestro — quem não quiser orçar agora
-   * volta com um toque, e o onboarding continua irretornável (o que era o ponto do
-   * reset original).
+   * Sai do onboarding. "orcamento" abre o editor com o 1º orçamento já montado
+   * (Tabs embaixo: voltar leva ao app normal — é convite, não sequestro);
+   * "importar" abre "Trazer meus dados"; "inicio" vai direto às abas.
    */
-  function irParaApp(destino: 'inicio' | 'orcamento' | 'importar' = 'inicio') {
-    // "importar" (quem veio de outro app): a mesma lógica do 1º orçamento — Tabs
-    // embaixo, a tela de trazer os dados por cima; voltar leva ao app normal.
+  function irParaApp(destino: 'inicio' | 'orcamento' | 'importar', params?: RootStackParamList['NovoOrcamento']) {
     nav.dispatch(
       CommonActions.reset(
         destino === 'orcamento'
-          ? { index: 1, routes: [{ name: 'Tabs' }, { name: 'NovoOrcamento' }] }
+          ? { index: 1, routes: [{ name: 'Tabs' }, { name: 'NovoOrcamento', params: params ?? {} }] }
           : destino === 'importar'
             ? { index: 1, routes: [{ name: 'Tabs' }, { name: 'Importar' }] }
             : { index: 0, routes: [{ name: 'Tabs' }] },
@@ -330,41 +243,39 @@ export default function OnboardingScreen() {
     );
   }
 
-  /** Monta o objeto Empresa COMPLETO (sem undefined em obrigatórios). */
+  /** Empresa COMPLETA (o perfil operacional exige nome, telefone, ofício e cidade). */
   function montarEmpresa(): Empresa {
-    const segLabel = SEGMENTOS.find(s => s.id === emp.segmento)?.label;
+    const oficio = vertical ? camposDoOficio(vertical) : null;
+    const tel = telefoneNormalizado(base.whatsapp);
     return {
-      ...emp,
-      nome: emp.nome.trim(),
-      nomePrestador: emp.nomePrestador.trim() || emp.nome.trim(),
-      especialidade: emp.especialidade.trim() || segLabel || '',
-      slogan: emp.slogan.trim(),
+      id: 'empresa_1',
+      nome: nomeDoNegocio(base),
+      nomePrestador: base.nomePrestador.trim(),
+      especialidade: vertical ? verticalPorId(vertical).label : '',
+      slogan: '',
+      cnpj: base.cnpj.trim(),
+      cpf: '',
       endereco: montarEndereco(end),
-      cidade: emp.cidade.trim(),
-      estado: emp.estado.trim().toUpperCase().slice(0, 2),
-      telefone: emp.telefone.trim() || emp.whatsapp.replace(/\D/g, ''),
-      whatsapp: emp.whatsapp.replace(/\D/g, ''),
-      chavePix: emp.chavePix.trim(),
+      cidade: base.cidade.trim(),
+      estado: base.estado.trim().toUpperCase().slice(0, 2),
+      telefone: tel,
+      whatsapp: tel,
+      site: '',
+      email: '',
+      chavePix: '',
+      normas: '',
+      tipoNegocio: base.tipoNegocio,
+      ...(oficio ?? {}),
     };
   }
 
-  async function salvarTudo() {
-    await saveEmpresa(montarEmpresa());
-    track(Eventos.empresaSaved, { origem: 'onboarding', segmento: emp.segmento });
-    if (servNome.trim()) {
-      const s: ServicoItem = {
-        id: generateId(),
-        nome: servNome.trim(),
-        preco: servPreco,
-        unidade: 'un',
-        criadoEm: nowISO(),
-      };
-      await saveServico(s);
-      track(Eventos.servicoCreated, { origem: 'onboarding' });
-    }
+  async function marcarConcluido() {
+    const usuario = await getCurrentUser();
+    if (!usuario?.id) throw new Error('sessao_indeterminada');
+    await AsyncStorage.setItem(onboardedKeyForUser(usuario.id), '1');
   }
 
-  /** Confirma novamente imediatamente antes da escrita (o wizard pode ficar aberto por minutos). */
+  /** Confirma de novo logo antes da escrita (a tela pode ter ficado aberta minutos). */
   async function confirmarAusenciaAntesDeSalvar(): Promise<boolean> {
     const estado = await resolverEstadoEmpresaDaSessao();
     if (estado === 'nao_tem') return true;
@@ -374,120 +285,80 @@ export default function OnboardingScreen() {
         if (usuario?.id) await AsyncStorage.setItem(onboardedKeyForUser(usuario.id), '1');
       } catch { /* empresa local já está segura */ }
       Alert.alert('Cadastro encontrado', 'Carregamos os dados que já existiam na sua conta. Nada foi substituído.');
-      irParaApp();
+      irParaApp('inicio');
       return false;
     }
     Alert.alert(
       'Não foi possível confirmar sua conta',
-      'Nada foi salvo ou substituído. Conecte-se à internet e tente novamente para confirmarmos se já existe um cadastro.',
+      'Nada foi salvo ou substituído. Conecte-se à internet e tente de novo para confirmarmos se já existe um cadastro.',
     );
     return false;
   }
 
-  /** Valida a etapa atual; preenche `errors` e retorna se pode avançar. */
-  function validarEtapa(): boolean {
-    const e: Errors = {};
-    if (step === 0) {
-      if (emp.tipoNegocio !== 'autonomo' && emp.tipoNegocio !== 'empresa') e.tipoNegocio = 'Escolha como você trabalha.';
-      if (!emp.nome.trim()) e.nome = 'Conte o nome do seu negócio.';
-      if (!emp.segmento) e.segmento = 'Escolha o tipo principal de serviço.';
-      if (!emp.especialidade.trim()) e.especialidade = 'Descreva sua especialidade.';
-      // CNPJ é obrigatório só para empresa; CPF continua opcional para autônomo.
-      const cnpjDigits = emp.cnpj.replace(/\D/g, '');
-      const cpfDigits = emp.cpf.replace(/\D/g, '');
-      if (emp.tipoNegocio === 'empresa' && cnpjDigits.length === 0) e.cnpj = 'Informe o CNPJ da empresa.';
-      if (cnpjDigits.length > 0 && !isValidCNPJ(cnpjDigits)) e.cnpj = 'CNPJ inválido.';
-      if (cpfDigits.length > 0 && !isValidCPF(cpfDigits)) e.cpf = 'CPF inválido.';
-    } else if (step === 1) {
-      if (!emp.nomePrestador.trim()) e.nomePrestador = 'Diga seu nome.';
-      const tel = emp.whatsapp.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, '');
-      if (tel.length < 10 || tel.length > 11) e.whatsapp = 'Informe um telefone com DDD (10 ou 11 dígitos).';
-    } else if (step === 2) {
-      if (!emp.cidade.trim()) e.cidade = 'Informe sua cidade de atendimento.';
-      if (!/^[A-Z]{2}$/i.test(emp.estado.trim())) e.estado = 'Informe a UF com duas letras.';
-    }
-    setErrors(e);
-    return Object.keys(e).length === 0;
+  function irParaTela(n: number) {
+    setTela(n);
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
   }
 
   function avancar() {
-    if (!validarEtapa()) {
-      vibrar('erro');
+    if (tela === 1) {
+      if (!vertical) { vibrar('erro'); setErroOficio(true); return; }
+      vibrar('selecao');
+      irParaTela(2);
+      return;
+    }
+    if (tela === 2) {
+      const e = validarBase(base, isValidCNPJ);
+      setErrors(e);
+      if (Object.keys(e).length) { vibrar('erro'); return; }
+      vibrar('selecao');
+      // O orçamento nasce do ofício escolhido; voltar e trocar de ofício refaz os itens.
+      setItens(itensIniciais(vertical).itens);
+      registrarEventoDica('onboarding_primeiro_orcamento');
+      irParaTela(3);
       return;
     }
     vibrar('selecao');
-    setErrors({});
-    setStep(s => Math.min(s + 1, ULTIMO));
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    irParaTela(Math.min(tela + 1, TOTAL_TELAS - 1));
   }
 
   function voltar() {
     vibrar('selecao');
     setErrors({});
-    setStep(s => Math.max(s - 1, 0));
-    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    irParaTela(Math.max(tela - 1, 0));
   }
 
-  /**
-   * `destino`: "orcamento" (o padrão, ver irParaApp) ou "importar" — quem veio de
-   * outro app conclui o cadastro e cai direto em "Trazer meus dados". A conclusão é
-   * a MESMA nos dois (valida, salva e marca); só muda a tela de chegada.
-   */
-  async function concluir(destino: 'orcamento' | 'importar' = 'orcamento') {
-    if (saving || imagemProcessando) return;
-    // Revalida o perfil inteiro imediatamente antes da escrita. O wizard não
-    // aceita mais ser "concluído" com campos operacionais vazios.
+  async function concluir(destino: 'orcamento' | 'importar' | 'inicio') {
+    if (saving) return;
     const empresaFinal = montarEmpresa();
     if (!perfilOperacionalCompleto(empresaFinal)) {
       const pendentes = camposPendentesPerfil(empresaFinal);
-      const primeiro = pendentes[0];
-      const etapa = primeiro === 'nomePrestador' || primeiro === 'telefone' ? 1
-        : primeiro === 'cidade' || primeiro === 'estado' ? 2 : 0;
-      setStep(etapa);
-      setErrors({ [primeiro]: 'Este dado é necessário para começar a usar a OLLI.' });
+      irParaTela(pendentes.includes('verticais') ? 1 : 2);
+      Alert.alert('Falta um dado', 'Complete os campos destacados para começar.');
       return;
     }
     setSaving(true);
     try {
       if (!(await confirmarAusenciaAntesDeSalvar())) return;
-      await salvarTudo();
+      await saveEmpresa(empresaFinal);
+      track(Eventos.empresaSaved, { origem: 'onboarding', segmento: empresaFinal.segmento });
       vibrar('sucesso');
-      track(Eventos.onboardingCompleted, { comServico: !!servNome.trim(), destino });
+      track(Eventos.onboardingCompleted, { destino, vertical, versao: 'quatro_telas' });
       await marcarConcluido();
-      // Concluiu = quer usar: cai no wizard do primeiro orçamento (ver irParaApp) —
-      // ou, para quem escolheu trazer os dados do app antigo, na importação.
+      if (destino === 'orcamento' && vertical) {
+        track(Eventos.exemploAtivacaoAberto, { origem: 'onboarding', vertical });
+        irParaApp('orcamento', paramsPrimeiroOrcamento(vertical, itens, clienteNome));
+        return;
+      }
       irParaApp(destino);
     } catch {
-      Alert.alert('Ops', 'Não consegui salvar agora. Tente novamente.');
+      Alert.alert('Ops', 'Não consegui salvar agora. Tente de novo.');
     } finally {
       setSaving(false);
     }
   }
 
-  async function pickImage(field: 'logoUri' | 'assinaturaUri') {
-    if (imagemProcessando) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { Alert.alert('Permissão', 'Permita o acesso às fotos.'); return; }
-    const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.9 });
-    if (!r.canceled) {
-      setImagemProcessando(field);
-      try {
-        const resultado = await imagemEscolhidaParaDataUri(r.assets[0]);
-        if (!resultado.ok) {
-          Alert.alert('Imagem não adicionada', resultado.erro);
-          return;
-        }
-        setEmp(p => ({ ...p, [field]: resultado.dataUri }));
-        vibrar('selecao');
-      } finally {
-        setImagemProcessando(null);
-      }
-    }
-  }
-
-  // Antes das boas-vindas, resolvemos o terceiro estado. Esta não é uma tela de
-  // onboarding: é um bloqueio honesto enquanto não sabemos se a conta já possui
-  // cadastro na nuvem.
+  // ─── Portão de 3 estados ────────────────────────────────────────────────────
   if (acessoCadastro !== 'liberado') {
     const verificando = acessoCadastro === 'verificando';
     return (
@@ -505,7 +376,7 @@ export default function OnboardingScreen() {
           <Text style={styles.verificationText}>
             {verificando
               ? 'Estamos verificando se sua empresa já está cadastrada para não substituir nenhuma informação.'
-              : 'Não conseguimos consultar a nuvem agora. Seus dados neste aparelho continuam intactos; conecte-se à internet para verificarmos se já existe uma empresa antes de criar outra.'}
+              : 'Preciso de internet só agora, para confirmar se sua empresa já existe antes de criar outra. Seus dados neste aparelho continuam intactos.'}
           </Text>
           {!verificando && (
             <OlliButton label="Tentar novamente" variant="gradient" size="lg" fullWidth onPress={verificarAcessoAoCadastro} />
@@ -515,36 +386,23 @@ export default function OnboardingScreen() {
     );
   }
 
-  // 1ª tela: boas-vindas calorosas da OLLI (protótipo 04). "Começar" abre o
-  // cadastro. Quem chega no Onboarding JÁ está logado (é pós-login), então não
-  // há mais o link "Já tenho conta · Entrar".
-  if (!welcomed) {
-    return (
-      <BoasVindas
-        insets={insets}
-        onStart={() => { vibrar('selecao'); setWelcomed(true); }}
-      />
-    );
+  // ─── Tela 0: Olá ────────────────────────────────────────────────────────────
+  if (tela === 0) {
+    return <Ola insets={insets} onStart={() => { vibrar('selecao'); irParaTela(1); }} />;
   }
+
+  const oficio = oficioPorVertical(vertical);
+  const total = totalRascunho(itens);
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {/* HEADER COM GRADIENTE DA MARCA */}
-      <LinearGradient colors={gradientes.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <View style={styles.headerTop}>
-          <View style={styles.brandRow}>
-            <OlliMascot size={40} onDark float={false} />
-            <View style={{ marginLeft: 10, flex: 1 }}>
-              <Text style={[styles.brand, { color: gradientes.sobreHeader }]}>Bem-vindo ao OLLI</Text>
-              {/* Subtítulo SECUNDÁRIO sobre o header em gradiente: sobreSecundario rebaixa o
-                  branco só até onde as DUAS pontas passam 4.5:1. O 'rgba(255,255,255,0.78)'
-                  cravado que estava aqui media 3.67:1 na ponta clara (#0B6FCE) no modo claro. */}
-              <Text style={[styles.brandSub, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]} numberOfLines={1}>Vamos montar o seu cadastro completo</Text>
-            </View>
-          </View>
-        </View>
-        <StepIndicator steps={STEPS} current={step} />
-      </LinearGradient>
+      <View style={[styles.topo, { paddingTop: insets.top + 12 }]}>
+        <PressableAnimado onPress={voltar} haptic="selection" hitSlop={10} style={styles.voltar} accessibilityLabel="Voltar">
+          <MaterialCommunityIcons name="chevron-left" size={26} color={cores.onSurface} />
+        </PressableAnimado>
+        <PontosProgresso total={TOTAL_TELAS} atual={tela} />
+        <View style={styles.voltar} />
+      </View>
 
       <ScrollView
         ref={scrollRef}
@@ -552,309 +410,347 @@ export default function OnboardingScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* ─── 1. SUA EMPRESA ─────────────────────────────── */}
-        {step === 0 && (
-          <AnimatedEntrance index={0}>
-            <Text style={styles.title}>Sua empresa</Text>
-            <Text style={styles.hint}>Isso aparece no cabeçalho dos seus orçamentos, recibos e no link do cliente.</Text>
+        {/* ─── 1. SEU OFÍCIO ─────────────────────────────────────────── */}
+        {tela === 1 && (
+          <Aparecer key="oficio">
+            <Text style={styles.title}>O que você faz?</Text>
+            <PorQue texto="Isso liga o catálogo, o checklist e os documentos do seu ofício. Dá para mudar depois." />
+            <View style={styles.grade} accessibilityRole="radiogroup">
+              {OFICIOS_ONBOARDING.map((o, i) => (
+                <CartaoOficio
+                  key={o.vertical}
+                  indice={i}
+                  label={o.label}
+                  icone={o.icone}
+                  ativo={vertical === o.vertical}
+                  onPress={() => { vibrar('selecao'); setVertical(o.vertical); setErroOficio(false); }}
+                />
+              ))}
+            </View>
+            {erroOficio ? <Text style={styles.fieldError}>Toque no seu ofício para seguir.</Text> : null}
+          </Aparecer>
+        )}
+
+        {/* ─── 2. VOCÊ E A BASE ──────────────────────────────────────── */}
+        {tela === 2 && (
+          <Aparecer key="base">
+            <Text style={styles.title}>Você e sua base</Text>
+            <PorQue texto="Seu nome e o WhatsApp saem no orçamento. A cidade serve para a OLLI avisar se vai chover onde você trabalha." />
 
             <View style={styles.card}>
-              <Text style={styles.segLabel}>Como você trabalha? *</Text>
+              <Text style={styles.segLabel}>Como você trabalha?</Text>
               <View style={styles.segRow} accessibilityRole="radiogroup">
                 {([
-                  { id: 'autonomo' as const, label: 'Autônomo / pessoa física', icon: 'account-hard-hat' },
+                  { id: 'autonomo' as const, label: 'Autônomo', icon: 'account-hard-hat' },
                   { id: 'empresa' as const, label: 'Empresa com CNPJ', icon: 'domain' },
                 ]).map(opcao => {
-                  const active = emp.tipoNegocio === opcao.id;
+                  const ativo = base.tipoNegocio === opcao.id;
                   return (
-                    <TouchableOpacity
+                    <PressableAnimado
                       key={opcao.id}
-                      style={[styles.segChip, active && styles.segChipActive]}
-                      onPress={() => { setField('tipoNegocio', opcao.id); clearError('tipoNegocio'); }}
+                      style={[styles.segChip, ativo && styles.segChipActive]}
+                      onPress={() => setCampo('tipoNegocio', opcao.id)}
+                      haptic="selection"
                       accessibilityRole="radio"
-                      accessibilityState={{ checked: active }}
+                      accessibilityState={{ checked: ativo }}
+                      accessibilityLabel={opcao.label}
                     >
-                      <MaterialCommunityIcons name={opcao.icon as any} size={16} color={active ? textoSobreAccent : cores.onSurfaceVariant} />
-                      <Text style={[styles.segChipText, active && styles.segChipTextActive]}>{opcao.label}</Text>
-                    </TouchableOpacity>
+                      <MaterialCommunityIcons name={opcao.icon as keyof typeof MaterialCommunityIcons.glyphMap} size={16} color={ativo ? textoSobre(cores.accentLight) : cores.onSurfaceVariant} />
+                      <Text style={[styles.segChipText, ativo && styles.segChipTextActive]}>{opcao.label}</Text>
+                    </PressableAnimado>
                   );
                 })}
               </View>
               {errors.tipoNegocio ? <Text style={styles.fieldError}>{errors.tipoNegocio}</Text> : null}
 
-              <OlliInput label="Nome do negócio" required value={emp.nome} error={errors.nome}
-                onChangeText={v => { setField('nome', v); clearError('nome'); }}
-                placeholder="Ex: Clima Frio Refrigeração" leftIcon="store" />
+              <OlliInput label="Seu nome" required value={base.nomePrestador} error={errors.nomePrestador}
+                onChangeText={v => setCampo('nomePrestador', v)} placeholder="Ex: João da Silva" leftIcon="account" />
 
-              <View style={styles.rowFields}>
-                <OlliInput label="CNPJ" required={emp.tipoNegocio === 'empresa'} mask="cnpj" value={emp.cnpj} error={errors.cnpj}
-                  onChangeText={v => { setField('cnpj', v); clearError('cnpj'); }}
-                  placeholder="00.000.000/0001-00" containerStyle={{ flex: 1, marginRight: 10 }} />
-                <OlliInput label="CPF" mask="cpf" value={emp.cpf} error={errors.cpf}
-                  onChangeText={v => { setField('cpf', v); clearError('cpf'); }}
-                  placeholder="000.000.000-00" containerStyle={{ flex: 1 }} />
-              </View>
+              {base.tipoNegocio === 'empresa' ? (
+                <>
+                  <OlliInput label="CNPJ" required mask="cnpj" value={base.cnpj} error={errors.cnpj}
+                    onChangeText={v => setCampo('cnpj', v)} placeholder="00.000.000/0001-00" leftIcon="domain" />
+                  <PressableAnimado
+                    onPress={buscarCnpj}
+                    disabled={cnpjLoading}
+                    haptic="selection"
+                    style={styles.cnpjBtn}
+                    accessibilityLabel="Preencher dados da empresa pelo CNPJ"
+                  >
+                    {cnpjLoading
+                      ? <ActivityIndicator size="small" color={cores.accentLight} />
+                      : <MaterialCommunityIcons name="magnify" size={16} color={cores.accentLight} />}
+                    <Text style={styles.cnpjBtnText}>{cnpjLoading ? 'Buscando…' : 'Preencher pelo CNPJ'}</Text>
+                  </PressableAnimado>
+                  {cnpjInfo ? <Text style={styles.hint}>{cnpjInfo}</Text> : null}
+                </>
+              ) : null}
 
-              {/* Cadastro mágico: preenche empresa + deduz a vertical pelo CNPJ. */}
-              <TouchableOpacity
-                onPress={buscarCnpj}
-                disabled={cnpjLoading}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Preencher dados da empresa pelo CNPJ"
-                style={{
-                  flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6,
-                  paddingVertical: 8, paddingHorizontal: 12, borderRadius: BorderRadius.md,
-                  backgroundColor: comAlfa(cores.accent, 0.12), marginBottom: Spacing.md,
-                }}
-              >
-                {/* accentLight, não accent: `accent` como cor de TEXTO não passa
-                    contraste no claro (é idêntico no escuro, então não muda lá). */}
-                {cnpjLoading
-                  ? <ActivityIndicator size="small" color={cores.accentLight} />
-                  : <MaterialCommunityIcons name="magnify" size={16} color={cores.accentLight} />}
-                <Text style={{ color: cores.accentLight, fontWeight: '600', fontSize: 13 }}>
-                  {cnpjLoading ? 'Buscando…' : 'Preencher pelo CNPJ'}
-                </Text>
-              </TouchableOpacity>
-              {cnpjInfo ? <Text style={styles.hint}>{cnpjInfo}</Text> : null}
+              <OlliInput
+                label={base.tipoNegocio === 'empresa' ? 'Nome da empresa' : 'Nome do negócio (opcional)'}
+                required={base.tipoNegocio === 'empresa'}
+                value={base.nomeNegocio}
+                error={errors.nomeNegocio}
+                onChangeText={v => setCampo('nomeNegocio', v)}
+                placeholder={base.tipoNegocio === 'empresa' ? 'Ex: Clima Frio Refrigeração' : 'Em branco, vale o seu nome'}
+                leftIcon="store"
+              />
 
-              <Text style={styles.segLabel}>Qual o seu segmento? *</Text>
-              <View style={styles.segRow}>
-                {SEGMENTOS.map(s => {
-                  const active = emp.segmento === s.id;
-                  return (
-                    <TouchableOpacity key={s.id} style={[styles.segChip, active && styles.segChipActive]} onPress={() => chooseSegmento(s.id)} activeOpacity={0.85}>
-                      <MaterialCommunityIcons name={s.icon as any} size={16} color={active ? textoSobreAccent : cores.onSurfaceVariant} />
-                      <Text style={[styles.segChipText, active && styles.segChipTextActive]}>{s.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              {errors.segmento ? <Text style={styles.fieldError}>{errors.segmento}</Text> : null}
+              <OlliInput label="WhatsApp" required mask="phone" value={base.whatsapp} error={errors.whatsapp}
+                onChangeText={v => setCampo('whatsapp', v)} placeholder="(11) 99999-9999" leftIcon="whatsapp" />
 
-              <OlliInput label="Especialidade" required value={emp.especialidade} error={errors.especialidade} onChangeText={v => { setField('especialidade', v); clearError('especialidade'); }} placeholder="Ex: Assistência técnica de ar condicionado" leftIcon="star-outline" />
-              <OlliInput label="Slogan" value={emp.slogan} onChangeText={v => setField('slogan', v)} placeholder="Frase da sua marca" leftIcon="format-quote-close" containerStyle={{ marginBottom: 0 }} />
-            </View>
-
-            <Assure icon="lock-outline" text="Os cadastros ficam neste aparelho e sincronizam com sua conta quando houver internet. Logo, assinatura e outras imagens podem continuar somente neste dispositivo." />
-          </AnimatedEntrance>
-        )}
-
-        {/* ─── 2. VOCÊ (PRESTADOR) ────────────────────────── */}
-        {step === 1 && (
-          <AnimatedEntrance index={0}>
-            <Text style={styles.title}>Você (prestador)</Text>
-            <Text style={styles.hint}>A Home te saúda pelo nome e o cliente fala com você por aqui.</Text>
-
-            <View style={styles.card}>
-              <OlliInput label="Seu nome (prestador)" required value={emp.nomePrestador} error={errors.nomePrestador}
-                onChangeText={v => { setField('nomePrestador', v); clearError('nomePrestador'); }}
-                placeholder="Ex: João da Silva" leftIcon="account" />
-              <OlliInput label="E-mail comercial" value={emp.email} onChangeText={v => setField('email', v)}
-                placeholder="contato@suaempresa.com.br" keyboardType="email-address" autoCapitalize="none" leftIcon="email" />
-              <OlliInput label="WhatsApp / Telefone" required mask="phone" value={emp.whatsapp} error={errors.whatsapp}
-                onChangeText={v => { setField('whatsapp', v); clearError('whatsapp'); }}
-                placeholder="(11) 99999-9999" leftIcon="whatsapp" containerStyle={{ marginBottom: 0 }} />
-            </View>
-
-            <Assure icon="shield-check-outline" text="O WhatsApp vira o botão de contato no link que você manda ao cliente." />
-          </AnimatedEntrance>
-        )}
-
-        {/* ─── 3. ENDEREÇO (com busca por CEP) ────────────── */}
-        {step === 2 && (
-          <AnimatedEntrance index={0}>
-            <Text style={styles.title}>Endereço</Text>
-            <Text style={styles.hint}>Digite o CEP que a gente preenche o resto pra você.</Text>
-
-            <View style={styles.card}>
               <OlliInput label="CEP" mask="cep" value={end.cep}
                 onChangeText={v => onCepChange(v, masked => setEnd(p => ({ ...p, cep: masked })))}
                 placeholder="00000-000" leftIcon="map-marker-radius" containerStyle={{ marginBottom: Spacing.sm }} />
-              {/* Mesmo componente das outras três telas: o spinner virou um dos
-                  seis estados, e "não existe" deixou de parecer com "não
-                  consegui" — que é a distinção pela qual todo o services/cep.ts
-                  existe. A divergência sai com botão: o CEP nunca sobrescreve
-                  cidade/UF sozinho. */}
               <AvisoCep estado={estadoCep} endereco={enderecoCep} divergencias={divergencias} onUsarDoCep={usarDoCep} />
 
-              <OlliInput label="Rua / Logradouro" value={end.rua} onChangeText={v => setEnd(p => ({ ...p, rua: v }))} placeholder="Ex: Rua das Flores" leftIcon="road-variant" />
               <View style={styles.rowFields}>
-                <OlliInput label="Número" value={end.numero} onChangeText={v => setEnd(p => ({ ...p, numero: v }))} placeholder="120" keyboardType="numeric" containerStyle={{ flex: 1, marginRight: 10 }} />
-                <OlliInput label="Complemento" value={end.complemento} onChangeText={v => setEnd(p => ({ ...p, complemento: v }))} placeholder="Apto / Sala" containerStyle={{ flex: 2 }} />
-              </View>
-              <OlliInput label="Bairro" value={end.bairro} onChangeText={v => setEnd(p => ({ ...p, bairro: v }))} placeholder="Centro" leftIcon="home-group" />
-              <View style={styles.rowFields}>
-                <OlliInput label="Cidade" required error={errors.cidade} value={emp.cidade} onChangeText={v => { setField('cidade', v); clearError('cidade'); }} placeholder="São Paulo" containerStyle={{ flex: 2, marginRight: 10, marginBottom: 0 }} />
-                <OlliInput label="UF" required error={errors.estado} value={emp.estado} onChangeText={v => { setField('estado', v.toUpperCase().slice(0, 2)); clearError('estado'); }} autoCapitalize="characters" maxLength={2} placeholder="SP" containerStyle={{ flex: 1, marginBottom: 0 }} />
+                <OlliInput label="Cidade" required error={errors.cidade} value={base.cidade}
+                  onChangeText={v => setCampo('cidade', v)} placeholder="São Paulo"
+                  containerStyle={{ flex: 2, marginRight: 10, marginBottom: 0 }} />
+                <OlliInput label="UF" required error={errors.estado} value={base.estado}
+                  onChangeText={v => setCampo('estado', v.toUpperCase().slice(0, 2))}
+                  autoCapitalize="characters" maxLength={2} placeholder="SP"
+                  containerStyle={{ flex: 1, marginBottom: 0 }} />
               </View>
             </View>
 
-            <Assure icon="information-outline" text="O endereço aparece no cabeçalho dos documentos. Tudo continua editável." />
-          </AnimatedEntrance>
+            <PorQue icone="lock-outline" texto="Ninguém vai te ligar: o WhatsApp é para o seu cliente falar com você. Logo, Pix e endereço completo você coloca depois, em Meu Negócio." />
+          </Aparecer>
         )}
 
-        {/* ─── 4. IDENTIDADE VISUAL (logo + assinatura) ───── */}
-        {step === 3 && (
-          <AnimatedEntrance index={0}>
-            <Text style={styles.title}>Identidade visual</Text>
-            <Text style={styles.hint}>Sua logo e assinatura deixam cada documento com a sua cara.</Text>
+        {/* ─── 3. SEU PRIMEIRO ORÇAMENTO ─────────────────────────────── */}
+        {tela === 3 && (
+          <Aparecer key="orcamento">
+            <Text style={styles.title}>Seu primeiro orçamento</Text>
+            <DicaDoRoteiro local="onboarding" style={{ marginBottom: Spacing.md }} />
 
             <View style={styles.card}>
-              <View style={styles.brandPickRow}>
-                <View style={styles.brandItem}>
-                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('logoUri')} disabled={!!imagemProcessando} activeOpacity={0.8}>
-                    {imagemProcessando === 'logoUri' ? <ActivityIndicator color={cores.primary} /> : emp.logoUri ? <Image source={{ uri: emp.logoUri }} style={styles.imageFull} resizeMode="contain" /> : (
-                      <><MaterialCommunityIcons name="image-plus" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Logo</Text></>
-                    )}
-                  </TouchableOpacity>
-                  <Text style={styles.brandLabel}>Logotipo</Text>
+              <View style={styles.orcTopo}>
+                <View style={styles.orcIcone}>
+                  <MaterialCommunityIcons name={(oficio?.icone ?? 'file-document-edit-outline') as keyof typeof MaterialCommunityIcons.glyphMap} size={22} color={cores.accentLight} />
                 </View>
-                <View style={styles.brandItem}>
-                  <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} disabled={!!imagemProcessando} activeOpacity={0.8}>
-                    {imagemProcessando === 'assinaturaUri' ? <ActivityIndicator color={cores.primary} /> : emp.assinaturaUri ? <Image source={{ uri: emp.assinaturaUri }} style={styles.imageFull} resizeMode="contain" /> : (
-                      <><MaterialCommunityIcons name="draw" size={28} color={cores.primaryLight} /><Text style={styles.imageHint}>Assinatura</Text></>
-                    )}
-                  </TouchableOpacity>
-                  <Text style={styles.brandLabel}>Assinatura</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.orcEyebrow}>{oficio?.label ?? 'Seu ofício'}</Text>
+                  <Text style={styles.orcTitulo}>{itensIniciais(vertical).exemplo?.titulo ?? 'Orçamento'}</Text>
                 </View>
               </View>
+
+              <OlliInput
+                label="Para quem é?"
+                value={clienteNome}
+                onChangeText={setClienteNome}
+                placeholder="Nome do cliente"
+                leftIcon="account-outline"
+                containerStyle={{ marginBottom: Spacing.sm }}
+              />
+              <PressableAnimado
+                style={styles.euMesmo}
+                haptic="selection"
+                onPress={() => setClienteNome(base.nomePrestador.trim())}
+                accessibilityLabel="Usar meu nome, para ver como o cliente recebe"
+              >
+                <MaterialCommunityIcons name="account-arrow-right-outline" size={16} color={cores.accentLight} />
+                <Text style={styles.euMesmoText}>Eu mesmo, para ver como o cliente recebe</Text>
+              </PressableAnimado>
+
+              {itens.map((item, i) => (
+                <Aparecer key={`${item.nome}-${i}`} indice={i + 1}>
+                  <View style={styles.item}>
+                    <Text style={styles.itemNome} numberOfLines={2}>{item.nome}</Text>
+                    <View style={styles.itemLinha}>
+                      <Text style={styles.itemQtd}>{`${item.quantidade} ${item.unidade} ×`}</Text>
+                      <OlliMoneyInput
+                        value={item.preco}
+                        onChangeValue={(n) => setItens(lista => lista.map((x, j) => (j === i ? { ...x, preco: n } : x)))}
+                        containerStyle={{ flex: 1, marginBottom: 0 }}
+                        accessibilityLabel={`Valor de ${item.nome}`}
+                      />
+                    </View>
+                  </View>
+                </Aparecer>
+              ))}
+
+              <View style={styles.totalLinha}>
+                <Text style={styles.totalRotulo}>Total</Text>
+                <ContadorAnimado valor={total} formato="brl" style={styles.totalValor} />
+              </View>
+              <Text style={styles.aviso}>{AVISO_EXEMPLO}</Text>
             </View>
 
-            <Assure icon="palette-outline" text="Toque em cada quadro para escolher uma imagem da galeria. Você vê a prévia aqui mesmo." />
-          </AnimatedEntrance>
-        )}
-
-        {/* ─── 5. PRIMEIRO SERVIÇO (opcional) ─────────────── */}
-        {step === 4 && (
-          <AnimatedEntrance index={0}>
-            <Text style={styles.title}>Primeiro serviço</Text>
-            <Text style={styles.hint}>Com um serviço no catálogo, você monta orçamentos em segundos. (Opcional)</Text>
-
-            <View style={styles.card}>
-              <OlliInput label="Nome do serviço" value={servNome} onChangeText={setServNome} placeholder="Ex: Limpeza de ar-condicionado split" leftIcon="wrench" />
-              <OlliMoneyInput label="Preço de venda" value={servPreco} onChangeValue={setServPreco} containerStyle={{ marginBottom: 0 }} />
-            </View>
-
-            <Assure icon="lightbulb-on-outline" text="Pode deixar em branco e cadastrar vários serviços depois, em “Serviços”." />
-
-            {/* QUEM VEIO DE OUTRO APP — em vez de digitar tudo de novo: conclui o
-                cadastro (mesma validação) e abre "Trazer meus dados". */}
-            <Text style={styles.outroAppTitulo}>Já usa outro app ou planilha?</Text>
+            <Text style={styles.outroAppTitulo}>Vem de outro app ou planilha?</Text>
             <ConviteImportar onAbrir={() => { void concluir('importar'); }} />
-          </AnimatedEntrance>
+
+            <PressableAnimado
+              style={styles.depois}
+              haptic="selection"
+              onPress={() => { void concluir('inicio'); }}
+              disabled={saving}
+              accessibilityLabel="Agora não, ir para o início"
+            >
+              <Text style={styles.depoisText}>Agora não, ir para o início</Text>
+            </PressableAnimado>
+          </Aparecer>
         )}
       </ScrollView>
 
-      {/* AÇÕES */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 18 }]}>
-        {step === 0 ? (
+        {tela === 3 ? (
+          <OlliButton
+            label="Revisar e enviar"
+            variant="gradient" size="lg" fullWidth
+            loading={saving}
+            disabled={saving || itens.length === 0}
+            onPress={() => { void concluir('orcamento'); }}
+            icon={<MaterialCommunityIcons name="send" size={20} color={gradientes.sobreBrand} />}
+          />
+        ) : (
           <OlliButton
             label="Continuar"
             variant="gradient" size="lg" fullWidth
             onPress={avancar}
             icon={<MaterialCommunityIcons name="arrow-right" size={20} color={gradientes.sobreBrand} />}
           />
-        ) : (
-          <View style={styles.footerRow}>
-            <OlliButton label="Voltar" variant="outline" size="lg" onPress={voltar} haptic={false} icon={<MaterialCommunityIcons name="chevron-left" size={18} color={cores.primary} />} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              {step === ULTIMO ? (
-                <OlliButton
-                  label={servNome.trim() ? 'Concluir e começar' : 'Concluir cadastro'}
-                  variant="gradient" size="lg" fullWidth
-                  loading={saving}
-                  disabled={saving || !!imagemProcessando}
-                  onPress={() => { void concluir('orcamento'); }}
-                  icon={<MaterialCommunityIcons name="check-circle" size={20} color={gradientes.sobreBrand} />}
-                />
-              ) : (
-                <OlliButton
-                  label="Continuar"
-                  variant="gradient" size="lg" fullWidth
-                  onPress={avancar}
-                  disabled={!!imagemProcessando}
-                  icon={<MaterialCommunityIcons name="arrow-right" size={20} color={gradientes.sobreBrand} />}
-                />
-              )}
-            </View>
-          </View>
         )}
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-/** Linha de tranquilização (ícone + texto) reutilizada em todas as etapas. */
-function Assure({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }) {
+/** A linha de "por quê" de cada tela (ícone + frase curta). */
+function PorQue({ texto, icone = 'information-outline' }: { texto: string; icone?: keyof typeof MaterialCommunityIcons.glyphMap }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   return (
-    <View style={styles.assure}>
-      <MaterialCommunityIcons name={icon} size={15} color={cores.accentLight} />
-      <Text style={styles.assureText}>{text}</Text>
+    <View style={styles.porQue}>
+      <MaterialCommunityIcons name={icone} size={15} color={cores.accentLight} />
+      <Text style={styles.porQueText}>{texto}</Text>
     </View>
   );
 }
 
-/** Tela de boas-vindas (protótipo 04): a OLLI se apresenta antes do cadastro. */
-function BoasVindas({ onStart, insets }: {
-  onStart: () => void;
-  insets: { top: number; bottom: number };
+/** Cartão grande de ofício: toque com escala (PressableAnimado) e o check entra com mola. */
+function CartaoOficio({ label, icone, ativo, onPress, indice }: {
+  label: string; icone: string; ativo: boolean; onPress: () => void; indice: number;
 }) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const reduzir = useReduzirMovimento();
+  const marca = useSharedValue(ativo ? 1 : 0);
+  useEffect(() => {
+    marca.set(reduzir ? (ativo ? 1 : 0) : withSpring(ativo ? 1 : 0, MOLA.snappy));
+  }, [ativo, reduzir, marca]);
+  const estiloCheck = useAnimatedStyle(() => ({ opacity: marca.get(), transform: [{ scale: 0.6 + marca.get() * 0.4 }] }));
+  return (
+    <Aparecer indice={indice} style={styles.oficioCelula}>
+      <PressableAnimado
+        onPress={onPress}
+        style={[styles.oficio, ativo && styles.oficioAtivo]}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: ativo }}
+        accessibilityLabel={label}
+      >
+        <View style={[styles.oficioIcone, ativo && { backgroundColor: cores.accentLight }]}>
+          <MaterialCommunityIcons
+            name={icone as keyof typeof MaterialCommunityIcons.glyphMap}
+            size={28}
+            color={ativo ? textoSobre(cores.accentLight) : cores.accentLight}
+          />
+        </View>
+        <Text style={[styles.oficioLabel, ativo && { color: cores.onSurface }]} numberOfLines={2}>{label}</Text>
+        <Animated.View style={[styles.oficioCheck, estiloCheck]}>
+          <MaterialCommunityIcons name="check-circle" size={20} color={cores.accentLight} />
+        </Animated.View>
+      </PressableAnimado>
+    </Aparecer>
+  );
+}
+
+/** Progresso em pontos: o atual cresce (escala) e acende; só transform/opacity. */
+function PontosProgresso({ total, atual }: { total: number; atual: number }) {
+  const styles = useEstilos(criarEstilos);
+  return (
+    <View style={styles.pontos} accessibilityRole="progressbar" accessibilityLabel={`Passo ${atual + 1} de ${total}`}>
+      {NOMES_TELAS.slice(0, total).map((nome, i) => <Ponto key={nome} ativo={i === atual} feito={i < atual} />)}
+    </View>
+  );
+}
+
+function Ponto({ ativo, feito }: { ativo: boolean; feito: boolean }) {
+  const styles = useEstilos(criarEstilos);
+  const reduzir = useReduzirMovimento();
+  const v = useSharedValue(ativo ? 1 : 0);
+  useEffect(() => {
+    v.set(reduzir ? (ativo ? 1 : 0) : withTiming(ativo ? 1 : 0, { duration: DURACAO.base, easing: curvas.standard }));
+  }, [ativo, reduzir, v]);
+  const estilo = useAnimatedStyle(() => ({ opacity: 0.35 + v.get() * 0.65, transform: [{ scaleX: 1 + v.get() * 1.6 }] }));
+  return <Animated.View style={[styles.ponto, (ativo || feito) && styles.pontoAceso, estilo]} />;
+}
+
+/** Tela 0: a OLLI se apresenta (o mascote entra com mola; Aparecer escalona as linhas). */
+function Ola({ onStart, insets }: { onStart: () => void; insets: { top: number; bottom: number } }) {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
+  const reduzir = useReduzirMovimento();
+  const entrada = useSharedValue(reduzir ? 1 : 0);
+  useEffect(() => {
+    if (!reduzir) entrada.set(withSpring(1, MOLA.gentle));
+  }, [reduzir, entrada]);
+  const estiloMascote = useAnimatedStyle(() => ({
+    opacity: entrada.get(),
+    transform: [{ scale: 0.7 + entrada.get() * 0.3 }, { rotate: `${(1 - entrada.get()) * -12}deg` }],
+  }));
+  const secundario = sobreSecundario(gradientes.sobrePrimary, gradientes.primary);
   return (
     <LinearGradient colors={gradientes.primary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.wcRoot}>
-      {/* Aurora animado atras da tela de boas-vindas — mesma linguagem do login.
-          Intensidade baixa: o subtitulo secundario ja e medido em 4.5:1 aqui. */}
-      <AuroraBackground
-        cores={[cores.accent, cores.accentLight, cores.primaryLight, cores.accent]}
-        intensidade={0.13}
-      />
+      <AuroraBackground cores={[cores.accent, cores.accentLight, cores.primaryLight, cores.accent]} intensidade={0.13} />
       <View style={{ height: insets.top + 10 }} />
       <View style={styles.wcCenter}>
-        <OlliMascot size={104} onDark />
-        <Text style={[styles.wcHi, { color: gradientes.sobrePrimary }]}>Olá! Eu sou a OLLI 👋</Text>
-        {/* Subtítulo SECUNDÁRIO sobre gradientes.primary: sobreSecundario mantém 4.5:1 nas
-            duas pontas. O 'rgba(255,255,255,0.82)' cravado media 3.90:1 na ponta clara (#0B6FCE). */}
-        <Text style={[styles.wcSub, { color: sobreSecundario(gradientes.sobrePrimary, gradientes.primary) }]}>O sistema completo pra quem presta serviço técnico: você monta o orçamento, o cliente aprova pelo próprio celular e você organiza a execução em campo até fechar com o recibo.</Text>
+        <Animated.View style={estiloMascote}>
+          <OlliMascot size={104} onDark />
+        </Animated.View>
+        <Aparecer indice={1}>
+          <Text style={[styles.wcHi, { color: gradientes.sobrePrimary }]}>Olá! Eu sou a OLLI</Text>
+        </Aparecer>
+        <Aparecer indice={2}>
+          <Text style={[styles.wcSub, { color: secundario }]}>
+            Em 3 passos seu primeiro orçamento fica pronto para mandar ao cliente.
+          </Text>
+        </Aparecer>
         <View style={styles.wcFeatures}>
-          <WcFeature icon="file-document-edit-outline" text="Orçamento pronto em minutos — dá até pra ditar por voz" />
-          <WcFeature icon="link-variant" text="O cliente aprova ou recusa pelo link, sem instalar nada" />
-          <WcFeature icon="toolbox-outline" text="Ordens de serviço e equipe organizadas em campo" />
-          <WcFeature icon="wifi-off" text="Cadastros já baixados funcionam offline; links, IA e sincronização precisam de internet" />
+          <WcFeature indice={3} icon="file-document-edit-outline" text="Os itens do seu ofício já vêm prontos" />
+          <WcFeature indice={4} icon="link-variant" text="O cliente aprova pelo link, sem instalar nada" />
+          <WcFeature indice={5} icon="database-import-outline" text="Vem de outro app? No final você traz seus dados" />
         </View>
       </View>
       <View style={[styles.wcFooter, { paddingBottom: insets.bottom + 18 }]}>
-        <TouchableOpacity style={styles.wcStart} onPress={onStart} activeOpacity={0.9} accessibilityRole="button">
+        <PressableAnimado style={styles.wcStart} onPress={onStart} haptic="selection" accessibilityLabel="Começar">
           <Text style={styles.wcStartText}>Começar</Text>
           <MaterialCommunityIcons name="arrow-right" size={20} color={cores.primaryDark} />
-        </TouchableOpacity>
+        </PressableAnimado>
       </View>
     </LinearGradient>
   );
 }
 
-function WcFeature({ icon, text }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string }) {
+function WcFeature({ icon, text, indice }: { icon: keyof typeof MaterialCommunityIcons.glyphMap; text: string; indice: number }) {
   const cores = useCores();
   const gradientes = useGradientes();
   const styles = useEstilos(criarEstilos);
   return (
-    <View style={styles.wcFeat}>
-      <View style={styles.wcFeatIcon}>
-        {/* Sobre gradientes.primary (marca, escuro e fixo nos dois modos): o ciano
-            BRILHANTE (accent) é a cor certa. No escuro accent === accentLight: no-op. */}
-        <MaterialCommunityIcons
-          name={icon}
-          size={18}
-          color={cores.accent} // contraste-ok: gradientes.primary #0B6FCE→#042646 (marca, escuro e fixo nos dois modos) — accentLight cairia a 1.03:1 na ponta mais clara (2.45:1)
-        />
+    <Aparecer indice={indice}>
+      <View style={styles.wcFeat}>
+        <View style={styles.wcFeatIcon}>
+          <MaterialCommunityIcons
+            name={icon}
+            size={18}
+            color={cores.accent} // contraste-ok: gradientes.primary #0B6FCE→#042646 (marca, escuro e fixo nos dois modos) — accentLight cairia a 1.03:1 na ponta mais clara (2.45:1)
+          />
+        </View>
+        <Text style={[styles.wcFeatText, { color: gradientes.sobrePrimary }]}>{text}</Text>
       </View>
-      <Text style={[styles.wcFeatText, { color: gradientes.sobrePrimary }]}>{text}</Text>
-    </View>
+    </Aparecer>
   );
 }
 
@@ -866,70 +762,75 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   verificationTitle: { color: c.onSurface, fontSize: 21, fontWeight: '800', textAlign: 'center', marginTop: Spacing.base },
   verificationText: { color: c.onSurfaceVariant, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: Spacing.sm, marginBottom: Spacing.lg },
 
-  // Boas-vindas (protótipo 04) — vive inteira sobre gradientes.primary
-  // (sempre colorido, nos dois modos), por isso texto/glass ficam fixos aqui,
-  // como no GradientHeader.
+  // Tela 0 — vive inteira sobre gradientes.primary (colorido nos dois modos).
   wcRoot: { flex: 1, overflow: 'hidden' },
   wcCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
-  // Cor de texto aplicada inline no ponto de uso (gradientes.sobrePrimary) — StyleSheet
-  // de escopo de módulo não enxerga o tema.
-  wcHi: { fontSize: 26, fontWeight: '800', marginTop: 22, textAlign: 'center', letterSpacing: 0 },
-  // Cor aplicada inline no ponto de uso (sobreSecundario sobre gradientes.primary) —
-  // StyleSheet de escopo de módulo não enxerga o tema. Era 'rgba(255,255,255,0.82)' (3.90:1).
-  wcSub: { fontSize: 15, textAlign: 'center', marginTop: 10, lineHeight: 22 },
+  wcHi: { fontSize: 28, fontWeight: '800', marginTop: 22, textAlign: 'center', letterSpacing: 0 },
+  wcSub: { fontSize: 16, textAlign: 'center', marginTop: 10, lineHeight: 23 },
   wcFeatures: { alignSelf: 'stretch', marginTop: 28, gap: 12 },
-  // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema
-  // (o branco translúcido do glass em si continua fixo, é o próprio efeito).
   wcFeat: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.25), borderRadius: BorderRadius.md, padding: 12 },
   wcFeatIcon: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.14), justifyContent: 'center', alignItems: 'center' },
-  // Idem: cor aplicada inline (gradientes.sobrePrimary) em WcFeature.
   wcFeatText: { flex: 1, fontSize: 14, fontWeight: '600' },
   wcFooter: { paddingHorizontal: Spacing.base, paddingTop: 12 },
   wcStart: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: c.accentLight, borderRadius: 16, paddingVertical: 16, ...sombrasDe(c).glowCyan },
   wcStartText: { fontSize: 16, fontWeight: '800', color: c.primaryDark },
-  header: { paddingHorizontal: Spacing.base, paddingBottom: Spacing.base },
-  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  brandRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 },
-  // Idem: cor aplicada inline (gradientes.sobreHeader) no ponto de uso.
-  brand: { fontSize: 18, fontWeight: '800' },
-  // Cor aplicada inline no ponto de uso (sobreSecundario sobre gradientes.header) —
-  // era 'rgba(255,255,255,0.78)', que media 3.67:1 na ponta clara no modo claro.
-  brandSub: { fontSize: 12.5, marginTop: 2 },
-  // Cor aplicada inline (gradientes.sobreHeader) no ponto de uso — mesmo padrão de
-  // `brand`. Era c.accentLight, que no claro escurece e some sobre o header (1.03:1).
-  skip: { fontSize: 14, fontWeight: '700' },
 
-  // Era '#fff' fixo, mas este título fica sobre o fundo da PÁGINA (c.background),
-  // não sobre o header em gradiente — no claro (padrão do app) ficava ilegível.
-  title: { fontSize: 22, fontWeight: '800', color: c.onSurface, letterSpacing: 0, marginTop: Spacing.sm },
-  hint: { fontSize: 13.5, color: c.onSurfaceVariant, marginTop: 4, marginBottom: Spacing.lg, lineHeight: 19 },
+  topo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.sm, paddingBottom: 8 },
+  voltar: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  pontos: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  ponto: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.outline },
+  pontoAceso: { backgroundColor: c.accentLight },
+
+  title: { ...Typography.h1, color: c.onSurface, marginTop: Spacing.sm },
+  hint: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 4, marginBottom: Spacing.md, lineHeight: 18 },
+  porQue: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: Spacing.sm, marginBottom: Spacing.lg, paddingHorizontal: 2 },
+  porQueText: { flex: 1, fontSize: 13.5, color: c.onSurfaceVariant, lineHeight: 19 },
+
+  grade: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
+  oficioCelula: { width: '50%', padding: 6 },
+  oficio: {
+    minHeight: 112, borderRadius: BorderRadius.lg, borderWidth: 1.5, borderColor: c.outline,
+    backgroundColor: c.surface, padding: Spacing.md, justifyContent: 'space-between', ...sombrasDe(c).sm,
+  },
+  oficioAtivo: { borderColor: c.accentLight, backgroundColor: comAlfa(c.accentLight, 0.08) },
+  oficioIcone: { width: 48, height: 48, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center', backgroundColor: comAlfa(c.accentLight, 0.12) },
+  oficioLabel: { fontSize: 15, fontWeight: '700', color: c.onSurfaceVariant, marginTop: Spacing.sm },
+  oficioCheck: { position: 'absolute', top: 10, right: 10 },
 
   card: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, ...sombrasDe(c).sm },
-
   rowFields: { flexDirection: 'row' },
-
   segLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginBottom: 8 },
   segRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.base },
-  segChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
+  segChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline, backgroundColor: c.surfaceVariant },
   segChipActive: { backgroundColor: c.accentLight, borderColor: c.accentLight },
-  segChipText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
-  // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
+  segChipText: { fontSize: 13.5, fontWeight: '700', color: c.onSurfaceVariant },
   segChipTextActive: { color: textoSobre(c.accentLight) },
-  fieldError: { color: c.danger, fontSize: 12, fontWeight: '600', marginTop: -8, marginBottom: Spacing.md },
+  fieldError: { color: c.danger, fontSize: 12.5, fontWeight: '600', marginTop: 4, marginBottom: Spacing.md },
+  cnpjBtn: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12, borderRadius: BorderRadius.md,
+    backgroundColor: comAlfa(c.accent, 0.12), marginBottom: Spacing.md, marginTop: -4,
+  },
+  cnpjBtnText: { color: c.accentLight, fontWeight: '700', fontSize: 13 },
 
-  // (o spinner e o texto único do CEP viraram estados do <AvisoCep>)
+  orcTopo: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: Spacing.base },
+  orcIcone: { width: 44, height: 44, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center', backgroundColor: comAlfa(c.accentLight, 0.12) },
+  orcEyebrow: { ...Typography.label, color: c.accentLight, textTransform: 'uppercase' },
+  orcTitulo: { ...Typography.h3, color: c.onSurface, marginTop: 2 },
+  euMesmo: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 6, marginBottom: Spacing.md },
+  euMesmoText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
+  item: { paddingVertical: Spacing.sm, borderTopWidth: 1, borderTopColor: c.outline },
+  itemNome: { fontSize: 14, fontWeight: '700', color: c.onSurface, marginBottom: 6 },
+  itemLinha: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  itemQtd: { fontSize: 13, color: c.onSurfaceVariant, minWidth: 64 },
+  totalLinha: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: c.outline, paddingTop: Spacing.md, marginTop: Spacing.sm },
+  totalRotulo: { ...Typography.h4, color: c.onSurfaceVariant },
+  totalValor: { ...Typography.value, color: c.onSurface },
+  aviso: { fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17, marginTop: Spacing.sm },
 
-  brandPickRow: { flexDirection: 'row', justifyContent: 'center', gap: 24 },
-  brandItem: { alignItems: 'center' },
-  imageBox: { width: 130, height: 96, borderRadius: BorderRadius.md, borderWidth: 1.5, borderColor: c.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', backgroundColor: c.primaryContainer },
-  imageFull: { width: '100%', height: '100%' },
-  imageHint: { fontSize: 11, color: c.primaryLight, fontWeight: '600', marginTop: 2 },
-  brandLabel: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 6, fontWeight: '600' },
-
-  assure: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: Spacing.base, paddingHorizontal: 4 },
   outroAppTitulo: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, marginTop: Spacing.xl, marginBottom: Spacing.sm },
-  assureText: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
+  depois: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: Spacing.base },
+  depoisText: { fontSize: 14, fontWeight: '700', color: c.onSurfaceVariant },
 
   footer: { paddingHorizontal: Spacing.base, paddingTop: 12, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
-  footerRow: { flexDirection: 'row', alignItems: 'center' },
 });
