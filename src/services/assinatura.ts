@@ -1,5 +1,5 @@
 import { Linking } from 'react-native';
-import { supabase, getCurrentUser } from './supabase';
+import { supabase, getCurrentUser, usuarioDaSessaoLocal } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA } from '../config/loja';
 import { getPlanoCacheado, type PlanoId } from './planos';
@@ -251,7 +251,12 @@ export async function getAssinaturaNaPlay(): Promise<AssinaturaNaPlay> {
   try {
     // Sessão LOCAL (sem rede): offline, getUser() voltava null e virava "não é da Play".
     const user = await getCurrentUser();
-    if (!user) return { estado: 'ok', produto: null };
+    if (!user) {
+      // Sem token AGORA mas com sessão guardada (renovação em espera): "não sei",
+      // nunca "não é da Play" — senão a tela esconde o card da assinatura da Play.
+      const guardada = await usuarioDaSessaoLocal().catch(() => null);
+      return guardada ? { estado: 'indisponivel' } : { estado: 'ok', produto: null };
+    }
     return await lerProdutoPlay(user.id);
   } catch {
     return { estado: 'indisponivel' };

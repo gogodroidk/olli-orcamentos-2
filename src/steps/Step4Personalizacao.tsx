@@ -22,6 +22,7 @@ import { getDepoimentos } from '../database/database';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { exigirCadastroParaEnviar } from '../services/exigirCadastro';
 
 interface Props {
   orc: Orcamento;
@@ -231,6 +232,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa, onAjustarD
         empresa={empresa ?? null}
         depoimentos={depoimentos}
         removerMarca={removerMarca}
+        antesDeExportar={() => exigirCadastroParaEnviar('orcamento')}
       />
     </ScrollView>
   );

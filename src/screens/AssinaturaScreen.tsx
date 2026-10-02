@@ -441,7 +441,7 @@ export default function AssinaturaScreen() {
                         <LinhaDetalhe
                           icon="credit-card-outline"
                           label="Método de pagamento"
-                          valor={rotuloMetodo(resumo, metodo && metodo.last4 ? `${nomeBandeira(metodo.brand)} •••• ${metodo.last4}` : null)}
+                          valor={rotuloMetodo(resumo, metodo && metodo.last4 ? `${nomeBandeira(metodo.brand)} •••• ${metodo.last4}` : null, { ios: Platform.OS === 'ios', semCompraExterna: BUILD_PLAY_SEM_COMPRA_EXTERNA })}
                           semDivisor
                         />
                       </>
@@ -488,7 +488,18 @@ export default function AssinaturaScreen() {
                     própria Play Store (é a loja gerenciando a compra que ela fez,
                     não um link-out de pagamento). Só aparece com a leitura 'ok' —
                     'indisponivel' não vira "não é da Play" nem esconde o resto. */}
-                {produtoPlay ? (
+                {produtoPlay && Platform.OS === 'ios' ? (
+                  // iPhone (App Store 2.3.10): nada de citar outra loja — só o fato
+                  // de que a assinatura é gerenciada onde foi feita.
+                  <AnimatedEntrance index={3}>
+                    <View style={[styles.card, { marginTop: Spacing.base }]}>
+                      <Text style={styles.cardTitle}>Assinatura feita em outro aparelho</Text>
+                      <Text style={styles.gerenciarHint}>
+                        Sua assinatura é gerenciada no aparelho em que foi feita.
+                      </Text>
+                    </View>
+                  </AnimatedEntrance>
+                ) : produtoPlay ? (
                   <AnimatedEntrance index={3}>
                     <View style={[styles.card, { marginTop: Spacing.base }]}>
                       <Text style={styles.cardTitle}>Assinatura pela Google Play</Text>

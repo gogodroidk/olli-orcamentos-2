@@ -249,7 +249,27 @@ console.log('\n11) Serviço Android (origem): desliga antes de tocar a loja; ser
   checar('importa o expo-iap (Play Billing direto)', /from 'expo-iap';/.test(android), true);
   checar('binário: módulo nativo ExpoIap exigido', android.includes("requireOptionalNativeModule('ExpoIap') != null"), true);
   checar('Expo Go detectado pela API do SDK 57 (isRunningInExpoGo)', android.includes("import { isRunningInExpoGo, requireOptionalNativeModule } from 'expo';"), true);
-  checar('servidor desligado → indisponivel (carregar, comprar, restaurar)', (android.match(/if \(cfg === 'desligada'\) return \{ estado: 'indisponivel' \};/g) ?? []).length, 3);
+  checar('servidor desligado → indisponivel (carregar e comprar: a VITRINE)', (android.match(/if \(cfg === 'desligada'\) return \{ estado: 'indisponivel' \};/g) ?? []).length, 2);
+  {
+    // Kill switch é só da vitrine: compra JÁ PAGA ainda é registrada (senão a Play estorna).
+    const i = android.indexOf('export async function restaurarComprasPlay(');
+    const corpo = android.slice(i, android.indexOf('\n}\n', i));
+    checar('restaurar com a venda desligada AINDA verifica as compras (indisponivel só sem nada a restaurar)', [
+      corpo.indexOf('verificarEFinalizar(') >= 0,
+      corpo.includes("if (cfg === 'desligada' && compras.length === 0) return { estado: 'indisponivel' };"),
+      corpo.indexOf("cfg === 'desligada'") > corpo.indexOf('verificarEFinalizar('),
+    ], [true, true, true]);
+    const j = android.indexOf('async function sincronizarComprasPlay(');
+    const sync = android.slice(j, android.indexOf('\n}\n', j));
+    checar('sincronização só para em "não sei" (erro), não com a venda desligada', [
+      sync.includes("if ((await lerConfigServidor()) === 'erro') return;"),
+      sync.includes("!== 'ligada'"),
+    ], [true, false]);
+    checar('sessão guardada sem token = "incerto", nunca "sem login"', [
+      android.includes("async function contaAtual(): Promise<Conta | 'sem_login' | 'incerto'>"),
+      android.includes("(await usuarioDaSessaoLocal().catch(() => null)) ? 'incerto' : 'sem_login'"),
+    ], [true, true]);
+  }
   checar('a compra leva obfuscatedAccountId = hash da conta', android.includes('obfuscatedAccountId: conta.hash,'), true);
   checar('hash = SHA-256 do user.id (expo-crypto)', android.includes('Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, userId)'), true);
   checar('oferta com o token que a LOJA devolveu', android.includes('subscriptionOffers: [{ sku, offerToken: pacote.offerToken }],'), true);
@@ -287,6 +307,8 @@ console.log('\n11) Serviço Android (origem): desliga antes de tocar a loja; ser
   checar('cliente chama só /play/config e /play/verificar', [...worker.matchAll(/\/play\/[a-z]+/g)].map((m) => m[0]).filter((v, i, a) => a.indexOf(v) === i), ['/play/config', '/play/verificar']);
   checar('/play/verificar com o JWT do Supabase', worker.includes('Authorization: `Bearer ${token}`'), true);
   checar('corpo do contrato montado por corpoVerificacaoPlay (formato único)', worker.includes('body: JSON.stringify(corpoVerificacaoPlay(compra)),'), true);
+  checar('/play/verificar espera o pior caminho do worker (45 s)', worker.includes('const TIMEOUT_VERIFICAR_MS = 45 * 1000;') && worker.includes('}, TIMEOUT_VERIFICAR_MS);'), true);
+  checar('sem token com sessão guardada → erro ("estamos confirmando"), não sem_login', worker.includes("return guardada ? { estado: 'erro' } : { estado: 'sem_login' };"), true);
 }
 
 console.log('\n12) `expo-iap` só no arquivo dono; nada de RevenueCat; segredos da Play fora do cliente');
@@ -323,16 +345,27 @@ console.log('\n13) Telas: DESLIGADO = NADA SE VENDE; no Android nunca o preço d
   // Abas e rodapé seguem a última resposta CONHECIDA (não piscam no "carregando").
   checar('abas mensal/anual no Android só com a venda confirmada', planos.includes('BUILD_PLAY_SEM_COMPRA_EXTERNA && molduraPlay !== true ? null : ('), true);
   checar('a moldura só muda com a resposta do servidor', planos.includes('setMolduraPlay(vendaPlayVisivel(resultado.estado));'), true);
-  checar('"Restaurar" e "Gerenciar na Google Play" só com a venda confirmada', [
+  checar('"Restaurar" e "Gerenciar na Google Play" com a venda confirmada', [
     planos.includes('{molduraPlay === true ? (\n          <View style={styles.playRodape}>'),
     planos.includes('<Text style={styles.ctaSecundarioText}>Gerenciar na Google Play</Text>'),
     planos.includes('Restaurar compras da Google Play'),
   ], [true, true, true]);
+  checar('venda DESLIGADA no servidor: "Restaurar" continua (compra já paga se registra)', [
+    planos.includes('const restaurarSemVenda = VENDA_PELA_PLAY && molduraPlay === false;'),
+    planos.includes(') : restaurarSemVenda ? ('),
+  ], [true, true]);
   {
     const i = planos.indexOf('function assinarPelaPlay(');
     const corpo = planos.slice(i, planos.indexOf('async function concluirAssinaturaPlay(', i));
     checar('assinarPelaPlay: guarda do binário', corpo.includes('if (!VENDA_PELA_PLAY) return;'), true);
-    checar('assinarPelaPlay: quem já paga (Stripe/Pix/Play) não recebe oferta', corpo.includes('if (ehPagante) return;'), true);
+    checar('assinarPelaPlay: quem já paga por Stripe/Pix/concessão não recebe oferta (só a TROCA de quem assina pela Play)', [
+      corpo.includes('if (ehPagante && !trocaPelaPlay) return;'),
+      corpo.includes('if (ehPagante && oferta.produtoId === idProdutoAtualPlay) return;'),
+    ], [true, true]);
+    checar('troca pela Play: só com produto da Play ATUAL lido do servidor e venda confirmada',
+      planos.includes("const trocaPelaPlay = VENDA_PELA_PLAY && ehPagante && molduraPlay === true && !!produtoPlayAtual?.periodoConhecido;"), true);
+    checar('troca pela Play: termos + aviso de crédito proporcional antes de comprar',
+      corpo.includes('`${termosAssinaturaPlay(p.nome, oferta)} ${TEXTO_TROCA_PLAY}`'), true);
     checar('assinarPelaPlay: termos ANTES da compra', corpo.indexOf('termosAssinaturaPlay(p.nome, oferta)') >= 0 && corpo.indexOf('termosAssinaturaPlay(p.nome, oferta)') < corpo.indexOf('concluirAssinaturaPlay(p, oferta)'), true);
   }
   {

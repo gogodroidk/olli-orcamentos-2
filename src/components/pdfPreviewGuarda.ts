@@ -16,11 +16,13 @@
 export const ORIGENS_DA_PREVIA: string[] = ['*'];
 
 /**
- * Única carga que o WebView da prévia aceita: o próprio documento (`about:blank` /
- * `data:` do `source.html`). Qualquer link, redirecionamento ou iframe com outro
- * destino é bloqueado.
+ * Única carga que o WebView da prévia aceita: o próprio documento, carregado como
+ * `about:blank` (`source={{ html, baseUrl: 'about:blank' }}` no PdfPreviewModal).
+ * Qualquer link, redirecionamento ou iframe com outro destino é bloqueado — inclusive
+ * `data:text/html`, que levaria a um HTML arbitrário dentro do app (ex.: uma página
+ * falsa de login) se algum campo escapasse do escape.
  */
 export function permitirCargaDaPrevia(req: { url?: string }): boolean {
   const url = (req?.url ?? '').trim().toLowerCase();
-  return url === 'about:blank' || url.startsWith('data:text/html');
+  return url === 'about:blank';
 }

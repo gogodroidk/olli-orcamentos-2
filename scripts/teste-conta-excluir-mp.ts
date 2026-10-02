@@ -370,8 +370,8 @@ arquivos.set('olli-documentos', new Set([`${USER}/pdf/o.pdf`, `${USER}/anexo/com
 {
   const r = await excluir();
   checar('ok', r.body.ok, true);
-  checar('ordem: arquivos (3 buckets) → feedback → usuário', ordemExclusao,
-    ['arquivos:olli-fotos', 'arquivos:olli-logos', 'arquivos:olli-documentos', 'feedback', 'usuario']);
+  checar('ordem: feedback → arquivos (3 buckets) → usuário', ordemExclusao,
+    ['feedback', 'arquivos:olli-fotos', 'arquivos:olli-logos', 'arquivos:olli-documentos', 'usuario']);
   checar('nada do prefixo da conta sobrou', [...arquivos.values()].flatMap((c) => [...c]).filter((c) => c.startsWith(`${USER}/`)), []);
   checar('arquivo de OUTRO dono intacto', arquivos.get('olli-fotos')?.has('outro-dono/foto_servico/c.jpg'), true);
 }

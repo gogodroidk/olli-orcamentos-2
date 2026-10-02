@@ -213,7 +213,7 @@ export const PRIVACIDADE: LegalDoc = {
           'e PDFs, em depósito privado) na nuvem, com isolamento por usuário ' +
           '(Row Level Security), de forma que cada conta só enxerga os próprios dados.',
         'Google — login com o Google ("Continuar com o Google"), quando você escolhe essa opção: ' +
-          'o Google confirma a sua identidade e nos informa o nome e o e-mail da conta. ' +
+          'o Google confirma a sua identidade e nos informa o nome, o e-mail e a foto do perfil da conta. ' +
           'O Google trata esse login conforme a própria política de privacidade.',
         'Google Play — no aplicativo Android, cobrança e gestão das assinaturas dos planos pagos ' +
           '(processador de pagamento da loja), quando essa opção estiver disponível. A Google ' +

@@ -22,7 +22,8 @@
  * trilha append-only. Só depois disso o Worker usa SERVICE_ROLE, nunca o browser.
  */
 
-import { getAssinatura, cancelarAssinaturaStripe } from './conta.js';
+import { apagarArquivosDoUsuario, cancelarAssinaturaStripe, excluirFeedbackDoUsuario, getAssinatura } from './conta.js';
+import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
 import {
@@ -552,9 +553,29 @@ async function deleteUser(env, id, actor, body = {}) {
     const r = await cancelarAssinaturaStripe(env, assinatura.stripe_subscription_id);
     if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
   }
+  // Mercado Pago (assinatura recorrente no cartão, preapproval): mesma regra e as
+  // MESMAS funções de /conta/excluir. Sem isto, quem pede a exclusão pelo WhatsApp
+  // (canal da página /excluir-conta) continuava sendo cobrado pelo MP.
+  const preapproval = await lerPreapprovalGravado(env, id);
+  if (preapproval.error) return json({ ok: false, erro: 'assinatura_indeterminada' }, 502); // não sei ≠ não tem
+  if (preapproval.ausente) {
+    console.error('[olli-admin] mp_preapproval_id indisponível (migration 20260728?) — excluindo sem checar o MP:', id);
+  } else if (preapproval.id) {
+    const r = await cancelarPreapprovalMp(env, preapproval.id);
+    if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
+  }
   // Google Play: mesma regra e a MESMA função da exclusão pelo app (play.js).
   const play = await cancelarPlayDoUsuario(env, id);
   if (play !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
+
+  // Dados sem CASCADE, na MESMA ordem de /conta/excluir: o feedback (reversível
+  // de pedir de novo) antes; os arquivos do Storage (fotos, logos, PDFs — o
+  // cascade não os alcança) por último, logo antes do usuário. Qualquer falha =
+  // 502 e a conta fica, para nova tentativa. Sem isto a exclusão pelo painel
+  // deixava os arquivos órfãos para sempre — contra a página de exclusão e a
+  // seção Segurança dos dados da Play.
+  if (!(await excluirFeedbackDoUsuario(env, id))) return json({ ok: false, erro: 'falha_exclusao' }, 502);
+  if (!(await apagarArquivosDoUsuario(env, id))) return json({ ok: false, erro: 'falha_exclusao' }, 502);
 
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', headers: svc(env) });

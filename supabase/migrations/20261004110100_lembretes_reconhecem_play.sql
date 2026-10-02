@@ -244,7 +244,9 @@ declare
     new.revenuecat_transacao_id is not null
     and new.revenuecat_vigencia_ate is not null
     and new.current_period_end is not null
-    and new.revenuecat_vigencia_ate >= new.current_period_end - interval '1 minute';
+    -- Folga = a de renovação do worker (FOLGA_RENOVACAO_MS, 2 h) + 1 min de relógio:
+    -- assinatura ativa que renova grava o acesso até expiryTime + 2 h.
+    and new.revenuecat_vigencia_ate >= new.current_period_end - interval '2 hours 1 minute';
 begin
   if new.status = 'active' and new.plano in ('pro', 'empresa')
      and not public.funil_assinatura_ficticia(new.stripe_subscription_id, new.stripe_customer_id)

@@ -44,7 +44,7 @@ import {
   type PurchaseAndroid,
 } from 'expo-iap';
 import { ANDROID_PACKAGE } from '../config';
-import { supabase } from './supabase';
+import { supabase, usuarioDaSessaoLocal } from './supabase';
 import { consultarConfigPlay, verificarCompraPlay } from './playBillingWorker';
 import {
   ASSINATURA_PLAY_POR_PLANO,
@@ -119,6 +119,9 @@ export function vendaPlayConfirmada(): boolean {
 const MENSAGEM_CONFIG_INCERTA =
   'Não deu para confirmar a assinatura pela Google Play agora. Verifique sua internet e tente novamente.';
 
+const MENSAGEM_SESSAO_INCERTA =
+  'Não deu para confirmar sua conta OLLI agora. Verifique sua internet e tente novamente em instantes.';
+
 const MENSAGEM_SUSPENSA =
   'Sua assinatura da Google Play está suspensa por falha no pagamento. Resolva em “Gerenciar na Google Play”; o plano volta assim que a Play confirmar.';
 
@@ -126,12 +129,26 @@ const MENSAGEM_SUSPENSA =
 
 let hashCache: { userId: string; hash: string } | null = null;
 
-/** Usuário logado e o `obfuscatedAccountId` dele (SHA-256 hex do id). null = sem sessão. */
-async function contaAtual(): Promise<{ userId: string; hash: string } | null> {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
-  const userId = data.session?.user?.id ?? null;
-  if (!userId) return null;
+type Conta = { userId: string; hash: string };
+
+/**
+ * Usuário logado e o `obfuscatedAccountId` dele (SHA-256 hex do id). 3 estados:
+ *  - a conta;
+ *  - 'sem_login' — não há sessão GUARDADA no aparelho (deslogado de verdade);
+ *  - 'incerto'   — há sessão guardada, mas sem token válido AGORA (renovação em
+ *    espera depois de um 429/5xx, relógio errado): "não sei", nunca "sem login"
+ *    (ver services/refreshResiliente.ts, "LIMITE CONHECIDO").
+ */
+async function contaAtual(): Promise<Conta | 'sem_login' | 'incerto'> {
+  if (!supabase) return 'sem_login';
+  let userId: string | null = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    userId = data.session?.user?.id ?? null;
+  } catch {
+    userId = null;
+  }
+  if (!userId) return (await usuarioDaSessaoLocal().catch(() => null)) ? 'incerto' : 'sem_login';
   if (hashCache?.userId !== userId) {
     const hash = (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, userId)).toLowerCase();
     hashCache = { userId, hash };
@@ -269,8 +286,14 @@ async function tratarCompraRecebida(compra: PurchaseAndroid): Promise<void> {
       return;
     }
     const conta = await contaAtual();
-    if (!conta) {
+    if (conta === 'sem_login') {
       resolverPendente({ estado: 'sem_login' }, sku);
+      return;
+    }
+    if (conta === 'incerto') {
+      // Pago na Play e a sessão momentaneamente sem token: "estamos confirmando,
+      // não pague de novo". A sincronização reenvia quando a sessão voltar.
+      resolverPendente(resultadoDaVerificacao({ estado: 'erro' }), sku);
       return;
     }
     if (donoDaCompraPlay(compra.obfuscatedAccountIdAndroid, conta.hash) === 'outra') {
@@ -309,7 +332,8 @@ export async function carregarOfertasPlay(): Promise<ResultadoOfertasPlay> {
     if (cfg === 'desligada') return { estado: 'indisponivel' };
     if (cfg === 'erro') return { estado: 'erro' };
     const conta = await contaAtual();
-    if (!conta) return { estado: 'sem_login' };
+    if (conta === 'sem_login') return { estado: 'sem_login' };
+    if (conta === 'incerto') return { estado: 'erro', mensagem: MENSAGEM_SESSAO_INCERTA };
     await conectar();
     const produtos = await fetchProducts({ skus: [...SKUS_PLAY], type: 'subs' });
     const pacotes = pacotesDaLoja(Array.isArray(produtos) ? (produtos as unknown[]) : []);
@@ -340,7 +364,8 @@ export async function comprarNaPlay(oferta: OfertaPlay): Promise<ResultadoCompra
     if (cfg === 'desligada') return { estado: 'indisponivel' };
     if (cfg === 'erro') return { estado: 'erro', mensagem: MENSAGEM_CONFIG_INCERTA };
     const conta = await contaAtual();
-    if (!conta) return { estado: 'sem_login' };
+    if (conta === 'sem_login') return { estado: 'sem_login' };
+    if (conta === 'incerto') return { estado: 'erro', mensagem: MENSAGEM_SESSAO_INCERTA };
     await conectar();
 
     const pacote = pacotesPorProduto.get(oferta.produtoId);
@@ -422,15 +447,21 @@ export async function comprarNaPlay(oferta: OfertaPlay): Promise<ResultadoCompra
  * deste aparelho tem. O servidor confere cada uma e religa o plano; token de outra
  * conta OLLI volta 409 ('outra_conta'). `temAssinaturaAtiva` = o servidor
  * confirmou ao menos uma.
+ *
+ * VENDA DESLIGADA NO SERVIDOR NÃO IMPEDE RESTAURAR: o kill switch é só da vitrine
+ * (o `/play/verificar` do worker atende com a venda desligada). Quem pagou e não
+ * teve a compra registrada (app morto, 503 no meio) precisa conseguir registrar —
+ * sem reconhecimento a Play estorna em 3 dias e o cliente fica sem o plano. Só
+ * quando não havia nada a restaurar a resposta é 'indisponivel'.
  */
 export async function restaurarComprasPlay(): Promise<ResultadoRestauracaoPlay> {
   if (!playBillingLigado()) return { estado: 'desligado' };
   try {
     const cfg = await lerConfigServidor();
-    if (cfg === 'desligada') return { estado: 'indisponivel' };
     if (cfg === 'erro') return { estado: 'erro', mensagem: MENSAGEM_CONFIG_INCERTA };
     const conta = await contaAtual();
-    if (!conta) return { estado: 'sem_login' };
+    if (conta === 'sem_login') return { estado: 'sem_login' };
+    if (conta === 'incerto') return { estado: 'erro', mensagem: MENSAGEM_SESSAO_INCERTA };
     await conectar();
     const compras = (await comprasNaPlay()).filter((c) => c.purchaseState === 'purchased');
     let ativa = false;
@@ -458,6 +489,7 @@ export async function restaurarComprasPlay(): Promise<ResultadoRestauracaoPlay> 
     if (deOutraConta) return { estado: 'outra_conta', mensagem: MENSAGEM_OUTRA_CONTA_PLAY };
     if (recusada) return { estado: 'erro', mensagem: MENSAGEM_RECUSADA_RESTAURAR };
     if (suspensa) return { estado: 'erro', mensagem: MENSAGEM_SUSPENSA };
+    if (cfg === 'desligada' && compras.length === 0) return { estado: 'indisponivel' };
     return { estado: 'ok', temAssinaturaAtiva: false };
   } catch (e: unknown) {
     return traduzirFalhaPlay((e as { code?: unknown } | null)?.code);
@@ -499,15 +531,21 @@ let syncEmCurso = false;
  * Reenvia ao worker as compras do OLLI que a Play entregou e ainda não foram
  * reconhecidas (app morto no meio, rede, pendente que compensou). Silenciosa:
  * nada de alerta — a tela relê o plano do servidor quando abrir.
+ *
+ * Roda também com a venda DESLIGADA no servidor (`PLAY_BILLING_MODE=off`): o kill
+ * switch é só da vitrine e o worker registra compra já paga mesmo assim. Sem isto,
+ * uma compra paga antes de o dono desligar a venda ficaria sem reconhecimento e a
+ * Play estornaria. Só para em 'erro' ("não sei"); sem credencial no worker, o
+ * `/play/verificar` responde 503 e nada muda.
  */
 async function sincronizarComprasPlay(): Promise<void> {
   if (!playBillingLigado() || syncEmCurso || Date.now() - ultimaSync < INTERVALO_SYNC_MS) return;
   syncEmCurso = true;
   try {
     const conta = await contaAtual();
-    if (!conta) return;
+    if (conta === 'sem_login' || conta === 'incerto') return; // incerto: tenta na próxima volta
     ultimaSync = Date.now();
-    if ((await lerConfigServidor()) !== 'ligada') return;
+    if ((await lerConfigServidor()) === 'erro') return;
     await conectar();
     const compras = await comprasNaPlay();
     for (const c of compras) {

@@ -615,6 +615,14 @@ export async function handleContaExcluir(request, env) {
   const play = await cancelarPlayDoUsuario(env, user.id);
   if (play !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
 
+  // Dados associados sem CASCADE: `feedback.user_id` usa ON DELETE SET NULL.
+  // Limpa enquanto o vínculo ainda existe; se não conseguirmos confirmar,
+  // preservamos a conta para uma tentativa segura. Vem ANTES do Storage: assim o
+  // único passo irreversível antes de apagar auth.users é o dos arquivos — uma
+  // falha aqui não deixa a conta viva e já sem fotos/logos/PDFs.
+  const feedbackExcluido = await excluirFeedbackDoUsuario(env, user.id);
+  if (!feedbackExcluido) return json({ ok: false, erro: 'falha_exclusao' }, 502);
+
   // ARQUIVOS (fotos, logos, PDFs) — o cascade não alcança o Storage. Apaga ANTES
   // do usuário; falhou = 502 e a conta fica, para uma nova tentativa.
   const arquivos = await apagarArquivosDoUsuario(env, user.id);
@@ -640,12 +648,6 @@ export async function handleContaExcluir(request, env) {
       );
     }
   }
-
-  // Dados associados sem CASCADE: `feedback.user_id` usa ON DELETE SET NULL.
-  // Limpa enquanto o vínculo ainda existe e só então apaga auth.users; se não
-  // conseguirmos confirmar, preservamos a conta para uma tentativa segura.
-  const feedbackExcluido = await excluirFeedbackDoUsuario(env, user.id);
-  if (!feedbackExcluido) return json({ ok: false, erro: 'falha_exclusao' }, 502);
 
   // Exclusão de verdade: apaga o usuário em auth.users (id vem do JWT validado).
   const ok = await excluirUsuarioAuth(env, user.id);

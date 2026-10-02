@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, usuarioDaSessaoLocal } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
 import {
   corpoVerificacaoPlay,
@@ -74,16 +74,29 @@ export type CompraParaVerificar = CompraParaVerificarPlay;
  * 'ok' o app chama `finishTransaction` — sem isso a Play estorna em 3 dias, o que
  * é o certo quando o plano não foi entregue.
  */
+/**
+ * Teto do `/play/verificar`: o pior caminho do worker é OAuth do Google (10 s) +
+ * `subscriptionsv2.get` (15 s) + acknowledge (15 s). Com 15 s o app dizia "ainda
+ * estamos confirmando" enquanto o worker concedia.
+ */
+const TIMEOUT_VERIFICAR_MS = 45 * 1000;
+
 export async function verificarCompraPlay(compra: CompraParaVerificar): Promise<ResultadoVerificacaoPlay> {
   if (!PAGAMENTOS_URL) return { estado: 'erro' };
   const token = await getToken();
-  if (!token) return { estado: 'sem_login' };
+  if (!token) {
+    // Sessão GUARDADA sem token agora (renovação em espera, relógio errado) é
+    // "não sei" — 'erro' vira "estamos confirmando, não pague de novo". Só sem
+    // sessão nenhuma no aparelho é 'sem_login'.
+    const guardada = await usuarioDaSessaoLocal().catch(() => null);
+    return guardada ? { estado: 'erro' } : { estado: 'sem_login' };
+  }
   try {
     const r = await fetchComTimeout(`${PAGAMENTOS_URL}/play/verificar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(corpoVerificacaoPlay(compra)),
-    });
+    }, TIMEOUT_VERIFICAR_MS);
     return interpretarVerificacaoPlay(r.status, await lerJson(r));
   } catch {
     return { estado: 'erro' };

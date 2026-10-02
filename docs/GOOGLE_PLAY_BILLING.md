@@ -120,12 +120,17 @@ Contrato que o app usa (`src/services/playBillingWorker.ts`):
    - `pending`/`deferred-payment` → "pagamento em processamento", **nada é liberado**.
    - Assinatura **suspensa** (`isSuspendedAndroid`) → não dá acesso; leva a "Gerenciar na Google Play".
    - `billing-unavailable` (PBL 9) → "Play Store indisponível neste aparelho", nunca "sem plano".
-   - Quem já tem plano pago (Stripe, Pix, Play, concessão) **não vê oferta de compra**.
+   - Quem já tem plano pago por Stripe, Pix ou concessão **não vê oferta de compra**. Quem assina
+     **pela Play** vê, abaixo de "Sua assinatura", a seção "Trocar de plano pela Google Play"
+     (Pro ↔ Empresa, mensal ↔ anual) — a Play Store não troca `olli_pro` por `olli_empresa` sozinha.
 3. **Restaurar compras**: `getAvailablePurchases({ includeSuspendedAndroid: true })` → cada compra do
-   OLLI desta conta vai ao `/play/verificar`.
+   OLLI desta conta vai ao `/play/verificar`. Funciona também com a venda **desligada** no servidor
+   (o botão continua na tela): quem já pagou precisa conseguir registrar a compra.
 4. **Sincronização silenciosa**: ao abrir o app (`INITIAL_SESSION`/`SIGNED_IN`) e ao voltar ao
    primeiro plano (`AppState` active), no máximo 1×/min: compras ainda **não reconhecidas** vão ao
-   servidor (app morto no meio, rede, pendente que compensou).
+   servidor (app morto no meio, rede, pendente que compensou) — inclusive com a venda desligada; só
+   para quando `/play/config` não responde ("não sei").
+   Sessão guardada sem token no momento (renovação em espera) é "não sei", nunca "sem login".
 5. **Gerenciar**: `deepLinkToSubscriptions({ skuAndroid, packageNameAndroid })`; sem produto conhecido,
    `https://play.google.com/store/account/subscriptions?package=online.olliorcamentos.app`.
 6. **Excluir conta** (decisão C12): o servidor cancela a renovação da assinatura da Play
@@ -144,7 +149,9 @@ Contrato que o app usa (`src/services/playBillingWorker.ts`):
 
 1. `npm install` (troca `react-native-purchases` por `expo-iap@5.8.2` no `node_modules`).
 2. `npx expo prebuild -p android --clean --no-install`. Os plugins do `app.json` já aplicam:
-   - `expo-iap` (sem opções: build de release usa a loja **Play**);
+   - `expo-iap` (sem opções — a 5.8.2 só aceita pin `amazon`/`horizon` no plugin; a loja **Play** é
+     fixada por `-PopeniapStore=play` no `build-android-production.ps1` e por
+     `ORG_GRADLE_PROJECT_openiapStore=play` nos perfis do `eas.json`);
    - `./plugins/withGradleReleaseTweaks` (`org.gradle.jvmargs` e `lint { checkReleaseBuilds false }`
      — acabou o patch manual depois do prebuild);
    - `./plugins/withBackupSemBanco` (backup automático só com preferências; o SQLite fica de fora;
@@ -177,6 +184,26 @@ some o preço, somem as abas e o botão, e a tela diz "Assinatura pelo app indis
 Quem já assina continua com o plano (o servidor segue processando RTDN) e com o "Gerenciar na Google Play".
 O `off` NÃO bloqueia `POST /play/verificar`: uma compra paga segundos antes do desligamento ainda é
 registrada e reconhecida (senão a Play estornaria e o cliente ficaria sem o plano).
+
+## Vigência e folga de renovação
+
+- `revenuecat_vigencia_ate` = `expiryTime` **exato** da Play.
+- `current_period_end` (o que libera o plano) = `expiryTime + 2 h` quando a assinatura está ATIVA e
+  com renovação automática (`FOLGA_RENOVACAO_MS` em `play.js`). Sem isso o assinante caía para o
+  Grátis a cada renovação até o próximo pull do RTDN (até 40 min). Cancelada/carência: exata.
+- "A linha é da Play?" (`sustentadaPelaPlay` no worker e `v_play_sustenta` na migration 20261004110100)
+  aceita essa folga (2 h + 1 min).
+- Encerrar uma compra da Play com OUTRA compra da Play viva na mesma conta OLLI (duas contas Google)
+  não derruba o plano: a linha passa a apontar para a outra.
+
+## Tetos por invocação (plano Free: 50 subrequests)
+
+- RTDN e reconciliação: no máximo 3 itens por rodada (`PLAY_RTDN_MAX`/`PLAY_RECONCILIAR_MAX` acima de
+  3 são cortados).
+- Varredura de anuladas: orçamento de 40 subrequests; uma anulada nossa só é reivindicada se couber
+  tratá-la na mesma rodada.
+- **Medir o CPU** depois do deploy (`wrangler tail`, campo `cpuTime`) na invocação `7,27,47` (alertas
+  + Play juntos). Passando de ~8 ms, mover a Play para um cron próprio.
 
 ## Limites conhecidos
 

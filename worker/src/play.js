@@ -88,6 +88,19 @@ const ORIGEM_ANULADA = 'play_voided';
 const API_PLAY = 'https://androidpublisher.googleapis.com/androidpublisher/v3/applications';
 const API_PUBSUB = 'https://pubsub.googleapis.com/v1';
 
+/**
+ * Teto de itens por rodada (RTDN, reconciliação, anuladas tratadas): ~10
+ * subrequests cada, contra 50 por invocação no plano Free (dividida com o feed do
+ * INMET). Valor de env acima disso é cortado — estourar mata a invocação inteira.
+ */
+const TETO_POR_RODADA = 3;
+/**
+ * Orçamento de subrequests da varredura diária de anuladas (sobra folga para o
+ * INMET e o token OAuth). Cada entrada LIDA custa 1 (play_compras); reivindicar o
+ * evento, 2; tratar, ~11.
+ */
+const ORCAMENTO_ANULADAS = 40;
+
 /** Teto de espera por resposta do Google (Play Developer API e Pub/Sub). */
 const TIMEOUT_GOOGLE_MS = 15 * 1000;
 
@@ -105,9 +118,25 @@ const NIVEL_PLANO = { gratis: 0, pro: 1, empresa: 2 };
 /** Status que já não sustentam acesso (mesma lista de concederPlanoPeriodo). */
 const STATUS_ENCERRADOS = ['canceled', 'unpaid', 'incomplete_expired'];
 
-/** Folga para comparar vigências gravadas em momentos diferentes. */
-const FOLGA_MS = 60 * 1000;
 const HORA_MS = 3600 * 1000;
+
+/**
+ * Folga de RENOVAÇÃO: assinatura ATIVA com renovação automática grava o acesso
+ * (`current_period_end`) até `expiryTime + 2 h`, e a vigência da Play
+ * (`revenuecat_vigencia_ate`) exata. A Play renova no vencimento, mas o OLLI só
+ * fica sabendo pelo próximo pull do RTDN (:07/:47, até 40 min depois) ou pela
+ * reconciliação; sem folga, o assinante caía para o Grátis a cada renovação.
+ * Cancelada, em carência ou sem renovação automática: vigência exata.
+ */
+export const FOLGA_RENOVACAO_MS = 2 * HORA_MS;
+
+/**
+ * Folga para comparar vigências gravadas em momentos diferentes: a linha ainda é
+ * "da Play" se o acesso gravado não passa da vigência da Play + a folga de
+ * renovação (+1 min de relógio). Mesma conta em `v_play_sustenta` (migration
+ * 20261004110100) — mudou aqui, muda lá.
+ */
+const FOLGA_MS = FOLGA_RENOVACAO_MS + 60 * 1000;
 const DIA_MS = 24 * HORA_MS;
 
 export const ESTADO = Object.freeze({
@@ -199,6 +228,8 @@ async function getUser(request, env) {
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: env.SUPABASE_ANON_KEY },
+      // Supabase lento não prende o isolate: sem resposta = não autenticado.
+      ...(typeof AbortSignal?.timeout === 'function' ? { signal: AbortSignal.timeout(10 * 1000) } : {}),
     });
     if (!r.ok) return null;
     const u = await r.json();
@@ -331,7 +362,9 @@ export function itemDoCatalogo(sub) {
  *  - { acao:'invalido' }
  *  - { acao:'registrar', motivo }   → nada a fazer no plano
  *  - { acao:'alarme', motivo }      → não aplica; alguém precisa olhar
- *  - { acao:'conceder', userId, plano, status, vigenciaAte, transacaoId, produtoId, eventoEm }
+ *  - { acao:'conceder', userId, plano, status, vigenciaAte, acessoAte, transacaoId, produtoId, eventoEm }
+ *    (`vigenciaAte` = expiryTime exato da Play; `acessoAte` = até quando o plano vale
+ *    no OLLI — expiryTime + FOLGA_RENOVACAO_MS se ATIVA e renovando, senão o mesmo)
  *  - { acao:'encerrar', userId, transacaoId, vigenciaAte, eventoEm }
  *
  * Tabela (fail-closed; o Google manda manter acesso na carência e tirar na
@@ -363,12 +396,15 @@ export function traduzirAssinaturaPlay(sub, { userId, transacaoId, agora = Date.
       if (estado === ESTADO.CANCELADA) return { acao: 'encerrar', userId, transacaoId, vigenciaAte: expira, eventoEm };
       return { acao: 'registrar', motivo: 'ja_expirado' };
     }
+    // Folga de renovação (ver FOLGA_RENOVACAO_MS): só ATIVA que vai renovar.
+    const renova = estado === ESTADO.ATIVA && cat.item?.autoRenewingPlan?.autoRenewEnabled === true;
     return {
       acao: 'conceder',
       userId,
       plano: cat.produto.plano,
       status: 'active',
       vigenciaAte: expira,
+      acessoAte: renova ? iso(cat.expiraMs + FOLGA_RENOVACAO_MS) : expira,
       transacaoId,
       produtoId: cat.produtoId,
       eventoEm,
@@ -513,7 +549,7 @@ export async function aplicarDecisao(env, d, { agora = Date.now() } = {}) {
   if (d.acao === 'conceder') {
     let plano = d.plano;
     let status = d.status;
-    let vigencia = d.vigenciaAte;
+    let vigencia = d.acessoAte || d.vigenciaAte;
     // Regra 1: plano vigente sustentado por OUTRA origem → o cliente fica com o
     // maior nível e a maior vigência. Se a linha é da própria Play (renovação,
     // troca de produto), vale o que a loja diz agora — inclusive um downgrade.
@@ -547,6 +583,25 @@ export async function aplicarDecisao(env, d, { agora = Date.now() } = {}) {
     // dela é atualizado) sem encurtar nem derrubar o que foi pago por fora.
     patch = { revenuecat_vigencia_ate: d.vigenciaAte, revenuecat_evento_em: d.eventoEm };
   } else {
+    // Antes de cancelar: a mesma conta OLLI pode ter OUTRA assinatura da Play viva
+    // (duas contas Google no aparelho, cada uma com a sua). Encerrar esta não pode
+    // derrubar o plano que a outra paga — a linha passa a apontar para ela.
+    const outra = await outraCompraViva(env, d.userId, d.transacaoId, agora);
+    if (outra?.erro) return { http: 503, corpo: { erro: 'indisponivel' }, marca: 'falhou', erro: 'leitura' };
+    if (outra) {
+      const ok = await atualizarVinculada(env, d.userId, d.transacaoId, {
+        plano: outra.plano,
+        status: 'active',
+        current_period_end: outra.acessoAte,
+        revenuecat_transacao_id: outra.tokenHash,
+        revenuecat_produto_id: outra.produtoId,
+        revenuecat_vigencia_ate: outra.vigenciaAte,
+        revenuecat_evento_em: d.eventoEm,
+      });
+      if (!ok) return { http: 500, corpo: { erro: 'falha_persistencia' }, marca: 'falhou', erro: 'gravacao' };
+      console.error('[olli-play] encerrada com outra assinatura da Play viva na mesma conta — plano mantido por ela:', curto(outra.tokenHash));
+      return { http: 200, corpo: { ok: true, acao: 'encerrar', motivo: 'outra_assinatura_viva' }, marca: 'processado' };
+    }
     patch = {
       status: 'canceled',
       current_period_end: d.vigenciaAte,
@@ -560,6 +615,56 @@ export async function aplicarDecisao(env, d, { agora = Date.now() } = {}) {
 }
 
 // ─── play_compras ────────────────────────────────────────────
+
+/** Estados em que uma compra registrada ainda dá acesso (até o `expiry`). */
+const ESTADOS_COM_ACESSO = [ESTADO.ATIVA, ESTADO.CARENCIA, ESTADO.CANCELADA];
+
+/**
+ * OUTRA compra da Play registrada para o usuário que ainda dá acesso (estado com
+ * acesso e `expiry` futuro), a de maior nível/vigência. `null` = nenhuma;
+ * `{ erro: true }` = não sei (quem chama não encerra no escuro). Compra de teste
+ * só conta para quem está em PLAY_TESTE_PERMITIDOS — a mesma regra da concessão.
+ */
+async function outraCompraViva(env, userId, excetoHash, agora) {
+  let linhas;
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/play_compras?user_id=eq.${encodeURIComponent(userId)}` +
+        `&estado=in.(${ESTADOS_COM_ACESSO.join(',')})&select=token_sha256,produto_id,estado,expiry,teste,auto_renovacao`,
+      { headers: sbHeaders(env, { Accept: 'application/json' }) },
+    );
+    if (!r.ok) return { erro: true };
+    linhas = await r.json().catch(() => null);
+    if (!Array.isArray(linhas)) return { erro: true };
+  } catch {
+    return { erro: true };
+  }
+  const testador = testadoresPermitidos(env).has(String(userId).toLowerCase());
+  let melhor = null;
+  for (const l of linhas) {
+    if (!l || l.token_sha256 === excetoHash || !ESTADOS_COM_ACESSO.includes(l.estado)) continue;
+    if (l.teste && !testador) continue;
+    const produto = produtoPlay(l.produto_id);
+    const expira = ms(l.expiry);
+    if (!produto || !produto.periodoConhecido || expira == null || expira <= agora) continue;
+    const c = { tokenHash: l.token_sha256, produtoId: l.produto_id, plano: produto.plano, expiraMs: expira, renova: l.estado === ESTADO.ATIVA && l.auto_renovacao === true };
+    if (
+      !melhor ||
+      NIVEL_PLANO[c.plano] > NIVEL_PLANO[melhor.plano] ||
+      (NIVEL_PLANO[c.plano] === NIVEL_PLANO[melhor.plano] && c.expiraMs > melhor.expiraMs)
+    ) {
+      melhor = c;
+    }
+  }
+  if (!melhor) return null;
+  return {
+    tokenHash: melhor.tokenHash,
+    produtoId: melhor.produtoId,
+    plano: melhor.plano,
+    vigenciaAte: iso(melhor.expiraMs),
+    acessoAte: iso(melhor.renova ? melhor.expiraMs + FOLGA_RENOVACAO_MS : melhor.expiraMs),
+  };
+}
 
 /** Compra pelo hash do token. `null` (não existe), a linha, ou `{ erro: true }`. */
 async function lerCompra(env, tokenHash) {
@@ -1058,7 +1163,9 @@ async function tratarMensagem(env, recebida, agora) {
 export async function processarRtdn(env, { agora = new Date(), max } = {}) {
   const sub = assinaturaPubSub(env);
   if (!configurado(env) || !sub) return { estado: 'desligado' };
-  const limite = Math.max(1, Math.min(10, Number.parseInt(String(max ?? env.PLAY_RTDN_MAX ?? '3'), 10) || 3));
+  // Teto 3: cada mensagem custa ~10 subrequests e a invocação do plano Free tem 50
+  // (dividida com o feed do INMET). Mais que isso estoura e mata a invocação toda.
+  const limite = Math.max(1, Math.min(TETO_POR_RODADA, Number.parseInt(String(max ?? env.PLAY_RTDN_MAX ?? '3'), 10) || 3));
   const agoraMs = agora instanceof Date ? agora.getTime() : Number(agora);
 
   const puxou = await chamarGoogle(env, `${API_PUBSUB}/${sub}:pull`, {
@@ -1141,13 +1248,22 @@ async function varrerAnuladas(env, agoraMs, limite) {
   }
   const lista = Array.isArray(r.dados?.voidedPurchases) ? r.dados.voidedPurchases : [];
   let tratadas = 0;
+  // Subrequests já gastos: a listagem + um possível token OAuth. Cada entrada LIDA
+  // custa 1; 50 anuladas alheias (ou várias nossas já tratadas, que custam 3 por dia
+  // durante a janela de 3 dias) estourariam o teto da invocação sem este orçamento.
+  let gasto = 2;
   for (const v of lista) {
-    if (tratadas >= limite) break;
+    if (tratadas >= limite || gasto + 1 > ORCAMENTO_ANULADAS) break;
     const token = typeof v?.purchaseToken === 'string' ? v.purchaseToken : '';
     if (!TOKEN_RE.test(token)) continue;
     const hash = await sha256Hex(token);
+    gasto += 1;
     const linha = await lerCompra(env, hash);
     if (!linha || linha.erro) continue; // não é nossa assinatura (ou não sei: amanhã de novo)
+    // Só reivindica o que dá para TRATAR nesta rodada: um evento reivindicado e não
+    // tratado viraria "duplicado" amanhã e nunca seria aplicado.
+    if (gasto + 2 + 11 > ORCAMENTO_ANULADAS) break;
+    gasto += 2;
     const eventId = `${String(v.orderId || '').slice(0, 64)}|${hash.slice(0, 32)}`;
     const reiv = await reivindicarEvento(env, {
       origem: ORIGEM_ANULADA,
@@ -1157,6 +1273,7 @@ async function varrerAnuladas(env, agoraMs, limite) {
     });
     if (!reiv.ok || reiv.duplicado) continue;
     tratadas++;
+    gasto += 11;
     const s = await sincronizarCompra(env, { token, agora: agoraMs });
     console.error('[olli-play] ALARME: compra anulada encontrada na varredura —', curto(hash), s.corpo?.acao);
     await marcarEvento(env, { origem: ORIGEM_ANULADA, eventId, status: s.retentar ? 'falhou' : 'processado' });
@@ -1177,7 +1294,7 @@ export async function reconciliarPlay(env, { agora = new Date(), limite } = {}) 
   const agoraMs = quando.getTime();
   const m = quando.getUTCMinutes();
   const h = quando.getUTCHours();
-  const max = Math.max(1, Math.min(10, Number.parseInt(String(limite ?? env.PLAY_RECONCILIAR_MAX ?? '3'), 10) || 3));
+  const max = Math.max(1, Math.min(TETO_POR_RODADA, Number.parseInt(String(limite ?? env.PLAY_RECONCILIAR_MAX ?? '3'), 10) || 3));
   const out = { estado: 'fora_do_horario' };
   const horaDasAnuladas = h === HORA_ANULADAS.h && m === HORA_ANULADAS.m;
 

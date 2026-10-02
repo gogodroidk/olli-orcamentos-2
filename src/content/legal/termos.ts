@@ -13,9 +13,9 @@ import type { LegalDoc } from './privacidade';
 
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
-  atualizadoEm: '29 de setembro de 2026',
+  atualizadoEm: '2 de outubro de 2026',
   aviso:
-    'Documento atualizado em 29 de setembro de 2026. Ao criar uma conta ou usar o OLLI, ' +
+    'Documento atualizado em 2 de outubro de 2026. Ao criar uma conta ou usar o OLLI, ' +
     'você concorda com estes Termos e com a Política de Privacidade.',
   intro: [
     'Estes Termos regulam o uso do aplicativo OLLI, uma ferramenta de gestão para ' +
@@ -72,8 +72,13 @@ export const TERMOS: LegalDoc = {
         'A tela de Planos pode exibir valores e recursos apenas para consulta. As condições finais e a ' +
           'forma de cobrança são apresentadas no canal de contratação antes da confirmação. As assinaturas mensais e anuais são renovadas ' +
           'automaticamente ao fim de cada ciclo, pelo valor então vigente, até que você cancele.',
-        'O aplicativo Android distribuído pela Google Play não oferece contratação ou alteração de ' +
-          'planos enquanto não houver um sistema de cobrança compatível com a loja.',
+        // Derivado de RODAPE_PLAY, termosAssinaturaPlay e TEXTO_TROCA_PLAY (PlanosScreen.tsx).
+        'No aplicativo Android distribuído pela Google Play, os planos Pro e Empresa são contratados ' +
+          'pela própria Google Play, nas modalidades mensal ou anual, pelo preço que a loja mostra antes ' +
+          'da confirmação, e cobrados na sua conta Google. Essas assinaturas renovam automaticamente a ' +
+          'cada mês ou ano até você cancelar. A troca de plano ou de período pela Google Play vale na hora: ' +
+          'o tempo que ainda resta do plano atual vira crédito no novo plano, no cálculo da própria Google ' +
+          'Play. Quando a assinatura pelo aplicativo estiver indisponível, a tela de Planos informa isso.',
         'Os recursos de inteligência artificial dos planos pagos são incluídos sob política de uso ' +
           'justo diário, segurança e disponibilidade dos provedores. Os limites protegem a qualidade ' +
           'para todos e podem ser ajustados; o app informa quando a capacidade diária estiver esgotada.',
@@ -87,6 +92,10 @@ export const TERMOS: LegalDoc = {
           'Alguns builds nativos mostram apenas o status e os recibos. Ao cancelar, você continua com acesso ao plano pago até o fim do ' +
           'período já pago; depois disso, a conta volta ao plano gratuito. Não há cobrança de multa ' +
           'por cancelamento.',
+        'Assinaturas feitas pela Google Play são canceladas na própria Play Store, em “Pagamentos e ' +
+          'assinaturas” (ou pelo botão “Gerenciar na Google Play” do aplicativo); o plano continua até o ' +
+          'fim do período já pago. Reembolsos dessas compras são processados pela Google Play, conforme ' +
+          'a política de reembolso dela.',
         'Nas compras à distância, você tem direito de arrependimento em até 7 dias corridos a contar ' +
           'da contratação, conforme o art. 49 do Código de Defesa do Consumidor. Fora desse prazo, ' +
           'valores de períodos já iniciados, em regra, não são reembolsados, salvo disposição legal ' +

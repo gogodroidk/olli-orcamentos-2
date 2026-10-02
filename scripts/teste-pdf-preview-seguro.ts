@@ -57,7 +57,8 @@ checar('sem ponte JS (onMessage / injectedJavaScript)', /onMessage|injectedJavaS
 
 console.log('\n── Guarda de navegação (função isolada) ──');
 checar('about:blank passa (o próprio documento)', permitirCargaDaPrevia({ url: 'about:blank' }), true);
-checar('data:text/html passa (o próprio documento)', permitirCargaDaPrevia({ url: 'data:text/html;charset=utf-8,<p>x</p>' }), true);
+checar('data:text/html BLOQUEADO (seria HTML arbitrário dentro do app)', permitirCargaDaPrevia({ url: 'data:text/html;charset=utf-8,<p>x</p>' }), false);
+checar('o documento carrega como about:blank (baseUrl explícito)', bloco.includes("source={{ html, baseUrl: 'about:blank' }}"), true);
 checar('link https bloqueado', permitirCargaDaPrevia({ url: 'https://exemplo.com/' }), false);
 checar('http bloqueado', permitirCargaDaPrevia({ url: 'http://exemplo.com/' }), false);
 checar('tel: bloqueado', permitirCargaDaPrevia({ url: 'tel:+5511999999999' }), false);

@@ -397,6 +397,9 @@ console.log('\n── Assinatura: cada origem com o seu texto ──');
   checar('cartão: "Próxima cobrança"', linhaValidade(cartao).rotulo, 'Próxima cobrança');
   checar('cartão: portal da Stripe', mostraPortalStripe(cartao), true);
   checar('Play: método "Google Play"', rotuloMetodo({ ...cartao, temClienteStripe: false, renovaPelaPlay: true }, null), 'Google Play');
+  checar('Play VIVA vence o cartão antigo da Stripe', rotuloMetodo({ ...cartao, renovaPelaPlay: true }, 'Visa •••• 4242'), 'Google Play');
+  checar('iPhone não cita a Google Play no método', rotuloMetodo({ ...cartao, renovaPelaPlay: true }, null, { ios: true }).includes('Google'), false);
+  checar('Android da Play não cita Pix no método', rotuloMetodo(pix, null, { semCompraExterna: true }), 'Pagamento avulso (sem renovação automática)');
 
   checar('plano pago sem status conhecido não vira "Sem assinatura"', pilulaAssinatura({ planoEfetivo: 'empresa' }).rotulo, 'Ativa');
   checar('Grátis sem status: "Sem assinatura"', pilulaAssinatura({ planoEfetivo: 'gratis' }).rotulo, 'Sem assinatura');

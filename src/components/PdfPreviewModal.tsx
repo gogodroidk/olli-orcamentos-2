@@ -54,6 +54,11 @@ interface Props {
   nomeArquivo?: string;
   /** Chamado após a exportação real; nativo devolve a URI salva, web pode omitir. */
   onExported?: (uri?: string) => void | Promise<void>;
+  /**
+   * Porta antes de gerar/compartilhar o PDF real (ex.: `exigirCadastroParaEnviar`):
+   * `false` não exporta. Prévias de EXEMPLO (Modelos de documento) não passam nada.
+   */
+  antesDeExportar?: () => Promise<boolean>;
 }
 
 /** Empresa mínima para a prévia funcionar mesmo sem "Meu Negócio" preenchido. */
@@ -112,7 +117,7 @@ function PreviewWeb({ html }: { html: string }) {
  * nativo / diálogo de impressão na web — reaproveitando o HTML já montado aqui
  * em vez de reconstruir o documento.
  */
-export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca, construirHtml, chave, titulo, nomeArquivo, onExported }: Props) {
+export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimentos, removerMarca, construirHtml, chave, titulo, nomeArquivo, onExported, antesDeExportar }: Props) {
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const ehDesktop = useEhDesktop();
@@ -201,6 +206,9 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
 
   const handleExportar = useCallback(async () => {
     if (!html || exportando) return;
+    // A MESMA porta dos outros caminhos de envio (cadastro do negócio completo):
+    // sem ela, a prévia do passo 4 compartilhava o PDF sem nome nem contato.
+    if (antesDeExportar && !(await antesDeExportar())) return;
     setErroExportar(false);
     setExportando(true);
     try {
@@ -211,7 +219,7 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
     } finally {
       setExportando(false);
     }
-  }, [html, exportando, nomeArquivoEfetivo, dialogTituloEfetivo, onExported]);
+  }, [html, exportando, nomeArquivoEfetivo, dialogTituloEfetivo, onExported, antesDeExportar]);
 
   const podeExportar = !!html && !erro;
 
@@ -334,7 +342,7 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
                               onShouldStartLoadWithRequest={permitirCargaDaPrevia}
                               setSupportMultipleWindows={false}
                               allowFileAccess={false}
-                              source={{ html }}
+                              source={{ html, baseUrl: 'about:blank' }}
                               style={styles.webview}
                             />
                           )

@@ -452,7 +452,8 @@ try {
     checar('CONTRATO: corpo 200 = { ok, estado, plano, vigenteAte } e nada mais', Object.keys(r.body).sort(), ['estado', 'ok', 'plano', 'vigenteAte']);
     checar('CONTRATO: o app lê a resposta como ok/pro/vigência', doApp(r), { estado: 'ok', plano: 'pro', vigenteAte: new Date(AGORA + 30 * DIA).toISOString() });
     const l = linhaDe();
-    checar('assinaturas: pro/active até a vigência da Play', `${l?.plano}/${l?.status}/${l?.current_period_end}`, `pro/active/${new Date(AGORA + 30 * DIA).toISOString()}`);
+    checar('assinaturas: pro/active até a vigência da Play + folga de renovação (2 h)', `${l?.plano}/${l?.status}/${l?.current_period_end}`, `pro/active/${new Date(AGORA + 30 * DIA + 2 * 3600e3).toISOString()}`);
+    checar('...e a vigência da PRÓPRIA Play gravada exata', l?.revenuecat_vigencia_ate, new Date(AGORA + 30 * DIA).toISOString());
     checar('vínculo = SHA-256 do token (nunca o token cru)', [l?.revenuecat_transacao_id, l?.revenuecat_produto_id], [sha(t), 'olli_pro:mensal']);
     const c = compraDe(t);
     checar('play_compras: dono, produto, estado, ordem sem sufixo', [c?.user_id, c?.produto_id, c?.estado, c?.order_id_base], [USER, 'olli_pro:mensal', 'SUBSCRIPTION_STATE_ACTIVE', 'GPA.3311-2222-3333-44444']);
@@ -563,7 +564,7 @@ try {
     linhaDoTempo = [];
     const r = await processarRtdn(envBase, { agora: new Date(AGORA + 1000) });
     checar('2 recebidas, 2 confirmadas', [r.recebidas, r.confirmadas], [2, 2]);
-    checar('RENOVAÇÃO aplicada pelo ESTADO (vigência +60d)', linhaDe()?.current_period_end, new Date(AGORA + 60 * DIA).toISOString());
+    checar('RENOVAÇÃO aplicada pelo ESTADO (vigência +60d, acesso +2 h de folga)', [linhaDe()?.revenuecat_vigencia_ate, linhaDe()?.current_period_end], [new Date(AGORA + 60 * DIA).toISOString(), new Date(AGORA + 60 * DIA + 2 * 3600e3).toISOString()]);
     checar('duplicado gravou UMA vez', linhaDoTempo.filter((x) => x === 'grava_assinatura').length, 1);
     checar('ack no Pub/Sub DEPOIS de gravar', linhaDoTempo.indexOf('ack_pubsub') > linhaDoTempo.lastIndexOf('grava_assinatura'), true);
     checar('webhook_events origem play_rtdn = processado', db.eventos.get(`play_rtdn|${m.message.messageId}`)?.status, 'processado');
@@ -732,6 +733,73 @@ try {
     checar('EXPIRED da Play NÃO derruba o Pix', `${linhaDe()?.plano}/${linhaDe()?.status}`, 'empresa/active');
   }
 
+  console.log('\n9b) DUAS assinaturas da Play na mesma conta OLLI — encerrar uma não derruba a outra');
+  reset();
+  {
+    const empresa = novoToken();
+    google.subs.set(empresa, sub({ produto: 'olli_empresa', expira: AGORA + 25 * DIA }));
+    await verificar(empresa, 'olli_empresa:mensal');
+    const pro = novoToken();
+    google.subs.set(pro, sub({ produto: 'olli_pro' }));
+    await verificar(pro);
+    checar('a última verificada aponta a linha (pro)', linhaDe()?.revenuecat_transacao_id, sha(pro));
+    google.subs.get(pro).subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+    google.subs.get(pro).lineItems[0].expiryTime = new Date(AGORA - 60e3).toISOString();
+    pubsub.fila.push(mensagem(notifAssinatura(pro, 13)));
+    await processarRtdn(envBase, { agora: new Date(AGORA + 11000) });
+    checar('EXPIRED do Pro com o Empresa vivo → plano mantido pelo Empresa',
+      [linhaDe()?.plano, linhaDe()?.status, linhaDe()?.revenuecat_transacao_id, linhaDe()?.revenuecat_vigencia_ate],
+      ['empresa', 'active', sha(empresa), new Date(AGORA + 25 * DIA).toISOString()]);
+    checar('...com a folga de renovação do Empresa', linhaDe()?.current_period_end, new Date(AGORA + 25 * DIA + 2 * 3600e3).toISOString());
+    // Sem outra viva: encerra de verdade.
+    google.subs.get(empresa).subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+    google.subs.get(empresa).lineItems[0].expiryTime = new Date(AGORA - 30e3).toISOString();
+    pubsub.fila.push(mensagem(notifAssinatura(empresa, 13)));
+    await processarRtdn(envBase, { agora: new Date(AGORA + 12000) });
+    checar('...e quando o Empresa também expira, encerra', linhaDe()?.status, 'canceled');
+  }
+
+  console.log('\n9c) TETOS do plano Free — RTDN e varredura de anuladas cabem nos 50 subrequests');
+  reset();
+  {
+    for (let i = 0; i < 6; i++) pubsub.fila.push(mensagem({ testNotification: { version: '1.0' } }));
+    const r = await processarRtdn({ ...envBase, PLAY_RTDN_MAX: '10' }, { agora: new Date(AGORA + 13000) });
+    checar('PLAY_RTDN_MAX=10 é cortado para 3 por rodada', r.recebidas, 3);
+    // 50 anuladas que não são nossas + 30 nossas já tratadas: a rodada para no orçamento.
+    reset();
+    const nossas = [];
+    for (let i = 0; i < 30; i++) {
+      const t = novoToken();
+      nossas.push(t);
+      db.compras.set(sha(t), { user_id: USER, token_sha256: sha(t), purchase_token: t, estado: 'SUBSCRIPTION_STATE_EXPIRED' });
+      db.eventos.set(`play_voided|GPA.${i}|${sha(t).slice(0, 32)}`, { status: 'processado' });
+    }
+    google.voided = [
+      ...Array.from({ length: 50 }, () => ({ purchaseToken: novoToken(), orderId: 'GPA.alheia' })),
+      ...nossas.map((t, i) => ({ purchaseToken: t, orderId: `GPA.${i}` })),
+    ];
+    const fetchReal = globalThis.fetch;
+    let chamadas = 0;
+    globalThis.fetch = (url, init) => { chamadas++; return fetchReal(url, init); };
+    try {
+      await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
+    } finally {
+      globalThis.fetch = fetchReal;
+    }
+    checar('varredura de anuladas fica abaixo de 45 subrequests', chamadas < 45, true);
+    // Nossa anulada NOVA no fim da lista: o orçamento não a reivindica sem tratar.
+    reset();
+    const nova = novoToken();
+    google.subs.set(nova, sub({ estado: 'SUBSCRIPTION_STATE_EXPIRED', expira: AGORA - 60e3 }));
+    db.compras.set(sha(nova), { user_id: USER, token_sha256: sha(nova), purchase_token: nova, estado: 'SUBSCRIPTION_STATE_ACTIVE' });
+    google.voided = [
+      ...Array.from({ length: 36 }, () => ({ purchaseToken: novoToken(), orderId: 'GPA.alheia' })),
+      { purchaseToken: nova, orderId: 'GPA.nova' },
+    ];
+    const v = await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
+    checar('anulada que não cabe no orçamento NÃO é reivindicada (fica para amanhã)', [v.anuladas?.tratadas, db.eventos.size], [0, 0]);
+  }
+
   console.log('\n10) REASSINATURA pela Play Store (sem obfuscated): só com a cadeia do mesmo usuário');
   reset();
   {
@@ -787,6 +855,10 @@ try {
   {
     const t = (estado, extra = {}) => traduzirAssinaturaPlay(sub({ estado, ...extra }), { userId: USER, transacaoId: 'h', agora: AGORA });
     checar('ACTIVE → conceder', t('SUBSCRIPTION_STATE_ACTIVE').acao, 'conceder');
+    checar('ACTIVE renovando → acesso até expiry + 2 h, vigência da Play exata',
+      [t('SUBSCRIPTION_STATE_ACTIVE').vigenciaAte, t('SUBSCRIPTION_STATE_ACTIVE').acessoAte],
+      [new Date(AGORA + 30 * DIA).toISOString(), new Date(AGORA + 30 * DIA + 2 * 3600e3).toISOString()]);
+    checar('CANCELED (não renova) → acesso = vigência exata, sem folga', t('SUBSCRIPTION_STATE_CANCELED').acessoAte, new Date(AGORA + 30 * DIA).toISOString());
     checar('IN_GRACE_PERIOD → conceder (o Google manda manter o acesso)', t('SUBSCRIPTION_STATE_IN_GRACE_PERIOD').acao, 'conceder');
     checar('CANCELED com período pago → conceder até o fim', t('SUBSCRIPTION_STATE_CANCELED').acao, 'conceder');
     checar('CANCELED já vencida → encerrar', t('SUBSCRIPTION_STATE_CANCELED', { expira: AGORA - 1 }).acao, 'encerrar');
