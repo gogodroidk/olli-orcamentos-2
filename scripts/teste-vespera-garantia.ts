@@ -308,7 +308,8 @@ ok('SQLite v11 com as colunas da garantia', () => {
   const db = ler('src/database/database.ts');
   assert.ok(Number(/const SCHEMA_VERSION = (\d+);/.exec(db)?.[1]) >= 11);
   assert.match(db, /if \(v < 11\) \{\s*await addColumnIfMissing\(database, 'ordens_servico', 'garantia', 'TEXT'\);\s*await addColumnIfMissing\(database, 'ordens_servico', 'garantia_de_os_id', 'TEXT'\);/);
-  assert.match(db, /asset_id TEXT,\s*garantia TEXT,\s*garantia_de_os_id TEXT\s*\)/);
+  // Colunas mais novas (ex.: `encerramento`, v12) podem vir depois da garantia.
+  assert.match(db, /asset_id TEXT,\s*garantia TEXT,\s*garantia_de_os_id TEXT\s*[,)]/);
 });
 ok('WhatsApp só pelo link oficial', () => {
   for (const p of ['src/screens/ConfirmarVisitasScreen.tsx', 'src/screens/GarantiasScreen.tsx', 'src/components/equipamento/PedidosQrBloco.tsx']) {

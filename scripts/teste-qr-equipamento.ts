@@ -337,13 +337,14 @@ const ler = (p: string) => readFileSync(p, 'utf8');
 const db = ler('src/database/database.ts');
 const sync = ler('src/services/cloudSync.ts');
 ok('schema local: asset_id no CREATE, na migração incremental e no save', () => {
-  // asset_id logo depois de excluido_em; colunas mais novas (garantia, Onda I3) vêm depois.
+  // asset_id logo depois de excluido_em; colunas mais novas (garantia da Onda I3,
+  // encerramento da OS) vêm depois.
   assert.match(db, /excluido_em TEXT,\s*asset_id TEXT[,\s]/);
   assert.match(db, /addColumnIfMissing\(database, 'ordens_servico', 'asset_id', 'TEXT'\)/);
-  // O bloco do asset_id é o da v10 (a v11 trouxe a garantia da OS, Onda I3).
-  assert.ok(Number(/const SCHEMA_VERSION = (\d+);/.exec(db)?.[1]) >= 10);
+  // O bloco do asset_id é o da v10 (versões seguintes trouxeram garantia e encerramento).
+  assert.ok(Number(/const SCHEMA_VERSION = (\d+);/.exec(db)?.[1]) >= 10, 'a versão do schema nunca volta para antes do asset_id');
   assert.match(db, /if \(v < 10\) \{\s*await addColumnIfMissing\(database, 'ordens_servico', 'asset_id'/, 'o bloco do asset_id existe');
-  assert.match(db, /excluido_em, asset_id(, garantia, garantia_de_os_id)?\)\s*VALUES \(\?(,\?){19,21}\)/);
+  assert.match(db, /excluido_em, asset_id(, garantia, garantia_de_os_id)?(, encerramento)?\)\s*VALUES \(\?(,\?){19,22}\)/);
   assert.match(db, /equipamentoId: r\.asset_id \?\? undefined/);
 });
 ok('sync: escada da coluna ausente e pull que preserva o vínculo local', () => {

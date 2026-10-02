@@ -119,6 +119,11 @@ export type PrefillItem = {
    * continua sendo a autoridade: o prestador troca pelo preço dele.
    */
   precoSugerido?: number;
+  /**
+   * Item do catálogo do prestador que originou a sugestão (código de erro → orçamento
+   * casa a peça/mão de obra com o catálogo dele). Ausente = item avulso.
+   */
+  catalogoId?: string;
 };
 
 export type RootStackParamList = {
@@ -133,7 +138,8 @@ export type RootStackParamList = {
   // `exemploVertical` marca o orçamento de exemplo da ativação (services/ativacao.ts):
   // o editor mostra o aviso "é um exemplo, troque pelos seus valores".
   // `clienteNome` (Autopilot): cliente ainda sem cadastro — entra só o nome; o usuário liga ao cadastro no passo 1.
-  NovoOrcamento: { modeloId?: string; clienteId?: string; clienteNome?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[]; exemploVertical?: VerticalId };
+  // `laudoTecnico` (código de erro → orçamento): a descrição técnica do defeito, editável no passo de detalhes.
+  NovoOrcamento: { modeloId?: string; clienteId?: string; clienteNome?: string; prefillItem?: PrefillItem; prefillItems?: PrefillItem[]; exemploVertical?: VerticalId; laudoTecnico?: string };
   EditarOrcamento: { orcamentoId: string };
   VisualizarOrcamento: { orcamentoId: string };
   // Orcamentos pode abrir filtrado por cliente (CRM: "ver orçamentos deste cliente").
@@ -149,7 +155,9 @@ export type RootStackParamList = {
   MeuNegocio: undefined;
   ModelosDocumento: undefined;
   CentralDocumentos: undefined;
-  Diagnostico: undefined;
+  // `equipamentoId` (ficha do QR → "Código de erro deste equipamento"): o
+  // diagnóstico já sabe a marca, o cliente e o equipamento para o orçamento do defeito.
+  Diagnostico: { equipamentoId?: string } | undefined;
   DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;

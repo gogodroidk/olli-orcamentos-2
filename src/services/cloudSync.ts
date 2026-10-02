@@ -63,6 +63,7 @@ import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisu
 import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCliente';
 import { garantiaAteDaOS } from '../utils/garantiaServico';
 import { externaParaSqlite, lerExterna } from './verticais';
+import { lerEncerramento } from '../utils/encerramentoOS';
 import {
   erroEhColisaoNumero,
   numeroDocumentoAposColisao,
@@ -325,6 +326,14 @@ let osSemColunaAsset = false;
 const COLUNAS_OS_GARANTIA = ['garantia', 'garantia_ate', 'garantia_de_os_id'] as const;
 let osSemColunasGarantia = false;
 
+/**
+ * "Encerrar atendimento" na OS (migration 20261003102500, coluna jsonb
+ * `encerramento`). Mesma escada: servidor sem a coluna → o push segue sem ela e o
+ * pull PRESERVA o encerramento local (assinatura do cliente, passos) em vez de
+ * apagá-lo. Sem sinal ou sem migration, nada do que o técnico fez se perde.
+ */
+let osSemColunaEncerramento = false;
+
 function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): boolean {
   return error?.code === '42703' || error?.code === 'PGRST204';
 }
@@ -400,6 +409,8 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
       garantia_ate: garantiaAteDaOS(o) ?? null,
       garantia_de_os_id: o.garantiaDeOsId ?? null,
     }),
+    // Encerramento (ver osSemColunaEncerramento): objeto vai como jsonb.
+    ...(osSemColunaEncerramento ? {} : { encerramento: o.encerramento ?? null }),
   };
 }
 
@@ -643,6 +654,7 @@ function rowToOrdemServico(row: any): OrdemServico {
   if (row && typeof row === 'object' && 'cliente_nome' in row && !('asset_id' in row)) osSemColunaAsset = true;
   // Idem para a garantia (migration 20261003103100).
   if (row && typeof row === 'object' && 'cliente_nome' in row && !('garantia' in row)) osSemColunasGarantia = true;
+  if (row && typeof row === 'object' && 'cliente_nome' in row && !('encerramento' in row)) osSemColunaEncerramento = true;
   return {
     id: row.id,
     numero: row.numero ?? '',
@@ -663,6 +675,8 @@ function rowToOrdemServico(row: any): OrdemServico {
     equipamentoId: row.asset_id ?? undefined,
     ...(typeof row.garantia === 'string' && row.garantia ? { garantia: row.garantia } : {}),
     ...(typeof row.garantia_de_os_id === 'string' && row.garantia_de_os_id ? { garantiaDeOsId: row.garantia_de_os_id } : {}),
+    // jsonb (nuvem) ou TEXT JSON (linha local): leitura tolerante, nunca lança.
+    encerramento: lerEncerramento(row.encerramento),
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
     // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
@@ -1122,6 +1136,15 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       for (const c of COLUNAS_OS_GARANTIA) delete (row as Record<string, unknown>)[c];
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
     }
+    // Escada da OS do degrau MAIS NOVO para o mais antigo: garantia (20261003103100),
+    // encerramento (20261003102500), equipamento (20261002153217). Assim um servidor
+    // que já tem o `asset_id` nunca perde o vínculo por causa de coluna mais nova.
+    if (error && table === 'ordens_servico' && !osSemColunaEncerramento && erroDeColunaDesconhecida(error)) {
+      // Servidor sem a migration do encerramento: reenvia sem `encerramento`.
+      osSemColunaEncerramento = true;
+      delete (row as Record<string, unknown>).encerramento;
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
     if (error && table === 'ordens_servico' && !osSemColunaAsset && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration do equipamento na OS: reenvia sem `asset_id`.
       osSemColunaAsset = true;
@@ -1578,14 +1601,16 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   let assetLocal: string | null = null;
   let garantiaLocal: string | null = null;
   let garantiaDeLocal: string | null = null;
+  let encerramentoLocal: string | null = null;
   try {
-    const loc = await db.getFirstAsync<{ atualizado_em: string; asset_id: string | null; garantia: string | null; garantia_de_os_id: string | null }>(
-      'SELECT atualizado_em, asset_id, garantia, garantia_de_os_id FROM ordens_servico WHERE id = ?', [o.id],
+    const loc = await db.getFirstAsync<{ atualizado_em: string; asset_id: string | null; garantia: string | null; garantia_de_os_id: string | null; encerramento: string | null }>(
+      'SELECT atualizado_em, asset_id, garantia, garantia_de_os_id, encerramento FROM ordens_servico WHERE id = ?', [o.id],
     );
     if (loc?.atualizado_em && tsMaisNovo(loc.atualizado_em, o.atualizadoEm)) return;
     assetLocal = loc?.asset_id ?? null;
     garantiaLocal = loc?.garantia ?? null;
     garantiaDeLocal = loc?.garantia_de_os_id ?? null;
+    encerramentoLocal = loc?.encerramento ?? null;
   } catch {
     // sem linha local / erro de leitura → segue e grava (piso seguro)
   }
@@ -1599,19 +1624,22 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   // antes da migration) nunca apaga a garantia escrita neste aparelho.
   const garantia = o.garantia ?? garantiaLocal;
   const garantiaDeOsId = o.garantiaDeOsId ?? garantiaDeLocal;
+  // Encerramento: mesma regra do vínculo — nuvem VAZIA (sem a coluna ou OS enviada
+  // antes da migration) nunca apaga a assinatura/os passos gravados no aparelho.
+  const encerramento = o.encerramento ? JSON.stringify(o.encerramento) : encerramentoLocal;
   // checklist/fotos como TEXT JSON (mesmo schema local de database.ts).
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [o.id, o.numero, o.orcamentoId ?? null, o.clienteId ?? null, o.clienteNome,
      o.titulo, o.descricao ?? null, o.status, o.concluidoEm ?? null, o.tecnicoId ?? null, o.tecnicoNome ?? null,
      o.dataAgendada ?? null, JSON.stringify(o.checklist ?? []), JSON.stringify(o.fotos ?? []),
      o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null, assetId,
-     garantia, garantiaDeOsId],
+     garantia, garantiaDeOsId, encerramento],
   );
 }
 

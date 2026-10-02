@@ -19,6 +19,7 @@ import { DicaContextual } from '../components/DicaContextual';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
+import { useVerticais } from '../hooks/useVerticais';
 // Contrato da FRENTE A — ÚNICA superfície de import desta frente (além de types).
 import {
   getEquipamentos,
@@ -593,6 +594,9 @@ function DetalheEquipamento({
   // Técnico de equipe que faz o check-in: a OS nova sai atribuída a ele (senão
   // some da lista "minhas OS" dele). Gestão/conta pessoal: sem atribuição automática.
   const { papel } = usePermissao();
+  // A base de códigos de erro é de ar-condicionado: o atalho só aparece para quem
+  // é do ofício (ou ainda sem ofício, que vê tudo). Pintor/dedetizador não vê ruído.
+  const { mostraHvac } = useVerticais();
   const [tecnico, setTecnico] = useState<TecnicoAtendimento | undefined>(undefined);
   useEffect(() => {
     if (papel !== 'tecnico') { setTecnico(undefined); return; }
@@ -611,6 +615,14 @@ function DetalheEquipamento({
   function abrirOS(ordemId: string) {
     onFechar();
     nav.navigate('OrdemServico', { ordemId });
+  }
+
+  // Código de erro deste equipamento: o Diagnóstico abre já com a marca, o cliente e
+  // o equipamento — o "Gerar orçamento deste defeito" sai com tudo isso preenchido.
+  function abrirDiagnostico() {
+    vibrar('selecao');
+    onFechar();
+    nav.navigate('Diagnostico', { equipamentoId });
   }
 
   const carregar = useCallback(async () => {
@@ -886,6 +898,16 @@ function DetalheEquipamento({
                   fullWidth
                   onPress={criarOrcamentoDoEquipamento}
                   icon={<MaterialCommunityIcons name="file-document-plus-outline" size={20} color="#fff" />}
+                />
+              ) : null}
+              {mostraHvac ? (
+                <OlliButton
+                  label="Código de erro deste equipamento"
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  onPress={abrirDiagnostico}
+                  icon={<MaterialCommunityIcons name="card-search-outline" size={20} color={cores.primary} />}
                 />
               ) : null}
               <OlliButton

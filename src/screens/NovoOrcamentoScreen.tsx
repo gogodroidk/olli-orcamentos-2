@@ -124,11 +124,13 @@ export default function NovoOrcamentoScreen() {
   // Autopilot: nome do cliente sem cadastro (ou fallback se o id não for achado).
   const prefillClienteNome = (route.params as any)?.clienteNome as string | undefined;
   const prefillItem = (route.params as any)?.prefillItem as
-    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number; unidade?: string; precoSugerido?: number }
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number; unidade?: string; precoSugerido?: number; catalogoId?: string }
     | undefined;
   const prefillItems = (route.params as any)?.prefillItems as
-    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number; unidade?: string; precoSugerido?: number }[]
+    | { tipo: 'servico' | 'produto'; nome: string; descricao?: string; quantidade?: number; unidade?: string; precoSugerido?: number; catalogoId?: string }[]
     | undefined;
+  // Código de erro → orçamento: a descrição técnica do defeito entra no laudo (editável).
+  const prefillLaudo = (route.params as any)?.laudoTecnico as string | undefined;
   // Orçamento de EXEMPLO da ativação (Início → "Seu primeiro orçamento em 1 minuto"):
   // os itens chegam com valor de referência e o editor avisa que é exemplo.
   const ehExemplo = !isEdit && !!(route.params as any)?.exemploVertical;
@@ -308,12 +310,16 @@ export default function NovoOrcamentoScreen() {
           ? round2(item.precoSugerido)
           : 0;
         return {
-          id: generateId(), tipo: item.tipo, catalogoId: '', nome: item.nome.trim(),
+          id: generateId(), tipo: item.tipo,
+          catalogoId: typeof item.catalogoId === 'string' ? item.catalogoId : '',
+          nome: item.nome.trim(),
           descricao: item.descricao?.trim() || undefined, preco, quantidade,
           unidade: item.unidade?.trim() || 'un', subtotal: round2(preco * quantidade),
         };
       });
       if (itensPrefill.length) base = calcTotais({ ...base, itens: itensPrefill });
+      const laudo = typeof prefillLaudo === 'string' ? prefillLaudo.trim().slice(0, 2000) : '';
+      if (laudo) base = { ...base, laudoTecnico: laudo };
 
       if (!montadoRef.current) return;
       // Cliente já ligado ao cadastro (veio do CRM): o passo "Cliente" não tem o
@@ -331,7 +337,7 @@ export default function NovoOrcamentoScreen() {
         mensagem: 'Os dados do aparelho não carregaram agora. Nada foi perdido — toque em “Tentar de novo”.',
       });
     }
-  }, [isEdit, orcamentoId, prefillClienteId, prefillClienteNome, prefillItem, prefillItems, nav, progresso]);
+  }, [isEdit, orcamentoId, prefillClienteId, prefillClienteNome, prefillItem, prefillItems, prefillLaudo, nav, progresso]);
 
   // Carga automática UMA vez só. `carregar` muda de identidade se `nav` ou os
   // params mudarem (setParams, navigate para a mesma rota) — recarregar aí
