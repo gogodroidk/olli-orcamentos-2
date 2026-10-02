@@ -63,7 +63,7 @@ import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
-import { renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
+import { receberPedidoEtiqueta, renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
@@ -1078,27 +1078,37 @@ const handler = {
     }
 
     // ── ETIQUETA PÚBLICA DO EQUIPAMENTO (PMOC, sem login, antes do gate da IA) ──
-    // GET /q/<token>      → página pública mínima da etiqueta física (dados
-    //                       não-sensíveis + contato do prestador).
-    // GET /q/<token>.svg  → o QR code (do próprio link) como imagem SVG.
-    // Só GET: a etiqueta é somente leitura pública. O handler em pmoc.js resolve o
-    // asset por qr_token via service_role, nega token inválido/revogado sem vazar,
-    // e SEMPRE registra o scan em qr_scan_events (best-effort). CSP/escape lá dentro.
-    if (url.pathname.startsWith('/q/')) {
-      if (request.method !== 'GET') {
+    // GET  /q/<token>      → página pública da etiqueta física (marca do prestador,
+    //                        última/próxima manutenção, WhatsApp e "Pedir orçamento").
+    // GET  /q/<token>.svg  → o QR code (do próprio link) como imagem SVG.
+    // POST /q/<token>      → "Pedir orçamento" (formulário da própria página).
+    // /e/<token>           → apelido de /q/<token> (mesmos handlers). As etiquetas
+    //                        já impressas usam /q/ e continuam valendo.
+    // O handler em pmoc.js resolve o asset por qr_token via service_role, nega
+    // token inválido/revogado sem vazar, e registra o scan do GET em
+    // qr_scan_events (best-effort). CSP/escape lá dentro.
+    if (url.pathname.startsWith('/q/') || url.pathname.startsWith('/e/')) {
+      if (request.method !== 'GET' && request.method !== 'POST') {
         return new Response('Método não suportado', {
           status: 405,
-          headers: { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+          headers: { Allow: 'GET, POST', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
         });
       }
       const resto = decodeURIComponent(url.pathname.slice(3));
       // Sub-rota da imagem: /q/<token>.svg. É pura função do texto (não toca o
       // banco nem escreve scan) → dispensa rate-limit e pode ser cacheada.
       if (resto.endsWith('.svg')) {
+        if (request.method !== 'GET') {
+          return new Response('Método não suportado', {
+            status: 405,
+            headers: { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+          });
+        }
         return renderEtiquetaSvg(resto.slice(0, -4));
       }
-      // Página HTML: escreve (SELECT service-role + INSERT de scan). Mesmo teto por
-      // IP do /o/ (LINK_RL); reforço anti-enumeração fica dentro de renderEtiqueta.
+      // Página HTML e pedido: escrevem (SELECT service-role + INSERT de scan/pedido).
+      // Mesmo teto por IP do /o/ (LINK_RL); reforço anti-enumeração e teto de
+      // pedidos por equipamento ficam dentro de pmoc.js.
       if (env.LINK_RL) {
         const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
         try {
@@ -1108,6 +1118,7 @@ const handler = {
           // binding ausente: não bloqueia
         }
       }
+      if (request.method === 'POST') return receberPedidoEtiqueta(resto, env, request);
       return renderEtiqueta(resto, env, request);
     }
 

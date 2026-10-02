@@ -175,6 +175,7 @@ export async function criarOSManual(parcial: Partial<OrdemServico>): Promise<Ord
     fotos: Array.isArray(parcial.fotos) ? parcial.fotos : [],
     observacoes: parcial.observacoes,
     valor: parcial.valor,
+    equipamentoId: parcial.equipamentoId,
     criadoEm: parcial.criadoEm ?? agora,
     atualizadoEm: agora,
   };
