@@ -88,6 +88,7 @@ export function criarLinkingConfig(
         OlliVoz: 'olli-voz',
         OlliChat: 'olli-chat',
         Planos: 'planos',
+        VimDeOutroApp: 'vim-de-outro-app',
         RelatorioDia: 'relatorio-do-dia',
         CentralDocumentos: 'documentos',
         // Troque em 5 minutos (contatos, planilha e foto de orçamento antigo).
