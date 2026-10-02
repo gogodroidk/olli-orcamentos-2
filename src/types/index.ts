@@ -1,4 +1,5 @@
 import type { GeoPrecisao } from '../utils/geoCliente.ts';
+import type { EncerramentoOS } from '../utils/encerramentoOS.ts';
 import type { VerticalId, FerramentaId } from '../services/verticais';
 
 /**
@@ -878,6 +879,13 @@ export interface OrdemServico {
    * equipamento ligado (a verdade de toda OS anterior à migration 20261002153217).
    */
   equipamentoId?: string;
+  /**
+   * "Encerrar atendimento" (encerramento em 60 s): passos feitos/pulados, a
+   * assinatura do cliente, o recibo e a próxima visita criados no fluxo. Regras e
+   * leitura tolerante em `utils/encerramentoOS.ts`. Ausente = a OS nunca passou
+   * pelo fluxo (a verdade de toda OS anterior à migration 20261003102000).
+   */
+  encerramento?: EncerramentoOS;
   criadoEm: string;
   atualizadoEm: string;
   /** LIXEIRA (Frente 1): ISO do soft delete. Ausente = ATIVO. */

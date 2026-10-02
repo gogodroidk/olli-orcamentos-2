@@ -26,6 +26,7 @@ import { generateId } from '../utils/id';
 import { concluidoEmDaTransicao } from '../utils/ordemServicoStatus';
 import { montarOSDoOrcamento, proximoNumeroOSDasFontes } from '../utils/ordemServicoDoOrcamento';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../types';
+import type { EncerramentoOS } from '../utils/encerramentoOS';
 
 /** Todas as OS visíveis (o SELECT local já reflete o tenant/org via sync). */
 export async function getOrdens(): Promise<OrdemServico[]> {
@@ -236,6 +237,34 @@ export async function atribuirTecnico(id: string, tecnicoId: string, tecnicoNome
 /** Substitui o checklist inteiro da OS (o app envia a lista completa já mutada). */
 export async function atualizarChecklist(id: string, checklist: ItemChecklist[]): Promise<void> {
   await patchOrdem(id, { checklist: Array.isArray(checklist) ? checklist : [] });
+}
+
+/**
+ * Grava o progresso do "Encerrar atendimento" na própria OS (SQLite primeiro; a
+ * nuvem recebe pelo espelho do saveOrdemServico). LANÇA se não gravou — a tela
+ * mantém o passo como estava e mostra "não salvei", nunca finge que salvou.
+ */
+export async function salvarEncerramentoOS(id: string, encerramento: EncerramentoOS): Promise<OrdemServico> {
+  return patchOrdem(id, { encerramento });
+}
+
+/**
+ * "Concluir atendimento": carimba o fim do encerramento e conclui a OS (que fecha
+ * também a visita ligada na agenda — ver saveOrdemServico). Uma escrita só, para
+ * a OS nunca ficar "encerrada" e "em execução" ao mesmo tempo.
+ */
+export async function finalizarEncerramentoOS(id: string, encerramento: EncerramentoOS): Promise<OrdemServico> {
+  const atual = await getOrdemServicoDb(id);
+  if (!atual) throw new Error('Ordem de serviço não encontrada.');
+  const status: StatusOS = atual.status === 'cancelada' ? 'cancelada' : 'concluida';
+  const atualizada = await patchOrdem(id, { encerramento, status });
+  if (status === 'concluida' && atual.status !== 'concluida') {
+    void import('./documentosBiblioteca').then(({ garantirDocumentoOrdemServico }) =>
+      garantirDocumentoOrdemServico(atualizada).catch(() => {}),
+    ).catch(() => {});
+    void cancelarLembretesPmoc(id).catch(() => {});
+  }
+  return atualizada;
 }
 
 /** Anexa uma foto (uri) à OS, preservando as existentes e sem duplicar. */

@@ -613,6 +613,14 @@ function DetalheEquipamento({
     nav.navigate('OrdemServico', { ordemId });
   }
 
+  // Código de erro deste equipamento: o Diagnóstico abre já com a marca, o cliente e
+  // o equipamento — o "Gerar orçamento deste defeito" sai com tudo isso preenchido.
+  function abrirDiagnostico() {
+    vibrar('selecao');
+    onFechar();
+    nav.navigate('Diagnostico', { equipamentoId });
+  }
+
   const carregar = useCallback(async () => {
     setCarregando(true);
     const e = await getEquipamento(equipamentoId);
@@ -888,6 +896,14 @@ function DetalheEquipamento({
                   icon={<MaterialCommunityIcons name="file-document-plus-outline" size={20} color="#fff" />}
                 />
               ) : null}
+              <OlliButton
+                label="Código de erro deste equipamento"
+                variant="outline"
+                size="lg"
+                fullWidth
+                onPress={abrirDiagnostico}
+                icon={<MaterialCommunityIcons name="card-search-outline" size={20} color={cores.primary} />}
+              />
               <OlliButton
                 label="Editar equipamento"
                 variant="secondary"
