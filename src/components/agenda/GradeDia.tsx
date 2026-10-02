@@ -71,16 +71,28 @@ export function GradeDia({ dia, itens, corDe, onAbrir, onRemarcar, podeArrastar,
 
   // Abre já no ponto útil: o "agora" (hoje) ou o 1º compromisso. Uma vez por dia.
   // O que fica acima da grade (cabeçalho + "Dia todo") entra na conta: espera a
-  // 1ª medida dele para o "agora" continuar no mesmo ponto da tela.
+  // 1ª medida dele para o "agora" continuar no mesmo ponto da tela. O cabeçalho
+  // pode crescer DEPOIS (o cartão de clima chega com os clientes, os chips trocam
+  // o esqueleto pela previsão): enquanto a pessoa não rolou com o dedo, a grade
+  // reposiciona para o "agora" não descer para fora da tela.
   const [alturaTopo, setAlturaTopo] = useState<number | null>(null);
   const diaChave = `${dia.getFullYear()}-${dia.getMonth()}-${dia.getDate()}`;
   const rolouPara = useRef<string | null>(null);
+  const pessoaRolou = useRef(false);
   useEffect(() => {
-    if (rolouPara.current === diaChave || alturaTopo === null) return;
-    rolouPara.current = diaChave;
+    if (alturaTopo === null) return;
+    const chave = `${diaChave}|${Math.round(alturaTopo)}`;
+    if (rolouPara.current === chave) return;
+    // Mesmo dia, só o topo mudou de altura: não puxa quem já rolou sozinho.
+    if (rolouPara.current?.startsWith(`${diaChave}|`) && pessoaRolou.current) return;
     const alvo = ehHoje ? agoraMin : blocos[0]?.iniMin ?? 8 * 60;
     const y = Math.max(0, alturaTopo + yDe(alvo) - PX_HORA * 0.75);
-    const t = setTimeout(() => scrollRef.current?.scrollTo({ y, animated: false }), 0);
+    // Marca como feito só quando rola de verdade: se outra renderização cancelar
+    // este timer (a lista chegou, o minuto virou), a próxima agenda de novo.
+    const t = setTimeout(() => {
+      rolouPara.current = chave;
+      scrollRef.current?.scrollTo({ y, animated: false });
+    }, 0);
     return () => clearTimeout(t);
   }, [diaChave, ehHoje, agoraMin, blocos, yDe, alturaTopo]);
 
@@ -96,11 +108,11 @@ export function GradeDia({ dia, itens, corDe, onAbrir, onRemarcar, podeArrastar,
       refreshControl={refreshControl}
       scrollEnabled={arrastando === null}
       onScroll={onScroll}
+      onScrollBeginDrag={() => { pessoaRolou.current = true; }}
       scrollEventThrottle={16}
     >
       <View onLayout={(e: LayoutChangeEvent) => {
-        const h = e.nativeEvent.layout.height;
-        setAlturaTopo((a) => (a === null ? h : a));
+        setAlturaTopo(e.nativeEvent.layout.height);
       }}>
         {cabecalho}
         {diaTodo.length > 0 ? (

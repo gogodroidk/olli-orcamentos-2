@@ -71,6 +71,13 @@ export function FolhaNovaDataVisita({ visivel, visita, encaixe, aoFechar, aoRema
 
   async function gravar(novoInicio: Date) {
     if (salvando) return;
+    // O calendário só barra o DIA: "hoje às 8h" escolhido às 15h remarcaria para
+    // o passado (a visita sairia do Hoje e ninguém iria). Recusa com o motivo.
+    if (novoInicio.getTime() < Date.now() - 60_000) {
+      vibrar('erro');
+      setErro('Esse horário já passou. Escolha um horário que ainda vai chegar.');
+      return;
+    }
     setSalvando(true);
     setErro(null);
     try {
