@@ -169,6 +169,10 @@ type NotificacaoPendente = {
   orcamentoId?: string;
   /** Lembrete agrupado de follow-up ou aviso de rascunhos: abre a lista. */
   listaOrcamentos?: 'followUp' | 'rascunhos';
+  /** Onda I3: "Confirmar visitas de amanhã" (18h) → a fila. */
+  vespera?: boolean;
+  /** Onda I3: "Garantia vencendo em 7 dias" → as garantias para cuidar. */
+  garantia?: boolean;
 };
 
 /**
@@ -202,6 +206,8 @@ function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
   // stack raiz (não abas), então o navigate direto funciona com app frio ou quente.
   else if (data.orcamentoId) (navigationRef.navigate as any)('VisualizarOrcamento', { orcamentoId: data.orcamentoId });
   else if (data.listaOrcamentos) navigationRef.navigate('Orcamentos' as never);
+  else if (data.vespera) navigationRef.navigate('ConfirmarVisitas' as never);
+  else if (data.garantia) navigationRef.navigate('Garantias' as never);
 }
 
 /**
@@ -362,7 +368,7 @@ function AppConteudo() {
       if (!resposta) return;
       try {
         const data = resposta.notification.request.content.data as NotificacaoPendente;
-        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual && !data?.orcamentoId && !data?.listaOrcamentos) return;
+        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual && !data?.orcamentoId && !data?.listaOrcamentos && !data?.vespera && !data?.garantia) return;
         if (!navigationRef.isReady()) {
           notificacaoPendenteRef.current = data;
           return;

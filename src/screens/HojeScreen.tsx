@@ -19,6 +19,9 @@ import { OlliMascot } from '../components/OlliMascot';
 import { Aparecer, Skeleton } from '../components/motion';
 import { AcaoNo, NoLinhaDoTempo } from '../components/hoje/LinhaDoTempo';
 import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
+import { SeloConfirmacao } from '../components/vespera/SeloConfirmacao';
+import { CartaoVespera } from '../components/vespera/CartaoVespera';
+import { CartaoGarantias } from '../components/garantia/CartaoGarantias';
 import { toast } from '../components/feedback';
 import { getAgendamentosDoDia, getVisitasSemBaixa, mudarStatusVisitaDoDia } from '../services/agenda';
 import { getCliente, getClientes, getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
@@ -381,6 +384,9 @@ const VisitaNaLinha = React.memo(function VisitaNaLinha({
             <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[a.tipo]}</Text>
           </View>
         )}
+        {/* CONFIRMAÇÃO DE VÉSPERA (Onda I3): "Confirmada pelo cliente" / "Pediu
+            para remarcar" / "Aguardando". Some sem pedido de confirmação. */}
+        {fase !== 'feita' ? <SeloConfirmacao visita={a} style={styles.visitaClima} /> : null}
         {/* CLIMA DA VISITA — só o que importa agora (some na visita feita/passada).
             Visita externa com chuva forte: tocar abre "Remarcar e avisar". */}
         {fase !== 'feita' ? (
@@ -1047,6 +1053,14 @@ export default function HojeScreen() {
             </NoLinhaDoTempo>
           </Aparecer>
         ))}
+
+        {/* CONFIRMAR VISITAS DE AMANHÃ (Onda I3) — some sem visita amanhã. */}
+        {!carregando && escopoPronto ? (
+          <CartaoVespera escopo={escopo} clientes={clientes} indice={ordem++} />
+        ) : null}
+
+        {/* GARANTIAS PARA CUIDAR (Onda I3) — só para quem vê a empresa inteira. */}
+        <CartaoGarantias indice={ordem++} visivel={escopo.status === 'equipe'} />
 
         {/* 3. CHECKLIST DO DIA */}
         <Aparecer indice={ordem++}>

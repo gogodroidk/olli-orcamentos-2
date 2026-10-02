@@ -236,6 +236,37 @@ export async function getResumoManutencao(env, assetId) {
 }
 
 /**
+ * Último dia de garantia VIGENTE do equipamento (RPC SECURITY DEFINER, só
+ * service_role — devolve uma DATA). Três estados, como o resumo:
+ *  - { estado:'ok', ate:'YYYY-MM-DD' } — em garantia até esse dia;
+ *  - { estado:'ok', ate:null } — o banco respondeu: nenhuma garantia vigente;
+ *  - { estado:'indisponivel' } — RPC ausente (migration 20261003103100 não
+ *    aplicada) ou falha: a página não fala de garantia e o chamado de garantia
+ *    não aparece. Nunca afirma garantia que não conseguiu conferir.
+ */
+export async function getGarantiaVigente(env, assetId) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/garantia_vigente_equipamento`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_asset_id: assetId }),
+    });
+    if (!r.ok) return { estado: 'indisponivel' };
+    const v = await r.json().catch(() => undefined);
+    if (v === null) return { estado: 'ok', ate: null };
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return { estado: 'ok', ate: v };
+    return { estado: 'indisponivel' };
+  } catch {
+    return { estado: 'indisponivel' };
+  }
+}
+
+/** true só quando o banco CONFIRMOU uma garantia vigente. */
+export function garantiaVigente(garantia) {
+  return !!(garantia && garantia.estado === 'ok' && typeof garantia.ate === 'string' && garantia.ate);
+}
+
+/**
  * Plano comercial EFETIVO do dono (assinatura + trial), pela mesma RPC que a cota
  * de orçamentos usa. 'gratis' | 'pro' | 'empresa', ou 'erro' (na dúvida o selo
  * não sai — ver cabeçalho).
@@ -420,12 +451,13 @@ export async function renderEtiqueta(token, env, request) {
 
 /** Prestador + resumo de manutenção + plano, em paralelo (cada um falha sozinho). */
 async function dadosDaPagina(env, asset) {
-  const [prestador, manutencao, plano] = await Promise.all([
+  const [prestador, manutencao, plano, garantia] = await Promise.all([
     getPrestador(env, asset.user_id),
     getResumoManutencao(env, asset.id),
     getPlanoComercial(env, asset.user_id),
+    getGarantiaVigente(env, asset.id),
   ]);
-  return { prestador, manutencao, mostrarSelo: plano === 'gratis' };
+  return { prestador, manutencao, mostrarSelo: plano === 'gratis', garantia };
 }
 
 // ─── porta pública: POST /q/<token> ("Pedir orçamento") ─────
@@ -466,6 +498,8 @@ export function validarPedido(campos) {
     nome: textoPlano(campos && campos.nome, 80),
     whatsapp: textoPlano(campos && campos.whatsapp, 30),
     mensagem: textoPlano(campos && campos.mensagem, 500),
+    // Só para devolver o formulário com a mesma escolha marcada em caso de erro.
+    motivo: campos && campos.motivo === 'garantia' ? 'garantia' : '',
   };
   if (campos && typeof campos.site === 'string' && campos.site.trim()) return { ok: true, robo: true };
   if (valores.nome.replace(/\s/g, '').length < 2) {
@@ -478,7 +512,11 @@ export function validarPedido(campos) {
   if (!(campos && (campos.aceite === 'sim' || campos.aceite === 'on'))) {
     return { ok: false, erro: 'Marque a autorização para o prestador te chamar no WhatsApp.', valores };
   }
-  return { ok: true, pedido: { nome: valores.nome, telefone, mensagem: valores.mensagem || null } };
+  const pedido = { nome: valores.nome, telefone, mensagem: valores.mensagem || null };
+  // Chamado de garantia: só a marcação; quem decide se vale é o worker, conferindo
+  // a garantia vigente no banco (receberPedidoEtiqueta).
+  if (campos && campos.motivo === 'garantia') pedido.motivo = 'garantia';
+  return { ok: true, pedido };
 }
 
 /** Pedidos do equipamento na última hora (fail-open: 0 em erro; o LINK_RL segura). */
@@ -501,19 +539,32 @@ async function pedidosRecentes(env, assetId) {
 
 /** Grava o pedido (service_role). true = gravou; false = falhou (tabela ausente, rede…). */
 async function inserirPedido(env, asset, pedido) {
+  const linha = {
+    user_id: asset.user_id,
+    asset_id: asset.id,
+    nome: pedido.nome,
+    telefone: pedido.telefone,
+    mensagem: pedido.mensagem,
+  };
+  // `motivo` só vai quando é garantia: o pedido comum continua idêntico ao de antes.
+  if (pedido.motivo === 'garantia') linha.motivo = 'garantia';
+  const enviar = (corpo) => fetch(`${env.SUPABASE_URL}/rest/v1/pedidos_orcamento_qr`, {
+    method: 'POST',
+    headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+    body: JSON.stringify(corpo),
+  });
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/pedidos_orcamento_qr`, {
-      method: 'POST',
-      headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
-      body: JSON.stringify({
-        user_id: asset.user_id,
-        asset_id: asset.id,
-        nome: pedido.nome,
-        telefone: pedido.telefone,
-        mensagem: pedido.mensagem,
-      }),
-    });
-    return r.ok;
+    const r = await enviar(linha);
+    if (r.ok) return true;
+    // Servidor sem a coluna `motivo` (migration 20261003103100 ainda não aplicada):
+    // grava sem ela e marca a mensagem, para o chamado não virar pedido comum calado.
+    if (linha.motivo && (r.status === 400 || r.status === 404)) {
+      const { motivo: _motivo, ...semMotivo } = linha;
+      const texto = `Chamado de garantia: ${linha.mensagem || 'voltou o problema'}`.slice(0, 500);
+      const r2 = await enviar({ ...semMotivo, mensagem: texto });
+      return r2.ok;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -568,17 +619,23 @@ export async function receberPedidoEtiqueta(token, env, request) {
   if ((await pedidosRecentes(env, asset.id)) >= PEDIDOS_POR_HORA_POR_EQUIPAMENTO) {
     return htmlResp(pageEtiqueta(asset, extras.prestador, token, {
       ...extras,
-      pedido: { erro: `Este equipamento já recebeu vários pedidos agora há pouco. Fale direto com ${nomePrestador} pelo WhatsApp.`, valores: v.pedido && { nome: v.pedido.nome, whatsapp: '', mensagem: v.pedido.mensagem || '' } },
+      pedido: { erro: `Este equipamento já recebeu vários pedidos agora há pouco. Fale direto com ${nomePrestador} pelo WhatsApp.`, valores: v.pedido && { nome: v.pedido.nome, whatsapp: '', mensagem: v.pedido.mensagem || '', motivo: v.pedido.motivo || '' } },
     }), 429);
   }
-  const gravou = await inserirPedido(env, asset, v.pedido);
+  // Chamado de garantia só com garantia CONFIRMADA no banco. Sem ela (ou sem
+  // conseguir conferir), o pedido entra como orçamento: a etiqueta nunca promete
+  // garantia que o prestador não registrou.
+  const pedidoFinal = v.pedido.motivo === 'garantia' && !garantiaVigente(extras.garantia)
+    ? { nome: v.pedido.nome, telefone: v.pedido.telefone, mensagem: v.pedido.mensagem }
+    : v.pedido;
+  const gravou = await inserirPedido(env, asset, pedidoFinal);
   if (!gravou) {
     return htmlResp(pageEtiqueta(asset, extras.prestador, token, {
       ...extras,
-      pedido: { erro: 'Não consegui registrar o pedido agora. Tente de novo em instantes ou chame pelo WhatsApp.', valores: { nome: v.pedido.nome, whatsapp: campos.whatsapp || '', mensagem: v.pedido.mensagem || '' } },
+      pedido: { erro: 'Não consegui registrar o pedido agora. Tente de novo em instantes ou chame pelo WhatsApp.', valores: { nome: v.pedido.nome, whatsapp: campos.whatsapp || '', mensagem: v.pedido.mensagem || '', motivo: v.pedido.motivo || '' } },
     }), 503);
   }
-  return htmlResp(pagePedidoEnviado(nomePrestador, extras.prestador));
+  return htmlResp(pagePedidoEnviado(nomePrestador, extras.prestador, pedidoFinal.motivo === 'garantia'));
 }
 
 // ─── porta pública: GET /q/<token>.svg (imagem QR) ───────────
@@ -664,6 +721,10 @@ function shell(inner, accentRaw = ACCENT) {
   .form-erro{background:#FDECEA;color:#A93226;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:600;line-height:1.4}
   .btn-enviar{background:#0B6FCE;color:#fff}
   .ok-box{background:#fff;border-radius:22px;padding:40px 24px;text-align:center;box-shadow:0 18px 50px rgba(10,37,64,.14)}
+  .garantia{margin-top:12px;display:flex;gap:10px;align-items:flex-start;background:#E9F7F0;border:1px solid #CDEBDD;border-radius:14px;padding:12px 13px;font-size:12.5px;color:#0B6B47;line-height:1.45}
+  .motivos{display:flex;flex-direction:column;gap:8px}
+  .motivo{display:flex;gap:9px;align-items:center;font-size:13.5px;font-weight:600;color:#1A2230;background:#fff;border:1.5px solid #D5DBE3;border-radius:12px;padding:11px 12px}
+  .motivo input{width:18px;height:18px;flex-shrink:0}
   .selo{text-align:center;margin-top:18px;font-size:12px}
   .selo a{color:#8A95A6;text-decoration:none;font-weight:600}
   .selo a b{color:#0B6FCE}
@@ -765,15 +826,31 @@ function blocoManutencao(manutencao, nomePrestador) {
   </div>`;
 }
 
+/** "Em garantia até dd/mm/aaaa" — só quando o banco confirmou (senão, nada). */
+function blocoGarantia(garantia, nomePrestador) {
+  if (!garantiaVigente(garantia)) return '';
+  const ate = diaPtBr(garantia.ate);
+  if (!ate) return '';
+  return `<div class="garantia">🛡️ <span><strong>Em garantia até ${esc(ate)}</strong><br/>Serviço feito por ${esc(nomePrestador)}. Se o problema voltou, chame a garantia abaixo.</span></div>`;
+}
+
 /** Formulário "Pedir orçamento" (sem JS: <details> abre o formulário). */
-function blocoPedido(token, nomePrestador, pedido) {
+function blocoPedido(token, nomePrestador, pedido, comGarantia = false) {
   const val = (pedido && pedido.valores) || {};
   const aberto = pedido && pedido.erro ? ' open' : '';
+  const motivoGarantia = comGarantia && val.motivo === 'garantia';
+  const escolhaMotivo = comGarantia
+    ? `<div class="motivos" role="radiogroup" aria-label="O que você precisa?">
+        <label class="motivo"><input type="radio" name="motivo" value="orcamento"${motivoGarantia ? '' : ' checked'}/> Orçamento ou manutenção</label>
+        <label class="motivo"><input type="radio" name="motivo" value="garantia"${motivoGarantia ? ' checked' : ''}/> Voltou o problema: chamar a garantia</label>
+      </div>`
+    : '';
   return `<details class="pedido"${aberto}>
-    <summary class="btn btn-orc">📝 Pedir orçamento</summary>
+    <summary class="btn btn-orc">${comGarantia ? '📝 Pedir orçamento ou chamar a garantia' : '📝 Pedir orçamento'}</summary>
     <form class="form" method="post" action="/q/${esc(encodeURIComponent(token))}">
-      <div class="form-t">Pedir orçamento a ${esc(nomePrestador)}</div>
+      <div class="form-t">${comGarantia ? `Falar com ${esc(nomePrestador)}` : `Pedir orçamento a ${esc(nomePrestador)}`}</div>
       ${pedido && pedido.erro ? `<div class="form-erro" role="alert">${esc(pedido.erro)}</div>` : ''}
+      ${escolhaMotivo}
       <label for="f-nome">Seu nome</label>
       <input id="f-nome" type="text" name="nome" maxlength="80" required autocomplete="name" value="${esc(val.nome || '')}"/>
       <label for="f-zap">Seu WhatsApp (com DDD)</label>
@@ -838,7 +915,7 @@ function pageEtiqueta(asset, prestador, token, extras = {}) {
 
   const botoes = [];
   if (zapHref) botoes.push(`<a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener noreferrer">💬 Chamar no WhatsApp</a>`);
-  botoes.push(blocoPedido(token, nomePrestador, extras.pedido));
+  botoes.push(blocoPedido(token, nomePrestador, extras.pedido, garantiaVigente(extras.garantia)));
 
   const marca = logo
     ? `<img class="hd-logo" src="${logo}" alt="${esc(nomePrestador)}"/>`
@@ -854,6 +931,7 @@ function pageEtiqueta(asset, prestador, token, extras = {}) {
       <div class="title">Equipamento sob manutenção</div>
       <div class="sob">Este equipamento é acompanhado por <strong>${esc(nomePrestador)}</strong>.</div>
       ${blocoManutencao(extras.manutencao, nomePrestador)}
+      ${blocoGarantia(extras.garantia, nomePrestador)}
       <div class="grid">${linhas.join('')}</div>
       <div class="actions">${botoes.join('')}</div>
       <div class="caveat">A situação exibida é o estado operacional registrado pelo prestador — não representa, por si só, declaração de conformidade legal do equipamento. Nenhum dado pessoal ou contratual é exibido nesta página.</div>
@@ -864,13 +942,13 @@ function pageEtiqueta(asset, prestador, token, extras = {}) {
 }
 
 /** Confirmação do pedido (sem eco dos dados digitados além do essencial). */
-function pagePedidoEnviado(nomePrestador, prestador) {
+function pagePedidoEnviado(nomePrestador, prestador, garantia = false) {
   const accent = safeHexColor(prestador && prestador.corMarca, ACCENT);
   return shell(
     `<div class="ok-box">
-      <div class="err-emoji">✅</div>
-      <div class="err-title">Pedido enviado</div>
-      <div class="err-sub"><strong>${esc(nomePrestador)}</strong> recebeu seu pedido e vai te chamar no WhatsApp que você informou.</div>
+      <div class="err-emoji">${garantia ? '🛡️' : '✅'}</div>
+      <div class="err-title">${garantia ? 'Chamado de garantia enviado' : 'Pedido enviado'}</div>
+      <div class="err-sub"><strong>${esc(nomePrestador)}</strong> recebeu seu ${garantia ? 'chamado' : 'pedido'} e vai te chamar no WhatsApp que você informou.</div>
     </div>`,
     accent,
   );

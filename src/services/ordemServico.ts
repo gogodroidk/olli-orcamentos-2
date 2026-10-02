@@ -176,6 +176,8 @@ export async function criarOSManual(parcial: Partial<OrdemServico>): Promise<Ord
     observacoes: parcial.observacoes,
     valor: parcial.valor,
     equipamentoId: parcial.equipamentoId,
+    ...(parcial.garantia?.trim() ? { garantia: parcial.garantia.trim().slice(0, 200) } : {}),
+    ...(parcial.garantiaDeOsId ? { garantiaDeOsId: parcial.garantiaDeOsId } : {}),
     criadoEm: parcial.criadoEm ?? agora,
     atualizadoEm: agora,
   };
@@ -215,7 +217,23 @@ async function patchOrdem(id: string, patch: Partial<OrdemServico>): Promise<Ord
  * nunca pode travar a mudança de status.
  */
 export async function atualizarStatusOS(id: string, status: StatusOS): Promise<void> {
-  const atualizada = await patchOrdem(id, { status });
+  // Garantia que se cuida sozinha (I3): ao concluir uma OS que ainda não tem prazo
+  // próprio, ela herda o prazo escrito no orçamento de origem — é o que leva o
+  // "vale até" para a nuvem (garantia_ate) e para a etiqueta QR. Falha de leitura
+  // do orçamento não impede a conclusão.
+  const patch: Partial<OrdemServico> = { status };
+  if (status === 'concluida') {
+    try {
+      const atual = await getOrdemServicoDb(id);
+      if (atual && !atual.garantia?.trim() && atual.orcamentoId) {
+        const garantiaOrc = (await getOrcamento(atual.orcamentoId))?.garantia?.trim();
+        if (garantiaOrc) patch.garantia = garantiaOrc.slice(0, 200);
+      }
+    } catch {
+      // segue sem herdar: a garantia do orçamento continua valendo na leitura local
+    }
+  }
+  const atualizada = await patchOrdem(id, patch);
   if (status === 'concluida') {
     // Registro documental é best-effort: a conclusão da OS não pode falhar por
     // uma indisponibilidade transitória da biblioteca local.
@@ -226,6 +244,15 @@ export async function atualizarStatusOS(id: string, status: StatusOS): Promise<v
   if (status === 'concluida' || status === 'cancelada') {
     void cancelarLembretesPmoc(id).catch(() => {});
   }
+}
+
+/**
+ * Define (ou limpa, com texto vazio) o prazo de garantia DESTA OS ("90 dias").
+ * Vazio = a OS deixa de declarar garantia própria (vale a do orçamento, se houver).
+ */
+export async function definirGarantiaOS(id: string, texto: string): Promise<OrdemServico> {
+  const limpo = texto.trim().slice(0, 200);
+  return patchOrdem(id, { garantia: limpo || undefined });
 }
 
 /** Atribui (ou reatribui) o técnico executor da OS. */

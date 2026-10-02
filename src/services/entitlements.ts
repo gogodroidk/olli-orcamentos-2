@@ -24,6 +24,7 @@ export type Recurso =
   | 'clima_visita'      // inteligência: chuva na visita e remarcar por chuva
   | 'hora_de_sair'      // inteligência: hora de sair com trânsito (Routes API)
   | 'termometro_orcamento' // inteligência: termômetro do orçamento (quente/morno/frio)
+  | 'vespera_garantia'  // inteligência: confirmação de véspera (/v/<token>) + garantia que se cuida sozinha
   | 'relatorios'        // relatórios de faturamento e conversão
   | 'metas'             // metas de vendas e acompanhamento
   | 'radar_clientes'    // radar de clientes sumidos (lista completa)
@@ -66,6 +67,7 @@ const RECURSOS_PRO: readonly Recurso[] = [
   'clima_visita',
   'hora_de_sair',
   'termometro_orcamento',
+  'vespera_garantia',
   'ia_ilimitada',
   'relatorios',
   'metas',
@@ -135,6 +137,7 @@ export const RECURSOS_DO_TENANT: ReadonlySet<Recurso> = new Set<Recurso>([
   'clima_visita',
   'hora_de_sair',
   'termometro_orcamento',
+  'vespera_garantia',
   'followup_automatico',
   'pmoc_contratos',
 ]);

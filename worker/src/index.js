@@ -64,6 +64,7 @@ import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { receberPedidoEtiqueta, renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
+import { renderConfirmacao, responderConfirmacao } from './confirmacaoVisita.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { handleEtaAgora, handleEtaSaida } from './etaSaida.js';
 import { handleCep, handleFeriados } from './brasil.js';
@@ -1120,6 +1121,32 @@ const handler = {
       }
       if (request.method === 'POST') return receberPedidoEtiqueta(resto, env, request);
       return renderEtiqueta(resto, env, request);
+    }
+
+    // ── CONFIRMAÇÃO DE VÉSPERA (sem login, antes do gate da IA) ──
+    // GET  /v/<token> → página com a marca do prestador e [Confirmo]/[Preciso remarcar]
+    //                   (GET não grava nada: a prévia do WhatsApp também faz GET).
+    // POST /v/<token> → grava a resposta. Token opaco do RPC pedir_confirmacao_visita.
+    // Mesmo teto por IP do /o/ e do /q/ (LINK_RL). Ver confirmacaoVisita.js.
+    if (url.pathname.startsWith('/v/')) {
+      if (request.method !== 'GET' && request.method !== 'POST') {
+        return new Response('Método não suportado', {
+          status: 405,
+          headers: { Allow: 'GET, POST', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      }
+      if (env.LINK_RL) {
+        const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+        try {
+          const { success } = await env.LINK_RL.limit({ key: ip });
+          if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+        } catch {
+          // binding ausente: não bloqueia
+        }
+      }
+      const tokenV = decodeURIComponent(url.pathname.slice(3));
+      if (request.method === 'POST') return responderConfirmacao(tokenV, env, request);
+      return renderConfirmacao(tokenV, env);
     }
 
     // ETA com trânsito (Routes API). Não é rota de IA — não exige o provedor, mas

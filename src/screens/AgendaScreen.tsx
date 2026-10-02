@@ -37,6 +37,7 @@ import { CampoVisitaExterna } from '../components/agenda/CampoVisitaExterna';
 import { SugestaoEncaixe } from '../components/agenda/SugestaoEncaixe';
 import { ClimaProximasVisitas } from '../components/agenda/ClimaProximasVisitas';
 import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
+import { SeloConfirmacao } from '../components/vespera/SeloConfirmacao';
 import { useEncaixe } from '../hooks/useEncaixe';
 import { sugerirVisitaExterna } from '../services/verticais';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1435,6 +1436,8 @@ function AgendaItem({ item, cor: corMarca, cliente, clientes, aoRemarcado, onPre
         ) : null}
         {/* CLIMA — só nas visitas das próximas 12h (some sozinho no resto). */}
         <ClimaDaVisita visita={item} cliente={cliente} clientes={clientes} aoRemarcado={aoRemarcado} style={styles.itemClima} />
+        {/* CONFIRMAÇÃO DE VÉSPERA (Onda I3): selo só quando há pedido para o horário atual. */}
+        {item.status === 'agendado' ? <SeloConfirmacao visita={item} style={styles.itemClima} /> : null}
         {item.status !== 'agendado' && (
           <View style={styles.statusLinha}>
             <MaterialCommunityIcons name={concluido ? 'check-circle' : 'close-circle'} size={13} color={concluido ? cores.success : cores.danger} />

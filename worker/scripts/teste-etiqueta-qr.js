@@ -22,6 +22,7 @@ import {
   receberPedidoEtiqueta,
   renderEtiqueta,
   validarPedido,
+  getGarantiaVigente,
 } from '../src/pmoc.js';
 
 let ok = 0;
@@ -60,6 +61,10 @@ function reset(extra = {}) {
     pedidosRecentes: 0,
     falhasScan: 0,
     insertStatus: 201,
+    // Sem garantia vigente por padrão (a RPC responde null = conferiu, não há).
+    garantia: { status: 200, body: null },
+    // Status do 1º insert (o 2º, sem `motivo`, usa insertStatus).
+    insertStatusPrimeiro: null,
     ...extra,
   };
 }
@@ -76,12 +81,20 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.includes('/rest/v1/empresa?')) return json([{ dados: cenario.empresa }]);
   if (u.endsWith('/rpc/resumo_manutencao_equipamento')) return json(cenario.resumo.body, cenario.resumo.status);
   if (u.endsWith('/rpc/plano_comercial_para_usuario')) return json(cenario.plano.body, cenario.plano.status);
+  if (u.endsWith('/rpc/garantia_vigente_equipamento')) return json(cenario.garantia.body, cenario.garantia.status);
   if (u.includes('/rest/v1/qr_scan_events') && metodo === 'GET') return json([], 200, { 'content-range': `0-0/${cenario.falhasScan}` });
   if (u.includes('/rest/v1/qr_scan_events')) return new Response(null, { status: 201 });
   if (u.includes('/rest/v1/pedidos_orcamento_qr') && metodo === 'GET') {
     return json([], 200, { 'content-range': `0-0/${cenario.pedidosRecentes}` });
   }
-  if (u.includes('/rest/v1/pedidos_orcamento_qr') && metodo === 'POST') return new Response(null, { status: cenario.insertStatus });
+  if (u.includes('/rest/v1/pedidos_orcamento_qr') && metodo === 'POST') {
+    if (cenario.insertStatusPrimeiro) {
+      const st = cenario.insertStatusPrimeiro;
+      cenario.insertStatusPrimeiro = null;
+      return new Response(null, { status: st });
+    }
+    return new Response(null, { status: cenario.insertStatus });
+  }
   throw new Error(`fetch inesperado: ${metodo} ${u}`);
 };
 
@@ -250,6 +263,52 @@ await caso('corpo grande demais é recusado sem gravar', async () => {
   const r = await receberPedidoEtiqueta(TOKEN, ENV, reqPost({ ...VALIDO, mensagem: 'x'.repeat(6000) }));
   assert.equal(r.status, 413);
   assert.equal(inserts().length, 0);
+});
+
+console.log('\n4) garantia que se cuida sozinha (chamado de garantia pela etiqueta)');
+await caso('garantia: RPC fora do ar = indisponível; null = conferiu e não há', async () => {
+  reset({ garantia: { status: 404, body: { code: 'PGRST202' } } });
+  assert.deepEqual(await getGarantiaVigente(ENV, 'eq-1'), { estado: 'indisponivel' });
+  reset({ garantia: { status: 200, body: null } });
+  assert.deepEqual(await getGarantiaVigente(ENV, 'eq-1'), { estado: 'ok', ate: null });
+  reset({ garantia: { status: 200, body: '2026-12-31' } });
+  assert.deepEqual(await getGarantiaVigente(ENV, 'eq-1'), { estado: 'ok', ate: '2026-12-31' });
+});
+await caso('com garantia vigente: mostra "Em garantia até" e a escolha "chamar a garantia"', async () => {
+  reset({ garantia: { status: 200, body: '2026-12-31' } });
+  const html = await (await renderEtiqueta(TOKEN, ENV, reqGet())).text();
+  assert.match(html, /Em garantia até 31\/12\/2026/);
+  assert.match(html, /chamar a garantia/);
+  assert.match(html, /name="motivo" value="garantia"/);
+});
+await caso('sem garantia (ou sem conferir): a página não fala de garantia', async () => {
+  for (const garantia of [{ status: 200, body: null }, { status: 500, body: {} }]) {
+    reset({ garantia });
+    const html = await (await renderEtiqueta(TOKEN, ENV, reqGet())).text();
+    assert.ok(!html.includes('Em garantia'));
+    assert.ok(!html.includes('name="motivo"'));
+  }
+});
+await caso('chamado de garantia com garantia vigente grava motivo=garantia', async () => {
+  reset({ garantia: { status: 200, body: '2026-12-31' } });
+  const r = await receberPedidoEtiqueta(TOKEN, ENV, reqPost({ ...VALIDO, motivo: 'garantia' }));
+  assert.equal(r.status, 200);
+  assert.match(await r.text(), /Chamado de garantia enviado/);
+  assert.equal(JSON.parse(inserts()[0].body).motivo, 'garantia');
+});
+await caso('chamado de garantia SEM garantia confirmada vira pedido comum (nunca promete garantia)', async () => {
+  reset({ garantia: { status: 200, body: null } });
+  await receberPedidoEtiqueta(TOKEN, ENV, reqPost({ ...VALIDO, motivo: 'garantia' }));
+  assert.equal(JSON.parse(inserts()[0].body).motivo, undefined);
+});
+await caso('servidor sem a coluna motivo: regrava sem ela e marca a mensagem', async () => {
+  reset({ garantia: { status: 200, body: '2026-12-31' }, insertStatusPrimeiro: 400 });
+  const r = await receberPedidoEtiqueta(TOKEN, ENV, reqPost({ ...VALIDO, motivo: 'garantia' }));
+  assert.equal(r.status, 200);
+  assert.equal(inserts().length, 2);
+  const segundo = JSON.parse(inserts()[1].body);
+  assert.equal(segundo.motivo, undefined);
+  assert.match(segundo.mensagem, /^Chamado de garantia: Está pingando/);
 });
 
 console.log(`\n${ok} casos ok`);

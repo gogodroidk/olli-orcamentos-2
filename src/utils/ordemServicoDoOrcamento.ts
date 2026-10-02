@@ -168,6 +168,8 @@ export function montarOSDoOrcamento(
     checklist: checklistDoModelo(opcoes.modeloChecklist, opcoes.novoId),
     fotos: fotosDoOrcamento(orc),
     valor: orc.valorTotal,
+    // Garantia que se cuida sozinha (I3): a OS herda o prazo escrito no orçamento.
+    ...(orc.garantia?.trim() ? { garantia: orc.garantia.trim().slice(0, 200) } : {}),
     criadoEm: opcoes.agora,
     atualizadoEm: opcoes.agora,
   };

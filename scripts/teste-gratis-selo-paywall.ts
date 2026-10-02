@@ -111,7 +111,7 @@ console.log('\n2) três estados (entitlements.ts)');
   checar('membro de empresa Pro → hora de sair liberada', estadoAcessoRecurso(L('gratis', false, true, 'pro'), 'hora_de_sair'), 'liberado');
   checar('tenant NÃO vale para o selo do PDF (segue a conta)', estadoAcessoRecurso(L('gratis', false, true, 'empresa'), 'remove_olli_brand'), 'bloqueado');
   checar('tenant menor que a conta não rebaixa', planoParaRecurso('empresa', 'gratis', 'pmoc_contratos'), 'empresa');
-  checar('recursos de campo valem pelo tenant', [...RECURSOS_DO_TENANT].sort(), ['clima_visita', 'followup_automatico', 'hora_de_sair', 'pmoc_contratos', 'termometro_orcamento']);
+  checar('recursos de campo valem pelo tenant', [...RECURSOS_DO_TENANT].sort(), ['clima_visita', 'followup_automatico', 'hora_de_sair', 'pmoc_contratos', 'termometro_orcamento', 'vespera_garantia']);
 
   checar('serviço: Pro → liberado', acessoDeServico('pro', 'servidor', 'followup_automatico'), 'liberado');
   checar('serviço: Grátis do servidor → bloqueado', acessoDeServico('gratis', 'servidor', 'followup_automatico'), 'bloqueado');
