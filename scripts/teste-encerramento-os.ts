@@ -213,6 +213,8 @@ ok('tela: botão da OS, dica da 1ª vez e o atalho antigo de concluir', () => {
   assert.match(tela, /id="os\.encerrar\.botao"/);
   assert.match(tela, /label="Só concluir, sem o passo a passo"/);
   assert.match(tela, /podeFaturar=\{pode\('gerenciar_faturamento'\)\}/);
+  // Checklist no debounce é gravado ANTES de abrir o fluxo (senão o toque some da tela).
+  assert.match(tela, /descarregarChecklist\(\)\.catch\(\(\) => \{\}\)\.finally\(\(\) => setShowEncerrar\(true\)\)/);
 });
 ok('modal: grava antes de seguir, erro de gravação é dito, assinatura lança se não gravou', () => {
   assert.match(modal, /Não salvei este passo no aparelho/);

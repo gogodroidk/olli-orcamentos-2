@@ -211,6 +211,8 @@ ok('veio do QR: cliente do equipamento vai junto; falha do QR é dita', () => {
   assert.match(tela, /Não consegui abrir o equipamento do QR/);
   assert.match(rotas, /Diagnostico: \{ equipamentoId\?: string \} \| undefined/);
   assert.match(equip, /nav\.navigate\('Diagnostico', \{ equipamentoId \}\)/);
+  // Base de códigos é de ar-condicionado: o atalho só aparece para o ofício (gate de vertical).
+  assert.match(equip, /\{mostraHvac \? \(\s*<OlliButton\s*label="Código de erro deste equipamento"/);
 });
 ok('o editor aceita laudo e catalogoId no pré-preenchimento', () => {
   assert.match(rotas, /laudoTecnico\?: string \}/);

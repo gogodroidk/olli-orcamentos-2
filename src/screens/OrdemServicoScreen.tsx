@@ -895,7 +895,12 @@ function DetalheOS({
                   variant={ordem.encerramento?.finalizadoEm ? 'success' : 'gradient'}
                   size="lg"
                   fullWidth
-                  onPress={() => { vibrar('selecao'); setShowEncerrar(true); }}
+                  onPress={() => {
+                    vibrar('selecao');
+                    // Grava o checklist pendente ANTES: o fluxo devolve a OS do banco
+                    // (onAtualizada) e um toque ainda no debounce sumiria da tela.
+                    void descarregarChecklist().catch(() => {}).finally(() => setShowEncerrar(true));
+                  }}
                   icon={<MaterialCommunityIcons name={ordem.encerramento?.finalizadoEm ? 'check-decagram-outline' : 'flag-checkered'} size={22} color="#fff" />}
                 />
                 {/* Atalho antigo de 1 toque: conclui sem o passo a passo. */}
