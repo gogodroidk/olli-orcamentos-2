@@ -23,6 +23,7 @@
  */
 
 import { getAssinatura, cancelarAssinaturaStripe } from './conta.js';
+import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
 import {
   ADMIN_DATA_POLICY_VERSION,
@@ -355,6 +356,15 @@ async function userDetail(env, id, actor) {
   // O customer id é uma dependência interna para listar faturas autorizadas;
   // ele nunca é devolvido pela projeção ao navegador.
   if (assinaturaSelect.length && podeFaturas && !assinaturaSelect.includes('stripe_customer_id')) assinaturaSelect.push('stripe_customer_id');
+  // Vínculos de gateway: lidos só para virar booleanos (stripeVinculado,
+  // mercadoPagoVinculado, playVinculado). `projetarLinhas` filtra pela política,
+  // então os ids em si nunca chegam ao navegador. Sem eles no select os três
+  // indicadores saíam sempre "—", mesmo com assinatura vinculada.
+  if (assinaturaSelect.length && podeFaturas) {
+    for (const c of ['stripe_subscription_id', 'mp_preapproval_id', 'revenuecat_transacao_id']) {
+      if (!assinaturaSelect.includes(c)) assinaturaSelect.push(c);
+    }
+  }
   const [empresaArr, orcamentosBrutos, clientesBrutos, agendaBruta, recibosBrutos, assinaturaArr, creditosBrutos, usosIaBrutos, auditoriaBruta, atividadeBruta, funilLeitura] = await Promise.all([
     ler('empresa') ? rest(env, `empresa?user_id=eq.${enc}&select=dados`) : Promise.resolve([]),
     consultar('orcamentos', `orcamentos?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
@@ -387,6 +397,9 @@ async function userDetail(env, id, actor) {
   if (assinatura && assinaturaInterna) {
     assinatura.stripeVinculado = !!assinaturaInterna.stripe_subscription_id;
     assinatura.mercadoPagoVinculado = !!assinaturaInterna.mp_preapproval_id;
+    // Google Play (Play Billing direto): o vínculo é o hash do purchaseToken gravado
+    // em `revenuecat_transacao_id` (nome antigo mantido — ver worker/src/play.js).
+    assinatura.playVinculado = !!assinaturaInterna.revenuecat_transacao_id;
   }
   return json({
     ok: true,
@@ -538,6 +551,9 @@ async function deleteUser(env, id, actor, body = {}) {
     const r = await cancelarAssinaturaStripe(env, assinatura.stripe_subscription_id);
     if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
   }
+  // Google Play: mesma regra e a MESMA função da exclusão pelo app (play.js).
+  const play = await cancelarPlayDoUsuario(env, id);
+  if (play !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
 
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', headers: svc(env) });
@@ -1411,6 +1427,7 @@ async function openUser(x){
    ['Override manual',ass.admin_override_ativo?((ass.admin_plano_override||'—')+' até '+(ass.admin_override_ate?fmtDate(ass.admin_override_ate):'revogação')):'inativo'],
    ['Mercado Pago',ass.mercadoPagoVinculado?'vinculado':'—'],
    ['Stripe',ass.stripeVinculado?'vinculada':'—'],
+   ['Google Play',ass.playVinculado?'vinculada':'—'],
   ]:[['Estado','Sem assinatura; plano Grátis']]))
   d.append(mk('Faturas Stripe',det.faturas.slice(0,12).map(f=>[fmtDate(f.criadoEm)+' · '+(f.status||'—'),fmtBRL((f.valorCentavos||0)/100)])));
   d.append(mk('Créditos recentes',det.creditos.slice(0,12).map(c=>[(Number(c.delta)>0?'+':'')+c.delta+' · '+c.origem,fmtDate(c.criado_em)])));

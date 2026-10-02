@@ -13,7 +13,7 @@
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
  *   POST /auth/email-hook → Send Email Hook do Supabase Auth (Standard Webhooks, sem JWT)
- *   POST /revenuecat/webhook → assinatura da Google Play (Authorization secreto, sem JWT)
+ *   GET  /play/config, POST /play/verificar → assinatura pela Google Play (Play Billing direto; ver play.js)
  *
  * Segurança:
  *   - OPENROUTER_API_KEY é SECRET do Worker (nunca vai pro app/APK e nunca é
@@ -58,7 +58,7 @@ import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
-import { handleRevenueCat } from './revenuecat.js';
+import { handlePlay, processarRtdn, reconciliarPlay } from './play.js';
 import { handleResendWebhook } from './resendWebhook.js';
 import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
@@ -913,6 +913,13 @@ const handler = {
     // Termômetro do orçamento (LGPD): apaga eventos de interação com mais de 180
     // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
     ctx.waitUntil(limparEventosAntigos(env, agendado));
+    // Google Play (assinatura direta): RTDN por PULL da assinatura Pub/Sub a cada
+    // minuto (sem endpoint público e sem cron novo — a conta Free tem 5) e, em
+    // horários fixos (:13 e :43; anuladas 05:37 UTC), a reconciliação que relê na
+    // Play o que vence/está em carência/sem ack. Sem PLAY_SA_JSON os dois saem sem
+    // fazer nada. Ver worker/src/play.js.
+    ctx.waitUntil(processarRtdn(env, { agora: agendado }));
+    ctx.waitUntil(reconciliarPlay(env, { agora: agendado }));
   },
 
   async fetch(request, env) {
@@ -984,12 +991,13 @@ const handler = {
       return handleAbacate(request, env, url);
     }
 
-    // ── ASSINATURA PELA GOOGLE PLAY — webhook do RevenueCat ──
-    // Servidor-a-servidor, sem JWT: autentica pelo `Authorization` secreto
-    // (REVENUECAT_WEBHOOK_SECRET) e fica DESLIGADO sem ele. Fora do gate da IA,
-    // mesmo perfil dos webhooks de pagamento acima. Ver worker/src/revenuecat.js.
-    if (url.pathname.startsWith('/revenuecat/')) {
-      return handleRevenueCat(request, env, url);
+    // ── ASSINATURA PELA GOOGLE PLAY — Play Billing direto (sem RevenueCat) ──
+    // GET /play/config (kill switch PLAY_BILLING_MODE) e POST /play/verificar (JWT
+    // do Supabase; o estado vem SEMPRE da Google Play Developer API). O RTDN não
+    // tem rota pública: chega por PULL no cron de minuto (scheduled acima). Fora do
+    // gate da IA, mesmo perfil das rotas de pagamento acima. Ver worker/src/play.js.
+    if (url.pathname.startsWith('/play/')) {
+      return handlePlay(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──
