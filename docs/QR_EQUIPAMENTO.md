@@ -14,7 +14,7 @@ Estado: código pronto no branch `claude/t-qr-equipamento`. **Migration NÃO apl
      PMOC vencida, garantia (texto do orçamento; "vale até" só quando o texto traz prazo legível),
      OS do equipamento e fotos (do equipamento e das OS).
 2. **Etiqueta que vende (cliente final).** PDF A4 com 3 tamanhos de adesivo (4,2 cm / 6 cm /
-   9 × 4,5 cm), cópias, logo/nome/contato/cor do prestador e o selo "Gerado com OLLI" só no Grátis.
+   9 × 4,5 cm), cópias, logo/nome/contato/cor do prestador e o selo "Feito com OLLI" só no Grátis.
    O QR continua apontando para `/q/<token>` (as etiquetas já coladas seguem valendo; `/e/<token>` é
    apelido). A página pública mostra a marca do prestador, a última manutenção, a próxima recomendada
    (só datas), **Chamar no WhatsApp** e **Pedir orçamento**. O pedido vira registro em

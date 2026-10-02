@@ -138,7 +138,7 @@ export default function EquipamentoScreen() {
   const insets = useSafeAreaInsets();
   // Atalho para os Planos PMOC (Fase 2): só quem gerencia planos vê (o técnico não).
   const { pode } = usePermissao();
-  // Selo "Gerado com OLLI" na folha de etiquetas: só no Grátis (mesma regra dos PDFs).
+  // Selo "Feito com OLLI" na folha de etiquetas: só no Grátis (mesma regra dos PDFs).
   const { temAcesso } = usePlano();
   const removerMarca = temAcesso(RECURSO_REMOVE_MARCA);
   // Nome da empresa para a mensagem de resposta aos pedidos pela etiqueta (best-effort).

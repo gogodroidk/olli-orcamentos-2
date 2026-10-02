@@ -6,7 +6,6 @@ import {
   interpretarReservaEnvio,
   interpretarEstadoOferta,
   interpretarInicioTrial,
-  mensagemBloqueioEnvio,
   envioSemRegistro,
   TRIAL_PRO_DIAS,
 } from '../src/services/limitesComerciais.ts';
@@ -130,7 +129,10 @@ assert.equal(estranho.motivo, 'sem_registro', 'payload inesperado é nomeado, n�
 assert.equal(estranho.planoEfetivo, 'gratis', 'payload inesperado não inventa plano');
 assert.equal(estranho.reservaToken, null, 'nem token');
 assert.equal(envioSemRegistro().permitido, true, 'o Grátis é ilimitado: falha de registro nunca barra o envio');
-assert.doesNotMatch(mensagemBloqueioEnvio(envioSemRegistro()), /\d+ orçamentos|cota|limite/i, 'nenhuma copy de cota sobrou');
+// O ramo de recusa ("Cota mensal utilizada") saiu do detalhe em 02/10/2026, e com
+// ele a copy de bloqueio: o tipo de `permitido` agora é o literal `true`.
+assert.equal('mensagemBloqueioEnvio' in limites, false, 'nenhuma copy de bloqueio de envio sobrou');
+assert.doesNotMatch(mobile, /cota_esgotada|Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/, 'o detalhe não tem mais ramo de cota');
 
 assert.match(sql, /primary key \(tenant_id, periodo, orcamento_id\)/i, 'idempotência deve ser por tenant/mês/orçamento');
 assert.match(sql, /pg_advisory_xact_lock/i, 'a cota precisa de trava transacional');

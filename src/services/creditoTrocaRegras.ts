@@ -152,3 +152,26 @@ export function resumoPedidoTroca(pedido: PedidoTroca | null): { titulo: string;
     texto: pedido.motivoRecusa ? `Motivo: ${pedido.motivoRecusa}` : 'O comprovante não pôde ser confirmado.',
   };
 }
+
+/** Por quantos dias (desde o pedido) a Home ainda avisa um pedido já decidido. */
+export const AVISO_TROCA_HOME_DIAS = 30;
+
+/**
+ * A Home é o lugar do AVISO, não do cartão fixo (esse mora em Planos e Conta):
+ * mostra o pedido em análise e, depois da decisão, o aprovado (enquanto o Pro
+ * concedido vale) ou o recusado, por até AVISO_TROCA_HOME_DIAS desde o pedido.
+ * Data ilegível conta como recente: na dúvida, o prestador vê o aviso.
+ */
+export function pedidoTrocaMereceAvisoNaHome(pedido: PedidoTroca | null, agoraMs: number): boolean {
+  if (!pedido) return false;
+  if (pedido.status === 'pendente') return true;
+  const criado = Date.parse(pedido.criadoEm);
+  const recente = !Number.isFinite(criado) || agoraMs - criado <= AVISO_TROCA_HOME_DIAS * 86_400_000;
+  if (!recente) return false;
+  if (pedido.status === 'aprovado' && pedido.concedidoAte) {
+    const fim = pedido.concedidoAte.length === 10 ? `${pedido.concedidoAte}T23:59:59` : pedido.concedidoAte;
+    const ate = Date.parse(fim);
+    if (Number.isFinite(ate) && ate < agoraMs) return false;
+  }
+  return true;
+}

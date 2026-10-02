@@ -13,7 +13,7 @@
  *  3) "Iniciar atendimento" retoma na ordem certa (em execução > pausada > agendada
  *     mais cedo > aberta) e nunca retoma concluída/cancelada;
  *  4) etiqueta impressa: 3 tamanhos, logo só data-URI raster, contato do prestador,
- *     selo "Gerado com OLLI" só no Grátis, token vazio não imprime, escape de HTML,
+ *     selo "Feito com OLLI" só no Grátis, token vazio não imprime, escape de HTML,
  *     cópias com teto, QR aponta para /q/<token>;
  *  5) pedido pela etiqueta: linha da nuvem → objeto (linha torta = null), mensagem e
  *     link de resposta no WhatsApp com o número normalizado;
@@ -42,6 +42,7 @@ import {
   TAMANHOS_ETIQUETA,
 } from '../src/utils/etiquetaQrPdf.ts';
 import { linkResponderPedidoQr, mensagemRespostaPedidoQr, rowParaPedido } from '../src/utils/pedidoQr.ts';
+import { TEXTO_SELO_OLLI } from '../src/utils/marcaOlli.ts';
 
 let verificacoes = 0;
 function ok(nome: string, fn: () => void) {
@@ -275,9 +276,11 @@ ok('sem logo cai no nome da empresa (escapado)', () => {
   assert.match(html, /<div class="empresa-nome">Frio &amp; Cia<\/div>/);
   assert.ok(!html.includes('https://x/logo.png'));
 });
-ok('selo "Gerado com OLLI" só no Grátis', () => {
-  assert.match(montarHtmlEtiqueta(base, {}), /Gerado com OLLI/);
-  assert.ok(!montarHtmlEtiqueta(base, { removerMarca: true }).includes('Gerado com OLLI'));
+ok('selo da OLLI só no Grátis (o texto vem da fonte única, marcaOlli.ts)', () => {
+  // O texto do selo virou "Feito com OLLI" na decisão do Grátis ilimitado (#109).
+  const seloSoTexto = (html: string) => html.replace(/<[^>]+>/g, '');
+  assert.ok(seloSoTexto(montarHtmlEtiqueta(base, {})).includes(TEXTO_SELO_OLLI));
+  assert.ok(!seloSoTexto(montarHtmlEtiqueta(base, { removerMarca: true })).includes(TEXTO_SELO_OLLI));
 });
 ok('três tamanhos de adesivo cabem no A4 e o QR nunca é minúsculo', () => {
   for (const [t, m] of Object.entries(TAMANHOS_ETIQUETA)) {

@@ -1,12 +1,12 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Fonts, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { obterMeuPedidoTroca } from '../services/creditoTroca';
-import { resumoPedidoTroca, type EstadoPedidoTroca } from '../services/creditoTrocaRegras';
+import { pedidoTrocaMereceAvisoNaHome, resumoPedidoTroca, type EstadoPedidoTroca } from '../services/creditoTrocaRegras';
 
 /**
  * Atalho "Vim de outro app" (crédito de troca) — componente isolado.
@@ -19,13 +19,23 @@ import { resumoPedidoTroca, type EstadoPedidoTroca } from '../services/creditoTr
  * não há pedido — mostra só o convite neutro, que abre a tela (lá o estado real é
  * lido de novo e a falha aparece por extenso).
  *
- * Encaixe: hoje em PlanosScreen. Para Conta/Home (bloqueadas nesta leva):
- *   import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
- *   - Conta: <CreditoTrocaAtalho /> (convite + estado do pedido);
- *   - Home: <CreditoTrocaAtalho ocultarSemPedido /> (só aparece quando há pedido:
- *     aviso de aprovado/recusado).
+ * Encaixes:
+ *   - Planos e Conta: <CreditoTrocaAtalho ocultarSemPedido={pagante} /> (convite +
+ *     estado do pedido; quem paga só vê se já houver pedido);
+ *   - Home: <CreditoTrocaAtalho modo="aviso" /> — só o AVISO: pedido em análise, ou
+ *     decidido há pouco (regra `pedidoTrocaMereceAvisoNaHome`). Sem pedido, com o
+ *     pedido antigo ou com a leitura falhando, não ocupa espaço (é aviso, não lista).
  */
-export function CreditoTrocaAtalho({ ocultarSemPedido = false }: { ocultarSemPedido?: boolean }) {
+export function CreditoTrocaAtalho({
+  ocultarSemPedido = false,
+  modo = 'cartao',
+  style,
+}: {
+  ocultarSemPedido?: boolean;
+  modo?: 'cartao' | 'aviso';
+  /** Margens de quem encaixa (a Home e a Conta usam a calha lateral da tela). */
+  style?: StyleProp<ViewStyle>;
+}) {
   const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -41,6 +51,7 @@ export function CreditoTrocaAtalho({ ocultarSemPedido = false }: { ocultarSemPed
 
   if (estado.tipo === 'carregando' || estado.tipo === 'sem_sessao') return null;
   const pedido = estado.tipo === 'pronto' ? estado.pedido : null;
+  if (modo === 'aviso' && !pedidoTrocaMereceAvisoNaHome(pedido, Date.now())) return null;
   if (ocultarSemPedido && !pedido) return null;
   const resumo = resumoPedidoTroca(pedido);
   const icone = !pedido ? 'swap-horizontal-circle-outline'
@@ -51,7 +62,7 @@ export function CreditoTrocaAtalho({ ocultarSemPedido = false }: { ocultarSemPed
 
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, style]}
       activeOpacity={0.85}
       onPress={() => nav.navigate('VimDeOutroApp')}
       accessibilityRole="button"
