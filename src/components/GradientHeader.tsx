@@ -5,6 +5,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Spacing, useCores, useGradientes, useEstilos, sombrasDe, sobreSecundario, type Cores } from '../theme';
 import { AnimatedEntrance } from './AnimatedEntrance';
+import { BotaoComoFunciona } from './ajuda/ComoFunciona';
+import type { TelaComoFunciona } from '../content/comoFunciona';
 
 interface Props {
   title: string;
@@ -14,9 +16,11 @@ interface Props {
   children?: React.ReactNode;
   style?: ViewStyle;
   compact?: boolean;
+  /** Mostra o "?" que abre a folha "Como funciona" desta tela (content/comoFunciona.ts). */
+  comoFunciona?: TelaComoFunciona;
 }
 
-export function GradientHeader({ title, subtitle, onBack, right, children, style, compact }: Props) {
+export function GradientHeader({ title, subtitle, onBack, right, children, style, compact, comoFunciona }: Props) {
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const gradientes = useGradientes();
@@ -43,6 +47,7 @@ export function GradientHeader({ title, subtitle, onBack, right, children, style
           <Text style={[styles.title, compact && styles.titleCompact, { color: gradientes.sobreHeader }]} numberOfLines={1}>{title}</Text>
           {subtitle ? <Text style={[styles.subtitle, { color: sobreSecundario(gradientes.sobreHeader, gradientes.header) }]} numberOfLines={1}>{subtitle}</Text> : null}
         </AnimatedEntrance>
+        {comoFunciona ? <BotaoComoFunciona tela={comoFunciona} cor={gradientes.sobreHeader} /> : null}
         {right}
       </View>
       {children}

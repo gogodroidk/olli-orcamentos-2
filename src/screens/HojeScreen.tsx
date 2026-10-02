@@ -16,6 +16,9 @@ import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmC
 import { Motion, useReducedMotion } from '../theme/motion';
 import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
+import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { Aparecer, Skeleton } from '../components/motion';
 import { AcaoNo, NoLinhaDoTempo } from '../components/hoje/LinhaDoTempo';
 import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
@@ -710,6 +713,7 @@ export default function HojeScreen() {
       }
       // Sem previsão de chegada aqui: a mensagem sai sem horário (nada inventado).
       await abrirWhatsApp(telefone, mensagemEstouACaminho(a.clienteNome, null));
+      registrarEventoDica('primeiro_a_caminho');
     } catch {
       toast.erro('Não deu para abrir o WhatsApp agora. Tente de novo.');
     } finally {
@@ -826,8 +830,13 @@ export default function HojeScreen() {
                 </Text>
               ) : null}
             </View>
-            <OlliMascot size={40} onDark />
+            <View style={styles.headAcoes}>
+              <BotaoComoFunciona tela="hoje" />
+              <OlliMascot size={40} onDark />
+            </View>
           </View>
+          {/* Dica do momento (roteiro I5): "Estou a caminho" e chuva na visita. */}
+          <DicaDoRoteiro local="hoje" style={{ marginHorizontal: Spacing.base }} />
         </Aparecer>
 
         {/* ── LINHA DO TEMPO DO DIA ── */}
@@ -1165,6 +1174,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: Spacing.lg },
+  headAcoes: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
   title: { fontSize: 24, fontWeight: '800', color: c.onBackground, marginTop: 3 },
   date: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },

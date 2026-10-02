@@ -23,6 +23,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GradientHeader } from '../components/GradientHeader';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliButton } from '../components/OlliButton';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
@@ -333,6 +334,8 @@ export default function ImportarScreen() {
       setSelecionados((atual) => new Set([...atual].filter((chave) => !novos.has(chave))));
       setRelatorio(r);
       gravouAlgo = r.gravados > 0;
+      // Roteiro de dicas: a 1ª importação apresenta a conferência em Clientes.
+      if (gravouAlgo) registrarEventoDica('primeira_importacao');
     } finally {
       gravandoRef.current = false;
       setGravando(false);
@@ -366,7 +369,7 @@ export default function ImportarScreen() {
 
   return (
     <View style={styles.raiz}>
-      <GradientHeader title="Trazer meus dados" subtitle="Troque de app em 5 minutos" onBack={() => goBackOrHome(nav)} />
+      <GradientHeader title="Trazer meus dados" subtitle="Troque de app em 5 minutos" onBack={() => goBackOrHome(nav)} comoFunciona="importar" />
       <ScrollView contentContainerStyle={styles.conteudo} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>Traga clientes, serviços e produtos do app antigo, da agenda do celular ou de uma planilha. Você confere tudo numa prévia antes de gravar; nada é apagado nem sobrescrito.</Text>
 

@@ -23,6 +23,8 @@ import { OlliInput } from '../components/OlliInput';
 import { FieldLabel } from '../components/FieldLabel';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliPressable } from '../components/OlliPressable';
 import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
@@ -232,6 +234,8 @@ export default function AgendaScreen() {
       ]);
       setItens(data);
       setClientes(cls);
+      // Roteiro de dicas: a 1ª visita marcada apresenta o caminho até a aba Hoje.
+      if (data.some(a => a.status === 'agendado')) registrarEventoDica('primeira_visita_agendada');
     } catch {
       // erro de verdade (leitura falhou) — NUNCA vira "Nenhuma visita agendada" silencioso.
       setCarregandoErro(true);
@@ -1192,6 +1196,7 @@ export default function AgendaScreen() {
       {/* HEADER — mesmo GradientHeader compartilhado das telas irmãs (Clientes/Produtos/Orçamentos) */}
       <GradientHeader
         title="Agenda"
+        comoFunciona="agenda"
         subtitle={subtitulo}
         right={
           <TouchableOpacity
@@ -1263,6 +1268,7 @@ export default function AgendaScreen() {
           icon="gesture-swipe-vertical"
           texto="Troque entre Dia, Semana e Mês no topo. No Dia, segure um compromisso e arraste para mudar o horário."
         />
+        <DicaDoRoteiro local="agenda" />
       </View>
 
       {/* FILTROS — uma linha só: "Filtros" abre os chips (tipo, status e técnico).

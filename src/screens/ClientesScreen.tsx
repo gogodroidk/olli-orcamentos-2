@@ -15,6 +15,7 @@ import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AvisoClienteDuplicado } from '../components/AvisoClienteDuplicado';
 import { getClientes, saveCliente, deleteCliente, getOrcamentos } from '../database/database';
@@ -501,6 +502,7 @@ export default function ClientesScreen() {
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader
         title="Clientes"
+        comoFunciona="clientes"
         subtitle={`${clientes.length} cadastrado${clientes.length === 1 ? '' : 's'}`}
         onBack={() => goBackOrHome(nav)}
         right={
@@ -530,6 +532,7 @@ export default function ClientesScreen() {
           icon="gesture-tap"
           texto="Cadastre seus clientes aqui. Toque em um cliente para ver o histórico, criar orçamento, agendar visita ou chamar no WhatsApp na hora."
         />
+        <DicaDoRoteiro local="clientes" />
       </View>
 
       {carregando ? (

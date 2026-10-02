@@ -10,6 +10,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
@@ -93,6 +95,8 @@ function EmitirReciboConteudo() {
       if (orcamentoId) {
         const o = await getOrcamento(orcamentoId);
         if (o) {
+          // Roteiro de dicas: a 1ª vez no recibo, ANTES de marcar como pago.
+          registrarEventoDica('primeiro_recibo');
           setOrc(o);
           setClienteNome(o.clienteNome);
           setClienteTelefone(o.clienteTelefone);
@@ -280,6 +284,7 @@ function EmitirReciboConteudo() {
         return;
       }
       setNumero(numeroFinal);
+      registrarEventoDica('primeiro_recibo');
       setOverlayInfo({ titulo: 'Gerando seu recibo...', subtitulo: 'Deixando bonito para o cliente...' });
       try {
         const html = await buildHtml(recibo);
@@ -405,6 +410,7 @@ function EmitirReciboConteudo() {
     <View style={styles.container}>
       <GradientHeader
         title="Emitir recibo"
+        comoFunciona="recibo"
         subtitle={numero ? `Nº ${formatarNumeroExibicao(numero)}` : reciboPendente ? `Nº ${formatarNumeroExibicao(reciboPendente.numero)} · pagamento registrado` : 'Número gerado ao emitir'}
         onBack={() => goBackOrHome(nav)}
       />
@@ -429,6 +435,8 @@ function EmitirReciboConteudo() {
           }}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Dica do momento (roteiro I5): só marcar como pago com o dinheiro na conta. */}
+          <DicaDoRoteiro local="recibo" style={{ marginTop: 0, marginBottom: Spacing.md }} />
           {carregandoEmpresa && (
             <View style={styles.avisoCard}>
               <ActivityIndicator color={cores.primary} size="small" />

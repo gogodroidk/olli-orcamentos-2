@@ -639,6 +639,7 @@ export default function NovoOrcamentoScreen() {
         subtitle={`${orc.numero ? `Nº ${formatarNumeroExibicao(orc.numero)}` : 'Nº a definir'} · ${subtituloPasso}`}
         onBack={handleBack}
         compact
+        comoFunciona="novo_orcamento"
         right={
           <TouchableOpacity
             style={styles.voiceBtn}

@@ -58,6 +58,8 @@ import { limparCapturaOS, marcarCapturaOS } from '../services/capturaFotoOSNativ
 import { enviarFotosPendentes, garantirFotosNaFila, registrarFotoParaEnvio } from '../services/filaFotosNativa';
 import { SeloFoto, SeloSync, useEstadosFotos } from '../components/SeloSync';
 import { BlocoGarantiaOS } from '../components/garantia/BlocoGarantiaOS';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { useRascunhoCampo } from '../hooks/useRascunhoCampo';
 import { chaveRascunho } from '../services/rascunhoCampo';
 // Encerramento em 60 s: fluxo único de fim de atendimento (regra pura em utils/encerramentoOS).
@@ -282,6 +284,7 @@ export default function OrdemServicoScreen() {
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title={ehTecnico ? 'Minhas OS' : 'Ordens de serviço'}
+        comoFunciona="os"
         subtitle={ehTecnico ? 'Suas ordens em campo' : org?.nome}
         right={
           ehGestao ? (
@@ -654,6 +657,15 @@ function DetalheOS({
   const concluida = ordem?.status === 'concluida';
   const estadosFotos = useEstadosFotos(ordem?.fotos ?? []);
 
+  // Roteiro de dicas (I5): a 1ª OS aberta (fotos sem sinal) e a 1ª concluída
+  // (registrar o pagamento e mandar o recibo).
+  const temOrdem = !!ordem;
+  useEffect(() => {
+    if (!temOrdem) return;
+    registrarEventoDica('primeira_os_aberta');
+    if (concluida) registrarEventoDica('primeira_os_concluida');
+  }, [temOrdem, concluida]);
+
   return (
     <Modal visible animationType="slide" onRequestClose={onFechar} presentationStyle="fullScreen">
       <View style={styles.detalheContainer}>
@@ -681,6 +693,8 @@ function DetalheOS({
           >
             {/* Nuvem honesta (I0): pendências de envio + alerta >24h com [Tentar agora]. */}
             <SeloSync variante="cartao" />
+
+            <DicaDoRoteiro local="os" contexto={concluida ? ['primeira_os_concluida'] : ['primeira_os_aberta']} />
 
             {/* Resumo */}
             <View style={styles.bloco}>

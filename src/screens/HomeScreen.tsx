@@ -70,6 +70,9 @@ import { AvisoSaidaCard } from '../components/AvisoSaidaCard';
 import { lerAvisoSaida, type AvisoSaida } from '../services/avisoSaida';
 import { reagendarAvisoSaidaDoDia } from '../services/ritualDiario';
 import { DicaContextual } from '../components/DicaContextual';
+import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliMascot } from '../components/OlliMascot';
 import { EmptyState } from '../components/EmptyState';
 import { PainelDinheiroParado } from '../components/PainelDinheiroParado';
@@ -359,7 +362,10 @@ export default function HomeScreen() {
   const loadRota = useCallback(async () => {
     try {
       const doDia = await getAgendamentosDoDia();
-      setRota(montarRotaDoDia(doDia, new Date()));
+      const paradas = montarRotaDoDia(doDia, new Date());
+      setRota(paradas);
+      // Roteiro de dicas: o 1º dia com 2+ paradas apresenta a Rota de hoje.
+      if (paradas.length >= 2) registrarEventoDica('dia_com_varias_visitas');
       setRotaEstado('ok');
     } catch {
       // "Não consegui ler a agenda" nunca vira "nada hoje".
@@ -371,6 +377,7 @@ export default function HomeScreen() {
     setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
+      if (lista.length > 0) registrarEventoDica('primeiro_cliente_para_lembrar');
       // Grátis só precisa saber "tem mais 1 no radar" pra desenhar o teaser.
       setRadarTotal(lista.slice(0, 4));
     } catch {
@@ -385,6 +392,7 @@ export default function HomeScreen() {
     try {
       const lista = await orcamentosParaCobrar();
       setCobranca(lista);
+      if (lista.length > 0) registrarEventoDica('primeira_cobranca_atrasada');
     } catch {
       setCobrancaErro(true);
     } finally {
@@ -397,6 +405,7 @@ export default function HomeScreen() {
     try {
       const lista = await orcamentosParaFollowUp();
       setFollowUp(lista);
+      if (lista.length > 0) registrarEventoDica('primeiro_orcamento_parado');
     } catch {
       setFollowUpErro(true);
     } finally {
@@ -500,6 +509,7 @@ export default function HomeScreen() {
     const mensagem = mensagemEstouACaminho(proxima.clienteNome, temEta ? etaResultado : null);
     try {
       await abrirWhatsApp(telefoneProxima, mensagem);
+      registrarEventoDica('primeiro_a_caminho');
     } catch {
       toast.erro('Não deu para abrir o WhatsApp. Confira se ele está instalado.');
     } finally {
@@ -638,6 +648,7 @@ export default function HomeScreen() {
               {empresa?.nome ? <Text style={styles.company}>  ·  {empresa.nome}</Text> : null}
             </Text>
           </View>
+          <BotaoComoFunciona tela="inicio" style={styles.ajudaBtn} />
           <PressableAnimado
             style={styles.olliBtn}
             onPress={abrirOlli}
@@ -689,6 +700,10 @@ export default function HomeScreen() {
             />
           </Aparecer>
         ) : null}
+
+        {/* DICA DO MOMENTO (roteiro I5): Rota de hoje, proposta parada, cobrança,
+            cliente para lembrar — uma por vez, no máximo uma nova por dia. */}
+        <DicaDoRoteiro local="inicio" style={styles.lembreteAssinatura} />
 
         {/* 2. AGORA / PRÓXIMA PARADA */}
         <Aparecer indice={1}>
@@ -1341,6 +1356,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   topbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: 4 },
+  ajudaBtn: { marginRight: 6 },
   lembreteAssinatura: { marginHorizontal: Spacing.base, marginTop: Spacing.sm, marginBottom: Spacing.sm },
   pedidosQr: { marginTop: Spacing.lg, marginBottom: 0 },
   greeting: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '500' },
