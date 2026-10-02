@@ -17,7 +17,15 @@
 > Com **Play App Signing** (padrão para apps novos), o Google guarda a chave de assinatura do app e
 > você guarda só a de upload. Perder a de upload é recuperável (o Google reseta mediante pedido);
 > perder a de assinatura, não — e ela fica com eles. Guarde a senha mesmo assim.
-> Versão atual em `app.json`: `1.1.2`, `android.versionCode` 11, `ios.buildNumber` "1".
+> Versão atual em `app.json`: `1.1.8`, `android.versionCode` 23, `ios.buildNumber` "1". A próxima release
+> Android é a **1.2.0 (versionCode 24)**. O estado operacional do Android (faixas, build local,
+> assinatura direta pela Play) está em `LEIA-ANDROID.md` — esse arquivo manda; este documento é o
+> roteiro de formulários e lojas.
+>
+> **Atualizado em 02/10/2026** (alinhado à realidade): Expo SDK 57, API alvo 36, conta de organização,
+> fotos/logos/PDFs sobem para a nuvem, IA sem Gemini (Workers AI + OpenRouter), sem Stripe nem Pix no
+> Android (a assinatura lá é pela Google Play). Onde algum trecho abaixo ainda fala "Stripe" como
+> forma de pagar, vale **só para a web**; o iOS segue sem compra no app.
 
 ---
 
@@ -32,12 +40,16 @@ Labels).
 | Nome, e-mail, telefone | Cadastro (`EntrarScreen.tsx`) | Criar a conta, identificar o orçamento/empresa | Sim — Supabase (auth + tabela `empresas`), com RLS por organização |
 | Senha | Cadastro/login | Autenticação | Sim — Supabase Auth (hash, nunca em texto puro no app) |
 | Login social Google | Botão "Continuar com o Google" (`EntrarScreen.tsx`, OAuth via `expo-web-browser`) | Autenticação alternativa | Sim — fluxo OAuth padrão do Supabase; o app não guarda a senha do Google |
-| Fotos (CAMERA / READ_MEDIA_IMAGES) | Fotos de serviços/equipamentos anexadas a orçamentos, OS e ao inventário PMOC (`src/utils/fotosOrcamento.ts`) | Documentar o serviço para o cliente | **Não.** O arquivo de imagem fica só no aparelho, em `documentDirectory/fotos-orcamento/` — **não existe upload de binário para a nuvem hoje**. Confirmado por grep (`.storage.`/`supabase.storage` em `src/` = zero ocorrências): `StorageProvider` (`src/services/ports/StorageProvider.ts`) é só a INTERFACE planejada (D-13/Onda 7), o próprio comentário do arquivo diz "Impl de-facto HOJE: NÃO EXISTE upload de binário para a nuvem". Nuance para não sobrar dúvida: quando a organização sincroniza OS/equipamento com a nuvem, o **caminho local do arquivo** (uma string tipo `file:///.../foto-123.jpg`, não a imagem) viaja como parte do jsonb `fotos` daquele registro — mas esse caminho não existe em outro aparelho, então a foto em si nunca sai de onde foi tirada |
+| Fotos (CAMERA; o Android usa o seletor de fotos do sistema, sem `READ_MEDIA_IMAGES`) | Fotos de serviços/equipamentos anexadas a orçamentos, OS e ao inventário PMOC (`src/utils/fotosOrcamento.ts`, `filaFotos.ts`, `capturaFotoOSNativa.ts`) | Documentar o serviço para o cliente | **Sim.** As fotos da OS **sobem para a nuvem** (Supabase Storage, `src/services/adapters/SupabaseStorageProvider.ts`): buckets privados `olli-fotos`, `olli-logos` e `olli-documentos` (fotos, logomarca e PDFs), por organização. A fila de envio (`filaFotos.ts`) marca cada foto como "enviada" quando a cópia está na nuvem. Ao excluir a conta, o worker apaga também esses arquivos |
+| Arquivo do Autopilot / importação | Tela Autopilot e importação (`iaAutopilot.ts`) | Ler PDF, imagem, CSV ou conversa e propor cadastro/orçamento | Sim — o arquivo (até 4 MB) vai ao worker e à IA para gerar a prévia; nada é gravado sem a confirmação do usuário |
+| Denúncia de resposta de IA ("Sinalizar") | `SinalizarIA` no Chat, Voz, Diagnóstico e Autopilot | Política de conteúdo gerado por IA da Google Play | Sim, só quando o usuário toca em "Sinalizar" e confirma: o texto da resposta e o pedido vão para a tabela `feedback` |
 | Áudio (RECORD_AUDIO) | Ditado de orçamento por voz e chat com a assistente Olli (`OlliVozScreen.tsx`, `OlliChatScreen.tsx`) | Criar orçamento falando, tirar dúvida técnica | **Modo "dispositivo"**: reconhecimento nativo. **Modo "nuvem"**: o áudio vai ao Worker e é transcrito pelo Workers AI da Cloudflare; somente o texto necessário segue ao OpenRouter quando o usuário pede estruturação por IA. Não usar voz com dado pessoal desnecessário |
-| Localização da equipe | Tela "Equipe ao vivo" (`localizacaoEquipe.ts`, `EquipeAoVivoScreen.tsx`) — **atrás de flag**: hoje só funciona na versão **web** via `navigator.geolocation`; a captura nativa em background (expo-location) ainda não está instalada no app mobile (`LOCALIZACAO_DISPONIVEL = false`, confirmado: `expo-location` não está no `package.json`) | Gestor ver a posição do técnico em campo | Sim — tabela `localizacoes_equipe` no Supabase, RLS restringe a "própria linha OU gestão da mesma organização" (nunca entre organizações) |
+| Localização da equipe | Tela "Equipe ao vivo" (`localizacaoEquipe.ts`, `EquipeAoVivoScreen.tsx`) — **atrás de flag**: hoje só funciona na versão **web** via `navigator.geolocation`; a captura nativa em background (expo-location) ainda não está instalada no app mobile (`LOCALIZACAO_DISPONIVEL = false`, confirmado: `expo-location` não está no `package.json`). No Android as permissões de localização estão **bloqueadas** em `app.json` (`blockedPermissions`), inclusive nas dependências (MapLibre): o app **não** pede localização. O endereço do cliente vai ao worker, que o consulta na BrasilAPI/Nominatim; o clima da visita vem do MET Norway só com a coordenada | Gestor ver a posição do técnico em campo | Sim — tabela `localizacoes_equipe` no Supabase, RLS restringe a "própria linha OU gestão da mesma organização" (nunca entre organizações) |
 | Calendar (Google Agenda) | Tela Agenda → "Conectar Google Agenda" (`src/services/googleAgenda.ts`), OAuth PKCE nativo | Espelhar o compromisso (título, cliente, endereço, horário) no calendário Google do próprio técnico | Sim, mas só se o usuário conectar — **hoje o recurso está desligado em produção**: depende do client OAuth Android (`EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID`) e do intent filter no `app.json`, nenhum dos dois configurado ainda (passo humano pendente — ver seção 1 e memória `olli-google-cloud-mapa.md`). Sem isso, `googleAgendaDisponivel()` é sempre `false` e a UI não mostra nada — nenhum dado de agenda sai do aparelho hoje. Quando ligar: cria/atualiza/apaga eventos só na agenda Google do PRÓPRIO usuário logado (escopo `calendar.events`), nunca lê a agenda nativa do sistema (Android/iOS) nem agenda de terceiros. **Só existe env var de client Android** — sem client iOS configurado o recurso não liga no iPhone mesmo que o app compile lá |
-| Assinatura/plano (Stripe) | Tela Planos (`PlanosScreen.tsx`) abre o Checkout do Stripe num navegador externo (`Linking.openURL`) | Cobrar a assinatura Pro/Empresa do prestador | Sim — processado pelo Stripe; o OLLI nunca vê número de cartão |
-| Eventos de uso e falhas | `src/services/analytics.ts` + Sentry | Funil local e diagnóstico técnico | O funil permanece local; falhas técnicas sanitizadas podem ir ao Sentry, com PII desativada. Revisar a declaração de Data Safety sempre que o payload mudar |
+| Assinatura/plano (Android) | Tela Planos (`PlanosScreen.tsx`), Play Billing direto (`expo-iap`, `playBilling.android.ts`) — **só** quando o servidor liga a venda (`PLAY_BILLING_MODE=on`) | Cobrar a assinatura Pro/Empresa do prestador pela Google Play | Sim — a Google Play cobra; o OLLI recebe o histórico da compra (token, plano, estado, datas) na tabela `play_compras`, ligado à conta por hash do id do usuário, e nunca vê número de cartão. **No Android não existe Stripe, Pix nem link de pagamento** |
+| Assinatura/plano (web) | Tela Planos na web e painel: Stripe (cartão, 12x) e AbacatePay (Pix) | Cobrar a assinatura Pro/Empresa do prestador | Sim — processado pelo Stripe/AbacatePay; o OLLI nunca vê número de cartão. **Não aparece no app Android** |
+| Eventos de uso e falhas | `src/services/analytics.ts` + Sentry | Funil local e diagnóstico técnico | O funil permanece local (PostHog desligado: sem chave no build); falhas técnicas sanitizadas vão ao Sentry, com PII desativada (`sendDefaultPii:false`). Revisar a declaração de Data Safety sempre que o payload mudar |
+| E-mails do serviço | Worker + Resend (`email.js`, hook de e-mail de autenticação) | Confirmação de conta, recuperação de senha, convite de equipe, boas-vindas, lembretes e resumos | Sim — o Resend recebe o e-mail do destinatário e o conteúdo da mensagem |
 | Dados de clientes/orçamentos/serviços | Uso normal do app | O produto em si (CRM + orçamentos) | Sim, se a organização usar backup/sync na nuvem — offline-first por padrão |
 
 Não há coleta de: contatos do aparelho (**[quando contacts entrar: declarar READ_CONTACTS** na
@@ -60,9 +72,10 @@ resolvem preenchendo formulário:
    um "mecanismo de exclusão" no Data Safety. Sem isso a Apple rejeita na primeira revisão, sempre.
    **Status: FEITO.** `src/services/conta.ts` + `worker/src/conta.js` (rota `POST /conta/excluir`)
    e o botão na `ContaScreen` (modal com "digite EXCLUIR" + alerta de última confirmação). O worker
-   cancela a assinatura Stripe ANTES de apagar `auth.users`, e se o cancelamento falhar ele devolve
-   502 e **não apaga nada** — apagar a conta com a assinatura viva deixaria o cartão sendo cobrado
-   sem nenhuma conta pela qual cancelar.
+   cancela a assinatura Stripe (e, na release 1.2.0, a assinatura da Google Play) ANTES de apagar
+   `auth.users`, e se o cancelamento falhar ele devolve 502 e **não apaga nada** — apagar a conta com
+   a assinatura viva deixaria o cartão sendo cobrado sem nenhuma conta pela qual cancelar. Também
+   apaga os arquivos da organização no Storage (`olli-fotos`, `olli-logos`, `olli-documentos`).
 2. **"Sign in with Apple" na tela de login.** **Status: CÓDIGO FEITO, falta 1 passo humano.**
    `src/services/appleAuth.ts` + `src/components/BotaoApple.tsx` + `EntrarScreen.tsx`; `app.json` com
    o plugin `expo-apple-authentication` e `ios.usesAppleSignIn: true`. O botão é o componente nativo
@@ -97,7 +110,7 @@ resolvem preenchendo formulário:
    **Escopo do trabalho:** StoreKit no build iOS (produtos de assinatura no App Store Connect),
    validação de recibo no worker (App Store Server API, JWS assinado), endpoint de App Store Server
    Notifications v2, e a tabela `assinaturas` ganhando a origem (`stripe` | `apple`) para reconciliar
-   as duas trilhas. No iOS, a tela Planos vende por IAP; Stripe segue no web e no Android.
+   as duas trilhas. No iOS, a tela Planos vende por IAP; Stripe e AbacatePay seguem só na web; no Android a assinatura é pela Google Play.
    **Custo: 15%** (Small Business Program, receita abaixo de US$1M/ano).
    **Não é testável antes da conta paga** — o sandbox de IAP exige App Store Connect.
 
@@ -149,18 +162,23 @@ por IA responde — se estiver "desligada", é sinal de que essa etapa foi pulad
 ### 2.1 Conta de desenvolvedor
 - https://play.google.com/console → taxa única (histórico ~US$ 25, confirme o valor atual na hora
   de pagar — **[VERIFICAR]**).
-- **Se a conta for pessoal (não organização) e for criada agora**: contas pessoais criadas depois de
-  13/nov/2023 são **obrigadas** a rodar um teste fechado com **pelo menos 12 testadores opt-in por
-  14 dias corridos** antes de poder pedir acesso à produção. Isso é sequencial, não dá pra pular —
-  então **crie a conta e suba a primeira build de teste fechado o quanto antes**, mesmo antes do
-  dia 20, para os 14 dias já estarem correndo. Contas de organização (Google Workspace/CNPJ
-  verificado) ficam isentas dessa exigência.
+- **A conta do OLLI é de ORGANIZAÇÃO** (OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA), então **não** vale
+  a exigência das contas pessoais criadas depois de 13/nov/2023 (teste fechado com 12 testadores por
+  14 dias antes da produção). A produção é liberada pelo Console. (Se algum dia o app migrar para uma
+  conta pessoal, essa exigência volta.)
+- Para vender assinatura pela Play é preciso o **perfil de pagamentos (comerciante)** completo: conta
+  bancária de recebimento e dados fiscais (Console → Configuração → Perfil de pagamentos). É passo do
+  dono.
 
 ### 2.2 Keystore de upload — **⚠️ SE PERDER, PERDE O APP**
 A keystore assina o `.aab`. Se você perder o arquivo **e** a senha, não existe recuperação — a
 Play Store não aceita mais um app com o mesmo `applicationId` assinado por outra chave. Guarde o
 arquivo E a senha em pelo menos dois lugares (ex.: `CONFIG CLAUDE/credenciais-locais` + um backup
 fora da máquina, como um cofre de senhas ou HD externo).
+
+> **Situação real (02/10/2026):** a chave de upload **já existe** (veja o topo deste documento: SHA-1
+> `44:93:1D:…`) e fica no cofre local. Não gere outra. As opções A/B abaixo são histórico, só úteis se
+> a chave for perdida (a Play permite pedir o reset da chave de upload).
 
 Duas formas de gerar — escolha uma:
 
@@ -186,6 +204,12 @@ npx eas credentials --platform android
 Em qualquer opção: **nunca** commite o `.jks` no git — já está no `.gitignore` (`*.jks`).
 
 ### 2.3 Gerar o AAB assinado
+
+> **Caminho usado de verdade:** build **local** em `C:\OLLI_REL` com `scripts\build-android-production.ps1`
+> (assina com a chave de upload do cofre local). Os passos completos, o que conferir no artefato e a
+> subida por API estão em `LEIA-ANDROID.md`. O EAS abaixo é alternativa (o contador remoto de
+> `versionCode` está atrás da Play e precisa ser ajustado antes).
+
 ```
 npm install -g eas-cli   # se ainda não tiver
 npx eas login
@@ -208,40 +232,62 @@ npx eas build -p android --profile preview
 3. **Política de privacidade**: URL obrigatória. Use `https://olliorcamentos.online/legal/privacidade/`
    (mesma URL já referenciada em `LEIA-ANDROID.md`) — confirme que a página existe e está no ar
    antes de enviar; se não existir ainda, publicá-la é pré-requisito, não algo pra fazer depois.
-4. **Teste fechado primeiro** (se aplicável — ver 2.1): Console → Testar e lançar → Teste fechado →
-   criar uma faixa, subir o primeiro `.aab`, adicionar e-mails dos 12 testadores, esperar 14 dias
-   com engajamento real (abrir o app periodicamente — a Play Console mede isso e marca testador
-   inativo).
-5. Depois do teste fechado (ou direto, se conta de organização): "Produção" → "Criar nova versão" →
-   subir o `.aab` → preencher "novidades desta versão" (texto em `docs/STORE_LISTING.md`).
-6. **Target API level**: Expo SDK 56 já compila com `compileSdkVersion`/`targetSdkVersion` = **35**
-   (Android 15) por padrão — atende a exigência atual da Play Store para apps novos. **[VERIFICAR]**:
-   a partir de **31/ago/2026** a Play Store passa a exigir API **36** para apps novos e atualizações
-   (extensão possível até 01/nov/2026). Se o envio acontecer depois dessa data, confirme que o SDK
-   do Expo em uso já compila com API 36 antes de enviar — senão a Play Console recusa o upload.
+4. **Teste fechado primeiro** (recomendado, mesmo sem a exigência dos 12 testadores — a conta é de
+   organização): Console → Testar e lançar → Teste fechado → subir o `.aab`, adicionar os testadores
+   (os mesmos e-mails entram em "Teste de licença" para a compra de assinatura) e acompanhar o relatório
+   de pré-lançamento e o Android vitals.
+5. Depois do teste fechado: "Produção" → "Criar nova versão" → subir o `.aab` (substitui a 1.1.2/18
+   que está hoje na faixa — **nunca envie a 18 para revisão**) → preencher "novidades desta versão"
+   (texto em `docs/STORE_LISTING.md`, sem citar Pix nem Stripe no Android) → lançamento gradual. Confira
+   em "Visão geral da publicação" que só a release nova está pendente antes de enviar para revisão.
+6. **Target API level**: o Expo SDK 57 compila com `compileSdkVersion`/`targetSdkVersion` = **36**
+   (Android 16), que é o que a Play exige desde **31/ago/2026** para apps novos e atualizações
+   (prorrogação possível até 01/nov/2026). Conferido no manifesto mesclado da 1.1.8. O MapLibre (que
+   entra na 1.2.0) precisa passar na verificação de 16 KB — veja `LEIA-ANDROID.md`.
 7. **Classificação de conteúdo**: preencher o questionário IARC dentro da própria Play Console
    (não é um campo de texto livre — é um formulário próprio). Categoria esperada: "Ferramentas"
    ou "Negócios", classificação livre (sem conteúdo sensível).
 
 ### 2.5 Data Safety (formulário "Segurança dos dados")
-Preencher em Play Console → Política → Segurança dos dados, usando a tabela da seção 0 deste
-documento. Resumo pronto pra marcar:
+Preencher (ou conferir) em Play Console → Política → Segurança dos dados, usando a tabela da seção 0
+deste documento. A API da Play **não lê** esse formulário: confira à mão no Console a cada release.
+Atualizado em 02/10/2026 contra o código (a versão antiga dizia "Fotos: não coletado" e citava Gemini
+e Stripe no Android — estava errada).
 
-| Categoria (nome atual do formulário) | Coletado? | Compartilhado com terceiro? | Finalidade | Opcional? | Pode excluir? |
-| --- | --- | --- | --- | --- | --- |
-| Informações pessoais (nome, e-mail, telefone) | Sim | Não (só processadores: Supabase) | Funcionalidade do app, gerenciamento de conta | Não (necessário pro cadastro) | Sim, uma vez o botão de exclusão de conta existir (item 1 da seção 1) |
-| Fotos | **Não.** A definição do Google para "coletado" é dado transmitido para fora do aparelho — o arquivo da foto nunca sai do aparelho hoje (não há Supabase Storage nem qualquer upload de binário implementado; ver seção 0). **Não marque esta categoria como coletada no formulário.** | — | — | — | — |
-| Calendário (eventos) | Sim, só se o usuário conectar o Google Agenda — **hoje desligado em produção** (falta o client OAuth Android, passo humano pendente, ver seção 1) | Sim — Google Calendar API (o próprio calendário do usuário; não é uma rede de terceiros para fins de anúncio) | Espelhar o compromisso no calendário do celular do técnico | Sim (recurso 100% opt-in, botão "Conectar") | Sim — "Desconectar" apaga os tokens locais; apagar o evento no OLLI remove do Google Agenda também |
-| Áudio | Sim | Sim, com processador de IA (Gemini, via Worker próprio) só no modo "nuvem" | Funcionalidade do app (ditado, assistente) | Sim (modo "dispositivo" não sai do aparelho) | Não é retido após transcrever |
-| Localização aproximada/precisa | Sim, só quando a organização usa "Equipe ao vivo" | Não | Funcionalidade do app (gestão de equipe em campo) | Sim (recurso opt-in, hoje só ativo na web) | Sim |
-| Informações financeiras (assinatura) | Sim | Sim (Stripe, processador de pagamento) | Cobrança da assinatura | Sim (só quem assina Pro/Empresa) | N/A — histórico de cobrança fica com o Stripe |
-| Interações no app (App interactions) | Sim | Não | Analytics interno (funil) | N/A | Fica no aparelho, some ao desinstalar |
-| Contatos | **[quando contacts entrar: declarar READ_CONTACTS]** — hoje não existe leitura de contatos do aparelho no código (`expo-contacts` não é dependência); não marcar esta categoria até essa feature entrar | — | — | — | — |
+| Categoria (nome atual do formulário) | Tipo de dado | Coletado? | Compartilhado? (*) | Efêmero? | Obrigatório? | Finalidades |
+| --- | --- | --- | --- | --- | --- | --- |
+| Informações pessoais | Nome, e-mail, telefone (conta e login com Google) | Sim | Não | Não | Obrigatório | Funcionalidade, gerenciamento de conta |
+| Informações pessoais | Endereço, outras informações (CPF/CNPJ dos clientes que o usuário digita) | Sim | Não | Não | Opcional | Funcionalidade |
+| Fotos e vídeos | Fotos (as da OS sobem para o Storage) | **Sim** | Não | Não | Opcional | Funcionalidade |
+| Arquivos e documentos | Logomarca, PDFs, anexos e o arquivo do Autopilot/importação | Sim | Não | Não | Opcional | Funcionalidade |
+| Áudio | Gravações de voz (só no modo "nuvem"; Workers AI da Cloudflare) | Sim | Não | **Sim** (não é retido) | Opcional | Funcionalidade |
+| Atividade no app | Outro conteúdo gerado pelo usuário (pedidos e respostas de IA, denúncias "Sinalizar") | Sim | Não | Não | Opcional | Funcionalidade |
+| Informações financeiras | Histórico de compras (**só quando a assinatura pela Google Play estiver ligada**) | Sim | Não | Não | Opcional | Funcionalidade, gerenciamento de conta |
+| Informações e desempenho do app | Registros de falhas e diagnóstico (Sentry, sem PII) | Sim | Não | Não | Obrigatório | Análise |
+| IDs do dispositivo ou outros | ID de instalação do Sentry | Sim | Não | Não | Obrigatório | Análise |
+| Localização | — | **Não** (permissão bloqueada no Android) | — | — | — | — |
+| Interações no app | — | **Não** enquanto o PostHog estiver sem chave no build (se ligar, passa a Sim) | — | — | — | — |
+| Agenda | — | **Não** (Google Agenda desligado no build) | — | — | — | — |
+| Contatos | — | **Não.** [quando contacts entrar: declarar READ_CONTACTS] — hoje não há `expo-contacts` | — | — | — | — |
 
-Todas as categorias: **dados transmitidos criptografados em trânsito** = Sim (HTTPS/TLS em toda
-chamada Supabase/Worker/Stripe/Google Calendar). **Mecanismo de exclusão de dados** (antigo "Deletion
-mechanism", hoje "Deletion request mechanism") = aponte para a política de privacidade + o botão de
-exclusão de conta (pré-requisito do item 1 da seção 1) uma vez implementado.
+(*) "Compartilhado = Não" porque Supabase, Cloudflare, OpenRouter e provedores de inferência, Sentry,
+Resend, BrasilAPI/Nominatim, MET Norway e Google Play atuam como **prestadores de serviço** processando
+em nome do OLLI (isenção prevista no formulário). Se preferir o caminho conservador para a IA gratuita
+(a política de privacidade admite que não há retenção zero garantida em todos os provedores), marque
+"Outro conteúdo gerado pelo usuário" como compartilhado.
+
+Também marque: **dados criptografados em trânsito = Sim** (HTTPS/TLS em toda chamada ao Supabase, ao
+Worker e à Google Play). **Usuário pode pedir a exclusão = Sim**, com a URL
+`https://olliorcamentos.online/excluir-conta/` (e o botão Excluir minha conta no app). **Política de
+privacidade** = `https://olliorcamentos.online/legal/privacidade/`.
+
+**Outras declarações do Console:** público-alvo 18+ (não direcionado a crianças); anúncios = não
+contém; ID de publicidade = não usa; recursos financeiros = o app não oferece (gera orçamento/recibo e
+um BR Code Pix estático do próprio prestador, sem custodiar nem transferir dinheiro); governo, notícias
+e saúde = não; classificação IARC com IA generativa/chatbot = Sim e compras digitais = Sim (quando a
+assinatura direta estiver ligada); **Acesso ao app**: instruções em português e inglês com a conta de
+revisão (e-mail e senha, botão "Entrar", sem Google nem código por e-mail, plano Empresa, dados de
+exemplo já cadastrados, manter data e hora automáticas).
 
 ---
 
@@ -316,7 +362,7 @@ categorias da Apple:
 | Categoria Apple | Coletado? | Vinculado à identidade do usuário? | Usado para rastreamento (tracking)? |
 | --- | --- | --- | --- |
 | Contact Info (nome, e-mail, telefone) | Sim | Sim | Não |
-| User Content → Photos or Videos (fotos anexadas a orçamentos/OS/equipamentos) | **Não.** A definição da Apple para "coletado" é dado transmitido para fora do aparelho — o arquivo da foto nunca sai do aparelho hoje (sem Supabase Storage, sem upload de binário nenhum; ver seção 0). **Não selecione este tipo de dado no formulário.** | — | — |
+| User Content → Photos or Videos (fotos anexadas a orçamentos/OS/equipamentos) | **Sim.** As fotos da OS sobem para o Supabase Storage (buckets privados; ver seção 0). Marque este tipo de dado: vinculado à identidade do usuário, finalidade funcionalidade do app. | Sim | Não |
 | User Content → Other User Content (eventos do Google Agenda, quando conectado) | Sim, só se o usuário conectar — **hoje desligado em produção** (falta client OAuth Android, ver seção 1). Apple não tem uma categoria "Calendar" própria nesta lista; o mais próximo é "Other User Content" — **[VERIFICAR]** a taxonomia atual do App Store Connect perto do envio, pode ter mudado | Sim | Não |
 | Audio Data (ditado por voz / chat com IA) | Sim | Sim | Não |
 | Location (Coarse ou Precise — "Equipe ao vivo") | Sim, só se a organização ativar equipe/localização | Sim | Não |

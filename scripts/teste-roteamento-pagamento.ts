@@ -33,6 +33,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, relative, sep } from 'node:path';
 import { regrasDaLoja, textosDaLoja } from '../src/config/lojaRegras.ts';
+import { ARTIGOS_AJUDA, corpoVisivel } from '../src/content/ajuda/index.ts';
 import {
   linhaValidade,
   mostraPortalStripe,
@@ -317,6 +318,39 @@ console.log('\n── Loja: o build da Play não anuncia compra externa ──')
   checar('a Conta não crava "recarga por Pix"', /recarga por pix/i.test(conta), false);
   checar('a Conta usa o rótulo da loja para os créditos', conta.includes('desc: TEXTOS_LOJA.creditosMenu'), true);
   checar('a Conta não promete estoque em Produtos', conta.includes("'Materiais e estoque'"), false);
+}
+
+console.log('\n── Ajuda no Android: sem rota de pagamento externa (anti-steering) ──');
+{
+  // Política de Pagamentos da Play: no Android o app não pode ensinar a pagar por
+  // fora. O texto da Ajuda roda nas duas pontas, então o que cita Stripe, cartão,
+  // 12x, portal ou Pix de plano tem de estar marcado `soNaWeb` — e este teste lê o
+  // que o Android REALMENTE mostra (`corpoVisivel(artigo, false)`), não a marca.
+  const PROIBIDO_NO_ANDROID: Array<[string, RegExp]> = [
+    ['Stripe', /stripe/i],
+    ['12x', /\b12\s*x\b/i],
+    ['cartão de crédito pela web', /cart[aã]o/i],
+    ['portal de pagamento', /portal (seguro )?de pagamento|gerenciar assinatura/i],
+    ['Pix para plano', /pix[^.]{0,60}plano|plano[^.]{0,60}pix|abacate|pagar com pix/i],
+    ['assinar pelo site', /pelo site|no site|olliorcamentos\.online\/planos/i],
+  ];
+  const visivelAndroid = (a: (typeof ARTIGOS_AJUDA)[number]): string =>
+    [a.titulo, a.resumo, ...corpoVisivel(a, false).map((b) => (Array.isArray(b.conteudo) ? b.conteudo.join(' ') : b.conteudo))].join('\n');
+
+  for (const [rotulo, re] of PROIBIDO_NO_ANDROID) {
+    const achados = ARTIGOS_AJUDA.filter((a) => re.test(visivelAndroid(a))).map((a) => a.id);
+    checar(`Android: nenhum artigo da Ajuda cita "${rotulo}"`, achados, []);
+  }
+
+  const planos = ARTIGOS_AJUDA.find((a) => a.id === 'planos-assinatura');
+  const textoAndroid = planos ? visivelAndroid(planos) : '';
+  const textoWeb = planos
+    ? corpoVisivel(planos, true).map((b) => (Array.isArray(b.conteudo) ? b.conteudo.join(' ') : b.conteudo)).join('\n')
+    : '';
+  checar('Android: a ajuda de assinatura diz que é feita e gerenciada pela Google Play', /feita e gerenciada pela Google Play/.test(textoAndroid), true);
+  checar('Android: a ajuda de assinatura não mostra preço de tabela da web', /R\$\s*\d/.test(textoAndroid), false);
+  checar('web: a ajuda continua ensinando cartão, 12x e Pix', [/12x/, /portal seguro de pagamento/, /Pix/].every((re) => re.test(textoWeb)), true);
+  checar('web: a ajuda não cita a Google Play (texto de loja não vaza para a web)', /Google Play/.test(textoWeb), false);
 }
 
 console.log('\n── Assinatura: cada origem com o seu texto ──');
