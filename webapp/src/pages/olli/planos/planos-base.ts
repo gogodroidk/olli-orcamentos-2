@@ -1,70 +1,24 @@
 /**
- * OS PLANOS — nome, tagline e benefícios, cópia de `PLANOS_BASE`
- * (src/screens/PlanosScreen.tsx, ~linha 80). O PREÇO não mora mais aqui: vem de
- * `@precos` (a mesma fonte da landing, conferida contra a Stripe live), para não existir
- * dois lugares onde um R$ possa divergir. Ver `precos.ts`.
+ * OS PLANOS — nome, tagline e benefícios vêm da TABELA ÚNICA `src/services/planosBase.ts`
+ * (a mesma do app, da landing e dos e-mails). O PREÇO não mora aqui: vem de `@precos`
+ * (a mesma fonte da landing, conferida contra a Stripe live). Ver `precos.ts`.
  *
- * ⚠️ NADA AQUI PODE SER ESCRITO DE MEMÓRIA. Já aconteceu neste projeto (está
- * documentado no próprio PlanosScreen): a página web anunciou "o Pro libera
- * orçamentos ilimitados" — falso, o Grátis já os tem — e vendeu como pronto um
- * recurso de equipe que a própria tela do app marca "(em breve)". Isso é promessa
- * que o produto não cumpre, cobrada em dinheiro.
- *
- * Benefício e o "(em breve)" vêm do app. Se lá mudar, mude aqui. O que o plano DE FATO
- * libera em código está em `src/services/entitlements.ts` (RECURSOS_POR_PLANO), lido
- * direto pelo comparativo (ver `recursos.ts`) — os benefícios abaixo são a leitura
- * comercial disso.
+ * Até 01/10/2026 este arquivo era uma CÓPIA à mão do `PLANOS_BASE` da tela do app —
+ * e cópia de copy comercial é exatamente como este projeto já anunciou recurso que não
+ * existia e limite que não valia. Agora não há o que copiar: o Grátis ilimitado, o
+ * selo "Feito com OLLI" e o que o Pro/Empresa liberam são lidos de uma fonte só, cuja
+ * guarda de coerência com `entitlements.ts` roda no import.
  */
 import type { PlanoId } from "./tipos";
-import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "@limites-comerciais";
 
-export interface PlanoBase {
-	id: PlanoId;
-	nome: string;
-	tagline: string;
-	destaque?: boolean;
-	beneficios: string[];
-}
-
-export const PLANOS_BASE: readonly PlanoBase[] = [
-	{
-		id: "gratis",
-		nome: "Grátis",
-		tagline: "Tudo que você precisa pra começar a fechar negócio.",
-		beneficios: [
-			`Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
-			"Rascunhos, recibos, clientes e histórico sem limite",
-			"Catálogo de serviços e produtos",
-			"Clientes e agenda",
-			"Diagnóstico por código de erro (offline)",
-			"Link do orçamento para o cliente",
-		],
-	},
-	{
-		id: "pro",
-		nome: "Pro",
-		tagline: "Para o autônomo que quer vender mais e ganhar tempo.",
-		destaque: true,
-		beneficios: [
-			"Tudo do plano Grátis",
-			"Relatórios de faturamento e conversão",
-			"Metas de vendas e acompanhamento por período",
-			"Suporte prioritário por WhatsApp",
-		],
-	},
-	{
-		id: "empresa",
-		nome: "Empresa",
-		tagline: "Para equipes que atendem em campo todos os dias.",
-		beneficios: [
-			"Tudo do plano Pro",
-			"Vários técnicos e permissões por papel",
-			"Equipe ao vivo no mapa (em breve)",
-			"Painel de gestão e metas da equipe (em breve)",
-			"Suporte prioritário",
-		],
-	},
-];
+export {
+	type BulletPlano,
+	FRASE_GRATIS,
+	NOTA_SELO_GRATIS,
+	type PlanoBase,
+	PLANOS_BASE,
+	RECURSOS_GRATIS,
+} from "../../../../../src/services/planosBase";
 
 /** Nome de exibição do plano. */
 export function nomeDoPlano(p: PlanoId): string {

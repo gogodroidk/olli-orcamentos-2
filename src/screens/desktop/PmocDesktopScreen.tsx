@@ -24,6 +24,7 @@ import { formatDate } from '../../utils/date';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { FREQUENCIAS_PMOC, PmocPlano, SituacaoPmoc, Cliente } from '../../types';
 import { avisar, confirmar } from './dialogo';
+import { TelaRecursoPlano } from '../../components/RecursoPlano';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -121,7 +122,7 @@ function StatusPmocBadge({ situacao }: { situacao: SituacaoPmoc }) {
  * "gerar ordens" é gateada de novo aqui, dentro da própria tela — como o
  * comentário de podeGerarPmoc em services/pmoc.ts pede.
  */
-export default function PmocDesktopScreen() {
+function PmocDesktopScreenConteudo() {
   const nav = useNavigation<Nav>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -702,3 +703,18 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     padding: Spacing.xl, borderTopWidth: 1, borderTopColor: c.outline,
   },
 });
+
+/**
+ * PMOC e contratos são do plano Empresa (`pmoc_contratos`, decisão do dono em
+ * 01/10/2026). Com o plano confirmado sem o recurso, a tela mostra "Disponível no
+ * Empresa"; com o plano ilegível, "não consegui confirmar seu plano" — os dados já
+ * cadastrados não são tocados, só ficam fora de alcance até o plano voltar.
+ * Membro de equipe vale pelo plano da EMPRESA (ver `RECURSOS_DO_TENANT`).
+ */
+export default function PmocDesktopScreen() {
+  return (
+    <TelaRecursoPlano recurso="pmoc_contratos" titulo="Planos PMOC">
+      <PmocDesktopScreenConteudo />
+    </TelaRecursoPlano>
+  );
+}

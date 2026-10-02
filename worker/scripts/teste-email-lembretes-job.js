@@ -23,20 +23,38 @@ const ENV = Object.freeze({
   EMAIL_DESCADASTRO_URL: 'https://diagnostico.olliorcamentos.online/email/descadastrar',
 });
 
-function candidato(n, usados = 3) {
+/** Pagou o Pro no Pix e vence em 60h: é o D-3 da renovação (o único e-mail de cobrança hoje). */
+const VENCE = new Date(AGORA.getTime() + 60 * H).toISOString();
+function candidato(n) {
   return {
     candidato: {
       userId: U(n),
       confirmadoEm: new Date(AGORA.getTime() - 60 * 24 * H).toISOString(),
-      orcamentos: usados + 1,
+      orcamentos: 4,
       membroDeEquipe: false,
       donoDoTenant: true,
-      assinatura: null,
+      assinatura: {
+        plano: 'pro', status: 'active', current_period_end: VENCE,
+        admin_plano_override: null, admin_override_ativo: false, admin_override_ate: null, recorrente: false,
+      },
       oferta: {
-        plano_efetivo: 'gratis', limite_envios: 5, envios_usados: usados, envios_restantes: 5 - usados,
+        plano_efetivo: 'pro', limite_envios: null, envios_usados: 3, envios_restantes: null,
         trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
       },
       historico: { ativacao: [], cobranca: [] },
+    },
+  };
+}
+
+/** Grátis com muitos envios: desde 01/10/2026 (ilimitado) não gera e-mail nenhum. */
+function gratisComEnvios(n, usados) {
+  const c = candidato(n);
+  return {
+    candidato: {
+      ...c.candidato,
+      orcamentos: usados + 1,
+      assinatura: null,
+      oferta: { ...c.candidato.oferta, plano_efetivo: 'gratis', envios_usados: usados },
     },
   };
 }
@@ -110,9 +128,18 @@ try {
     const enq = f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email'));
     assert.equal(enq.length, 2);
     assert.equal(enq[0].body.p_template, 'lembrete_assinatura');
-    assert.equal(enq[0].body.p_idempotency_key, `lembrete:assinatura:${U(1)}:cota_quase:2026-09`);
+    assert.equal(enq[0].body.p_idempotency_key, `lembrete:assinatura:${U(1)}:renovacao:${VENCE}:D-3`);
     assert.equal(enq[0].body.p_teto_diario, 40);
-    assert.deepEqual(enq[0].body.p_template_dados, { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 });
+    assert.deepEqual(enq[0].body.p_template_dados, {
+      tipo: 'renovar_pix', plano: 'pro', venceEm: VENCE, momento: 'D-3', sequencia: `renovacao:${VENCE}`,
+    });
+  });
+  await caso('Grátis ilimitado: 3, 5 ou 12 envios no mês não enfileiram e-mail nenhum', async () => {
+    const f = fetchFalso({ candidatos: [gratisComEnvios(1, 3), gratisComEnvios(2, 5), gratisComEnvios(3, 12)] });
+    const r = await processarLembretesEmail(ENV, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    assert.equal(r.enfileirados, 0);
+    assert.equal(f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email')).length, 0);
+    assert.equal(r.decisoes.assinatura_tipo_sem_email, 3);
   });
   await caso('teto diário do banco encerra a rodada', async () => {
     const f = fetchFalso({

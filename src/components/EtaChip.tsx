@@ -6,6 +6,7 @@ import { Motion, useReducedMotion } from '../theme/motion';
 import { OlliPressable } from './OlliPressable';
 import { OlliSkeleton } from './OlliSkeleton';
 import type { ResultadoEta } from '../services/eta';
+import { RecursoPlanoChip } from './RecursoPlano';
 
 export interface EtaChipProps {
   /** Resultado de `getEta()`. `null` enquanto a busca está em andamento (shimmer). */
@@ -64,7 +65,7 @@ function coresDoTom(tom: Tom, cores: Cores): { bg: string; fg: string; borda: st
  * `useReducedMotion` — sem movimento nenhum quando o usuário pediu menos
  * animação no sistema.
  */
-export function EtaChip({ resultado, horario, onTentarNovamente }: EtaChipProps) {
+function EtaChipConteudo({ resultado, horario, onTentarNovamente }: EtaChipProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const reduzirMovimento = useReducedMotion();
@@ -150,3 +151,17 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   texto: { fontSize: 11.5, fontWeight: '700' },
   skeleton: { alignSelf: 'flex-start' },
 });
+
+/**
+ * ETA com trânsito é inteligência do Pro (`hora_de_sair`, decisão de 01/10/2026).
+ * Com o recurso liberado (Pro/Empresa) é a peça de sempre; no Grátis vira o chip
+ * "Disponível no Pro"; com o plano ilegível, "plano não confirmado" — os 3 estados
+ * de `RecursoPlano.tsx`. Quem encaixa a peça numa tela não precisa saber de plano.
+ */
+export function EtaChip(props: EtaChipProps) {
+  return (
+    <RecursoPlanoChip recurso="hora_de_sair">
+      <EtaChipConteudo {...props} />
+    </RecursoPlanoChip>
+  );
+}

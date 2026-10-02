@@ -32,6 +32,7 @@ import { SEGMENTO_PARA_VERTICAL } from './verticalSegmento.ts';
 import type { VerticalId } from './verticais';
 import { normalizarChavePix } from '../utils/pixBrCode.ts';
 import { TRIAL_PRO_DIAS, type EstadoOfertaComercial, type ReservaEnvioOrcamento } from './limitesComerciais.ts';
+import { frasePro } from './planosBase.ts';
 
 // ─── 1. Orçamento de exemplo por ofício ───────────────────────────────────────
 
@@ -398,8 +399,9 @@ export function dataCurtaBr(iso: string): string {
 /**
  * Há um aviso "Liberamos o Pro" a mostrar depois de um envio?
  *
- * Só quando: (1) o envio passou pela cota do Grátis (`dentro_da_cota`) — quem já
- * estava no Pro/teste não é "liberado" de novo; (2) a leitura do servidor DEPOIS
+ * Só quando: (1) o envio foi REGISTRADO no Grátis (`dentro_da_cota`, nome de fio
+ * mantido pelo APK antigo — o Grátis não tem mais cota) — quem já estava no
+ * Pro/teste não é "liberado" de novo, e envio `sem_registro` não iniciou teste; (2) a leitura do servidor DEPOIS
  * da confirmação diz teste `active` com término no futuro. Leitura que falhou
  * (`oferta === null`) não gera aviso: não anunciamos o que não confirmamos.
  */
@@ -417,7 +419,7 @@ export function avisoTrialAutomatico(
     titulo: `Liberamos o Pro por ${TRIAL_PRO_DIAS} dias`,
     mensagem:
       `Seu orçamento foi enviado e, de presente, o Pro está liberado até ${dataCurtaBr(terminaEm)}: ` +
-      'orçamentos sem limite e os recursos do Pro. Sem cartão e sem cobrança automática. ' +
+      `${frasePro()}, além dos outros recursos do Pro. Sem cartão e sem cobrança automática. ` +
       'Quando o teste acabar, a conta volta ao Grátis e seus dados continuam salvos.',
     terminaEm,
   };

@@ -259,6 +259,26 @@ export function planejarFollowUps(
   return resultado;
 }
 
+/**
+ * FOLLOW-UP AUTOMÁTICO é recurso do Pro (`followup_automatico`, decisão do dono
+ * em 01/10/2026 — o Grátis ficou com orçamentos ilimitados e o Pro vende o que
+ * trabalha sozinho). Três estados, como todo gate da casa:
+ *  - `liberado`      → os lembretes D+2/D+5 planejados;
+ *  - `bloqueado`     → nenhum (a reconciliação cancela os que existirem);
+ *  - `indeterminado` → `null`: NÃO SEI se pode, então quem chama não mexe em nada
+ *    (não cancela lembrete válido de quem paga, não cria lembrete para quem não paga).
+ * O aviso diário de rascunhos e o "Cliente aprovou/recusou" continuam em todos os
+ * planos: são aviso do que já aconteceu, não automação de cobrança.
+ */
+export function followUpsDoPlano(
+  acesso: 'liberado' | 'bloqueado' | 'indeterminado',
+  planejados: NotificacaoPlanejada[],
+): NotificacaoPlanejada[] | null {
+  if (acesso === 'liberado') return planejados;
+  if (acesso === 'bloqueado') return [];
+  return null;
+}
+
 // ─── 3) Aviso diário de rascunhos ─────────────────────────────────────────────
 
 /** Rascunhos ativos parados há >= 24h em `momento` (data ilegível fica de fora). */

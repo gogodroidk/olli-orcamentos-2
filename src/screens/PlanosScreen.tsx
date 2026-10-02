@@ -20,10 +20,11 @@ import {
   temAcessoRecurso,
   disponibilidadeRecurso,
   IA_USOS_GRATIS_MES,
-  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  RECURSOS_EM_ORDEM,
   TRIAL_PRO_DIAS,
   type Recurso,
 } from '../services/entitlements';
+import { FRASE_GRATIS, PLANOS_BASE as TABELA_PLANOS, ROTULO_RECURSO, frasePro, type BulletPlano } from '../services/planosBase';
 import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnvios';
 import type { EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
@@ -133,63 +134,30 @@ interface Plano {
   icon: string;
   destaque?: boolean;
   atual?: boolean;
-  beneficios: string[];
+  /** Bullets da tabela única (`planosBase.ts`), com o "em breve" de cada um. */
+  bullets: readonly BulletPlano[];
   cta: string;
 }
 
-// Lista base dos planos. Preço NUNCA é literal aqui — vem de precosPlanos (a
-// fonte conferida contra a Stripe). `atual` é decidido em runtime (plano lido de
-// getPlanoAtual()), por isso não entra aqui como valor fixo.
-const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
-  {
-    id: 'gratis',
-    nome: 'Grátis',
-    preco: null,
-    tagline: 'Tudo que você precisa pra começar a fechar negócio.',
-    icon: 'rocket-launch-outline',
-    cta: 'Seu plano atual',
-    beneficios: [
-      `Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
-      'Rascunhos, recibos, clientes e histórico sem limite',
-      'Catálogo de serviços e produtos',
-      'Clientes e agenda',
-      'Diagnóstico por código de erro (offline)',
-      'Link do orçamento para o cliente',
-    ],
-  },
-  {
-    id: 'pro',
-    nome: 'Pro',
-    preco: PRECO_PRO,
-    tagline: 'Para o autônomo que quer vender mais e ganhar tempo.',
-    icon: 'crown-outline',
-    destaque: true,
-    cta: 'Assinar Pro',
-    beneficios: [
-      'Tudo do plano Grátis',
-      'IA incluída com uso justo diário (voz, chat e diagnóstico)',
-      'Relatórios de faturamento e conversão',
-      'Metas de vendas e acompanhamento por período',
-      'PDF sem a marca OLLI e modelos premium',
-      'Suporte prioritário por WhatsApp',
-    ],
-  },
-  {
-    id: 'empresa',
-    nome: 'Empresa',
-    preco: PRECO_EMPRESA,
-    tagline: 'Para equipes que atendem em campo todos os dias.',
-    icon: 'office-building-outline',
-    cta: 'Assinar Empresa',
-    beneficios: [
-      'Tudo do plano Pro',
-      'Vários técnicos e permissões por papel',
-      'Equipe ao vivo no mapa (em breve)',
-      'Painel de gestão da empresa (em breve)',
-      'Suporte prioritário',
-    ],
-  },
-];
+/** O que é só desta TELA (ícone, CTA, fonte de preço); o resto vem da tabela única. */
+const APRESENTACAO: Record<PlanoId, { preco: FontePreco | null; icon: string; cta: string }> = {
+  gratis: { preco: null, icon: 'rocket-launch-outline', cta: 'Seu plano atual' },
+  pro: { preco: PRECO_PRO, icon: 'crown-outline', cta: 'Assinar Pro' },
+  empresa: { preco: PRECO_EMPRESA, icon: 'office-building-outline', cta: 'Assinar Empresa' },
+};
+
+// Lista base dos planos. Nome, tagline e benefícios vêm de `planosBase.ts` (a tabela
+// ÚNICA que o painel, a landing e os e-mails também leem — Grátis ilimitado desde
+// 01/10/2026). Preço NUNCA é literal aqui: vem de precosPlanos (a fonte conferida
+// contra a Stripe). `atual` é decidido em runtime (plano lido de getPlanoAtual()).
+const PLANOS_BASE: Omit<Plano, 'atual'>[] = TABELA_PLANOS.map((p) => ({
+  id: p.id,
+  nome: p.nome,
+  tagline: p.tagline,
+  destaque: p.destaque,
+  bullets: p.bullets,
+  ...APRESENTACAO[p.id],
+}));
 
 // ─── Comparativo Grátis × Pro × Empresa ─────────────────────────────────────
 // A matriz é DERIVADA de `entitlements.ts` (temAcessoRecurso), não escrita à
@@ -206,42 +174,22 @@ interface LinhaComparativo {
 
 /** Recursos base (não gateados): livres em todos os planos — a alma do Grátis. */
 const LINHAS_BASE: LinhaComparativo[] = [
+  { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: 'Ilimitados', pro: 'Ilimitados', empresa: 'Ilimitados' },
   { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
-  { rotulo: 'Orçamentos enviados ou PDFs por mês', gratis: `${ORCAMENTOS_ENVIADOS_GRATIS_MES}/mês`, pro: 'Sem limite mensal', empresa: 'Sem limite mensal' },
   { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
   { rotulo: 'Diagnóstico por código de erro (offline)', gratis: true, pro: true, empresa: true },
   { rotulo: 'Link do orçamento para o cliente', gratis: true, pro: true, empresa: true },
 ];
 
-/** Rótulo humano de cada recurso gateado. Fiel às descrições em entitlements.ts —
- *  a leitura comercial do que o mapa RECURSOS_POR_PLANO já decide em código. */
-const RECURSO_LABEL: Record<Recurso, string> = {
-  ia_ilimitada: 'IA incluída com uso justo diário (voz, chat e diagnóstico)',
-  relatorios: 'Relatórios de faturamento e conversão',
-  metas: 'Metas de vendas e acompanhamento',
-  radar_clientes: 'Clientes para lembrar da manutenção (lista completa)',
-  relatorio_dia: 'Relatório do dia falado',
-  modelos_pdf_premium: 'Modelos premium de PDF',
-  remove_olli_brand: 'PDF sem a marca OLLI',
-  equipe: 'Vários técnicos e permissões por papel',
-  mapa_equipe: 'Equipe ao vivo no mapa',
-  dashboard_empresa: 'Painel de gestão da empresa',
-};
+/** Rótulo humano de cada recurso gateado — da tabela única `planosBase.ts`. */
+const RECURSO_LABEL: Record<Recurso, string> = Object.fromEntries(
+  (Object.keys(ROTULO_RECURSO) as Recurso[]).map((r) => [r, ROTULO_RECURSO[r].titulo]),
+) as Record<Recurso, string>;
 
-// Ordem de exibição: recursos do Pro primeiro, depois os exclusivos da Empresa.
-// `ia_ilimitada` sai do laço genérico porque a célula do Grátis não é ✗ e sim a
-// cota "3/mês" — a IA no grátis é gate por COTA, não por plano.
-const RECURSOS_GATEADOS: Recurso[] = [
-  'relatorios',
-  'metas',
-  'radar_clientes',
-  'relatorio_dia',
-  'modelos_pdf_premium',
-  'remove_olli_brand',
-  'equipe',
-  'mapa_equipe',
-  'dashboard_empresa',
-];
+// Ordem de exibição: a de entitlements (Pro primeiro, depois os exclusivos da
+// Empresa). `ia_ilimitada` sai do laço genérico porque a célula do Grátis não é ✗ e
+// sim a cota "3/mês" — a IA no grátis é gate por COTA, não por plano.
+const RECURSOS_GATEADOS: Recurso[] = RECURSOS_EM_ORDEM.filter((r) => r !== 'ia_ilimitada');
 
 /** Monta as linhas do comparativo a partir dos entitlements reais. */
 function montarLinhasComparativo(): LinhaComparativo[] {
@@ -308,9 +256,9 @@ export default function PlanosScreen() {
     aplicarSeo({
       titulo: 'Planos e preços — OLLI Orçamentos',
       descricao:
-        `Comece grátis, com rascunhos, recibos, clientes e histórico sem limite e até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. ` +
-        `O Pro (${reais(PRECO_PRO.mensalCentavos)}/mês, ou ${reais(PRECO_PRO.anualPorMesCentavos)}/mês no anual) ` +
-        `acrescenta IA com uso justo diário, relatórios de faturamento e conversão, metas de vendas e suporte prioritário.`,
+        `Comece grátis, com ${FRASE_GRATIS}. ` +
+        `O Pro (${reais(PRECO_PRO.mensalCentavos)}/mês, ou ${reais(PRECO_PRO.anualPorMesCentavos)}/mês no anual): ` +
+        `${frasePro()}, mais a inteligência de campo.`,
       caminho: '/planos',
     });
   }, []);
@@ -788,12 +736,12 @@ export default function PlanosScreen() {
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
             <Text style={styles.introSub}>
               {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
-                ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
+                ? `O Grátis tem ${FRASE_GRATIS}. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
                 : VENDA_PELA_PLAY
-                  ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados aqui pela Google Play, mensal ou anual — a cobrança e o cancelamento ficam na sua conta Google.`
+                  ? `O Grátis tem ${FRASE_GRATIS}. Pro e Empresa podem ser assinados aqui pela Google Play, mensal ou anual — a cobrança e o cancelamento ficam na sua conta Google.`
                 : Platform.OS === 'android'
-                  ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.`
-                  : `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
+                  ? `O Grátis tem ${FRASE_GRATIS}. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.`
+                  : `O Grátis tem ${FRASE_GRATIS}. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
             </Text>
           </View>
         </AnimatedEntrance>
@@ -1023,14 +971,15 @@ function PlanoCard({
 
       {/* BENEFÍCIOS */}
       <View style={styles.beneficios}>
-        {plano.beneficios.map((b, i) => (
+        {plano.bullets.map((b, i) => (
           <View key={i} style={styles.beneficioRow}>
+            {/* "Em breve" sem o ✓ de quem já funciona — três estados, nunca dois. */}
             <MaterialCommunityIcons
-              name="check-circle"
+              name={b.emBreve ? 'clock-outline' : 'check-circle'}
               size={17}
-              color={plano.destaque ? cores.accentLight : cores.success}
+              color={b.emBreve ? cores.onSurfaceVariant : plano.destaque ? cores.accentLight : cores.success}
             />
-            <Text style={styles.beneficioText}>{b}</Text>
+            <Text style={styles.beneficioText}>{b.emBreve ? `${b.texto} (em breve)` : b.texto}</Text>
           </View>
         ))}
       </View>
