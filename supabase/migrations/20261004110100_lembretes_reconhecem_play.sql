@@ -10,10 +10,13 @@
 --     `recorrente` decide se o e-mail de vencimento diz "renove com Pix". Para a
 --     Play isso seria cobrança em dobro — a Play renova sozinha. Cópia INTEGRAL da
 --     função de 20261002150000 com UMA mudança: `recorrente` também é verdadeiro
---     com vínculo da Play.
+--     quando a compra da Play ligada à linha está VIVA e RENOVANDO
+--     (play_compras ativa/carência com auto_renovacao) — o vínculo sozinho não
+--     basta, porque ninguém o limpa quando a pessoa sai da Play.
 --  2. funil_marco_assinatura (20260930120100): o marco "pagou" ganha a origem
---     'google_play' (antes cairia em 'avulso', como se fosse Pix) e NÃO conta
---     compra de licença de teste (play_compras.teste) como receita.
+--     'google_play' (antes cairia em 'avulso', como se fosse Pix) só quando a
+--     vigência gravada é a da própria Play, e NÃO conta compra de licença de teste
+--     (play_compras.teste) como receita.
 --
 -- Depende de 20261004110000_play_compras.sql (o trigger consulta play_compras).
 
@@ -102,7 +105,16 @@ begin
         -- Google Play (Play Billing direto): a Play renova sozinha e cobra pela
         -- conta Google. "Renove com Pix" aqui seria cobrança em dobro (e, dentro
         -- do Android, pagamento fora da Play). Vínculo = hash do purchaseToken.
-        or coalesce(pg_catalog.btrim(a.revenuecat_transacao_id), '') <> ''
+        -- Só conta enquanto a compra da Play VIVE e RENOVA (play_compras ativa ou
+        -- em carência, com renovação automática): ninguém limpa
+        -- revenuecat_transacao_id quando a Play encerra ou quando a pessoa passa a
+        -- pagar por Pix, e um ex-assinante da Play nunca mais receberia o lembrete.
+        or exists (
+          select 1 from public.play_compras p
+           where p.token_sha256 = a.revenuecat_transacao_id
+             and p.auto_renovacao is true
+             and p.estado in ('SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD')
+        )
       ) as recorrente,
       (
         select pg_catalog.count(*)
@@ -223,16 +235,28 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  -- A vigência gravada é a que a PRÓPRIA Play deu? (e não uma maior, de Pix ou
+  -- Stripe). revenuecat_transacao_id não é limpo quando a pessoa sai da Play:
+  -- sem esta conta, um Pix pago depois viraria 'google_play' — e, se a compra
+  -- antiga da Play era de teste, o pagamento real sumiria da receita.
+  v_play_sustenta boolean :=
+    new.revenuecat_transacao_id is not null
+    and new.revenuecat_vigencia_ate is not null
+    and new.current_period_end is not null
+    and new.revenuecat_vigencia_ate >= new.current_period_end - interval '1 minute';
 begin
   if new.status = 'active' and new.plano in ('pro', 'empresa')
      and not public.funil_assinatura_ficticia(new.stripe_subscription_id, new.stripe_customer_id)
      -- Licença de teste da Play compra "de verdade" no app de produção, mas não é
      -- dinheiro: não vira marco de pagamento.
-     and not exists (
-       select 1 from public.play_compras p
-        where new.revenuecat_transacao_id is not null
-          and p.token_sha256 = new.revenuecat_transacao_id
-          and p.teste
+     and not (
+       v_play_sustenta
+       and exists (
+         select 1 from public.play_compras p
+          where p.token_sha256 = new.revenuecat_transacao_id
+            and p.teste
+       )
      )
   then
     perform public.funil_registrar_marco(
@@ -241,7 +265,7 @@ begin
       case
         when new.stripe_subscription_id is not null then 'stripe'
         when new.mp_preapproval_id is not null then 'mercado_pago'
-        when new.revenuecat_transacao_id is not null then 'google_play'
+        when v_play_sustenta then 'google_play'
         -- Pagamento avulso: Pix (AbacatePay/Mercado Pago) ou 12x da Stripe.
         else 'avulso'
       end

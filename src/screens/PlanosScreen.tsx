@@ -318,6 +318,10 @@ export default function PlanosScreen() {
   const [ofertasPlay, setOfertasPlay] = useState<EstadoOfertasPlay>(
     VENDA_PELA_PLAY ? { estado: 'carregando' } : { estado: 'desligado' },
   );
+  // A MOLDURA da venda pela Play (texto de abertura, abas, rodapé) segue a última
+  // resposta CONHECIDA, não o "carregando": senão ela aparece e some (ou some e
+  // reaparece) a cada foco da tela. `null` = ainda não houve resposta.
+  const [molduraPlay, setMolduraPlay] = useState<boolean | null>(VENDA_PELA_PLAY ? null : false);
   const [compraPlayEm, setCompraPlayEm] = useState<PlanoId | null>(null);
   const [restaurandoPlay, setRestaurandoPlay] = useState(false);
 
@@ -361,7 +365,9 @@ export default function PlanosScreen() {
   const carregarPlay = useCallback(async () => {
     if (!VENDA_PELA_PLAY) return;
     setOfertasPlay({ estado: 'carregando' });
-    setOfertasPlay(await carregarOfertasPlay());
+    const resultado = await carregarOfertasPlay();
+    setOfertasPlay(resultado);
+    setMolduraPlay(vendaPlayVisivel(resultado.estado));
   }, []);
 
   useFocusEffect(
@@ -674,6 +680,9 @@ export default function PlanosScreen() {
     if (!VENDA_PELA_PLAY || (p.id !== 'pro' && p.id !== 'empresa')) return null;
     // Servidor desligou a venda (ou binário sem venda): o card não vende nem mostra preço.
     if (!vendaPlayVisivel(ofertasPlay.estado)) return null;
+    // Relendo com a última resposta = venda desligada: segue sem venda até a nova
+    // resposta (o card não pisca "carregando" a cada foco).
+    if (ofertasPlay.estado === 'carregando' && molduraPlay === false) return null;
     return {
       estado: ofertasPlay.estado,
       mensagemErro: ofertasPlay.estado === 'erro' ? ofertasPlay.mensagem ?? null : null,
@@ -808,8 +817,10 @@ export default function PlanosScreen() {
             <Text style={styles.introSub}>
               {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
                 ? `O Grátis tem ${FRASE_GRATIS}. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
-                : vendaPlayVisivel(ofertasPlay.estado)
+                : molduraPlay === true
                   ? `O Grátis tem ${FRASE_GRATIS}. Pro e Empresa podem ser assinados aqui pela Google Play, mensal ou anual — a cobrança e o cancelamento ficam na sua conta Google.`
+                : molduraPlay === null
+                  ? `O Grátis tem ${FRASE_GRATIS}. Veja abaixo o que cada plano libera.`
                 : Platform.OS === 'android'
                   ? `O Grátis tem ${FRASE_GRATIS}. A assinatura pelo app está indisponível no momento; aqui você confere o que cada plano libera.`
                   : `O Grátis tem ${FRASE_GRATIS}. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
@@ -822,7 +833,7 @@ export default function PlanosScreen() {
             uma compra que este aparelho não faz) — mas o preço anual continua
             visível como INFORMAÇÃO na linha "no anual…" dentro de cada card. */}
         {COMPRA_NO_APP && (
-        BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlayVisivel(ofertasPlay.estado) ? null : (
+        BUILD_PLAY_SEM_COMPRA_EXTERNA && molduraPlay !== true ? null : (
         <AnimatedEntrance index={1}>
           <View style={styles.toggle} accessibilityRole="tablist">
             <TouchableOpacity
@@ -889,7 +900,7 @@ export default function PlanosScreen() {
             mantido sem alteração no Android/web, onde a compra é real. */}
         {/* Google Play: como a assinatura funciona + "Restaurar compras" (exigência
             prática de loja: quem trocou de aparelho recupera sem pagar de novo). */}
-        {vendaPlayVisivel(ofertasPlay.estado) ? (
+        {molduraPlay === true ? (
           <View style={styles.playRodape}>
             <Text style={styles.rodape}>{RODAPE_PLAY}</Text>
             <TouchableOpacity

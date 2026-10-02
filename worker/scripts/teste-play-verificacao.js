@@ -25,7 +25,11 @@
  *  6. ERRO 5xx DO GOOGLE NÃO REBAIXA; EXPIRAÇÃO REBAIXA (com vínculo).
  *  7. Convivência com Pix/Stripe (núcleo herdado do revenuecat.js).
  *  8. Exclusão de conta cancela a renovação pela API v2.
- *  9. Nenhum log carrega purchaseToken nem access token.
+ *  9. Nenhum log carrega purchaseToken nem access token; o token no KV é cifrado.
+ * 10. CONTRATO ÚNICO app↔worker: o pedido é montado pela função DO APP
+ *     (`corpoVerificacaoPlay`) e a resposta é lida pela função DO APP
+ *     (`interpretarVerificacaoPlay`), as duas de src/services/playBillingRegras.ts,
+ *     contra o `handlePlay` REAL. Se um lado mudar o formato sozinho, isto quebra.
  */
 import { createHash } from 'node:crypto';
 import {
@@ -33,9 +37,11 @@ import {
   handlePlay,
   processarRtdn,
   reconciliarPlay,
+  tarefaPlayDoCron,
   traduzirAssinaturaPlay,
 } from '../src/play.js';
 import { limparCacheTokenGoogle } from '../src/googleAuth.js';
+import { corpoVerificacaoPlay, interpretarVerificacaoPlay } from '../../src/services/playBillingRegras.ts';
 
 let falhas = 0;
 let passes = 0;
@@ -73,6 +79,9 @@ const PEM = `-----BEGIN PRIVATE KEY-----\n${Buffer.from(pkcs8).toString('base64'
 const SA_EMAIL = 'olli-play-verify@claude-motor.iam.gserviceaccount.com';
 const PLAY_SA_JSON = JSON.stringify({ type: 'service_account', client_email: SA_EMAIL, private_key: PEM, private_key_id: 'kid-teste-1' });
 const ACCESS_TOKEN = 'ya29.access-token-falso-NUNCA-NO-LOG';
+/** O que o OAuth falso emite e o que as APIs falsas aceitam (troca = token revogado). */
+let tokenEmitido = ACCESS_TOKEN;
+let tokenAceito = ACCESS_TOKEN;
 
 // ── estado dos falsos ────────────────────────────────────────
 const db = { assinaturas: new Map(), eventos: new Map(), compras: new Map() };
@@ -147,7 +156,7 @@ async function tokenGoogleFalso(init) {
     google.jwtsInvalidos++;
     return resp({ error: 'invalid_grant' }, 400);
   }
-  return resp({ access_token: ACCESS_TOKEN, expires_in: 3599, token_type: 'Bearer' });
+  return resp({ access_token: tokenEmitido, expires_in: 3599, token_type: 'Bearer' });
 }
 
 /** Predicado da reconciliação, lido do próprio filtro `and=` que o worker monta. */
@@ -174,7 +183,7 @@ globalThis.fetch = async (url, init = {}) => {
 
   // ── Google Play Developer API ──
   if (u.hostname === 'androidpublisher.googleapis.com') {
-    if (auth !== `Bearer ${ACCESS_TOKEN}`) return resp({ error: 'unauthenticated' }, 401);
+    if (auth !== `Bearer ${tokenAceito}`) return resp({ error: 'unauthenticated' }, 401);
     const base = `/androidpublisher/v3/applications/${PACOTE}/purchases/`;
     if (!u.pathname.startsWith(base)) return resp({ error: 'pacote' }, 404);
     const resto = decodeURIComponent(u.pathname.slice(base.length));
@@ -206,7 +215,7 @@ globalThis.fetch = async (url, init = {}) => {
 
   // ── Pub/Sub ──
   if (u.hostname === 'pubsub.googleapis.com') {
-    if (auth !== `Bearer ${ACCESS_TOKEN}`) return resp({ error: 'unauthenticated' }, 401);
+    if (auth !== `Bearer ${tokenAceito}`) return resp({ error: 'unauthenticated' }, 401);
     const corpo = JSON.parse(init.body || '{}');
     if (u.pathname === `/v1/${ASSINATURA_PUBSUB}:pull`) {
       pubsub.pulls++;
@@ -305,6 +314,7 @@ const envBase = {
   CACHE: {
     get: async (k) => kv.get(k) ?? null,
     put: async (k, v) => { kv.set(k, v); },
+    delete: async (k) => { kv.delete(k); },
   },
 };
 
@@ -355,8 +365,15 @@ async function chamar(caminho, { metodo = 'POST', corpo, env = envBase, user = U
   return { status: r.status, body: await r.json() };
 }
 
-const verificar = (token, produtoId = 'olli_pro:mensal', opts = {}) =>
-  chamar('/play/verificar', { corpo: { purchaseToken: token, produtoId }, ...opts });
+/** Pedido montado pela função DO APP (o mesmo `JSON.stringify` do playBillingWorker.ts). */
+const corpoDoApp = (token, produto) => {
+  const [productId, basePlanId] = String(produto).split(':');
+  return corpoVerificacaoPlay({ purchaseToken: token, productId, basePlanId: basePlanId ?? null });
+};
+const verificar = (token, produto = 'olli_pro:mensal', opts = {}) =>
+  chamar('/play/verificar', { corpo: corpoDoApp(token, produto), ...opts });
+/** Resposta lida pela função DO APP. */
+const doApp = (r) => interpretarVerificacaoPlay(r.status, r.body);
 
 /** Mensagem do RTDN no formato do Pub/Sub (data = DeveloperNotification em base64). */
 let seqMsg = 0;
@@ -380,6 +397,9 @@ const naMinuto = (minuto, hora = new Date(AGORA).getUTCHours()) => {
   d.setUTCHours(hora, minuto, 0, 0);
   return d;
 };
+/** Hora UTC dos testes de cron: a atual, menos 05h (05:27 é a varredura de anuladas). */
+const HORA_TESTE = new Date(AGORA).getUTCHours() === 5 ? 6 : new Date(AGORA).getUTCHours();
+const R27 = naMinuto(27, HORA_TESTE);
 
 try {
   console.log('\n1) KILL SWITCH — desligado diz que está desligado');
@@ -391,9 +411,14 @@ try {
     checar('PLAY_SA_JSON malformado → ligado:false', (await chamar('/play/config', { metodo: 'GET', env: { ...envBase, PLAY_SA_JSON: '{"client_email":"x"}' } })).body.ligado, false);
     const t = novoToken();
     google.subs.set(t, sub());
-    const off = await verificar(t, 'olli_pro:mensal', { env: { ...envBase, PLAY_BILLING_MODE: 'off' } });
-    checar('verificar com a venda desligada → 503 play_desligado', [off.status, off.body.erro], [503, 'play_desligado']);
+    const semCred = await verificar(t, 'olli_pro:mensal', { env: { ...envBase, PLAY_SA_JSON: undefined } });
+    checar('verificar sem credencial → 503 play_nao_configurado', [semCred.status, semCred.body.erro], [503, 'play_nao_configurado']);
     checar('...nada gravado', db.compras.size + db.assinaturas.size, 0);
+    // O kill switch é SÓ da vitrine: compra paga segundos antes de desligar a venda
+    // ainda é registrada e reconhecida (senão a Play estorna).
+    const off = await verificar(t, 'olli_pro:mensal', { env: { ...envBase, PLAY_BILLING_MODE: 'off' } });
+    checar('verificar com a venda DESLIGADA ainda registra a compra paga → 200 ativo', [off.status, off.body.estado], [200, 'ativo']);
+    checar('...e reconhece na Play', google.acks.length, 1);
   }
 
   console.log('\n2) PORTÃO — JWT, rate limit fail-closed, teto, regex e catálogo');
@@ -424,7 +449,8 @@ try {
     google.subs.set(t, sub());
     const r = await verificar(t);
     checar('200 ativo', [r.status, r.body.estado, r.body.plano], [200, 'ativo', 'pro']);
-    checar('ack confirmado na resposta', r.body.ack, true);
+    checar('CONTRATO: corpo 200 = { ok, estado, plano, vigenteAte } e nada mais', Object.keys(r.body).sort(), ['estado', 'ok', 'plano', 'vigenteAte']);
+    checar('CONTRATO: o app lê a resposta como ok/pro/vigência', doApp(r), { estado: 'ok', plano: 'pro', vigenteAte: new Date(AGORA + 30 * DIA).toISOString() });
     const l = linhaDe();
     checar('assinaturas: pro/active até a vigência da Play', `${l?.plano}/${l?.status}/${l?.current_period_end}`, `pro/active/${new Date(AGORA + 30 * DIA).toISOString()}`);
     checar('vínculo = SHA-256 do token (nunca o token cru)', [l?.revenuecat_transacao_id, l?.revenuecat_produto_id], [sha(t), 'olli_pro:mensal']);
@@ -434,7 +460,8 @@ try {
     checar('acknowledge chamado 1x com o productId', google.acks.map((a) => a.produto), ['olli_pro']);
     checar('ORDEM: grava compra → grava plano → ack na Play → marca ack', linhaDoTempo, ['grava_compra', 'grava_assinatura', 'ack_play', 'grava_compra']);
     checar('JWT RS256 aceito pelo Google (assinatura, iss, aud, escopos)', [google.tokenCalls, google.jwtsInvalidos], [1, 0]);
-    checar('token do Google guardado no KV com TTL', [...kv.keys()].some((k) => k.startsWith('play:gtoken:v1:') && !k.includes(SA_EMAIL)), true);
+    checar('token do Google guardado no KV com TTL', [...kv.keys()].some((k) => k.startsWith('play:gtoken:v2:') && !k.includes(SA_EMAIL)), true);
+    checar('...CIFRADO: o valor no KV não contém o access token', [...kv.values()].some((v) => String(v).includes(ACCESS_TOKEN) || String(v).includes('ya29')), false);
 
     const de2 = await verificar(t);
     checar('restaurar a MESMA compra (mesma conta) → 200, sem novo ack', [de2.status, de2.body.estado, google.acks.length], [200, 'ativo', 1]);
@@ -442,7 +469,21 @@ try {
     limparCacheTokenGoogle();
     await verificar(t);
     checar('isolate novo: token vem do KV, não do Google', google.tokenCalls, 1);
-    checar('produto só com o sku (restauração) também serve', (await verificar(t, 'olli_pro')).status, 200);
+    checar('produto só com o sku (restauração, basePlanId null) também serve', (await verificar(t, 'olli_pro')).status, 200);
+    checar('CONTRATO: o app manda basePlanId:null sem plano básico', corpoDoApp(t, 'olli_pro'), { purchaseToken: t, productId: 'olli_pro', basePlanId: null });
+    checar('legado { produtoId } continua aceito', (await chamar('/play/verificar', { corpo: { purchaseToken: t, produtoId: 'olli_pro:mensal' } })).status, 200);
+    checar('basePlanId que a loja inventou NÃO derruba a compra (vale o do Google)', [(await verificar(t, 'olli_pro:semanal')).status], [200]);
+
+    // Token revogado no Google: 401 limpa o cache (memória + KV) e tenta 1x com token novo.
+    tokenEmitido = 'ya29.token-novo-depois-de-revogar';
+    tokenAceito = tokenEmitido;
+    const chamadasAntes = google.tokenCalls;
+    const depoisDe401 = await verificar(t);
+    checar('401 do Google → busca token novo e a chamada passa', [depoisDe401.status, google.tokenCalls - chamadasAntes], [200, 1]);
+    tokenEmitido = ACCESS_TOKEN;
+    tokenAceito = ACCESS_TOKEN;
+    limparCacheTokenGoogle();
+    kv.clear();
   }
 
   console.log('\n4) CONTA ERRADA, TOKEN REUSADO, PRODUTO FORA DO CATÁLOGO, TESTE SEM PERMISSÃO');
@@ -462,7 +503,8 @@ try {
     google.subs.set(t2, sub());
     await verificar(t2);
     const reuso = await verificar(t2, 'olli_pro:mensal', { user: OUTRO });
-    checar('MESMO token por outra conta → 409 compra_de_outra_conta', [reuso.status, reuso.body.erro], [409, 'compra_de_outra_conta']);
+    checar('MESMO token por outra conta → 409 token_de_outra_conta', [reuso.status, reuso.body.erro], [409, 'token_de_outra_conta']);
+    checar('CONTRATO: o app lê o 409 como outra_conta', doApp(reuso), { estado: 'outra_conta' });
     checar('...o plano da outra conta não foi tocado', linhaDe(OUTRO), null);
     checar('...e a compra continua do dono original', compraDe(t2)?.user_id, USER);
     checar('...com ALARME no log', logs.some((x) => x.includes('ALARME') && x.includes('outra conta')), true);
@@ -475,7 +517,9 @@ try {
     checar('plano básico desconhecido → 422', (await verificar(semanal, 'olli_pro')).body.erro, 'produto_desconhecido');
     const div = novoToken();
     google.subs.set(div, sub({ produto: 'olli_pro' }));
-    checar('app diz Empresa, Play diz Pro → 400 produto_divergente', (await verificar(div, 'olli_empresa:mensal')).body.erro, 'produto_divergente');
+    const divergente = await verificar(div, 'olli_empresa:mensal');
+    checar('app diz Empresa, Play diz Pro → vale a Play (200 pro), só log', [divergente.status, divergente.body.plano], [200, 'pro']);
+    checar('...com a divergência registrada no log', logs.some((x) => x.includes('produto alegado pelo app difere')), true);
 
     const teste = novoToken();
     google.subs.set(teste, sub({ teste: true }));
@@ -494,6 +538,7 @@ try {
     google.subs.set(t, sub({ estado: 'SUBSCRIPTION_STATE_PENDING' }));
     const r = await verificar(t);
     checar('PENDING → 200 pendente', [r.status, r.body.estado], [200, 'pendente']);
+    checar('CONTRATO: o app lê PENDING como sem_liberacao/pendente (não "ok", não "erro")', doApp(r), { estado: 'sem_liberacao', situacao: 'pendente' });
     checar('...sem plano e sem acknowledge', [linhaDe(), google.acks.length], [null, 0]);
     const t2 = novoToken();
     google.subs.set(t2, sub());
@@ -591,21 +636,27 @@ try {
     await verificar(t);
     const c = compraDe(t);
     c.ack = false;
-    c.verificado_em = new Date(AGORA - 2 * 3600e3).toISOString();
+    c.verificado_em = new Date(R27.getTime() - 2 * 3600e3).toISOString();
     google.subs.get(t).acknowledgementState = 'ACKNOWLEDGEMENT_STATE_PENDING';
     google.acks = [];
     const fora = await reconciliarPlay(envBase, { agora: naMinuto(20) });
     checar('fora dos minutos fixos não faz nada', [fora.estado, google.acks.length], ['fora_do_horario', 0]);
-    const r = await reconciliarPlay(envBase, { agora: naMinuto(13) });
-    checar('minuto :13 → relida e reconhecida', [r.estado, r.relidas, google.acks.length, compraDe(t)?.ack], ['ok', 1, 1, true]);
+    const r = await tarefaPlayDoCron(envBase, { agora: R27 });
+    checar('cron :27 → reconciliação: relida e reconhecida', [r.tarefa, r.estado, r.relidas, google.acks.length, compraDe(t)?.ack], ['reconciliar', 'ok', 1, 1, true]);
+    const pullsAntes = pubsub.pulls;
+    checar('cron :27 NÃO puxa o RTDN no mesmo minuto', pubsub.pulls, pullsAntes);
+    const rtdn = await tarefaPlayDoCron(envBase, { agora: naMinuto(7, HORA_TESTE) });
+    checar('cron :07 → RTDN (e não a reconciliação)', [rtdn.tarefa, pubsub.pulls - pullsAntes], ['rtdn', 1]);
+    checar('cron :47 → RTDN', (await tarefaPlayDoCron(envBase, { agora: naMinuto(47, HORA_TESTE) })).tarefa, 'rtdn');
 
     // Google fora na reconciliação: nada muda.
-    c.verificado_em = new Date(AGORA - 2 * 3600e3).toISOString();
+    c.verificado_em = new Date(R27.getTime() - 2 * 3600e3).toISOString();
     c.ack = false;
     google.falhaGet = 500;
     const antes = JSON.stringify(linhaDe());
-    await reconciliarPlay(envBase, { agora: naMinuto(43) });
+    await reconciliarPlay(envBase, { agora: R27 });
     checar('ERRO 5xx NA RECONCILIAÇÃO NÃO REBAIXA (linha idêntica)', JSON.stringify(linhaDe()), antes);
+    checar('...mas a marca de verificação anda (a linha não trava a fila)', Date.parse(c.verificado_em) > R27.getTime() - 3600e3, true);
     google.falhaGet = null;
 
     // Varredura diária de anuladas (05:37 UTC): a Play revogou → estado EXPIRED → encerra.
@@ -613,10 +664,58 @@ try {
     s.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
     s.lineItems[0].expiryTime = new Date(AGORA - 60e3).toISOString();
     google.voided = [{ purchaseToken: t, orderId: 'GPA.3311-2222-3333-44444..2', voidedReason: 1, voidedSource: 0 }];
-    const v = await reconciliarPlay(envBase, { agora: naMinuto(37, 5) });
-    checar('anulada encontrada e aplicada', [v.anuladas?.tratadas, linhaDe()?.status], [1, 'canceled']);
-    const v2 = await reconciliarPlay(envBase, { agora: naMinuto(37, 5) });
+    const v = await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
+    checar('05:27 UTC → anuladas encontrada e aplicada', [v.anuladas?.tratadas, linhaDe()?.status], [1, 'canceled']);
+    checar('...e a reconciliação de linhas NÃO roda no mesmo minuto', v.relidas, undefined);
+    const v2 = await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
     checar('a mesma anulada não é reprocessada no dia seguinte', v2.anuladas?.tratadas, 0);
+  }
+
+  console.log('\n8b) FILA DA RECONCILIAÇÃO não trava; compra de teste de quem saiu da lista encerra');
+  reset();
+  {
+    // Testador que já teve a compra de teste concedida e depois saiu de
+    // PLAY_TESTE_PERMITIDOS: a linha não pode ficar no topo da fila para sempre.
+    const envTestador = { ...envBase, PLAY_TESTE_PERMITIDOS: USER };
+    const tt = novoToken();
+    google.subs.set(tt, sub({ teste: true }));
+    await verificar(tt, 'olli_pro:mensal', { env: envTestador });
+    const c = compraDe(tt);
+    c.ack = false;
+    c.verificado_em = new Date(R27.getTime() - 2 * 3600e3).toISOString();
+    await reconciliarPlay(envBase, { agora: R27 });
+    checar('teste não permitido: verificado_em anda mesmo sem conceder', Date.parse(compraDe(tt).verificado_em) > R27.getTime() - 3600e3, true);
+    const s = google.subs.get(tt);
+    s.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+    s.lineItems[0].expiryTime = new Date(AGORA - 1000).toISOString();
+    compraDe(tt).verificado_em = new Date(R27.getTime() - 2 * 3600e3).toISOString();
+    await reconciliarPlay(envBase, { agora: R27 });
+    checar('...e o ENCERRAMENTO dela vale (plano de teste não fica eterno)', [linhaDe()?.status, compraDe(tt)?.estado], ['canceled', 'SUBSCRIPTION_STATE_EXPIRED']);
+  }
+
+  console.log('\n8c) TROCA DE PLANO — RTDN do token antigo gravado depois não anula a concessão do novo');
+  reset();
+  {
+    const velho = novoToken();
+    google.subs.set(velho, sub({ produto: 'olli_pro' }));
+    await verificar(velho);
+    const novo = novoToken();
+    google.subs.set(novo, sub({ produto: 'olli_empresa', linked: velho }));
+    // O token antigo encerra com uma leitura MAIS NOVA gravada primeiro…
+    google.subs.get(velho).subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
+    linhaDe().revenuecat_evento_em = new Date(Date.now() + 60e3).toISOString();
+    google.acks = [];
+    const r = await verificar(novo, 'olli_empresa:mensal');
+    checar('…e a concessão do token novo não cai em "fora de ordem"', [r.status, r.body.estado, linhaDe()?.plano, linhaDe()?.revenuecat_transacao_id], [200, 'ativo', 'empresa', sha(novo)]);
+    checar('...e só então reconhece na Play', google.acks.length, 1);
+    // Leitura VELHA do MESMO token (fora de ordem de verdade) não desfaz a nova,
+    // não reconhece e não responde "ativo".
+    linhaDe().revenuecat_evento_em = new Date(Date.now() + 60e3).toISOString();
+    google.subs.get(novo).acknowledgementState = 'ACKNOWLEDGEMENT_STATE_PENDING';
+    google.acks = [];
+    const velhaLeitura = await verificar(novo, 'olli_empresa:mensal');
+    checar('fora de ordem do MESMO token → não "ativo", sem ack', [velhaLeitura.body.estado, velhaLeitura.body.plano, google.acks.length], ['sem_efeito', null, 0]);
+    checar('CONTRATO: o app lê isso como sem_liberacao (nunca "confirmamos")', doApp(velhaLeitura).estado, 'sem_liberacao');
   }
 
   console.log('\n9) CONVIVÊNCIA — Pix de 1 ano (Empresa) não é rebaixado nem derrubado pela Play');
@@ -670,6 +769,18 @@ try {
     google.falhaCancel = null;
     checar('assinatura viva sem credencial → erro', await cancelarPlayDoUsuario({ ...envBase, PLAY_SA_JSON: undefined }, USER), 'erro');
     checar('usuário sem compra nenhuma → ok', await cancelarPlayDoUsuario(envBase, OUTRO), 'ok');
+
+    // Gravada como CANCELADA, mas o usuário restaurou na Play antes do RTDN: relê e cancela.
+    reset();
+    const restaurada = novoToken();
+    google.subs.set(restaurada, sub());
+    db.compras.set(sha(restaurada), { user_id: USER, token_sha256: sha(restaurada), purchase_token: restaurada, estado: 'SUBSCRIPTION_STATE_CANCELED' });
+    checar('CANCELED gravada mas renovando de novo na Play → relida e cancelada', [await cancelarPlayDoUsuario(envBase, USER), google.cancels.length], ['ok', 1]);
+    google.cancels = [];
+    google.subs.get(restaurada).lineItems[0].autoRenewingPlan = { autoRenewEnabled: false };
+    google.subs.get(restaurada).subscriptionState = 'SUBSCRIPTION_STATE_CANCELED';
+    checar('CANCELED que segue sem renovar → não chama cancel', [await cancelarPlayDoUsuario(envBase, USER), google.cancels.length], ['ok', 0]);
+    checar('só canceladas gravadas e sem credencial → ok (vale o gravado)', await cancelarPlayDoUsuario({ ...envBase, PLAY_SA_JSON: undefined }, USER), 'ok');
   }
 
   console.log('\n12) traduzirAssinaturaPlay isolado — a tabela de estados');
@@ -694,7 +805,8 @@ try {
   {
     const tudo = logs.join('\n');
     checar('nenhum token de compra nos logs', /tokenplay\.\d{4}-/.test(tudo), false);
-    checar('nenhum access token nos logs', tudo.includes(ACCESS_TOKEN), false);
+    checar('nenhum access token nos logs', tudo.includes(ACCESS_TOKEN) || tudo.includes('ya29'), false);
+    checar('nenhum user_id em claro nos logs', tudo.includes(USER) || tudo.includes(OUTRO), false);
     checar('nenhuma chave privada nos logs', tudo.includes('PRIVATE KEY'), false);
   }
 } finally {

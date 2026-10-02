@@ -18,7 +18,6 @@ import {
   CATEGORIAS_AJUDA, ARTIGOS_AJUDA, getCategoria, getArtigosDaCategoria,
   buscarArtigos, corpoVisivel, type AjudaArtigo, type AjudaBloco,
 } from '../../content/ajuda';
-import { plataformaPodeVender } from '../../services/lembreteAssinaturaLoja';
 import { avisar } from './dialogo';
 
 /** Mesmo e-mail oficial de suporte da AjudaScreen mobile (src/screens/AjudaScreen.tsx). */
@@ -57,7 +56,7 @@ export default function AjudaDesktopScreen() {
   const inputBuscaRef = useRef<TextInput>(null);
 
   const buscando = query.trim().length >= 2;
-  const resultados = useMemo(() => (buscando ? buscarArtigos(query) : []), [query, buscando]);
+  const resultados = useMemo(() => (buscando ? buscarArtigos(query, Platform.OS) : []), [query, buscando]);
   const dropdownAberto = focoBusca && buscando;
 
   // Atalho de teclado "/" foca a busca — padrão de central de ajuda desktop.
@@ -331,7 +330,7 @@ export default function AjudaDesktopScreen() {
               <Text style={styles.artigoTitulo}>{artigoAtivo.titulo}</Text>
               <Text style={styles.artigoResumo}>{artigoAtivo.resumo}</Text>
 
-              {corpoVisivel(artigoAtivo, plataformaPodeVender(Platform.OS)).map((b, i) => <Bloco key={i} bloco={b} />)}
+              {corpoVisivel(artigoAtivo, Platform.OS).map((b, i) => <Bloco key={i} bloco={b} />)}
 
               <View style={styles.duvidaBox}>
                 <Text style={styles.duvidaTitulo}>Ainda com dúvida?</Text>

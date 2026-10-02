@@ -108,8 +108,8 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Execução de contrato (art. 7º, V).',
         },
         {
-          dado: 'Login com o Google: nome e e-mail da sua conta Google',
-          finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google". Recebemos do Google apenas o que identifica a conta (nome e e-mail); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
+          dado: 'Login com o Google: nome, e-mail e foto do perfil da sua conta Google',
+          finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google". Recebemos do Google apenas o que identifica a conta (nome, e-mail e foto do perfil); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
           base: 'Execução de contrato (art. 7º, V) e consentimento ao autorizar o login (art. 7º, I).',
         },
         {
@@ -154,7 +154,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Histórico de compras na Google Play (Android): identificador da compra, plano contratado, estado e datas da assinatura',
-          finalidade: 'Confirmar com a Google Play que a assinatura existe, liberar o plano certo para a sua conta, renová-lo, suspendê-lo ou encerrá-lo conforme a Google informar (cancelamento, falha de pagamento, estorno) e permitir restaurar a assinatura em outro aparelho. O identificador da compra fica ligado à sua conta por um código irreversível (hash), não pelo seu e-mail. Se você excluir a conta, a assinatura ativa na Google Play é cancelada e esses registros são apagados.',
+          finalidade: 'Confirmar com a Google Play que a assinatura existe, liberar o plano certo para a sua conta, renová-lo, suspendê-lo ou encerrá-lo conforme a Google informar (cancelamento, falha de pagamento, estorno) e permitir restaurar a assinatura em outro aparelho. Para a Google Play, a compra fica ligada à sua conta OLLI por um código irreversível (hash do identificador da conta), nunca pelo seu e-mail. Se você excluir a conta, a assinatura ativa na Google Play é cancelada e esses registros são apagados ou anonimizados, ressalvado o que a lei exigir guardar.',
           base: 'Execução de contrato e cumprimento de obrigação legal/fiscal (art. 7º, V e II).',
         },
         {

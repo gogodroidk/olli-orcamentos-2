@@ -19,9 +19,16 @@
  *  - Nenhuma mensagem de erro daqui carrega chave, JWT ou access token: só o
  *    MOTIVO ('sem_credencial', 'chave_invalida', 'google_<status>', 'rede').
  *  - O access token fica em cache na memória do isolate e no KV `CACHE` até 60 s
- *    antes de vencer — o cron de minuto acorda isolates novos o tempo todo, e
- *    assinar RSA + ir ao Google a cada minuto gastaria CPU e cota à toa. O KV é
- *    privado do worker; a escrita acontece ~1 vez por hora (cota Free: 1.000/dia).
+ *    antes de vencer — o cron acorda isolates novos o tempo todo, e
+ *    assinar RSA + ir ao Google a cada minuto gastaria CPU e cota à toa. A escrita
+ *    acontece ~1 vez por hora (cota Free: 1.000/dia).
+ *  - No KV o token vai CIFRADO (AES-GCM, chave derivada da `private_key` do
+ *    `PLAY_SA_JSON`, que só existe como secret). O KV é legível no painel e por
+ *    qualquer token da Cloudflare com leitura de KV; o access token tem escopo
+ *    androidpublisher (a conta pode cancelar e estornar) — em claro ele viraria um
+ *    segredo legível fora dos secrets. Quem lê o KV sem a chave vê só bytes.
+ *  - `esquecerTokenGoogle` apaga memória e KV: quem recebe 401 do Google chama e
+ *    tenta UMA vez com token novo (token revogado não fica servindo 401 por 1 h).
  *
  * Erro nunca vira token: sem credencial, com chave que não importa ou com o Google
  * fora, a resposta é `{ ok:false, motivo }` e quem chama decide (rota → 503,
@@ -41,7 +48,8 @@ const MARGEM_MS = 60 * 1000;
 /** Vida pedida ao Google para o JWT de troca (máximo permitido: 1 h). */
 const VIDA_JWT_S = 3600;
 
-const KV_PREFIXO = 'play:gtoken:v1:';
+// v2: valor cifrado (v1 era texto puro e nunca foi publicado).
+const KV_PREFIXO = 'play:gtoken:v2:';
 
 /** Cache do isolate: chave = e-mail da conta + escopos. */
 const memoria = new Map();
@@ -138,26 +146,87 @@ function valido(item, agoraMs) {
   return !!item && typeof item.token === 'string' && item.token && Number.isFinite(item.expMs) && agoraMs < item.expMs - MARGEM_MS;
 }
 
-async function lerKv(env, chave, agoraMs) {
+/** bytes → base64 padrão (o valor no KV é JSON, não URL). */
+function b64(bytes) {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+function deB64(texto) {
+  const bin = atob(String(texto || ''));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * Chave AES-GCM do cache: SHA-256 da `private_key` + rótulo fixo. Só quem tem o
+ * secret `PLAY_SA_JSON` (o próprio worker) consegue derivar.
+ */
+async function chaveDoCache(cred) {
+  const bruto = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${cred.chavePem}|olli-kv-cache-v2`));
+  return crypto.subtle.importKey('raw', bruto, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function lerKv(env, cred, chave, agoraMs) {
   if (!env?.CACHE || typeof env.CACHE.get !== 'function') return null;
   try {
     const bruto = await env.CACHE.get(chave);
     if (!bruto) return null;
-    const item = JSON.parse(bruto);
+    const cifrado = JSON.parse(bruto);
+    if (!cifrado || typeof cifrado.iv !== 'string' || typeof cifrado.ct !== 'string') return null;
+    const claro = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: deB64(cifrado.iv) },
+      await chaveDoCache(cred),
+      deB64(cifrado.ct),
+    );
+    const item = JSON.parse(new TextDecoder().decode(claro));
     return valido(item, agoraMs) ? item : null;
   } catch {
-    return null; // KV fora não é motivo para parar: só busca um token novo
+    return null; // KV fora, valor adulterado ou de outra chave: só busca um token novo
   }
 }
 
-async function gravarKv(env, chave, item, agoraMs) {
+async function gravarKv(env, cred, chave, item, agoraMs) {
   if (!env?.CACHE || typeof env.CACHE.put !== 'function') return;
   const ttlS = Math.floor((item.expMs - MARGEM_MS - agoraMs) / 1000);
   if (ttlS < 60) return; // KV exige TTL >= 60 s; token tão curto não compensa guardar
   try {
-    await env.CACHE.put(chave, JSON.stringify(item), { expirationTtl: ttlS });
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      await chaveDoCache(cred),
+      new TextEncoder().encode(JSON.stringify(item)),
+    );
+    await env.CACHE.put(chave, JSON.stringify({ iv: b64(iv), ct: b64(new Uint8Array(ct)) }), { expirationTtl: ttlS });
   } catch {
     // cache é otimização: falhar aqui não derruba a verificação
+  }
+}
+
+/** Chaves do cache (memória e KV) da credencial + escopos. */
+async function chavesDoCache(cred, escopos) {
+  const chaveCache = `${cred.email}|${[...escopos].sort().join(' ')}`;
+  // Chave do KV sem o e-mail em claro: o nome da chave aparece no painel do KV.
+  return { chaveCache, kvChave: `${KV_PREFIXO}${await sha256Hex(chaveCache)}` };
+}
+
+/**
+ * Esquece o token em cache (memória + KV). Chamado quando o Google responde 401:
+ * o token foi revogado ou a chave trocou — o próximo `tokenGoogle` busca outro.
+ */
+export async function esquecerTokenGoogle(env, { escopos = ESCOPOS_PLAY } = {}) {
+  const cred = credencialPlay(env);
+  if (!cred) return;
+  const { chaveCache, kvChave } = await chavesDoCache(cred, escopos);
+  memoria.delete(chaveCache);
+  if (env?.CACHE && typeof env.CACHE.delete === 'function') {
+    try {
+      await env.CACHE.delete(kvChave);
+    } catch {
+      // sem KV o valor vence sozinho; a memória já foi limpa
+    }
   }
 }
 
@@ -173,13 +242,11 @@ export async function tokenGoogle(env, { escopos = ESCOPOS_PLAY, agora = Date.no
   const cred = credencialPlay(env);
   if (!cred) return { ok: false, motivo: 'sem_credencial' };
 
-  const chaveCache = `${cred.email}|${[...escopos].sort().join(' ')}`;
+  const { chaveCache, kvChave } = await chavesDoCache(cred, escopos);
   const naMemoria = memoria.get(chaveCache);
   if (valido(naMemoria, agora)) return { ok: true, token: naMemoria.token };
 
-  // Chave do KV sem o e-mail em claro: o nome da chave aparece no painel do KV.
-  const kvChave = `${KV_PREFIXO}${await sha256Hex(chaveCache)}`;
-  const doKv = await lerKv(env, kvChave, agora);
+  const doKv = await lerKv(env, cred, kvChave, agora);
   if (doKv) {
     memoria.set(chaveCache, doKv);
     return { ok: true, token: doKv.token };
@@ -207,7 +274,7 @@ export async function tokenGoogle(env, { escopos = ESCOPOS_PLAY, agora = Date.no
 
   const item = { token, expMs: agora + expiraEmS * 1000 };
   memoria.set(chaveCache, item);
-  await gravarKv(env, kvChave, item, agora);
+  await gravarKv(env, cred, kvChave, item, agora);
   return { ok: true, token };
 }
 

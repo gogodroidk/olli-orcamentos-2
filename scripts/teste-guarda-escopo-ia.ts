@@ -5,10 +5,13 @@
  * Exit 0 = passou; 1 = falhou.
  *
  * A Play exige salvaguardas contra conteúdo restrito (sexual, violento, de ódio,
- * ilegal) em toda superfície generativa. O worker tem CINCO prompts de sistema (chat,
- * ação auditável, diagnóstico, voz de orçamento e voz em modo conversa); copiar o
- * parágrafo à mão numa rota só deixa as outras sem trava. Este teste tranca que os
- * cinco carregam o MESMO parágrafo (`GUARDA_ESCOPO_IA`, em worker/src/voz.js).
+ * ilegal) em toda superfície generativa. O worker tem SETE prompts de sistema (chat,
+ * ação auditável, diagnóstico, voz de orçamento, voz em modo conversa, Autopilot e
+ * importação por IA); copiar o parágrafo à mão numa rota só deixa as outras sem
+ * trava. Este teste tranca que os sete carregam o MESMO parágrafo
+ * (`GUARDA_ESCOPO_IA`, em worker/src/guardaEscopoIa.js, reexportado por voz.js).
+ * Autopilot e importação são exercitados DE VERDADE: o `gerarIA` é trocado por um
+ * espião que guarda o system/user que o worker mandaria ao modelo.
  *
  * `worker/src/index.js` não é importável aqui (carrega @sentry/cloudflare, que só
  * existe em worker/), então os prompts dele são conferidos pelo TEXTO do arquivo.
@@ -18,6 +21,12 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 // @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
 import { GUARDA_ESCOPO_IA, vozSystem, vozConversaSystem } from '../worker/src/voz.js';
+// @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
+import { GUARDA_ESCOPO_IA as GUARDA_DO_MODULO } from '../worker/src/guardaEscopoIa.js';
+// @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
+import { prepararPreviaAutopilot } from '../worker/src/iaAutopilot.js';
+// @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
+import { prepararPreviaImportacaoIa } from '../worker/src/iaImportacao.js';
 
 let falhas = 0;
 let passes = 0;
@@ -69,6 +78,37 @@ const chat = index.slice(iChat, index.indexOf('\n}', iChat));
 checar('chatSystem carrega a guarda', chat.includes('${GUARDA_ESCOPO_IA}'), true);
 // O prompt da AÇÃO auditável é `${chatSystem(vertical)}\n\n...`: herda a guarda do chat.
 checar('o prompt de ação deriva de chatSystem (herda a guarda)', index.includes('return `${chatSystem(vertical)}\\n\\nVocê está preparando uma alteração auditável'), true);
+
+console.log('\n── Autopilot e importação por IA carregam a guarda (prompt real) ──');
+{
+  checar('voz.js reexporta o MESMO parágrafo do módulo único', GUARDA_ESCOPO_IA === GUARDA_DO_MODULO, true);
+  const espiao = () => {
+    const chamadas: Array<{ system: string; user: string }> = [];
+    const gerarIA = async (_env: unknown, req: { system: string; user: string }) => {
+      chamadas.push({ system: req.system, user: req.user });
+      return '{}';
+    };
+    return { chamadas, gerarIA };
+  };
+  const user = { id: '6f1c2d3e-4a5b-4c6d-8e7f-901234567890' };
+  const env = { OPENROUTER_API_KEY: 'chave-falsa' };
+  const parseJsonLoose = (t: string) => { try { return JSON.parse(t); } catch { return null; } };
+
+  const ap = espiao();
+  await prepararPreviaAutopilot(JSON.stringify({ texto: 'Cliente Ana, instalação de split 12000 BTU', intencao: 'cadastro' }), env, user, { gerarIA: ap.gerarIA, parseJsonLoose });
+  checar('Autopilot chamou o modelo', ap.chamadas.length, 1);
+  checar('Autopilot: a guarda está no prompt enviado', ap.chamadas.some((c) => `${c.system}\n${c.user}`.includes(GUARDA_ESCOPO_IA)), true);
+  checar('Autopilot: diz o que fazer ao recusar (listas vazias)', ap.chamadas.some((c) => /listas vazias/.test(`${c.system}\n${c.user}`)), true);
+
+  const imp = espiao();
+  await prepararPreviaImportacaoIa(
+    JSON.stringify({ texto: 'Instalação de split 12000 BTU — R$ 800', tipo: 'servico', fontes: [{ nome: 'Tabela do fornecedor', url: 'https://exemplo.com/tabela', consultadaEm: '2026-01-01T00:00:00Z' }] }),
+    env, user, { gerarIA: imp.gerarIA, parseJsonLoose },
+  );
+  checar('Importação chamou o modelo', imp.chamadas.length, 1);
+  checar('Importação: a guarda está no system enviado', imp.chamadas.some((c) => c.system.includes(GUARDA_ESCOPO_IA)), true);
+  checar('Importação: diz o que fazer ao recusar ("itens": [])', imp.chamadas.some((c) => c.system.includes('"itens": []')), true);
+}
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

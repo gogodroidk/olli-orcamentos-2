@@ -119,7 +119,7 @@ for (const b of blocosComPix) {
 }
 for (const tela of ['../src/screens/AjudaScreen.tsx', '../src/screens/desktop/AjudaDesktopScreen.tsx']) {
   const fonte = ler(tela);
-  assert.match(fonte, /corpoVisivel\([^)]*plataformaPodeVender\(Platform\.OS\)\)/, `${tela}: corpo do artigo tem de passar por corpoVisivel`);
+  assert.match(fonte, /corpoVisivel\([^)]*,\s*Platform\.OS\)/, `${tela}: corpo do artigo tem de passar por corpoVisivel(artigo, Platform.OS)`);
   assert.doesNotMatch(fonte, /\.corpo\.map\(/, `${tela}: renderizar .corpo direto mostra o Pix nas lojas`);
 }
 

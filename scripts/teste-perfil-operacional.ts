@@ -84,6 +84,18 @@ assert.deepEqual(
   ['nome'],
   'empresa com CNPJ continua exigindo o nome do negócio',
 );
+// A1 (revisão 02/10): o PDF imprime `empresa.nome` CRU. O nome deduzido só
+// pré-preenche o formulário; para liberar o envio, nome vazio continua pendente.
+assert.deepEqual(
+  camposPendentesPerfil(empresa({ tipoNegocio: 'autonomo', nome: '', nomePrestador: 'Ana' })),
+  ['nome'],
+  'autônomo com nome do negócio VAZIO não libera o envio (o documento sairia sem nome)',
+);
+assert.equal(
+  completarPerfilDeduzido(empresa({ tipoNegocio: 'autonomo', nome: '', nomePrestador: 'Ana' }), { comNome: false }).nome,
+  '',
+  'sem comNome, a dedução não inventa o nome do negócio',
+);
 const completa = empresa();
 assert.equal(completarPerfilDeduzido(completa), completa, 'nada a deduzir devolve o mesmo objeto');
 // O que só a pessoa sabe nunca é inventado (empresa real da conta de revisão em 02/10).
@@ -105,6 +117,15 @@ assert.equal(
 assert.equal(empresaSemCadastro(empresa()), false, 'empresa preenchida tem cadastro');
 assert.equal(empresaSemCadastro(empresa({ nome: '', nomePrestador: '', telefone: '', estado: '', cidade: 'Recife' })), false, 'um dado real já é cadastro');
 assert.equal(empresaSemCadastro(null), false, 'linha ilegível é "não sei", não "sem cadastro"');
+// M2: logo/assinatura/site/slogan/cor foram postos pela pessoa — o Onboarding
+// sobrescreveria o `dados` inteiro e perderia o logo.
+for (const campo of ['logoUri', 'assinaturaUri', 'site', 'slogan', 'corMarca'] as const) {
+  assert.equal(
+    empresaSemCadastro({ dados: { id: 'empresa_1', nome: '', nomePrestador: '', telefone: '', segmento: 'ar-condicionado', [campo]: 'x' } }),
+    false,
+    `só ${campo} preenchido já é cadastro`,
+  );
+}
 
 // ─── Banner × bloqueio: 3 estados, erro nunca libera nem manda preencher ───────
 const incompleto = estadoCadastroDaLeitura({ ok: true, empresa: empresa({ cidade: '' }) });
@@ -147,15 +168,21 @@ const pontosDeEnvio: [string, RegExp][] = [
   ['../src/screens/ClienteDetalheScreen.tsx', /exigirCadastroParaEnviar\('recibo'\)/g],
   ['../src/screens/desktop/RecibosDesktopScreen.tsx', /exigirCadastroParaEnviar\('recibo'\)/g],
   ['../src/components/encerramento/EncerrarAtendimentoModal.tsx', /conferirCadastroParaEnviar\(\)/g],
+  // A2: todo gerador de documento com os dados do negócio passa pela porta.
+  ['../src/components/documentos/GerarDocumentoModal.tsx', /exigirCadastroParaEnviar\('documento'\)/g],
+  ['../src/screens/CertificadoAnvisaScreen.tsx', /exigirCadastroParaEnviar\('documento'\)/g],
+  ['../src/screens/CertificadoCaixaDaguaScreen.tsx', /exigirCadastroParaEnviar\('documento'\)/g],
 ];
 for (const [arquivo, padrao] of pontosDeEnvio) {
   const fonte = semComentarios(readFileSync(new URL(arquivo, import.meta.url), 'utf8'));
   assert.ok((fonte.match(padrao) ?? []).length >= 1, `${arquivo} passa pela porta única do envio`);
 }
 const visualizar = semComentarios(readFileSync(new URL('../src/screens/VisualizarOrcamentoScreen.tsx', import.meta.url), 'utf8'));
-assert.equal((visualizar.match(/exigirCadastroParaEnviar\('orcamento'\)/g) ?? []).length, 3, 'PDF, WhatsApp e link do cliente exigem o cadastro');
-for (const fn of ['handleShare', 'handleWhatsApp', 'handleLinkCliente']) {
-  const inicio = visualizar.indexOf(`async function ${fn}(`);
+assert.equal((visualizar.match(/exigirCadastroParaEnviar\('orcamento'\)/g) ?? []).length, 4, 'PDF, WhatsApp, link do cliente e cobrança com link exigem o cadastro');
+for (const fn of ['handleShare', 'handleWhatsApp', 'handleLinkCliente', 'handleCobrar']) {
+  // M4: toque duplo — cada envio passa pela trava síncrona que cobre o handler inteiro.
+  assert.match(visualizar, new RegExp(`const ${fn} = \\(\\) => comTravaDeEnvio\\(${fn}Agora\\);`), `${fn}: com a trava de toque duplo`);
+  const inicio = visualizar.indexOf(`async function ${fn}Agora(`);
   const corpo = visualizar.slice(inicio, visualizar.indexOf('\n  }\n', inicio));
   const portaIdx = corpo.indexOf('exigirCadastroParaEnviar(');
   const envioIdx = Math.min(...['autorizarEntrega(', 'compartilharPdfOrcamento(', 'gerarLinkOrcamento('].map((chamada) => {
@@ -167,6 +194,11 @@ for (const fn of ['handleShare', 'handleWhatsApp', 'handleLinkCliente']) {
 const porta = semComentarios(readFileSync(new URL('../src/services/exigirCadastro.ts', import.meta.url), 'utf8'));
 assert.match(porta, /decidirEnvioComCadastro\(estado\)/, 'a porta usa a regra pura testada acima');
 assert.match(porta, /navigate\('MeuNegocio'\)/, 'o aviso leva ao Meu Negócio');
+// M5: o técnico não abre o Meu Negócio (GuardaPapel 'ver_valores_agregados').
+assert.match(porta, /podeComPapel\('ver_valores_agregados'/, 'a porta confere se quem usa pode completar o cadastro');
+assert.match(porta, /Peça ao dono da empresa para completar os dados do negócio\./, 'técnico recebe "peça ao dono", sem "Completar agora"');
+const meuNegocioGuarda = readFileSync(new URL('../src/screens/MeuNegocioScreen.tsx', import.meta.url), 'utf8');
+assert.match(meuNegocioGuarda, /<GuardaPapel acao="ver_valores_agregados"/, 'a permissão conferida pela porta é a mesma da guarda do Meu Negócio');
 
 // ─── Meu Negócio pré-preenche o deduzido ───────────────────────────────────────
 const meuNegocio = semComentarios(readFileSync(new URL('../src/screens/MeuNegocioScreen.tsx', import.meta.url), 'utf8'));

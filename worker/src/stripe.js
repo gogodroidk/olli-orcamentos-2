@@ -509,7 +509,7 @@ export async function handleFaturas(request, env) {
       status: inv.status || null,
       pago,
       recibo: soPdfPago
-        ? (pago && typeof inv.invoice_pdf === 'string' ? inv.invoice_pdf : null)
+        ? (inv.status === 'paid' && typeof inv.invoice_pdf === 'string' ? inv.invoice_pdf : null)
         : inv.hosted_invoice_url || inv.invoice_pdf || null,
       intervalo: extrairIntervaloFatura(inv),
     };

@@ -18,8 +18,17 @@
  *    uma sessão morta faria o app tentar renovar para sempre;
  *  - qualquer outra falha ("não sei": 429, 5xx, 4xx desconhecido) → vira 503 e
  *    o auth-js trata como falha de rede: MANTÉM a sessão guardada e tenta de
- *    novo depois. Durante a espera (30 s, ou o `Retry-After` se for maior) o
- *    refresh nem sai do aparelho: martelar o servidor só renovaria o 429.
+ *    novo depois. Durante a espera (30 s, ou o `Retry-After` se for maior, com
+ *    teto de 60 s) o refresh nem sai do aparelho: martelar o servidor só
+ *    renovaria o 429. Na espera a resposta é um 503 SINTÉTICO devolvido NA HORA
+ *    (não um `throw`): para o auth-js é o mesmo "tente depois", sem o
+ *    `console.error` que o `_handleRequest` emite a cada fetch que lança.
+ *
+ * LIMITE CONHECIDO. Enquanto a renovação está em espera, o laço de novas
+ * tentativas do auth-js (`_refreshAccessToken`) segue até ~25 s e, sem token
+ * válido, `getSession()`/`getCurrentUser()` podem voltar `null` nesse intervalo.
+ * Quem chama TEM de tratar esse `null` como "não sei" (tentar de novo), nunca
+ * como "sem login" nem como "lista vazia" — a regra dos 3 estados.
  *
  * De quebra, mede o relógio: o cabeçalho `Date` de toda resposta vai para
  * `aoReceberDataServidor` (ver services/relogioServidor.ts).
@@ -27,8 +36,8 @@
 
 /** Espera mínima depois de um refresh que falhou sem matar a sessão. */
 export const ESPERA_APOS_FALHA_REFRESH_MS = 30_000;
-/** Teto para um `Retry-After` exagerado (a sessão não pode ficar parada horas). */
-const ESPERA_MAXIMA_MS = 10 * 60_000;
+/** Teto para um `Retry-After` exagerado (a sessão não pode ficar parada muito tempo). */
+export const ESPERA_MAXIMA_MS = 60_000;
 
 /** `error_code` do GoTrue que significam "esta credencial não vale mais". */
 const CODIGOS_CREDENCIAL_MORTA: ReadonlySet<string> = new Set([
@@ -81,6 +90,15 @@ export function falhaDeRefreshMataSessao(status: number, corpo: string): boolean
   return false;
 }
 
+/** "Tente depois" para o auth-js: 503 = AuthRetryableFetchError (mantém a sessão). */
+function respostaDeEspera(corpo?: string): Response {
+  return new Response(corpo || JSON.stringify({ msg: 'renovacao_indisponivel_agora' }), {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 function esperaPedida(resposta: Response, agora: number): number {
   const bruto = resposta.headers.get('retry-after');
   if (!bruto) return 0;
@@ -97,8 +115,8 @@ export function criarFetchResiliente(base: FetchLike, opcoes: OpcoesFetchResilie
   return async (input, init) => {
     const refresh = ehRefreshDeSessao(input);
     if (refresh && agora() < esperarAte) {
-      // Erro de rede para o auth-js (mantém a sessão); o servidor não é tocado.
-      throw new TypeError('olli_refresh_em_espera');
+      // 503 sintético na hora: o auth-js mantém a sessão; o servidor não é tocado.
+      return respostaDeEspera();
     }
 
     const resposta = await base(input, init);
@@ -124,10 +142,6 @@ export function criarFetchResiliente(base: FetchLike, opcoes: OpcoesFetchResilie
     const instante = agora();
     const espera = Math.min(ESPERA_MAXIMA_MS, Math.max(ESPERA_APOS_FALHA_REFRESH_MS, esperaPedida(resposta, instante)));
     esperarAte = instante + espera;
-    return new Response(corpo || JSON.stringify({ msg: 'renovacao_indisponivel_agora' }), {
-      status: 503,
-      statusText: 'Service Unavailable',
-      headers: { 'content-type': 'application/json' },
-    });
+    return respostaDeEspera(corpo);
   };
 }

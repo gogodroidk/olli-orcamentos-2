@@ -484,7 +484,7 @@ export default function AssinaturaScreen() {
                   </AnimatedEntrance>
                 ) : null}
 
-                {/* Assinatura da GOOGLE PLAY: cancelar/pausar/trocar cartão é na
+                {/* Assinatura da GOOGLE PLAY: cancelar/trocar cartão é na
                     própria Play Store (é a loja gerenciando a compra que ela fez,
                     não um link-out de pagamento). Só aparece com a leitura 'ok' —
                     'indisponivel' não vira "não é da Play" nem esconde o resto. */}
@@ -493,7 +493,7 @@ export default function AssinaturaScreen() {
                     <View style={[styles.card, { marginTop: Spacing.base }]}>
                       <Text style={styles.cardTitle}>Assinatura pela Google Play</Text>
                       <Text style={styles.gerenciarHint}>
-                        A cobrança é feita na sua conta Google. Para cancelar, pausar ou trocar a forma de pagamento, use a Play Store.
+                        A cobrança é feita na sua conta Google. Para cancelar ou trocar a forma de pagamento, use a Play Store.
                       </Text>
                       {/* iOS: só o texto — nenhum link para outra loja no iPhone. */}
                       {Platform.OS === 'ios' ? null : (

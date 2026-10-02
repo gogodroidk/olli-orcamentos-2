@@ -1,8 +1,10 @@
 import { supabase } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
 import {
+  corpoVerificacaoPlay,
   interpretarConfigPlay,
   interpretarVerificacaoPlay,
+  type CompraParaVerificarPlay,
   type ConfigPlay,
   type ResultadoVerificacaoPlay,
 } from './playBillingRegras';
@@ -17,8 +19,10 @@ import {
  *
  *  - `GET  /play/config`    → `{ ligado }`: o kill switch `PLAY_BILLING_MODE` do
  *                             servidor. Sem `ligado: true`, a tela não vende.
- *  - `POST /play/verificar` → `{ purchaseToken, productId, basePlanId }` com o JWT;
- *                             200 `{ ok, plano, vigenteAte }` | 409 `token_de_outra_conta`.
+ *  - `POST /play/verificar` → o CONTRATO ÚNICO de `playBillingRegras.ts`
+ *                             (`corpoVerificacaoPlay` monta, `interpretarVerificacaoPlay`
+ *                             lê): `{ purchaseToken, productId, basePlanId | null }` →
+ *                             200 `{ ok, estado, plano, vigenteAte }` | 409 `token_de_outra_conta`.
  *
  * Nada aqui lança. Falha de rede/servidor vira 'erro' ("não sei"), nunca "não
  * pago" nem "desligado" — ver `interpretarConfigPlay`/`interpretarVerificacaoPlay`.
@@ -63,13 +67,7 @@ export async function consultarConfigPlay(): Promise<ConfigPlay> {
   }
 }
 
-export interface CompraParaVerificar {
-  purchaseToken: string;
-  /** SKU da assinatura (`olli_pro`). */
-  productId: string;
-  /** Plano básico (`mensal`/`anual`), quando se sabe. O servidor confere na API do Google. */
-  basePlanId: string | null;
-}
+export type CompraParaVerificar = CompraParaVerificarPlay;
 
 /**
  * Pede ao worker para conferir a compra na Google e gravar o plano. Só depois de
@@ -84,11 +82,7 @@ export async function verificarCompraPlay(compra: CompraParaVerificar): Promise<
     const r = await fetchComTimeout(`${PAGAMENTOS_URL}/play/verificar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        purchaseToken: compra.purchaseToken,
-        productId: compra.productId,
-        basePlanId: compra.basePlanId,
-      }),
+      body: JSON.stringify(corpoVerificacaoPlay(compra)),
     });
     return interpretarVerificacaoPlay(r.status, await lerJson(r));
   } catch {

@@ -14,18 +14,19 @@ App Android ──(expo-iap: requestPurchase, obfuscatedAccountId = sha256hex(us
      │ purchaseUpdatedListener (compra PURCHASED)
      ▼
 POST https://diagnostico.olliorcamentos.online/play/verificar     Authorization: Bearer <JWT do Supabase>
-     { purchaseToken, productId, basePlanId }
+     { purchaseToken, productId, basePlanId | null }      (montado por corpoVerificacaoPlay)
      │
      ▼
 worker/src/play.js ── subscriptionsv2.get (Google Play Developer API, conta de serviço)
      │                confere pacote, produto do catálogo, obfuscatedExternalAccountId == sha256(userId do JWT)
      │                grava public.assinaturas (+ play_compras) e reconhece (acknowledge)
      ▼
-200 { ok, plano, vigenteAte }  ──▶  app chama finishTransaction  ──▶  relê o plano do SERVIDOR
-409 { erro: 'token_de_outra_conta' }  ──▶  "Esta assinatura já está ligada a outra conta OLLI"
+200 { ok:true, estado:'ativo', plano, vigenteAte }  ──▶  app chama finishTransaction  ──▶  relê o plano do SERVIDOR
+200 { ok:true, estado:'pendente'|'encerrado'|'sem_efeito', plano:null }  ──▶  "sem liberação" (texto neutro, sem finalizar)
+409 { ok:false, erro: 'token_de_outra_conta' }  ──▶  "Esta assinatura já está ligada a outra conta OLLI"
 
 Renovação, cancelamento, carência, suspensão, estorno:
-Google ──RTDN──▶ Pub/Sub (tópico olli-play-rtdn) ──pull pelo cron de minuto──▶ worker ──▶ subscriptionsv2.get ──▶ assinaturas
+Google ──RTDN──▶ Pub/Sub (tópico olli-play-rtdn) ──pull pelo cron 7,27,47 (:07/:47)──▶ worker ──▶ subscriptionsv2.get ──▶ assinaturas
 ```
 
 - **Quem libera é o servidor.** O app nunca libera plano sozinho. Se o servidor não confirmar, a compra
@@ -71,7 +72,7 @@ Google ──RTDN──▶ Pub/Sub (tópico olli-play-rtdn) ──pull pelo cron
 |---|---|---|
 | secret | `PLAY_SA_JSON` | JSON da chave da `olli-play-verify@` (nunca no app, nunca no `eas.json`) |
 | secret | `PLAY_TESTE_PERMITIDOS` | user_ids que podem fazer compra de teste (licença) |
-| var | `PLAY_BILLING_MODE` | `off` \| `on` — o **kill switch** lido por `GET /play/config` |
+| var | `PLAY_BILLING_MODE` | `off` \| `on` — o **kill switch da vitrine** lido por `GET /play/config`. Não bloqueia `/play/verificar` (compra já paga sempre é registrada) |
 | var | `PLAY_PACKAGE_NAME` | `online.olliorcamentos.app` |
 | var | `PLAY_PUBSUB_SUBSCRIPTION` | `projects/claude-motor/subscriptions/olli-play-rtdn-worker` |
 
@@ -79,9 +80,16 @@ Contrato que o app usa (`src/services/playBillingWorker.ts`):
 
 - `GET /play/config` → `{ ligado: boolean }`. Qualquer outra resposta = "não sei" → a tela mostra
   "Tentar de novo", **nunca** vende nem diz "desligado".
-- `POST /play/verificar` (Bearer JWT) `{ purchaseToken, productId, basePlanId }` →
-  `200 { ok: true, plano: 'pro'|'empresa', vigenteAte }` | `409 { erro: 'token_de_outra_conta' }` |
-  `401` (sessão) | outro `4xx` (recusada: não repete, não finaliza) | `429/5xx` (erro: tenta depois).
+- `POST /play/verificar` (Bearer JWT) `{ purchaseToken, productId, basePlanId | null }` (o worker
+  aceita também o legado `produtoId: 'olli_pro:mensal'`) →
+  `200 { ok: true, estado: 'ativo', plano: 'pro'|'empresa', vigenteAte }` |
+  `200 { ok: true, estado: 'pendente'|'encerrado'|'sem_efeito', plano: null, vigenteAte: null }` (sem liberação) |
+  `409 { ok: false, erro: 'token_de_outra_conta' }` | `401` (sessão) | outro `4xx` (recusada: não repete,
+  não finaliza) | `429/5xx` (erro: tenta depois). O produto e o plano básico valem os da API do Google:
+  `basePlanId` errado ou ausente vindo do app só gera log no worker, nunca recusa.
+- O formato é UM só e mora em `playBillingRegras.ts` (`corpoVerificacaoPlay` monta o pedido,
+  `interpretarVerificacaoPlay` lê a resposta); `worker/scripts/teste-play-verificacao.js` importa as duas
+  e as roda contra o `handlePlay` real.
 
 ## App — onde mora cada coisa
 
@@ -152,7 +160,10 @@ Contrato que o app usa (`src/services/playBillingWorker.ts`):
 2. Secrets `PLAY_SA_JSON` e `PLAY_TESTE_PERMITIDOS`.
 3. Deploy do worker com `PLAY_BILLING_MODE=off` (avisar antes: o deploy cobra 1 crédito extra;
    usar `env -u CLOUDFLARE_API_TOKEN`).
-4. "Enviar notificação de teste" do RTDN e conferir que chega pelo pull.
+4. "Enviar notificação de teste" do RTDN e conferir que chega pelo pull (o pull roda no cron
+   `7,27,47`: minutos :07 e :47; a reconciliação roda no :27 e, às 05:27 UTC, a varredura de
+   anuladas no lugar dela). Na assinatura `olli-play-rtdn-worker` do GCP, `ackDeadlineSeconds` ≥ 60.
+   Pré-requisito: a migration `20261004110200_empresa_carimbo_servidor.sql` também entra nesta leva.
 5. `PLAY_BILLING_MODE=on` e confirmar com os testadores de licença.
 6. Build vc24 → faixa alpha → teste com licença: compra, renovação acelerada (5 min), cancelamento,
    expiração, estorno, restaurar em outro aparelho, 409 com outra conta, troca Pro↔Empresa.
@@ -164,6 +175,8 @@ Contrato que o app usa (`src/services/playBillingWorker.ts`):
 `PLAY_BILLING_MODE=off` no worker. O app relê `/play/config` ao abrir Planos e antes de cada compra:
 some o preço, somem as abas e o botão, e a tela diz "Assinatura pelo app indisponível no momento".
 Quem já assina continua com o plano (o servidor segue processando RTDN) e com o "Gerenciar na Google Play".
+O `off` NÃO bloqueia `POST /play/verificar`: uma compra paga segundos antes do desligamento ainda é
+registrada e reconhecida (senão a Play estornaria e o cliente ficaria sem o plano).
 
 ## Limites conhecidos
 

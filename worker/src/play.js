@@ -2,10 +2,18 @@
  * ASSINATURA PELA GOOGLE PLAY — Play Billing DIRETO, sem RevenueCat (worker, SEM SDK).
  *
  *   GET  /play/config    → { ok, ligado } — o app só oferece "Assinar" com ligado=true
- *   POST /play/verificar → JWT do Supabase + { purchaseToken, produtoId } →
- *                          consulta a Play → public.play_compras + public.assinaturas
- *   processarRtdn(env)   → cron de minuto: PULL da assinatura Pub/Sub do RTDN
- *   reconciliarPlay(env) → cron de minuto, em horários fixos: rede de segurança
+ *   POST /play/verificar → JWT do Supabase + CONTRATO ÚNICO com o app
+ *                          (`src/services/playBillingRegras.ts`, `corpoVerificacaoPlay`
+ *                          e `interpretarVerificacaoPlay`):
+ *                            pedido   { purchaseToken, productId, basePlanId | null }
+ *                                     (aceita também o legado `produtoId`)
+ *                            resposta 200 { ok:true, estado, plano, vigenteAte }
+ *                                     409 { ok:false, erro:'token_de_outra_conta' }
+ *                          → consulta a Play → public.play_compras + public.assinaturas
+ *   tarefaPlayDoCron(env) → cron `7,27,47` (invocação PRÓPRIA, fora do cron de
+ *                          minuto e do orçamento de subrequests dele): :07 e :47 o
+ *                          RTDN por PULL; :27 a reconciliação (05:27 UTC: a
+ *                          varredura de anuladas NO LUGAR dela). Nunca os dois juntos.
  *   cancelarPlayDoUsuario(env, userId) → exclusão de conta (conta.js/admin.js)
  *
  * O app NUNCA libera plano sozinho: a verdade é `assinaturas`, gravada aqui com
@@ -15,12 +23,13 @@
  * — por isso a ordem de chegada das notificações não importa.
  *
  * ═══ KILL SWITCH (servidor) ═══
- * `PLAY_BILLING_MODE` = 'on' | 'off' (var pública do wrangler). Com 'off', ou sem a
- * credencial `PLAY_SA_JSON`, `/play/config` diz `ligado:false` e `/play/verificar`
- * responde 503 `play_desligado` — o app diz que a venda está indisponível. Nunca
- * modo demo. O RTDN e a reconciliação rodam com a credencial presente MESMO com a
- * venda desligada: quem já pagou continua tendo o estado verdadeiro (renovação,
- * cancelamento, estorno) — desligar a vitrine não pode congelar quem está dentro.
+ * `PLAY_BILLING_MODE` = 'on' | 'off' (var pública do wrangler) controla SÓ a
+ * vitrine: com 'off' `/play/config` diz `ligado:false` e o app não oferece a venda.
+ * Nunca modo demo. `/play/verificar` exige só a CONFIGURAÇÃO (credencial, pacote,
+ * banco): uma compra paga segundos antes de desligar a venda ainda precisa ser
+ * registrada e reconhecida — senão a Play estorna e o cliente fica sem o plano.
+ * Sem configuração: 503 `play_nao_configurado`. O RTDN e a reconciliação também
+ * rodam com a venda desligada: quem já pagou continua tendo o estado verdadeiro.
  *
  * ═══ QUEM É O DONO DA COMPRA (fail-closed) ═══
  *  - `obfuscatedExternalAccountId` = SHA-256 em hex do `user.id` (decisão C3), que o
@@ -30,7 +39,10 @@
  *    CADEIA já é do usuário: `outOfAppPurchaseContext.expiredPurchaseToken` ou
  *    `linkedPurchaseToken` gravados em `play_compras` para ele.
  *  - Anti-replay: `play_compras.token_sha256` é ÚNICO. Token já ligado a outra conta
- *    = 409 `compra_de_outra_conta` + ALARME. Nunca transfere.
+ *    = 409 `token_de_outra_conta` + ALARME. Nunca transfere.
+ *  - PRODUTO e PLANO BÁSICO são os que a API do Google devolve. O que o app alega
+ *    (`productId`/`basePlanId`) é só conferência: divergência vira LOG, nunca
+ *    recusa — recusar uma compra válida faria a Play estornar.
  *  - Compra de teste (`testPurchase`, licença de teste — vale até no app de produção)
  *    só libera para os user_ids de `PLAY_TESTE_PERMITIDOS` (secret).
  *  - Produto fora do catálogo único (`src/services/playBillingRegras.ts`:
@@ -48,7 +60,8 @@
  *     `token_sha256` desta compra. Se a vigência gravada é maior que a da Play, quem
  *     sustenta o plano é outra origem — a Play sai de cena sem derrubar nada.
  *  3. FORA DE ORDEM: `revenuecat_evento_em` guarda a hora da leitura aplicada; uma
- *     leitura mais velha não desfaz uma mais nova.
+ *    leitura mais velha DO MESMO TOKEN não desfaz uma mais nova. Tokens diferentes
+ *    (troca de plano) não se comparam: o encerramento do antigo já exige vínculo.
  * As colunas continuam com o nome `revenuecat_*` (decisão C4): o app e o painel web
  * já as leem. Renomear é migration futura, com compatibilidade.
  *
@@ -62,7 +75,7 @@
  */
 import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { produtoPlay } from '../../src/services/playBillingRegras.ts';
-import { credencialPlay, sha256Hex, tokenGoogle } from './googleAuth.js';
+import { credencialPlay, esquecerTokenGoogle, sha256Hex, tokenGoogle } from './googleAuth.js';
 import { cabeNoTeto, rateOkSensivel, textoCabeNoTeto } from './rateLimit.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
@@ -204,7 +217,7 @@ async function getUser(request, env) {
  *   { status:'recusado' }       → 400 (token malformado para o Google)
  *   { status:'erro', motivo }   → 401/403/429/5xx/rede/credencial — NÃO SEI
  */
-async function chamarGoogle(env, url, { metodo = 'GET', corpo } = {}) {
+async function chamarGoogle(env, url, { metodo = 'GET', corpo, jaRenovou = false } = {}) {
   const t = await tokenGoogle(env);
   if (!t.ok) return { status: 'erro', motivo: t.motivo };
   let r;
@@ -231,6 +244,12 @@ async function chamarGoogle(env, url, { metodo = 'GET', corpo } = {}) {
     } catch {
       return { status: 'erro', motivo: 'resposta_invalida' };
     }
+  }
+  if (r.status === 401 && !jaRenovou) {
+    // Token revogado/trocado: esquece o cache (memória + KV) e tenta UMA vez com um
+    // token novo. Sem isso o token velho serviria 401 até vencer (até 1 h).
+    await esquecerTokenGoogle(env);
+    return chamarGoogle(env, url, { metodo, corpo, jaRenovou: true });
   }
   if (r.status === 404 || r.status === 410) return { status: 'nao_encontrado' };
   if (r.status === 400) return { status: 'recusado' };
@@ -458,10 +477,17 @@ function sustentadaPelaPlay(linha) {
   return gravada == null || gravada <= daPlay + FOLGA_MS;
 }
 
-/** Leitura mais velha que a última aplicada nesta linha? */
-function foraDeOrdem(linha, eventoEm) {
-  const ultimo = ms(linha?.revenuecat_evento_em);
-  return ultimo != null && Date.parse(eventoEm) < ultimo;
+/**
+ * Leitura mais velha que a última aplicada nesta linha, PARA O MESMO TOKEN?
+ * `revenuecat_evento_em` é por linha de `assinaturas`, não por token: comparar
+ * leituras de tokens diferentes (troca de plano: o RTDN do token antigo grava
+ * depois da verificação do novo) ignoraria a concessão do token novo — o cliente
+ * pagaria e ficaria sem plano.
+ */
+function foraDeOrdem(linha, d) {
+  if (!linha || linha.revenuecat_transacao_id !== d.transacaoId) return false;
+  const ultimo = ms(linha.revenuecat_evento_em);
+  return ultimo != null && Date.parse(d.eventoEm) < ultimo;
 }
 
 /**
@@ -480,7 +506,7 @@ export async function aplicarDecisao(env, d, { agora = Date.now() } = {}) {
 
   const atual = await lerAssinatura(env, d.userId);
   if (atual?.erro) return { http: 503, corpo: { erro: 'indisponivel' }, marca: 'falhou', erro: 'leitura' };
-  if (atual && foraDeOrdem(atual, d.eventoEm)) {
+  if (atual && foraDeOrdem(atual, d)) {
     return { http: 200, corpo: { ok: true, acao: 'ignorar', motivo: 'fora_de_ordem' }, marca: 'processado' };
   }
 
@@ -617,12 +643,32 @@ function semEfeito(motivo, { alarme = false } = {}) {
   return { http: 200, corpo: { ok: true, acao: alarme ? 'alarme' : 'registrar', motivo }, retentar: false, alarme };
 }
 
-/** O que o app precisa saber da compra, sem jargão do Google. */
-function estadoParaApp(d) {
-  if (d.acao === 'conceder') return 'ativo';
+/**
+ * O que o app precisa saber da compra, sem jargão do Google. Decide pelo que foi
+ * APLICADO (`acaoAplicada`, vinda de `aplicarDecisao`), não pelo que a leitura
+ * pedia: uma concessão ignorada (fora de ordem) não pode responder "ativo".
+ */
+function estadoParaApp(acaoAplicada, d) {
+  if (acaoAplicada === 'conceder') return 'ativo';
   if (d.acao === 'encerrar') return 'encerrado';
   if (d.motivo === 'pagamento_pendente') return 'pendente';
   return 'sem_efeito';
+}
+
+/**
+ * Corpo do `/play/verificar` — o CONTRATO com o app (`interpretarVerificacaoPlay`
+ * em src/services/playBillingRegras.ts). 200: `{ ok:true, estado, plano,
+ * vigenteAte }`, com `plano`/`vigenteAte` só quando a concessão foi de fato
+ * gravada. Erro: `{ ok:false, erro }` como veio.
+ */
+export function respostaVerificar(r) {
+  if (r.http !== 200 || r.corpo?.ok !== true) return r.corpo;
+  return {
+    ok: true,
+    estado: r.corpo.estado ?? 'sem_efeito',
+    plano: r.corpo.plano ?? null,
+    vigenteAte: r.corpo.vigenteAte ?? null,
+  };
 }
 
 /**
@@ -642,13 +688,29 @@ export async function sincronizarCompra(env, { token, chamadorId = null, produto
   // Token já ligado a OUTRA conta: nunca concede, nunca transfere (R7).
   if (linha && chamadorId && linha.user_id !== chamadorId) {
     console.error('[olli-play] ALARME: token já ligado a outra conta —', curto(tokenHash));
-    return falha(409, 'compra_de_outra_conta');
+    return falha(409, 'token_de_outra_conta');
   }
+
+  // Linha já registrada e relida agora: mesmo quando a decisão não se aplica
+  // (Google fora, teste não permitido, produto/estado estranho), a marca de
+  // verificação ANDA. Senão a linha volta ao topo da fila da reconciliação
+  // (`order=verificado_em.asc`) a cada rodada e trava todas as outras.
+  const marcarRelida = async (extra = {}) => {
+    if (linha) await atualizarCompra(env, tokenHash, linha.user_id, { verificado_em: agoraIso, ...extra });
+  };
 
   const g = await lerAssinaturaPlay(env, token);
   if (g.status === 'erro') {
     console.error('[olli-play] Google indisponível —', g.motivo, curto(tokenHash));
+    await marcarRelida();
     return falha(503, 'google_indisponivel', { retentar: true });
+  }
+  if (g.status === 'recusado') {
+    // 400 do Google não prova que o token sumiu (ex.: PLAY_PACKAGE_NAME errado):
+    // alarme, sem marcar estado final.
+    console.error('[olli-play] ALARME: o Google recusou a consulta (400) —', curto(tokenHash));
+    await marcarRelida();
+    return chamadorId ? falha(422, 'compra_nao_encontrada') : semEfeito('google_recusou', { alarme: true });
   }
   if (g.status !== 'ok') {
     // A Play não conhece o token (ou já expurgou: ~60 dias depois de expirar).
@@ -687,6 +749,7 @@ export async function sincronizarCompra(env, { token, chamadorId = null, produto
   if (contaObf) {
     if (contaObf !== hashDono) {
       console.error('[olli-play] ALARME: obfuscatedAccountId não confere —', curto(tokenHash));
+      await marcarRelida();
       return chamadorId ? falha(403, 'conta_diferente') : semEfeito('conta_diferente', { alarme: true });
     }
   } else if (!linha) {
@@ -700,32 +763,42 @@ export async function sincronizarCompra(env, { token, chamadorId = null, produto
     }
   }
 
-  // ── compra de teste ──
-  const teste = !!sub.testPurchase;
-  if (teste && !testadoresPermitidos(env).has(String(dono).toLowerCase())) {
-    console.error('[olli-play] ALARME: compra de teste de conta fora de PLAY_TESTE_PERMITIDOS —', curto(tokenHash));
-    return chamadorId ? falha(403, 'compra_de_teste_nao_permitida') : semEfeito('teste_nao_permitido', { alarme: true });
-  }
-
   // ── produto ──
+  const estadoLido = typeof sub.subscriptionState === 'string' ? { estado: sub.subscriptionState } : {};
   const cat = itemDoCatalogo(sub);
   if (!cat.ok) {
     console.error('[olli-play] ALARME: produto fora do catálogo —', cat.motivo, curto(tokenHash));
+    await marcarRelida(estadoLido);
     return chamadorId ? falha(422, 'produto_desconhecido') : semEfeito(cat.motivo, { alarme: true });
   }
   if (produtoAlegado) {
-    const [sku, plano] = String(produtoAlegado).trim().split(':');
-    if (sku !== cat.productId || (plano !== undefined && plano !== cat.produto.periodo)) {
-      return falha(400, 'produto_divergente');
+    // O app só AVISA o que acha que comprou; quem decide é a API do Google.
+    const sku = typeof produtoAlegado.productId === 'string' ? produtoAlegado.productId : '';
+    const base = typeof produtoAlegado.basePlanId === 'string' ? produtoAlegado.basePlanId : '';
+    if ((sku && sku !== cat.productId) || (base && base !== cat.produto.periodo)) {
+      console.error('[olli-play] produto alegado pelo app difere do da Play (vale o da Play) —', curto(tokenHash));
     }
   }
+  const relidaComEstado = { ...estadoLido, ...(cat.expiraIso ? { expiry: cat.expiraIso } : {}) };
 
   // ── decisão ──
   const d = traduzirAssinaturaPlay(sub, { userId: dono, transacaoId: tokenHash, agora, lidoEm });
   if (d.acao === 'invalido' || d.acao === 'alarme') {
     const motivo = d.motivo || 'resposta_invalida';
     console.error('[olli-play] ALARME: estado não aplicável —', motivo, curto(tokenHash));
+    await marcarRelida(relidaComEstado);
     return chamadorId ? falha(422, 'estado_nao_suportado') : semEfeito(motivo, { alarme: true });
+  }
+
+  // ── compra de teste ──
+  // Só a CONCESSÃO é barrada: o estado continua sendo gravado e um encerramento
+  // continua valendo. Testador retirado de PLAY_TESTE_PERMITIDOS não fica com a
+  // linha presa no topo da reconciliação nem com o plano de teste para sempre.
+  const teste = !!sub.testPurchase;
+  if (teste && d.acao === 'conceder' && !testadoresPermitidos(env).has(String(dono).toLowerCase())) {
+    console.error('[olli-play] ALARME: compra de teste de conta fora de PLAY_TESTE_PERMITIDOS —', curto(tokenHash));
+    await marcarRelida(relidaComEstado);
+    return chamadorId ? falha(403, 'compra_de_teste_nao_permitida') : semEfeito('teste_nao_permitido', { alarme: true });
   }
 
   // Troca de plano vinda de token de OUTRA conta: concede o novo (a marca da conta
@@ -764,7 +837,7 @@ export async function sincronizarCompra(env, { token, chamadorId = null, produto
       if (!dela || dela.erro) return falha(503, 'indisponivel', { retentar: true });
       if (dela.user_id !== dono) {
         console.error('[olli-play] ALARME: token registrado por outra conta em paralelo —', curto(tokenHash));
-        return chamadorId ? falha(409, 'compra_de_outra_conta') : semEfeito('compra_de_outra_conta', { alarme: true });
+        return chamadorId ? falha(409, 'token_de_outra_conta') : semEfeito('token_de_outra_conta', { alarme: true });
       }
       if (!(await atualizarCompra(env, tokenHash, dono, registro))) return falha(503, 'indisponivel', { retentar: true });
     }
@@ -774,9 +847,12 @@ export async function sincronizarCompra(env, { token, chamadorId = null, produto
   const r = await aplicarDecisao(env, d, { agora });
   if (r.http >= 500) return falha(503, 'indisponivel', { retentar: true });
 
-  // ── reconhece (só depois de gravar, só o que foi concedido) ──
+  // ── reconhece (só depois de gravar, só o que foi DE FATO concedido) ──
+  // `acaoAplicada` é o que `aplicarDecisao` gravou: uma concessão ignorada (fora de
+  // ordem) não reconhece — a reconciliação relê; no limite a Play estorna.
+  const acaoAplicada = r.corpo?.acao;
   let ack = jaReconhecida;
-  if (!ack && d.acao === 'conceder' && r.marca === 'processado' && sub.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_PENDING') {
+  if (!ack && acaoAplicada === 'conceder' && r.marca === 'processado' && sub.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_PENDING') {
     ack = await reconhecerNaPlay(env, cat.productId, token);
     if (ack) await atualizarCompra(env, tokenHash, dono, { ack: true });
     else console.error('[olli-play] acknowledge falhou — a reconciliação tenta de novo:', curto(tokenHash));
@@ -786,11 +862,11 @@ export async function sincronizarCompra(env, { token, chamadorId = null, produto
     http: 200,
     corpo: {
       ok: true,
-      acao: r.corpo.acao,
+      acao: acaoAplicada,
       ...(r.corpo.motivo ? { motivo: r.corpo.motivo } : {}),
-      estado: estadoParaApp(d),
-      plano: d.acao === 'conceder' ? d.plano : null,
-      vigenciaAte: d.acao === 'conceder' ? d.vigenciaAte : null,
+      estado: estadoParaApp(acaoAplicada, d),
+      plano: acaoAplicada === 'conceder' ? d.plano : null,
+      vigenteAte: acaoAplicada === 'conceder' ? d.vigenciaAte : null,
       ack,
     },
     retentar: false,
@@ -803,8 +879,31 @@ function config(env) {
 }
 
 // ─── POST /play/verificar ────────────────────────────────────
+
+/**
+ * `{ productId, basePlanId }` do pedido — formato do app (`corpoVerificacaoPlay`)
+ * ou o legado `produtoId` (`olli_pro:mensal`). `null` = SKU fora do catálogo.
+ * `basePlanId` ausente/estranho NÃO recusa (vira `null`): o plano básico vem da
+ * API do Google.
+ */
+export function produtoAlegadoDoCorpo(corpo) {
+  if (!corpo || typeof corpo !== 'object') return null;
+  let productId = typeof corpo.productId === 'string' ? corpo.productId.trim() : '';
+  let basePlanId = typeof corpo.basePlanId === 'string' ? corpo.basePlanId.trim() : '';
+  if (!productId && typeof corpo.produtoId === 'string') {
+    const partes = corpo.produtoId.trim().split(':');
+    if (partes.length > 2) return null;
+    productId = partes[0] || '';
+    basePlanId = partes[1] || '';
+  }
+  if (!productId || productId.includes(':') || !produtoPlay(productId)) return null;
+  return { productId, basePlanId: basePlanId && produtoPlay(`${productId}:${basePlanId}`) ? basePlanId : null };
+}
+
 async function verificar(request, env) {
-  if (!playLigado(env)) return json({ ok: false, erro: 'play_desligado' }, 503);
+  // O kill switch NÃO entra aqui (só na vitrine, /play/config): compra já paga
+  // precisa ser registrada e reconhecida mesmo com a venda desligada.
+  if (!configurado(env)) return json({ ok: false, erro: 'play_nao_configurado' }, 503);
 
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
@@ -831,14 +930,14 @@ async function verificar(request, env) {
   }
   const token = corpo && typeof corpo.purchaseToken === 'string' ? corpo.purchaseToken : '';
   if (!TOKEN_RE.test(token)) return json({ ok: false, erro: 'token_invalido' }, 400);
-  const produtoId = corpo && typeof corpo.produtoId === 'string' ? corpo.produtoId.trim() : '';
-  // Só o catálogo único: `olli_pro`, `olli_pro:mensal`… (o sku sozinho serve à
-  // restauração, em que o app nem sempre sabe o plano básico).
-  if (!produtoPlay(produtoId)) return json({ ok: false, erro: 'produto_invalido' }, 400);
+  const alegado = produtoAlegadoDoCorpo(corpo);
+  // Só SKU do catálogo único (`olli_pro`/`olli_empresa`). O plano básico alegado
+  // não é exigido: quem diz qual é a API do Google.
+  if (!alegado) return json({ ok: false, erro: 'produto_invalido' }, 400);
 
   try {
-    const r = await sincronizarCompra(env, { token, chamadorId: user.id, produtoAlegado: produtoId });
-    return json(r.corpo, r.http);
+    const r = await sincronizarCompra(env, { token, chamadorId: user.id, produtoAlegado: alegado });
+    return json(respostaVerificar(r), r.http);
   } catch (e) {
     capturarExcecao(e, { origem: 'play', rota: '/play/verificar' });
     return json({ ok: false, erro: 'falha_interna' }, 500);
@@ -951,8 +1050,10 @@ async function tratarMensagem(env, recebida, agora) {
 /**
  * Puxa até `max` mensagens da assinatura PULL do RTDN, aplica e dá ack SÓ no que
  * foi gravado. Sem cron novo (conta Free: 5 no total) e sem endpoint público.
- * Teto baixo de mensagens por rodada: a invocação do cron de minuto divide o
- * limite de subrequests com os outros jobs; o que sobrar fica para o minuto seguinte.
+ * Teto baixo de mensagens por rodada (~10 subrequests por mensagem): o que sobrar
+ * fica para a rodada seguinte. Prazo de ack da assinatura `olli-play-rtdn-worker`
+ * no GCP: configurar `ackDeadlineSeconds` ≥ 60 (3 mensagens × timeout de 15 s do
+ * Google); se passar, a reentrega é segurada pela idempotência em webhook_events.
  */
 export async function processarRtdn(env, { agora = new Date(), max } = {}) {
   const sub = assinaturaPubSub(env);
@@ -993,12 +1094,17 @@ export async function processarRtdn(env, { agora = new Date(), max } = {}) {
   return { estado: 'ok', recebidas: recebidas.length, confirmadas: ackIds.length, mantidas };
 }
 
-// ─── reconciliação (cron de minuto, horários fixos) ──────────
+// ─── reconciliação (cron 7,27,47, horários fixos) ────────────
 
-/** Minutos UTC de cada hora em que a reconciliação de linhas roda. */
-const MINUTOS_RECONCILIAR = new Set([13, 43]);
-/** Varredura diária de compras anuladas: 05:37 UTC (02:37 de Brasília). */
-const HORA_ANULADAS = { h: 5, m: 37 };
+/**
+ * Minutos UTC do cron `7,27,47 * * * *` (o mesmo dos alertas, invocação própria):
+ * :07 e :47 o RTDN; :27 a reconciliação. Nunca os dois no mesmo minuto — cada um
+ * gasta até ~30 subrequests e o teto da invocação no plano Free é 50.
+ */
+export const MINUTOS_RTDN = new Set([7, 47]);
+const MINUTOS_RECONCILIAR = new Set([27]);
+/** Varredura diária de compras anuladas: 05:27 UTC (02:27 de Brasília), NO LUGAR da reconciliação. */
+const HORA_ANULADAS = { h: 5, m: 27 };
 
 async function linhasParaReconciliar(env, agoraMs, limite) {
   const ate48h = iso(agoraMs + 2 * DIA_MS);
@@ -1073,8 +1179,9 @@ export async function reconciliarPlay(env, { agora = new Date(), limite } = {}) 
   const h = quando.getUTCHours();
   const max = Math.max(1, Math.min(10, Number.parseInt(String(limite ?? env.PLAY_RECONCILIAR_MAX ?? '3'), 10) || 3));
   const out = { estado: 'fora_do_horario' };
+  const horaDasAnuladas = h === HORA_ANULADAS.h && m === HORA_ANULADAS.m;
 
-  if (MINUTOS_RECONCILIAR.has(m)) {
+  if (MINUTOS_RECONCILIAR.has(m) && !horaDasAnuladas) {
     const linhas = await linhasParaReconciliar(env, agoraMs, max);
     if (!linhas) {
       console.error('[olli-play] reconciliação: leitura de play_compras falhou');
@@ -1093,11 +1200,24 @@ export async function reconciliarPlay(env, { agora = new Date(), limite } = {}) 
       }
     }
   }
-  if (h === HORA_ANULADAS.h && m === HORA_ANULADAS.m) {
+  if (horaDasAnuladas) {
     out.anuladas = await varrerAnuladas(env, agoraMs, max);
     if (out.estado === 'fora_do_horario') out.estado = 'ok';
   }
   return out;
+}
+
+/**
+ * O que a Play faz no cron `7,27,47 * * * *` — invocação PRÓPRIA (a dos alertas
+ * oficiais), fora do cron de minuto: lá welcome, lembretes, resumo do dinheiro,
+ * contratos, geo e limpeza já dividem o teto de 50 subrequests do plano Free.
+ * :07 e :47 → RTDN por pull; :27 → reconciliação (05:27 UTC → anuladas). Um só
+ * por minuto.
+ */
+export async function tarefaPlayDoCron(env, { agora = new Date() } = {}) {
+  const quando = agora instanceof Date ? agora : new Date(agora);
+  if (MINUTOS_RTDN.has(quando.getUTCMinutes())) return { tarefa: 'rtdn', ...(await processarRtdn(env, { agora: quando })) };
+  return { tarefa: 'reconciliar', ...(await reconciliarPlay(env, { agora: quando })) };
 }
 
 // ─── exclusão de conta ───────────────────────────────────────
@@ -1114,6 +1234,9 @@ export async function reconciliarPlay(env, { agora = new Date(), limite } = {}) 
  *    reconhecida por ninguém depois que a conta some, e a Play ESTORNA sozinha em
  *    3 dias. Não bloqueia.
  *  - Falhou o cancel: relê o estado. Já cancelada/expirada/sem renovação = 'ok'.
+ *  - Linha gravada como CANCELADA ou PENDENTE não é final: o usuário pode ter
+ *    restaurado a assinatura na Play antes de o RTDN chegar. Ela é RELIDA na Play
+ *    e, se voltou a renovar, cancelada como as outras.
  */
 export async function cancelarPlayDoUsuario(env, userId) {
   if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return 'erro';
@@ -1124,7 +1247,10 @@ export async function cancelarPlayDoUsuario(env, userId) {
       { headers: sbHeaders(env, { Accept: 'application/json' }) },
     );
     if (r.status === 404) {
-      console.error('[olli-play] play_compras indisponível (migration 20261004110000?) — exclusão segue sem checar a Play:', userId);
+      console.error(
+        '[olli-play] play_compras indisponível (migration 20261004110000?) — exclusão segue sem checar a Play:',
+        curto(await sha256Hex(userId)),
+      );
       return 'ok';
     }
     if (!r.ok) return 'erro';
@@ -1134,17 +1260,36 @@ export async function cancelarPlayDoUsuario(env, userId) {
     return 'erro';
   }
 
-  const vivas = linhas.filter(
-    (l) => !ESTADOS_FINAIS.has(l.estado) && l.estado !== ESTADO.CANCELADA && l.estado !== ESTADO.PENDENTE,
-  );
-  if (!vivas.length) return 'ok';
+  const naoFinais = linhas.filter((l) => !ESTADOS_FINAIS.has(l.estado));
+  const vivas = naoFinais.filter((l) => l.estado !== ESTADO.CANCELADA && l.estado !== ESTADO.PENDENTE);
+  if (!naoFinais.length) return 'ok';
   if (!configurado(env)) {
-    console.error('[olli-play] há assinatura da Play a cancelar e a credencial não está configurada:', userId);
+    if (!vivas.length) {
+      // Só canceladas/pendentes gravadas e sem como reler: vale o que está gravado.
+      console.error('[olli-play] exclusão sem credencial: só compras canceladas/pendentes gravadas —', curto(await sha256Hex(userId)));
+      return 'ok';
+    }
+    console.error('[olli-play] há assinatura da Play a cancelar e a credencial não está configurada —', curto(await sha256Hex(userId)));
     return 'erro';
   }
 
-  for (const l of vivas) {
+  for (const l of naoFinais) {
     if (typeof l.purchase_token !== 'string' || !TOKEN_RE.test(l.purchase_token)) return 'erro';
+    if (l.estado === ESTADO.CANCELADA || l.estado === ESTADO.PENDENTE) {
+      // Gravada como sem renovação: confere na Play se continua assim.
+      const atual = await lerAssinaturaPlay(env, l.purchase_token);
+      if (atual.status === 'nao_encontrado') continue;
+      if (atual.status !== 'ok') {
+        console.error('[olli-play] não deu para reler compra cancelada/pendente na exclusão —', atual.motivo || atual.status);
+        return 'erro';
+      }
+      const s = atual.dados || {};
+      const itens = Array.isArray(s.lineItems) ? s.lineItems : [];
+      const renova = itens.some((i) => i?.autoRenewingPlan?.autoRenewEnabled === true);
+      const viva = s.subscriptionState === ESTADO.ATIVA || s.subscriptionState === ESTADO.CARENCIA ||
+        s.subscriptionState === ESTADO.SUSPENSA || s.subscriptionState === ESTADO.PAUSADA;
+      if (!(viva && renova)) continue;
+    }
     const c = await cancelarNaPlay(env, l.purchase_token);
     if (c.status === 'ok' || c.status === 'nao_encontrado') continue;
     // Último recurso: pergunta o estado real antes de bloquear a exclusão.

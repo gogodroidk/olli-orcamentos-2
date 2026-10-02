@@ -10,6 +10,7 @@ import { OlliSkeleton } from './OlliSkeleton';
 import { montarHtmlOrcamentoCompleto } from '../utils/pdfGenerator';
 import { exportarHtmlComoPdf, safeFileName } from '../utils/exportarDocumento';
 import { Orcamento, Empresa, Depoimento } from '../types';
+import { ORIGENS_DA_PREVIA, permitirCargaDaPrevia } from './pdfPreviewGuarda';
 
 // WebView é nativo-only (Android/iOS); a web usa <iframe srcDoc> via DOM direto
 // (react-native-web deixa passar elementos HTML crus através de createElement).
@@ -93,16 +94,6 @@ function clampZoom(z: number): number {
 }
 
 /** Componente da web: um <iframe> cru para renderizar o HTML final do orçamento. */
-/**
- * Única carga que o WebView da prévia aceita: o próprio documento (`about:blank` /
- * `data:` do `source.html`). Qualquer link, redirecionamento ou iframe com outro
- * destino é bloqueado. Conferida por texto em `scripts/teste-pdf-preview-seguro.ts`.
- */
-function permitirCargaDaPrevia(req: { url?: string }): boolean {
-  const url = (req?.url ?? '').trim().toLowerCase();
-  return url === 'about:blank' || url.startsWith('data:text/html');
-}
-
 function PreviewWeb({ html }: { html: string }) {
   return React.createElement('iframe', {
     srcDoc: html,
@@ -335,8 +326,11 @@ export function PdfPreviewModal({ visible, onClose, orcamento, empresa, depoimen
                               // origem externa nem de navegação. Trancado de propósito (defesa em
                               // profundidade; se algum campo escapasse do escape, o HTML não
                               // executa script nem leva o usuário para outra página).
+                              // Curinga + guarda (ver pdfPreviewGuarda.ts): fora do
+                              // originWhitelist o WebView abriria o link FORA do app
+                              // (Linking.openURL) sem nem consultar a guarda.
                               javaScriptEnabled={false}
-                              originWhitelist={['about:blank']}
+                              originWhitelist={ORIGENS_DA_PREVIA}
                               onShouldStartLoadWithRequest={permitirCargaDaPrevia}
                               setSupportMultipleWindows={false}
                               allowFileAccess={false}

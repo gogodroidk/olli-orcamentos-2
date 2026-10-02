@@ -128,7 +128,7 @@ const TEXTO_AJUSTE = {
   sair: { titulo: 'Sair da conta', descricao: 'Seus dados continuam guardados neste aparelho' },
   sairApagar: { titulo: 'Sair e apagar dados deste aparelho', descricao: 'Deixa o celular limpo. Os dados na nuvem não são afetados' },
   excluirConta: { titulo: 'Excluir minha conta', descricao: 'Apaga a conta e os dados para sempre' },
-  gerenciarPlay: { titulo: 'Assinaturas na Google Play', descricao: 'Cancelar, pausar ou trocar a forma de pagamento' },
+  gerenciarPlay: { titulo: 'Assinaturas na Google Play', descricao: 'Cancelar ou trocar a forma de pagamento' },
 } as const;
 
 /** Abre a central de assinaturas da Play Store (Android). */
@@ -1100,7 +1100,7 @@ export default function ContaScreen() {
         ) : null}
 
         {/* GOOGLE PLAY (Android) — atalho fixo para a central de assinaturas da Play
-            Store: cancelar, pausar ou trocar a forma de pagamento. */}
+            Store: cancelar ou trocar a forma de pagamento. */}
         {Platform.OS === 'android' && mostra('gerenciarPlay') ? (
           <GrupoAjustes titulo="Google Play" indice={ind(1)}>
             <LinhaAjuste

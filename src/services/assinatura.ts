@@ -325,7 +325,7 @@ export async function getFaturas(): Promise<Fatura[]> {
         moeda: typeof f.moeda === 'string' ? f.moeda : 'brl',
         status: typeof f.status === 'string' ? f.status : null,
         pago: f.pago === true,
-        recibo: typeof f.recibo === 'string' && (!BUILD_PLAY_SEM_COMPRA_EXTERNA || f.pago === true) ? f.recibo : null,
+        recibo: typeof f.recibo === 'string' && (!BUILD_PLAY_SEM_COMPRA_EXTERNA || f.status === 'paid') ? f.recibo : null,
         intervalo: f.intervalo === 'month' || f.intervalo === 'year' ? f.intervalo : null,
       };
     })

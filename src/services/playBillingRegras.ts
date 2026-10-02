@@ -121,8 +121,49 @@ export function interpretarConfigPlay(status: number | null, corpo: unknown): Co
 }
 
 /**
+ * CONTRATO ÚNICO do `POST /play/verificar` (o worker, `worker/src/play.js`, lê
+ * exatamente isto — e `worker/scripts/teste-play-verificacao.js` importa ESTA
+ * função e a de baixo e as roda contra o `handlePlay` real):
+ *
+ *   pedido   { purchaseToken, productId, basePlanId | null }
+ *   resposta 200 { ok:true, estado:'ativo', plano, vigenteAte }
+ *            200 { ok:true, estado:'pendente'|'encerrado'|'sem_efeito', plano:null }
+ *            409 { ok:false, erro:'token_de_outra_conta' }
+ *
+ * `basePlanId` é só um aviso: o servidor decide o plano básico pela API do Google
+ * (divergência vira log, nunca recusa). Sem plano básico conhecido, vai `null`.
+ */
+export interface CompraParaVerificarPlay {
+  purchaseToken: string;
+  /** SKU da assinatura (`olli_pro`). */
+  productId: string;
+  /** Plano básico (`mensal`/`anual`), quando se sabe. */
+  basePlanId: string | null;
+}
+
+export function corpoVerificacaoPlay(compra: CompraParaVerificarPlay): {
+  purchaseToken: string;
+  productId: string;
+  basePlanId: string | null;
+} {
+  const base = typeof compra.basePlanId === 'string' ? compra.basePlanId.trim() : '';
+  return {
+    purchaseToken: compra.purchaseToken,
+    productId: typeof compra.productId === 'string' ? compra.productId.trim() : '',
+    basePlanId: base || null,
+  };
+}
+
+/** O que o servidor diz quando conferiu a compra mas ela NÃO libera plano agora. */
+export type SituacaoSemLiberacaoPlay = 'pendente' | 'encerrado' | 'sem_efeito';
+
+/**
  * Resultado de `POST /play/verificar`:
  *  - 'ok'          → o servidor conferiu o token na Google e gravou o plano;
+ *  - 'sem_liberacao' → 200 sem plano: o servidor conferiu e a Play diz que a compra
+ *                    não sustenta acesso agora (pagamento pendente, encerrada,
+ *                    sem efeito). Não é erro nem "pago": texto neutro e nada de
+ *                    `finishTransaction`;
  *  - 'outra_conta' → 409: o token já está ligado a OUTRA conta OLLI;
  *  - 'sem_login'   → 401: sessão vencida — entrar de novo e restaurar;
  *  - 'recusada'    → outro 4xx: o servidor olhou e NÃO libera (produto fora do
@@ -133,6 +174,7 @@ export function interpretarConfigPlay(status: number | null, corpo: unknown): Co
  */
 export type ResultadoVerificacaoPlay =
   | { estado: 'ok'; plano: PlanoPlay; vigenteAte: string | null }
+  | { estado: 'sem_liberacao'; situacao: SituacaoSemLiberacaoPlay }
   | { estado: 'outra_conta' }
   | { estado: 'sem_login' }
   | { estado: 'recusada'; erro: string | null }
@@ -140,10 +182,16 @@ export type ResultadoVerificacaoPlay =
 
 export function interpretarVerificacaoPlay(status: number | null, corpo: unknown): ResultadoVerificacaoPlay {
   if (status === null) return { estado: 'erro' };
-  const c = (corpo ?? {}) as { ok?: unknown; plano?: unknown; vigenteAte?: unknown; erro?: unknown };
+  const c = (corpo ?? {}) as { ok?: unknown; estado?: unknown; plano?: unknown; vigenteAte?: unknown; erro?: unknown };
   if (status >= 200 && status < 300) {
-    if (c.ok === true && (c.plano === 'pro' || c.plano === 'empresa')) {
+    if (c.ok !== true) return { estado: 'erro' };
+    if ((c.plano === 'pro' || c.plano === 'empresa') && (c.estado === undefined || c.estado === 'ativo')) {
       return { estado: 'ok', plano: c.plano, vigenteAte: typeof c.vigenteAte === 'string' ? c.vigenteAte : null };
+    }
+    if (c.plano === null || c.plano === undefined) {
+      if (c.estado === 'pendente' || c.estado === 'encerrado' || c.estado === 'sem_efeito') {
+        return { estado: 'sem_liberacao', situacao: c.estado };
+      }
     }
     return { estado: 'erro' };
   }
@@ -409,8 +457,8 @@ export function traduzirFalhaPlay(codigo: unknown): FalhaCompraPlay {
 }
 
 /**
- * Página de assinaturas da própria Play Store, onde o usuário cancela, pausa ou
- * troca a forma de pagamento. É a LOJA gerenciando a compra que ela fez — não é
+ * Página de assinaturas da própria Play Store, onde o usuário cancela ou troca a
+ * forma de pagamento. É a LOJA gerenciando a compra que ela fez — não é
  * link-out de pagamento. Com o produto, abre direto na assinatura certa.
  */
 export function urlGerenciarNaPlay(pacoteApp: string, produtoId?: string | null): string {

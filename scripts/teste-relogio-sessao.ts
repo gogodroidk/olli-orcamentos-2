@@ -24,6 +24,7 @@ import {
   ehRefreshDeSessao,
   falhaDeRefreshMataSessao,
   ESPERA_APOS_FALHA_REFRESH_MS,
+  ESPERA_MAXIMA_MS,
 } from '../src/services/refreshResiliente.ts';
 import {
   _zerarRelogioParaTeste,
@@ -305,14 +306,20 @@ const json = (status: number, corpo: unknown, headers: Record<string, string> = 
   const url = 'https://x.supabase.co/auth/v1/token?grant_type=refresh_token';
   const r1 = await f(url);
   checar(r1.status === 503, '429 vira 503 para o auth-js');
-  let bloqueado = false;
   agora += ESPERA_APOS_FALHA_REFRESH_MS + 1;
-  try { await f(url); } catch (e) { bloqueado = e instanceof TypeError; }
-  checar(bloqueado && chamadas === 1, 'Retry-After de 120 s é respeitado (31 s depois ainda espera, sem tocar o servidor)');
+  // Na espera: 503 sintético NA HORA (não lança — sem o console.error do auth-js).
+  const naEspera = await f(url);
+  checar(naEspera.status === 503 && chamadas === 1, 'Retry-After de 120 s respeitado até o teto (31 s depois ainda espera: 503 na hora, sem tocar o servidor)');
+  agora += ESPERA_MAXIMA_MS - ESPERA_APOS_FALHA_REFRESH_MS;
+  proxima = json(200, sessaoDoServidor(agora));
+  const depoisDoTeto = await f(url);
+  checar(depoisDoTeto.status === 200 && chamadas === 2, `Retry-After exagerado tem teto de ${ESPERA_MAXIMA_MS / 1000} s`);
+  proxima = json(429, {}, { 'retry-after': '120' });
+  await f(url);
   agora += 120_000;
   proxima = json(200, sessaoDoServidor(agora));
   const r2 = await f(url);
-  checar(r2.status === 200 && chamadas === 2, 'passada a espera, o refresh volta a sair');
+  checar(r2.status === 200 && chamadas === 4, 'passada a espera, o refresh volta a sair');
   const outra = await criarFetchResiliente(async () => new Response('{}', { status: 429 }))('https://x.supabase.co/rest/v1/orcamentos');
   checar(outra.status === 429, 'requisição que não é refresh passa intacta');
 }

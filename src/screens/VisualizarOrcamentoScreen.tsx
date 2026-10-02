@@ -430,7 +430,24 @@ export default function VisualizarOrcamentoScreen() {
     avisar(aviso.titulo, aviso.mensagem);
   }
 
-  async function handleShare() {
+  // Toque duplo: a porta do cadastro (`await exigirCadastroParaEnviar`) abre uma
+  // janela ANTES de `sharing`/`enviandoWhats`/`cobrando` valerem (o estado só muda no
+  // próximo render) — dois toques reservariam dois envios. Trava síncrona que cobre
+  // o handler inteiro, compartilhada pelos caminhos de envio desta tela.
+  const envioOcupadoRef = useRef(false);
+  async function comTravaDeEnvio(fn: () => Promise<void>): Promise<void> {
+    if (envioOcupadoRef.current) return;
+    envioOcupadoRef.current = true;
+    try {
+      await fn();
+    } finally {
+      envioOcupadoRef.current = false;
+    }
+  }
+
+  // Com a trava de toque duplo (ver `comTravaDeEnvio`).
+  const handleShare = () => comTravaDeEnvio(handleShareAgora);
+  async function handleShareAgora() {
     if (!orc || sharing) return;
     // Cadastro do negócio incompleto segura o PDF (o app não fecha mais por isso).
     if (!(await exigirCadastroParaEnviar('orcamento'))) return;
@@ -471,7 +488,9 @@ export default function VisualizarOrcamentoScreen() {
    * prestador CONFIRMAR que mandou ("Conseguiu enviar?"), confirmar o registro e
    * marcar "Enviado". Abrir o WhatsApp não é enviar.
    */
-  async function handleWhatsApp() {
+  // Com a trava de toque duplo (ver `comTravaDeEnvio`).
+  const handleWhatsApp = () => comTravaDeEnvio(handleWhatsAppAgora);
+  async function handleWhatsAppAgora() {
     if (!orc || enviandoWhats) return;
     const telefone = (orc.clienteTelefone || '').trim();
     if (!telefone) {
@@ -559,7 +578,9 @@ export default function VisualizarOrcamentoScreen() {
     if (pendente.ofertarCodigo) setTimeout(() => setQrAberto(true), ESPERA_MODAL_SAIR_MS);
   }
 
-  async function handleLinkCliente() {
+  // Com a trava de toque duplo (ver `comTravaDeEnvio`).
+  const handleLinkCliente = () => comTravaDeEnvio(handleLinkClienteAgora);
+  async function handleLinkClienteAgora() {
     if (!orc) return;
     if (!(await exigirCadastroParaEnviar('orcamento'))) return;
     if (!linkConfigurado()) {
@@ -997,7 +1018,9 @@ export default function VisualizarOrcamentoScreen() {
     });
   }
 
-  async function handleCobrar() {
+  // Com a trava de toque duplo (ver `comTravaDeEnvio`).
+  const handleCobrar = () => comTravaDeEnvio(handleCobrarAgora);
+  async function handleCobrarAgora() {
     if (!orc || !cobrancaPronta || cobrando) return;
     const telefone = (orc.clienteTelefone || '').trim();
     if (!telefone) {
@@ -1007,6 +1030,8 @@ export default function VisualizarOrcamentoScreen() {
     const comPix = cobrancaPronta.situacaoPix === 'com_pix';
     const dias = diasDesdeIso(orc.atualizadoEm || orc.criadoEm);
     const saldo = cobrancaPronta.valor + 0.005 < orc.valorTotal ? cobrancaPronta.valor : undefined;
+    // A cobrança com link leva os dados do negócio (página do cliente): mesma porta do envio.
+    if (!(await exigirCadastroParaEnviar('orcamento'))) return;
     setCobrando(true);
     let mensagem = montarMensagemCobranca(orc, dias, undefined, saldo);
     let semLink = true;

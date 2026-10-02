@@ -360,7 +360,8 @@ async function userDetail(env, id, actor) {
   // mercadoPagoVinculado, playVinculado). `projetarLinhas` filtra pela política,
   // então os ids em si nunca chegam ao navegador. Sem eles no select os três
   // indicadores saíam sempre "—", mesmo com assinatura vinculada.
-  if (assinaturaSelect.length && podeFaturas) {
+  // Independe de `podeFaturas`: quem lê a assinatura vê os indicadores (só booleanos).
+  if (assinaturaSelect.length) {
     for (const c of ['stripe_subscription_id', 'mp_preapproval_id', 'revenuecat_transacao_id']) {
       if (!assinaturaSelect.includes(c)) assinaturaSelect.push(c);
     }

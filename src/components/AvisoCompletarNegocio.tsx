@@ -62,7 +62,7 @@ export function AvisoCompletarNegocio() {
   const erro = estado.tipo === 'erro';
   const titulo = erro ? 'Não consegui conferir os dados do negócio' : 'Complete seu negócio';
   const texto = erro
-    ? 'Enquanto isso, o envio de orçamentos e recibos fica parado. O resto do app funciona normalmente.'
+    ? 'Ao enviar um orçamento ou recibo, confiro de novo. O resto do app funciona normalmente.'
     : `Seus orçamentos e recibos saem com esses dados. Falta: ${juntarPendentes(estado.pendentes.map(c => ROTULO_CAMPO_PERFIL[c]))}.`;
 
   return (

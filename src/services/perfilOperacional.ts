@@ -50,11 +50,15 @@ function texto(v: unknown): string {
  *  - tipo de serviço (`verticais`) ← segmento (mesma ponte do gate de ferramentas);
  *  - especialidade ← rótulo do segmento, quando vazia;
  *  - forma de atuação ← "autônomo" sem CNPJ; "empresa" com CNPJ de 14 dígitos;
- *  - nome do negócio do autônomo ← nome do responsável (o Onboarding faz igual).
+ *  - nome do negócio do autônomo ← nome do responsável (o Onboarding faz igual) —
+ *    SÓ com `comNome` (padrão), isto é, para PRÉ-PREENCHER o formulário que a
+ *    pessoa grava. Os PDFs imprimem `empresa.nome` CRU: para decidir se o cadastro
+ *    está completo (`camposPendentesPerfil`), o nome deduzido não vale — nome vazio
+ *    continua pendente até ser gravado.
  * Telefone, cidade e UF nunca são deduzidos: saem no documento e só a pessoa sabe.
  * Devolve o MESMO objeto quando não há o que deduzir.
  */
-export function completarPerfilDeduzido(empresa: Empresa): Empresa {
+export function completarPerfilDeduzido(empresa: Empresa, { comNome = true }: { comNome?: boolean } = {}): Empresa {
   const extra: Partial<Empresa> = {};
   if (!empresa.verticais?.length) {
     const verticais = verticaisEfetivos(empresa);
@@ -69,7 +73,7 @@ export function completarPerfilDeduzido(empresa: Empresa): Empresa {
     tipo = texto(empresa.cnpj).replace(/\D/g, '').length === 14 ? 'empresa' : 'autonomo';
     extra.tipoNegocio = tipo;
   }
-  if (tipo === 'autonomo' && !texto(empresa.nome) && texto(empresa.nomePrestador)) {
+  if (comNome && tipo === 'autonomo' && !texto(empresa.nome) && texto(empresa.nomePrestador)) {
     extra.nome = texto(empresa.nomePrestador);
   }
   return Object.keys(extra).length ? { ...empresa, ...extra } : empresa;
@@ -80,7 +84,8 @@ export function camposPendentesPerfil(linha: unknown): CampoPerfilMinimo[] {
   if (!bruta) {
     return ['tipoNegocio', 'nome', 'nomePrestador', 'telefone', 'especialidade', 'verticais', 'cidade', 'estado'];
   }
-  const empresa = completarPerfilDeduzido(bruta);
+  // Sem o nome deduzido: o documento sai com `empresa.nome` cru (ver acima).
+  const empresa = completarPerfilDeduzido(bruta, { comNome: false });
 
   const pendentes: CampoPerfilMinimo[] = [];
   if (empresa.tipoNegocio !== 'autonomo' && empresa.tipoNegocio !== 'empresa') pendentes.push('tipoNegocio');
@@ -105,7 +110,9 @@ export function perfilOperacionalCompleto(linha: unknown): boolean {
  * responsável, nem contato, nem documento, nem endereço)? É o caso de contas
  * cujo aparelho criou a linha vazia antes do cadastro (a conta de revisão da Play
  * tinha só o segmento). Segmento e especialidade sozinhos não contam: vêm de
- * padrão, não da pessoa. Linha ilegível NÃO é "sem cadastro" (é "não sei").
+ * padrão, não da pessoa. Logo, assinatura, site, slogan e cor da marca CONTAM:
+ * foram postos pela pessoa, e o Onboarding sobrescreveria o `dados` inteiro
+ * (perdendo o logo). Linha ilegível NÃO é "sem cadastro" (é "não sei").
  */
 export function empresaSemCadastro(linha: unknown): boolean {
   const empresa = dadosDaEmpresa(linha);
@@ -113,6 +120,7 @@ export function empresaSemCadastro(linha: unknown): boolean {
   const campos: unknown[] = [
     empresa.nome, empresa.nomePrestador, empresa.telefone, empresa.whatsapp, empresa.cnpj,
     empresa.cpf, empresa.cidade, empresa.estado, empresa.endereco, empresa.email, empresa.chavePix,
+    empresa.logoUri, empresa.assinaturaUri, empresa.site, empresa.slogan, empresa.corMarca,
   ];
   return campos.every(campo => !texto(campo));
 }

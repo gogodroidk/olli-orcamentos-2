@@ -123,6 +123,21 @@ export interface UsePermissao {
   pode: (acao: Acao) => boolean;
 }
 
+/**
+ * Mesma regra do `pode` do hook, como função pura sobre um retrato do tipo de
+ * conta. Três estados: `true`/`false` com o papel conhecido; `null` = papel ainda
+ * indeterminado (quem chama decide — nunca tratar como "pode").
+ */
+export function podeComPapel(
+  acao: Acao,
+  conta: { tipo: 'pessoal' | 'empresa'; org: { papel: Papel } | null; resolvido: boolean },
+): boolean | null {
+  if (!conta.resolvido) return null;
+  const papel = conta.tipo === 'empresa' && conta.org ? conta.org.papel : null;
+  if (!papel) return PERMISSOES_PESSOAL.has(acao);
+  return PERMISSOES[papel]?.has(acao) ?? false;
+}
+
 export function usePermissao(): UsePermissao {
   const { tipo, org, carregando, resolvido } = useTipoConta();
   const papel = tipo === 'empresa' && org ? org.papel : null;

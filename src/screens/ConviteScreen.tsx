@@ -67,6 +67,9 @@ export default function ConviteScreen() {
 
   // Trava síncrona contra toque duplo (o estado só muda no próximo render).
   const aceitandoRef = useRef(false);
+  // A tela pode sair (voltar) enquanto o aceite está no servidor: nada de setState depois.
+  const montadoRef = useRef(true);
+  useEffect(() => () => { montadoRef.current = false; }, []);
 
   async function aceitar(token: string) {
     if (aceitandoRef.current) return;
@@ -76,9 +79,11 @@ export default function ConviteScreen() {
     try {
       const org = await aceitarConvite(token);
       await recarregarTipoConta();
+      if (!montadoRef.current) return;
       vibrar('sucesso');
       setEstado({ fase: 'sucesso', nomeOrg: org.nome, papel: rotuloPapel(org.papel) });
     } catch (e: any) {
+      if (!montadoRef.current) return;
       vibrar('erro');
       setEstado({ fase: 'erro', mensagem: e?.message ?? 'Não consegui aceitar o convite agora.' });
     } finally {
@@ -87,7 +92,7 @@ export default function ConviteScreen() {
   }
 
   function recusar() {
-    vibrar('selecao');
+    // irParaApp já vibra: uma vibração por toque.
     irParaApp();
   }
 

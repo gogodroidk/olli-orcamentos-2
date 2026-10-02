@@ -77,7 +77,7 @@ returns text language sql as $$ select 'pro'::text $$;
 `;
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const PLAY = id(1), PIX = id(2), TESTE = id(3), INTRUSO = id(4);
+const PLAY = id(1), PIX = id(2), TESTE = id(3), INTRUSO = id(4), EX_PLAY = id(5), EX_TESTE = id(6);
 const hash = (c: string) => c.repeat(64);
 
 const db = new PGlite();
@@ -92,10 +92,13 @@ insert into auth.users (id, email, email_confirmed_at) values
   ('${PLAY}', 'play@exemplo.test', now() - interval '30 days'),
   ('${PIX}', 'pix@exemplo.test', now() - interval '30 days'),
   ('${TESTE}', 'teste@exemplo.test', now() - interval '30 days'),
-  ('${INTRUSO}', 'intruso@exemplo.test', now() - interval '30 days');
+  ('${INTRUSO}', 'intruso@exemplo.test', now() - interval '30 days'),
+  ('${EX_PLAY}', 'explay@exemplo.test', now() - interval '30 days'),
+  ('${EX_TESTE}', 'exteste@exemplo.test', now() - interval '30 days');
 insert into public.orcamentos (id, user_id, status, criado_em, atualizado_em) values
   ('o-play', '${PLAY}', 'enviado', now(), now()),
-  ('o-pix', '${PIX}', 'enviado', now(), now());
+  ('o-pix', '${PIX}', 'enviado', now(), now()),
+  ('o-explay', '${EX_PLAY}', 'enviado', now(), now());
 `);
 
 const erroDe = async (sql: string): Promise<string | null> => {
@@ -126,11 +129,14 @@ console.log('\n1) play_compras: RLS sem policy, nada para anon/authenticated');
 
 console.log('\n2) service_role grava; token ÚNICO; dono e token imutáveis');
 {
-  const inserir = (user: string, h: string, teste = false) =>
-    comoPapel('service_role', `insert into public.play_compras (user_id, token_sha256, purchase_token, produto_id, estado, expiry, teste)
-      values ('${user}', '${h}', 'tok-${h.slice(0, 30)}', 'olli_pro:mensal', 'SUBSCRIPTION_STATE_ACTIVE', now() + interval '30 days', ${teste})`);
+  const inserir = (user: string, h: string, teste = false, estado = 'SUBSCRIPTION_STATE_ACTIVE', renova = true) =>
+    comoPapel('service_role', `insert into public.play_compras (user_id, token_sha256, purchase_token, produto_id, estado, expiry, teste, auto_renovacao)
+      values ('${user}', '${h}', 'tok-${h.slice(0, 30)}', 'olli_pro:mensal', '${estado}', now() + interval '30 days', ${teste}, ${renova})`);
   checar('service_role insere', (await inserir(PLAY, hash('a'))) === null);
   checar('compra de teste também é registrada', (await inserir(TESTE, hash('c'), true)) === null);
+  // Ex-assinantes da Play (compra encerrada), um deles com compra de TESTE.
+  checar('compra encerrada registrada', (await inserir(EX_PLAY, hash('d'), false, 'SUBSCRIPTION_STATE_EXPIRED', false)) === null);
+  checar('compra de teste encerrada registrada', (await inserir(EX_TESTE, hash('e'), true, 'SUBSCRIPTION_STATE_EXPIRED', false)) === null);
   const dup = await inserir(INTRUSO, hash('a'));
   checar('MESMO token em outra conta → recusado (índice único)', dup !== null && /duplicate|unique|play_compras_token_sha256_key/i.test(dup), String(dup));
   const troca = await comoPapel('service_role', `update public.play_compras set user_id = '${INTRUSO}' where token_sha256 = '${hash('a')}'`);
@@ -151,12 +157,21 @@ console.log('\n3) Lembretes: assinatura só-Play é RECORRENTE (nunca "renove co
     values ('${PLAY}', 'pro', 'active', now() + interval '2 days', '${hash('a')}', 'olli_pro:mensal', now() + interval '2 days');
   insert into public.assinaturas (user_id, plano, status, current_period_end)
     values ('${PIX}', 'pro', 'active', now() + interval '2 days');
+  -- Saiu da Play e pagou Pix: o vínculo antigo continua na linha (ninguém limpa).
+  insert into public.assinaturas (user_id, plano, status, current_period_end, revenuecat_transacao_id, revenuecat_produto_id, revenuecat_vigencia_ate)
+    values ('${EX_PLAY}', 'pro', 'active', now() + interval '2 days', '${hash('d')}', 'olli_pro:mensal', now() - interval '20 days');
   `);
   const r = await db.query<{ candidato: any }>(`select candidato from public.listar_candidatos_lembrete_email(now(), 30, 50)`);
   const de = (u: string) => r.rows.map((x) => x.candidato).find((c) => c.userId === u);
   checar('Play vencendo em 2 dias é candidata', !!de(PLAY), JSON.stringify(r.rows));
   checar('...com recorrente = true', de(PLAY)?.assinatura?.recorrente === true, JSON.stringify(de(PLAY)?.assinatura));
   checar('Pix avulso segue recorrente = false (o "renove com Pix" é dele)', de(PIX)?.assinatura?.recorrente === false, JSON.stringify(de(PIX)?.assinatura));
+  checar('EX-assinante da Play (compra encerrada) que pagou Pix → recorrente = false (recebe o lembrete)', de(EX_PLAY)?.assinatura?.recorrente === false, JSON.stringify(de(EX_PLAY)?.assinatura));
+  await db.exec(`update public.play_compras set auto_renovacao = false where token_sha256 = '${hash('a')}'`);
+  const r2 = await db.query<{ candidato: any }>(`select candidato from public.listar_candidatos_lembrete_email(now(), 30, 50)`);
+  const de2 = (u: string) => r2.rows.map((x) => x.candidato).find((c) => c.userId === u);
+  checar('Play com a renovação DESLIGADA (cancelou) → recorrente = false', de2(PLAY)?.assinatura?.recorrente === false, JSON.stringify(de2(PLAY)?.assinatura));
+  await db.exec(`update public.play_compras set auto_renovacao = true where token_sha256 = '${hash('a')}'`);
   const grants = (await db.query<{ auth: boolean; srv: boolean }>(
     `select has_function_privilege('authenticated', 'public.listar_candidatos_lembrete_email(timestamptz, integer, integer)', 'execute') auth,
             has_function_privilege('service_role', 'public.listar_candidatos_lembrete_email(timestamptz, integer, integer)', 'execute') srv`,
@@ -170,10 +185,17 @@ console.log('\n4) Funil: Play paga = google_play; licença de teste NÃO é rece
     (await db.query<{ origem: string }>(`select origem from public.funil_marcos where user_id = $1 and marco = 'pagou'`, [u])).rows[0]?.origem ?? null;
   checar('assinatura da Play gravou marco "pagou" com origem google_play', (await marco(PLAY)) === 'google_play', String(await marco(PLAY)));
   checar('Pix segue avulso', (await marco(PIX)) === 'avulso', String(await marco(PIX)));
+  checar('ex-assinante da Play que pagou Pix → avulso (não google_play)', (await marco(EX_PLAY)) === 'avulso', String(await marco(EX_PLAY)));
   await db.exec(`
-  insert into public.assinaturas (user_id, plano, status, current_period_end, revenuecat_transacao_id)
-    values ('${TESTE}', 'pro', 'active', now() + interval '5 minutes', '${hash('c')}');`);
+  insert into public.assinaturas (user_id, plano, status, current_period_end, revenuecat_transacao_id, revenuecat_vigencia_ate)
+    values ('${TESTE}', 'pro', 'active', now() + interval '5 minutes', '${hash('c')}', now() + interval '5 minutes');`);
   checar('compra de teste (play_compras.teste) não vira marco', (await marco(TESTE)) === null, String(await marco(TESTE)));
+  // Compra de teste antiga ainda ligada à linha, mas o plano agora é de um Pix
+  // REAL (vigência maior que a da Play): o pagamento conta como receita.
+  await db.exec(`
+  insert into public.assinaturas (user_id, plano, status, current_period_end, revenuecat_transacao_id, revenuecat_vigencia_ate)
+    values ('${EX_TESTE}', 'pro', 'active', now() + interval '30 days', '${hash('e')}', now() - interval '10 days');`);
+  checar('Pix real depois de compra de TESTE da Play → marco avulso (não some da receita)', (await marco(EX_TESTE)) === 'avulso', String(await marco(EX_TESTE)));
   const invalida = await erroDe(`insert into public.funil_marcos (user_id, marco, origem) values ('${INTRUSO}', 'pagou', 'inventada')`);
   checar('constraint de origem continua fechada', invalida !== null);
 }

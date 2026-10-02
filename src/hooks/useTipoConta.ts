@@ -247,3 +247,12 @@ export function useTipoConta(): UseTipoConta {
 export function recarregarTipoConta(): Promise<void> {
   return revalidar();
 }
+
+/**
+ * Leitura SÍNCRONA do tipo de conta/papel atual, fora de componente (ex.: a porta
+ * do envio em services/exigirCadastro.ts decide o texto do aviso pelo papel).
+ * `resolvido:false` = não sei o papel ainda.
+ */
+export function lerTipoContaAtual(): Pick<UseTipoConta, 'tipo' | 'org' | 'resolvido'> {
+  return { tipo: estado.tipo, org: estado.org, resolvido: estado.resolvido };
+}

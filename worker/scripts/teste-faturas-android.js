@@ -43,6 +43,10 @@ const FATURAS = [
     hosted_invoice_url: 'https://invoice.stripe.com/i/aberto', invoice_pdf: 'https://pay.stripe.com/invoice/aberto/pdf' },
   { id: 'in_pago_sem_pdf', status: 'paid', amount_paid: 3900, total: 3900, currency: 'brl', created: 3,
     hosted_invoice_url: 'https://invoice.stripe.com/i/sempdf', invoice_pdf: null },
+  // Em aberto com pagamento PARCIAL: `pago` (exibição) fica true, mas o PDF da
+  // Stripe de fatura aberta traz "Pay online" — no Android nada de recibo.
+  { id: 'in_parcial', status: 'open', amount_paid: 1000, total: 3900, currency: 'brl', created: 4,
+    hosted_invoice_url: 'https://invoice.stripe.com/i/parcial', invoice_pdf: 'https://pay.stripe.com/invoice/parcial/pdf' },
 ];
 
 globalThis.fetch = async (url) => {
@@ -66,6 +70,7 @@ console.log('\n1) Android: só PDF de fatura paga');
   checar('fatura paga → invoice_pdf', porId.in_pago, 'https://pay.stripe.com/invoice/pago/pdf');
   checar('fatura em aberto → sem recibo (a página teria botão de pagar)', porId.in_aberto, null);
   checar('paga sem PDF → sem recibo (nunca cai na página hospedada)', porId.in_pago_sem_pdf, null);
+  checar('em aberto com pagamento parcial → sem recibo (só status paid)', porId.in_parcial, null);
   checar('nenhum recibo aponta para a página hospedada', d.faturas.some((f) => String(f.recibo).includes('invoice.stripe.com')), false);
 }
 
@@ -74,7 +79,7 @@ console.log('\n2) Web: como antes');
   const d = await pedir('');
   const porId = Object.fromEntries(d.faturas.map((f) => [f.id, f.recibo]));
   checar('web mantém a página hospedada', porId.in_aberto, 'https://invoice.stripe.com/i/aberto');
-  checar('web: status pago calculado igual', d.faturas.map((f) => f.pago), [true, false, true]);
+  checar('web: status pago calculado igual', d.faturas.map((f) => f.pago), [true, false, true, true]);
 }
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);

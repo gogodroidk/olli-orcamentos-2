@@ -183,7 +183,10 @@ function registrarOuvintes(): void {
     void tratarCompraRecebida(compra as PurchaseAndroid);
   });
   purchaseErrorListener((erro) => {
-    resolverPendente(traduzirFalhaPlay(erro?.code));
+    // Erro de OUTRO produto (ex.: compra em segundo plano de outra assinatura)
+    // não encerra a compra aberta pela tela. Sem produto no erro, vale para ela.
+    const sku = typeof erro?.productId === 'string' && erro.productId ? erro.productId : undefined;
+    resolverPendente(traduzirFalhaPlay(erro?.code), sku);
   });
 }
 
@@ -218,10 +221,20 @@ async function verificarEFinalizar(compra: PurchaseAndroid, planoBasico: string 
   return tarefa;
 }
 
+const MENSAGEM_SEM_LIBERACAO =
+  'A Google Play não informou uma assinatura ativa para esta compra, então o plano não foi liberado. Confira a assinatura em “Gerenciar na Google Play”.';
+
+const MENSAGEM_RECUSADA_RESTAURAR =
+  'Encontramos uma assinatura na Google Play, mas ela não pôde ser ligada a esta conta OLLI. Se a compra foi feita com outra conta OLLI, entre com ela.';
+
 function resultadoDaVerificacao(r: ResultadoVerificacaoPlay): ResultadoCompraPlay {
   switch (r.estado) {
     case 'ok':
       return { estado: 'confirmada' };
+    case 'sem_liberacao':
+      // O servidor conferiu e a Play diz que não há acesso agora: nada de
+      // "estamos confirmando" (que mandaria esperar algo que não vem).
+      return r.situacao === 'pendente' ? { estado: 'pendente' } : { estado: 'erro', mensagem: MENSAGEM_SEM_LIBERACAO };
     case 'outra_conta':
       return { estado: 'outra_conta', mensagem: MENSAGEM_OUTRA_CONTA_PLAY };
     case 'sem_login':
@@ -342,7 +355,9 @@ export async function comprarNaPlay(oferta: OfertaPlay): Promise<ResultadoCompra
     // Já assina pela Play nesta conta Google? Então é TROCA (substituição), nunca
     // uma segunda assinatura paralela. Sem conseguir ler, cai no catch (erro) em
     // vez de arriscar cobrança dupla.
-    const ativas = await comprasNaPlay();
+    // Compra PENDENTE (pagamento não compensou) não é assinatura ativa: não vira
+    // "já tem" nem base de troca.
+    const ativas = (await comprasNaPlay()).filter((c) => c.purchaseState === 'purchased');
     if (ativas.some((c) => donoDaCompraPlay(c.obfuscatedAccountIdAndroid, conta.hash) === 'outra')) {
       return { estado: 'outra_conta', mensagem: MENSAGEM_OUTRA_CONTA_PLAY };
     }
@@ -423,6 +438,7 @@ export async function restaurarComprasPlay(): Promise<ResultadoRestauracaoPlay> 
     let deOutraConta = false;
     let semLogin = false;
     let incerto = false;
+    let recusada = false;
     for (const c of compras) {
       if (c.isSuspendedAndroid === true) { suspensa = true; continue; }
       if (donoDaCompraPlay(c.obfuscatedAccountIdAndroid, conta.hash) === 'outra') { deOutraConta = true; continue; }
@@ -431,11 +447,16 @@ export async function restaurarComprasPlay(): Promise<ResultadoRestauracaoPlay> 
       else if (r.estado === 'outra_conta') deOutraConta = true;
       else if (r.estado === 'sem_login') semLogin = true;
       else if (r.estado === 'erro') incerto = true;
+      // O servidor olhou e NÃO liga a compra a esta conta: isso não é "não há
+      // nada" — é uma assinatura que existe e não pôde ser ligada.
+      else if (r.estado === 'recusada') recusada = true;
+      // 'sem_liberacao' (encerrada/sem efeito) = de fato não há assinatura ativa.
     }
     if (ativa) return { estado: 'ok', temAssinaturaAtiva: true };
     if (semLogin) return { estado: 'sem_login' };
     if (incerto) return { estado: 'erro', mensagem: MENSAGEM_CONFIG_INCERTA };
     if (deOutraConta) return { estado: 'outra_conta', mensagem: MENSAGEM_OUTRA_CONTA_PLAY };
+    if (recusada) return { estado: 'erro', mensagem: MENSAGEM_RECUSADA_RESTAURAR };
     if (suspensa) return { estado: 'erro', mensagem: MENSAGEM_SUSPENSA };
     return { estado: 'ok', temAssinaturaAtiva: false };
   } catch (e: unknown) {
@@ -446,8 +467,8 @@ export async function restaurarComprasPlay(): Promise<ResultadoRestauracaoPlay> 
 // ─── Gerenciar ────────────────────────────────────────────────────────────────
 
 /**
- * Abre a central de assinaturas da Play Store (cancelar, pausar, trocar a forma
- * de pagamento) — exigência da política de assinaturas. Com o produto, abre na
+ * Abre a central de assinaturas da Play Store (cancelar, trocar a forma de
+ * pagamento) — exigência da política de assinaturas. Com o produto, abre na
  * assinatura certa pelo deep link da própria Play; sem ele, a lista do app.
  */
 export async function gerenciarAssinaturaNaPlay(produtoId?: string | null): Promise<boolean> {

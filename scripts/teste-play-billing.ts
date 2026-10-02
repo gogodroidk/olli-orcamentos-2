@@ -32,6 +32,7 @@ import {
   idProdutoPlay,
   interpretarConfigPlay,
   interpretarVerificacaoPlay,
+  corpoVerificacaoPlay,
   liberacaoPlayConfirmada,
   ofertaPara,
   ofertasDoCatalogo,
@@ -110,7 +111,7 @@ checar('lixo → null', [produtoPlay(''), produtoPlay(null), produtoPlay('a:b:c'
 {
   // O worker (worker/src/play.js) tem de ler o MESMO catálogo do app.
   const play = ler('../worker/src/play.js');
-  checar('o worker importa o MESMO produtoPlay do app', /import \{[^}]*produtoPlay[^}]*\} from '\.\.\/\.\.\/src\/services\/playBillingRegras\.ts';/.test(play), true);
+  checar('o worker importa o MESMO produtoPlay do app', /import \{[^}]*\bprodutoPlay\b[^}]*\} from '\.\.\/\.\.\/src\/services\/playBillingRegras\.ts';/.test(play), true);
 }
 
 console.log('\n4) Ofertas: preço vem da LOJA; só a oferta-base do plano básico');
@@ -175,6 +176,15 @@ checar('400/403 → recusada (não repete, não finaliza)', interpretarVerificac
 checar('429 → erro (tenta depois)', interpretarVerificacaoPlay(429, {}), { estado: 'erro' });
 checar('503 → erro', interpretarVerificacaoPlay(503, { erro: 'desligado' }), { estado: 'erro' });
 checar('rede → erro', interpretarVerificacaoPlay(null, null), { estado: 'erro' });
+// 200 SEM plano: o servidor conferiu, mas a Play não sustenta acesso agora — nem
+// "ok" nem "estamos confirmando" (que mandaria esperar algo que não vem).
+checar('200 pendente sem plano → sem_liberacao/pendente', interpretarVerificacaoPlay(200, { ok: true, estado: 'pendente', plano: null, vigenteAte: null }), { estado: 'sem_liberacao', situacao: 'pendente' });
+checar('200 encerrado sem plano → sem_liberacao/encerrado', interpretarVerificacaoPlay(200, { ok: true, estado: 'encerrado', plano: null, vigenteAte: null }), { estado: 'sem_liberacao', situacao: 'encerrado' });
+checar('200 sem_efeito → sem_liberacao/sem_efeito', interpretarVerificacaoPlay(200, { ok: true, estado: 'sem_efeito', plano: null }), { estado: 'sem_liberacao', situacao: 'sem_efeito' });
+checar('200 com estado estranho e plano → erro (não sei)', interpretarVerificacaoPlay(200, { ok: true, estado: 'pendente', plano: 'pro' }), { estado: 'erro' });
+// Pedido: o formato ÚNICO (o worker o roda contra o handler real em teste-play-verificacao.js).
+checar('pedido = { purchaseToken, productId, basePlanId }', corpoVerificacaoPlay({ purchaseToken: 'tok', productId: 'olli_pro', basePlanId: 'anual' }), { purchaseToken: 'tok', productId: 'olli_pro', basePlanId: 'anual' });
+checar('pedido sem plano básico → basePlanId: null', corpoVerificacaoPlay({ purchaseToken: 'tok', productId: ' olli_pro ', basePlanId: '  ' }), { purchaseToken: 'tok', productId: 'olli_pro', basePlanId: null });
 
 console.log('\n7) Conta da compra: SHA-256 hex do user.id');
 {
@@ -247,7 +257,11 @@ console.log('\n11) Serviço Android (origem): desliga antes de tocar a loja; ser
     android.includes('purchaseToken: compra.purchaseToken,'),
     android.includes('subscriptionProductReplacementParams: {'),
   ], [true, true]);
-  checar('lê as assinaturas ativas ANTES de comprar', android.indexOf('const ativas = await comprasNaPlay();') >= 0 && android.indexOf('const ativas = await comprasNaPlay();') < android.indexOf('await requestPurchase('), true);
+  const lerAtivas = "const ativas = (await comprasNaPlay()).filter((c) => c.purchaseState === 'purchased');";
+  checar('lê as assinaturas ATIVAS (sem pendentes) ANTES de comprar', android.indexOf(lerAtivas) >= 0 && android.indexOf(lerAtivas) < android.indexOf('await requestPurchase('), true);
+  checar('erro do listener confere o SKU antes de encerrar a compra aberta', /purchaseErrorListener\(\(erro\) => \{[\s\S]*?erro\?\.productId[\s\S]*?resolverPendente\(traduzirFalhaPlay\(erro\?\.code\), sku\);/.test(android), true);
+  checar('restaurar com recusa do servidor vira erro explícito (não "não há nada")', android.includes("else if (r.estado === 'recusada') recusada = true;") && android.includes('if (recusada) return { estado: \'erro\', mensagem: MENSAGEM_RECUSADA_RESTAURAR };'), true);
+  checar('sem_liberacao tem texto próprio (nunca "estamos confirmando")', android.includes("case 'sem_liberacao':"), true);
   {
     const i = android.indexOf('async function verificarEFinalizar(');
     const corpo = android.slice(i, android.indexOf('\n}\n', i));
@@ -272,7 +286,7 @@ console.log('\n11) Serviço Android (origem): desliga antes de tocar a loja; ser
   const worker = ler('../src/services/playBillingWorker.ts');
   checar('cliente chama só /play/config e /play/verificar', [...worker.matchAll(/\/play\/[a-z]+/g)].map((m) => m[0]).filter((v, i, a) => a.indexOf(v) === i), ['/play/config', '/play/verificar']);
   checar('/play/verificar com o JWT do Supabase', worker.includes('Authorization: `Bearer ${token}`'), true);
-  checar('corpo do contrato: purchaseToken, productId, basePlanId', worker.includes('purchaseToken: compra.purchaseToken,') && worker.includes('productId: compra.productId,') && worker.includes('basePlanId: compra.basePlanId,'), true);
+  checar('corpo do contrato montado por corpoVerificacaoPlay (formato único)', worker.includes('body: JSON.stringify(corpoVerificacaoPlay(compra)),'), true);
 }
 
 console.log('\n12) `expo-iap` só no arquivo dono; nada de RevenueCat; segredos da Play fora do cliente');
@@ -306,9 +320,11 @@ console.log('\n13) Telas: DESLIGADO = NADA SE VENDE; no Android nunca o preço d
   checar('Android sem venda: diz que está indisponível no momento', planos.includes('Assinatura pelo app indisponível no momento'), true);
   checar('texto antigo de "não contratar" saiu', /não disponível neste aplicativo Android|mas não contratar/.test(planos), false);
   checar('comparativo nunca repete o preço da web no Android', planos.includes('precosDaFonte={!BUILD_PLAY_SEM_COMPRA_EXTERNA}'), true);
-  checar('abas mensal/anual no Android só com a venda visível', planos.includes('BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlayVisivel(ofertasPlay.estado) ? null : ('), true);
-  checar('"Restaurar" e "Gerenciar na Google Play" só com a venda visível', [
-    planos.includes('{vendaPlayVisivel(ofertasPlay.estado) ? (\n          <View style={styles.playRodape}>'),
+  // Abas e rodapé seguem a última resposta CONHECIDA (não piscam no "carregando").
+  checar('abas mensal/anual no Android só com a venda confirmada', planos.includes('BUILD_PLAY_SEM_COMPRA_EXTERNA && molduraPlay !== true ? null : ('), true);
+  checar('a moldura só muda com a resposta do servidor', planos.includes('setMolduraPlay(vendaPlayVisivel(resultado.estado));'), true);
+  checar('"Restaurar" e "Gerenciar na Google Play" só com a venda confirmada', [
+    planos.includes('{molduraPlay === true ? (\n          <View style={styles.playRodape}>'),
     planos.includes('<Text style={styles.ctaSecundarioText}>Gerenciar na Google Play</Text>'),
     planos.includes('Restaurar compras da Google Play'),
   ], [true, true, true]);
@@ -362,7 +378,7 @@ console.log('\n13) Telas: DESLIGADO = NADA SE VENDE; no Android nunca o preço d
   ], [true, true]);
   checar('Android: recibo é o PDF de fatura paga, sem citar o processador', [
     assinatura.includes("? 'Toque no recibo para abrir o PDF de uma fatura paga.'"),
-    ler('../src/services/assinatura.ts').includes("recibo: typeof f.recibo === 'string' && (!BUILD_PLAY_SEM_COMPRA_EXTERNA || f.pago === true) ? f.recibo : null,"),
+    ler('../src/services/assinatura.ts').includes("recibo: typeof f.recibo === 'string' && (!BUILD_PLAY_SEM_COMPRA_EXTERNA || f.status === 'paid') ? f.recibo : null,"),
     ler('../src/services/assinatura.ts').includes('BUILD_PLAY_SEM_COMPRA_EXTERNA ? `${rota}?plataforma=android` : rota'),
   ], [true, true, true]);
   checar('upsell do Grátis lê os benefícios da tabela única', assinatura.includes("(PLANOS_BASE.find((p) => p.id === 'pro')?.beneficios ?? [])"), true);

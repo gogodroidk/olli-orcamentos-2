@@ -25,6 +25,7 @@ import {
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { exportarHtmlComoPdf } from '../utils/exportarDocumento';
+import { exigirCadastroParaEnviar } from '../services/exigirCadastro';
 import { todayISO } from '../utils/date';
 import { isoToBR } from '../utils/masks';
 import { generateId } from '../utils/id';
@@ -147,6 +148,8 @@ export default function CertificadoAnvisaScreen() {
       );
       return;
     }
+    // Porta única do envio: o comprovante sai com os dados do negócio.
+    if (!(await exigirCadastroParaEnviar('documento'))) return;
     setGerando(true);
     try {
       // Persiste os dados de compliance na empresa (reaproveita na próxima emissão).

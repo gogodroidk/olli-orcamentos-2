@@ -140,6 +140,7 @@
     // Assinatura pela Google Play (Play Billing direto, worker/src/play.js).
     // KILL SWITCH da VENDA: "on" | "off". Com "off" o GET /play/config diz
     // ligado:false e o app mostra a venda como indisponível (nunca modo demo).
+    // NÃO bloqueia o POST /play/verificar: compra já paga sempre é registrada.
     // O RTDN e a reconciliação seguem rodando com a credencial presente, para quem
     // já assinou. Secrets (wrangler secret put): PLAY_SA_JSON (chave JSON da conta
     // olli-play-verify@claude-motor) e PLAY_TESTE_PERMITIDOS (user_ids que podem
@@ -147,7 +148,7 @@
     "PLAY_BILLING_MODE": "off",
     "PLAY_PACKAGE_NAME": "online.olliorcamentos.app",
     // Assinatura PULL do tópico do RTDN (projects/claude-motor/topics/olli-play-rtdn).
-    // O cron de minuto puxa daqui: sem endpoint público e sem cron novo.
+    // O cron 7,27,47 puxa daqui (:07 e :47): sem endpoint público e sem cron novo.
     "PLAY_PUBSUB_SUBSCRIPTION": "projects/claude-motor/subscriptions/olli-play-rtdn-worker"
   },
   // Staging is a separate Worker with no production custom domains. It inherits

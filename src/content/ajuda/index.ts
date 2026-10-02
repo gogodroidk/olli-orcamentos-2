@@ -48,6 +48,12 @@ export interface AjudaBloco {
    * Play no Android), sem preço de tabela da web e sem meio de pagamento externo.
    */
   soNaLoja?: boolean;
+  /**
+   * Bloco que cita a GOOGLE PLAY: só no app Android. O iPhone também é "loja", mas
+   * lá a assinatura não está disponível e citar outra loja é motivo de recusa na
+   * App Store (diretriz 2.3.10). Na web também some.
+   */
+  soNoAndroid?: boolean;
 }
 
 export interface AjudaCategoria {
@@ -487,6 +493,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         // No Android a assinatura é feita e gerenciada só pela Google Play.
         tipo: 'passos',
         soNaLoja: true,
+        soNoAndroid: true,
         conteudo: [
           'No aplicativo Android, a assinatura de um plano pago é feita e gerenciada pela Google Play. Em Conta → Planos você compara os planos e vê o que cada um libera.',
           'Para ver, trocar ou cancelar a assinatura, abra a Google Play, toque na sua foto, vá em Pagamentos e assinaturas → Assinaturas e escolha o OLLI.',
@@ -507,6 +514,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'aviso',
         soNaLoja: true,
+        soNoAndroid: true,
         conteudo: 'A cobrança da assinatura é feita pela Google Play. O OLLI nunca guarda os seus dados de pagamento.',
       },
     ],
@@ -669,13 +677,20 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Os blocos que ESTA plataforma pode mostrar. `podeVender` = `plataformaPodeVender`
- * (`services/lembreteAssinaturaLoja.ts`): só a web. Nas lojas somem os blocos
- * `soNaWeb` (Stripe, cartão, 12x, portal, Pix e preço de tabela da web) e entram os
- * `soNaLoja`; na web é o contrário.
+ * O bloco aparece NESTA plataforma (`Platform.OS`: 'web' | 'android' | 'ios')?
+ * Só a web vende por fora (mesma regra de `plataformaPodeVender`, em
+ * `services/lembreteAssinaturaLoja.ts`). Nas lojas somem os blocos `soNaWeb`
+ * (Stripe, cartão, 12x, portal, Pix e preço de tabela da web) e entram os
+ * `soNaLoja`; na web é o contrário. `soNoAndroid` (Google Play) só no Android.
  */
-export function corpoVisivel(artigo: AjudaArtigo, podeVender: boolean): AjudaBloco[] {
-  return artigo.corpo.filter((b) => (podeVender ? !b.soNaLoja : !b.soNaWeb));
+function blocoVisivel(b: AjudaBloco, plataforma: string): boolean {
+  if (plataforma === 'web') return !b.soNaLoja && !b.soNoAndroid;
+  return !b.soNaWeb && (plataforma === 'android' || !b.soNoAndroid);
+}
+
+/** Os blocos que ESTA plataforma pode mostrar (ver `blocoVisivel`). */
+export function corpoVisivel(artigo: AjudaArtigo, plataforma: string): AjudaBloco[] {
+  return artigo.corpo.filter((b) => blocoVisivel(b, plataforma));
 }
 
 export function getCategoria(id: string): AjudaCategoria | undefined {
@@ -707,17 +722,30 @@ function textoDoBloco(b: AjudaBloco): string {
   return Array.isArray(b.conteudo) ? b.conteudo.join(' ') : b.conteudo;
 }
 
-/** Índice de busca (título + resumo + tags + corpo) — montado 1x no módulo. */
-const INDICE: { artigo: AjudaArtigo; texto: string }[] = ARTIGOS_AJUDA.map(a => ({
-  artigo: a,
-  texto: normalizar(
-    [a.titulo, a.resumo, ...(a.tags ?? []), ...a.corpo.map(textoDoBloco)].join(' '),
-  ),
-}));
+/** Índice de busca (título + resumo + tags + corpo VISÍVEL na plataforma) — 1x por plataforma. */
+const INDICES = new Map<string, { artigo: AjudaArtigo; texto: string }[]>();
 
-/** Busca simples por substring (sem acento, sem caixa) em título/resumo/tags/corpo. */
-export function buscarArtigos(query: string): AjudaArtigo[] {
+function indiceDa(plataforma: string): { artigo: AjudaArtigo; texto: string }[] {
+  let indice = INDICES.get(plataforma);
+  if (!indice) {
+    indice = ARTIGOS_AJUDA.map(a => ({
+      artigo: a,
+      texto: normalizar(
+        [a.titulo, a.resumo, ...(a.tags ?? []), ...corpoVisivel(a, plataforma).map(textoDoBloco)].join(' '),
+      ),
+    }));
+    INDICES.set(plataforma, indice);
+  }
+  return indice;
+}
+
+/**
+ * Busca simples por substring (sem acento, sem caixa) em título/resumo/tags e no
+ * corpo que ESTA plataforma mostra — no Android, "pix" ou "stripe" não acham o
+ * artigo pelo texto que só a web exibe.
+ */
+export function buscarArtigos(query: string, plataforma: string): AjudaArtigo[] {
   const q = normalizar(query);
   if (!q) return [];
-  return INDICE.filter(e => e.texto.includes(q)).map(e => e.artigo);
+  return indiceDa(plataforma).filter(e => e.texto.includes(q)).map(e => e.artigo);
 }

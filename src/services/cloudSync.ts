@@ -130,8 +130,11 @@ function remoteNome(table: SyncTable): string {
 // As tabelas com jsonb (`empresa`, `orcamentos`, `recibos`, `modelos`) guardam o
 // objeto completo do app em `dados`, e replicam as colunas que o painel lê.
 
+// Sem `atualizado_em`: o carimbo da empresa é do SERVIDOR (default now() no INSERT
+// e trigger `empresa_set_atualizado_em` BEFORE INSERT OR UPDATE — migration
+// 20261004110200). O relógio do aparelho pode estar dias adiantado.
 function empresaToRow(e: Empresa): Record<string, unknown> {
-  return { dados: e, atualizado_em: new Date().toISOString() };
+  return { dados: e };
 }
 
 function clienteToRow(c: Cliente): Record<string, unknown> {
