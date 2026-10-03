@@ -75,6 +75,7 @@ const GOOGLE_EVENTOS = [
 	"https://www.googletagmanager.com",
 	"https://www.googleadservices.com",
 	"https://googleads.g.doubleclick.net",
+	"https://ad.doubleclick.net",
 	"https://www.google.com",
 	"https://www.google.com.br",
 	"https://pagead2.googlesyndication.com",
