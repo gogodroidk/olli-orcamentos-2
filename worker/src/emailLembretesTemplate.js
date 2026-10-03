@@ -12,9 +12,11 @@
  * falso. Desde 01/10/2026 (Grátis ilimitado) só a renovação vira e-mail.
  */
 
-import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO } from './emailLembretesPolicy.js';
+import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
+import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
+import { FRASE_GRATIS, frasePro } from '../../src/services/planosBase.ts';
 
-export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-01.v2';
+export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-05.v3';
 export const EMAIL_LEMBRETES_BRAND = 'OLLI Orçamentos';
 
 const INPUT_KEYS = Object.freeze([
@@ -200,6 +202,94 @@ function conteudoAssinatura(dados, appUrl) {
   return null;
 }
 
+// Copy da régua de reengajamento. Preço e benefícios vêm da MESMA fonte das
+// telas: `PRECO_PRO` (precosPlanos.ts), `frasePro()` e `FRASE_GRATIS`
+// (planosBase.ts). "Não cobra nada e não renova sozinho" e "dados continuam
+// salvos" repetem o que `iniciar_trial_pro()` grava: requires_card=false,
+// auto_renews=false, data_disposition='preserve'.
+function conteudoReengajamento(dados, appUrl) {
+  exigir(objeto(dados) && typeof dados.tipo === 'string', 'dados_invalidos');
+  const novoOrcamento = { rotulo: 'Fazer um orçamento', href: urlCom(appUrl, '/') };
+
+  if (dados.tipo === 'ativacao_ultima') {
+    chavesExatas(dados, ['tipo'], 'dados_invalidos');
+    return {
+      subject: 'Sua conta na OLLI Orçamentos continua aqui',
+      preview: 'No plano Grátis os orçamentos são ilimitados, sem cartão.',
+      titulo: 'Sua conta continua aqui',
+      paragrafos: [
+        'Você criou sua conta na OLLI Orçamentos há mais de um mês e ainda não fez nenhum orçamento.',
+        `No plano Grátis você tem ${FRASE_GRATIS}. Não precisa de cartão.`,
+      ],
+      passos: null,
+      cta: { rotulo: 'Criar meu primeiro orçamento', href: urlCom(appUrl, '/') },
+      depois: ['Este é o último lembrete deste tipo. Se travou em alguma parte, responda este e-mail ou fale com o suporte.'],
+      motivo: 'Você recebe este lembrete porque criou uma conta na OLLI Orçamentos e ainda não fez nenhum orçamento.',
+    };
+  }
+
+  if (dados.tipo === 'parou') {
+    chavesExatas(dados, ['tipo', 'etapa', 'ultimoOrcamentoEm'], 'dados_invalidos');
+    exigir(dados.etapa === 'd7' || dados.etapa === 'd14', 'dados_invalidos');
+    const ultimo = new Date(dados.ultimoOrcamentoEm);
+    exigir(!Number.isNaN(ultimo.getTime()) && ultimo.toISOString() === dados.ultimoOrcamentoEm, 'dados_invalidos');
+    const quando = dataCurtaBrasilia(dados.ultimoOrcamentoEm);
+    const motivo = 'Você recebe este lembrete porque usa a OLLI Orçamentos e está há alguns dias sem orçamento novo.';
+    if (dados.etapa === 'd7') {
+      return {
+        subject: 'Tem algum serviço para orçar esta semana?',
+        preview: 'Seus clientes e orçamentos já estão salvos: o próximo sai rápido.',
+        titulo: 'Tem serviço para orçar esta semana?',
+        paragrafos: [
+          `Seu último orçamento na OLLI Orçamentos foi em ${quando}.`,
+          'Seus clientes e orçamentos anteriores já estão salvos, então o próximo sai mais rápido.',
+        ],
+        passos: null,
+        cta: novoOrcamento,
+        depois: ['Se algo atrapalhou, responda este e-mail ou fale com o suporte.'],
+        motivo,
+      };
+    }
+    return {
+      subject: 'Seus clientes continuam salvos na OLLI Orçamentos',
+      preview: 'Duas semanas sem orçamento novo. Tudo continua do jeito que você deixou.',
+      titulo: 'Tudo continua do jeito que você deixou',
+      paragrafos: [
+        `Seu último orçamento foi em ${quando}. Seus clientes e orçamentos continuam salvos na sua conta.`,
+        'Quando aparecer o próximo serviço, é só abrir e mandar o orçamento para o cliente.',
+      ],
+      passos: null,
+      cta: novoOrcamento,
+      depois: ['Este é o último lembrete deste tipo. Se algo atrapalhou, responda este e-mail ou fale com o suporte.'],
+      motivo,
+    };
+  }
+
+  if (dados.tipo === 'trial_acabando') {
+    chavesExatas(dados, ['tipo', 'terminaEm'], 'dados_invalidos');
+    const termina = new Date(dados.terminaEm);
+    exigir(!Number.isNaN(termina.getTime()) && termina.toISOString() === dados.terminaEm, 'dados_invalidos');
+    const quando = dataCurtaBrasilia(dados.terminaEm);
+    const preco = reais(PRECO_PRO.mensalCentavos);
+    return {
+      subject: `Seu teste do Pro termina em ${quando}`,
+      preview: 'O teste não cobra nada e não renova sozinho.',
+      titulo: `Seu teste do Pro termina em ${quando}`,
+      paragrafos: [
+        'O teste não cobra nada e não renova sozinho: quando terminar, a conta volta ao plano Grátis e seus dados continuam salvos.',
+        `Para continuar com o Pro, assine por ${preco}/mês — dá para pagar com Pix — e mantenha ${frasePro()}.`,
+      ],
+      passos: null,
+      cta: { rotulo: 'Assinar o Pro', href: urlCom(appUrl, '/planos') },
+      depois: ['Se preferir ficar no Grátis, não precisa fazer nada.'],
+      motivo: 'Você recebe este aviso porque está testando o plano Pro da OLLI Orçamentos.',
+    };
+  }
+
+  exigir(false, 'tipo_invalido');
+  return null;
+}
+
 // ─── Layout ──────────────────────────────────────────────────────────────────
 // Exportado (com os validadores acima) para o resumo diário do dinheiro parado
 // (`resumoDinheiroTemplate.js`) sair com a MESMA casca — marca, contraste, botão de
@@ -287,11 +377,8 @@ export function renderizarEmailLembrete(input = {}) {
   const eventId = idSeguro(input.eventId);
   exigir(eventId, 'event_id_invalido');
 
-  const catalogo = input.template === LEMBRETE_ATIVACAO.template
-    ? LEMBRETE_ATIVACAO
-    : input.template === LEMBRETE_ASSINATURA.template
-      ? LEMBRETE_ASSINATURA
-      : null;
+  const catalogo = [LEMBRETE_ATIVACAO, LEMBRETE_ASSINATURA, LEMBRETE_REENGAJAMENTO]
+    .find((c) => c.template === input.template) ?? null;
   exigir(catalogo, 'template_invalido');
   exigir(input.templateVersion === catalogo.templateVersion, 'template_version_divergente');
   exigir(input.purpose === catalogo.purpose, 'purpose_invalido');
@@ -303,7 +390,9 @@ export function renderizarEmailLembrete(input = {}) {
 
   const conteudo = catalogo === LEMBRETE_ATIVACAO
     ? conteudoAtivacao(input.dados, appUrl)
-    : conteudoAssinatura(input.dados, appUrl);
+    : catalogo === LEMBRETE_ASSINATURA
+      ? conteudoAssinatura(input.dados, appUrl)
+      : conteudoReengajamento(input.dados, appUrl);
   exigir(conteudo.subject.length <= 180 && !/[\r\n]/.test(conteudo.subject), 'subject_invalido');
 
   const html = montarHtml(conteudo, {
