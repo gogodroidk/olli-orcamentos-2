@@ -31,6 +31,17 @@ export const Platform = { OS: "web" as const };
  */
 export const NativeModules = {};
 
+/**
+ * AppState — `src/hooks/useTipoConta.ts` (puxado pelo ritual diário via database.ts)
+ * escuta a volta do app ao primeiro plano. O painel não usa esse hook; o stub só
+ * existe para o bundler resolver. Uma aba do navegador está sempre "ativa" aqui, e
+ * o ouvinte nunca é chamado (nada no painel dispara troca de estado).
+ */
+export const AppState = {
+	currentState: "active" as const,
+	addEventListener: () => ({ remove: () => {} }),
+};
+
 /** require('react-native').Linking (ramo nativo do abrirWhatsApp — nunca chamado aqui). */
 export const Linking = {
 	openURL: async () => {
