@@ -8,16 +8,15 @@ import type { AvisoSaida } from '../services/avisoSaida';
 // A copy dos estados de falha vem de `saidaCalculo` (puro) de propósito: lá o
 // `node` alcança e o teste prova o TEXTO, não a existência de um `if`.
 import { fraseSaida, textoEnderecoInsuficiente, textoIndisponivel } from '../services/saidaCalculo';
+import { RecursoPlanoChip } from './RecursoPlano';
 
 /**
  * "Saia às 14:23 para chegar às 15:00" na Home — a resposta que o dono pediu,
  * na tela.
  *
  * PRESENTACIONAL: não busca nada. Recebe o resultado que `avisoSaida.ts` já
- * calculou e guardou. Isso é regra de custo, não de arquitetura: cada cálculo
- * é uma chamada da Routes API no SKU Pro (US$ 10 / 1.000), e um `useEffect`
- * que recalcula a cada foco de tela transformaria a feature numa conta aberta.
- * A única chamada paga a partir daqui é o toque explícito em "Atualizar".
+ * calculou e guardou. Desde a Onda I2 o número é ESTIMADO no aparelho (sem
+ * Google, sem custo) e a frase sempre diz "estimativa, sem trânsito".
  *
  * FUNCIONA NO APK — e isso é o ponto. O `EtaChip` que já existe fica escondido
  * no nativo (`temDestinoEta` devolve `false` enquanto `expo-location` não
@@ -38,7 +37,7 @@ import { fraseSaida, textoEnderecoInsuficiente, textoIndisponivel } from '../ser
 export interface AvisoSaidaCardProps {
   /** O que `lerAvisoSaida()` devolveu para a parada mostrada. `null` = nada tentado → não renderiza. */
   aviso: AvisoSaida | null;
-  /** Toque em "Atualizar" — o ÚNICO caminho daqui que gasta uma chamada paga. */
+  /** Toque em "Atualizar": refaz a estimativa agora (ignora o intervalo automático). */
   onAtualizar?: () => void;
   atualizando?: boolean;
   /** Injeção para teste; em produção é sempre o relógio real. */
@@ -53,7 +52,7 @@ function coresDoTom(tom: Tom, c: Cores): { bg: string; fg: string; borda: string
   return { bg: c.surfaceVariant, fg: c.onSurfaceMuted, borda: c.outline };
 }
 
-export function AvisoSaidaCard({ aviso, onAtualizar, atualizando, agora }: AvisoSaidaCardProps) {
+function AvisoSaidaCardConteudo({ aviso, onAtualizar, atualizando, agora }: AvisoSaidaCardProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const reduzirMovimento = useReducedMotion();
@@ -96,7 +95,7 @@ export function AvisoSaidaCard({ aviso, onAtualizar, atualizando, agora }: Aviso
     // Tentar de novo não conserta um endereço: quem conserta é o prestador.
     mostrarAtualizar = false;
   } else {
-    icone = 'wifi-off';
+    icone = 'clock-alert-outline';
     // Diz o que aconteceu E o que continua valendo. Qual das duas frases é a
     // verdadeira depende de haver ou não um aviso calculado ainda na fila —
     // ver `textoIndisponivel`.
@@ -115,10 +114,10 @@ export function AvisoSaidaCard({ aviso, onAtualizar, atualizando, agora }: Aviso
           onPress={onAtualizar}
           disabled={atualizando}
           haptic="selection"
-          accessibilityLabel="Recalcular a hora de sair com o trânsito de agora"
+          accessibilityLabel="Recalcular a estimativa da hora de sair"
         >
           <Text style={[styles.botaoTexto, { color: t.fg }]}>
-            {atualizando ? 'Checando…' : 'Atualizar'}
+            {atualizando ? 'Calculando…' : 'Atualizar'}
           </Text>
         </OlliPressable>
       ) : null}
@@ -151,3 +150,20 @@ const criarEstilos = (_c: Cores) => StyleSheet.create({
   },
   botaoTexto: { fontSize: 12.5, fontWeight: '800', textDecorationLine: 'underline' },
 });
+
+/**
+ * "Hora de sair" é inteligência do Pro (`hora_de_sair`, decisão de 01/10/2026).
+ * Com o recurso liberado (Pro/Empresa) é a peça de sempre; no Grátis vira o chip
+ * "Disponível no Pro"; com o plano ilegível, "plano não confirmado" — os 3 estados
+ * de `RecursoPlano.tsx`. Quem encaixa a peça numa tela não precisa saber de plano.
+ */
+export function AvisoSaidaCard(props: AvisoSaidaCardProps) {
+  // Mesmo contrato de sempre: sem registro, nada foi tentado → não renderiza
+  // (nem o chip do plano: não há o que vender onde não há o que mostrar).
+  if (!props.aviso) return null;
+  return (
+    <RecursoPlanoChip recurso="hora_de_sair">
+      <AvisoSaidaCardConteudo {...props} />
+    </RecursoPlanoChip>
+  );
+}

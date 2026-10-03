@@ -1,5 +1,5 @@
 /**
- * A REGRA da marca do documento — o selo "Gerado com OLLI Orçamentos" sai, ou fica?
+ * A REGRA da marca do documento — o selo "Feito com OLLI" sai, ou fica?
  *
  * Mora separado de `marcaDocumento.ts` (que fala com o Supabase e com o React Query)
  * pelo mesmo motivo que `entitlements.ts` mora separado de `planos.ts` no app: a
@@ -88,12 +88,10 @@ export function derivarMarca(entrada: {
  * O que dizer quando a marca entrou sem confirmação. Uma frase por motivo, escrita
  * aqui para o contrato e o orçamento dizerem a MESMA coisa.
  *
- * NÃO citamos o texto impresso, de propósito: os dois documentos imprimem marcas
- * DIFERENTES — o contrato usa `footerSeloOlliHtml` ("Gerado com OLLI Orçamentos",
- * src/utils/marcaOlli.ts) e o orçamento usa a linha `brand-olli` ("Orçamento feito
- * com OLLI", src/utils/pdfGenerator.ts). Citar um literal aqui deixaria a frase certa
- * num documento e errada no outro — e uma copy que descreve o papel errado é a mesma
- * classe de defeito que este arquivo existe para fechar.
+ * NÃO citamos o texto impresso, de propósito: o selo mora em `src/utils/marcaOlli.ts`
+ * (desde 01/10/2026 é o mesmo "Feito com OLLI" no orçamento, no recibo, no contrato e no
+ * link público, com UTM por origem). Citar o literal aqui criaria um segundo lugar para
+ * a frase envelhecer — a mesma classe de defeito que este arquivo existe para fechar.
  *
  * Devolve `null` quando o plano foi confirmado: não há o que avisar.
  */

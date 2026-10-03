@@ -10,7 +10,7 @@ import { cancelarTodosLembretes, concluirVisitasDaOS, resincronizarLembretes } f
 import { cancelarTodosLembretesPmoc } from '../services/pmocLembretes';
 import { cancelarRitualDiario } from '../services/ritualDiario';
 import { cancelarFollowUpLembretes } from '../services/followUpLembretes';
-import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY } from '../services/storageKeys';
+import { APP_DATA_STORAGE_KEYS, DB_PARTICOES_KEY, RASCUNHO_CAMPO_PREFIX } from '../services/storageKeys';
 import {
   DB_LEGADO,
   donoDoBanco,
@@ -19,6 +19,10 @@ import {
   resolverParticao,
 } from './particao';
 import { criarGerenciadorDeConexao } from './conexao';
+import { geoAposEdicao, geoParaColunas, lerGeoDaLinha, precisaGeocodificar } from '../utils/geoCliente';
+import { geocodificarEndereco } from '../services/cep';
+import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
+import { externaParaSqlite, lerExterna } from '../services/verticais';
 import { SQL_CONTAS_A_RECEBER } from './contasAReceberSql';
 import {
   escaparLike,
@@ -27,10 +31,13 @@ import {
   semAcentoLowerSql,
   sqlAgregadoPorStatusNoPeriodo,
   sqlBuscaCatalogo,
+  sqlCatalogoMaisUsados,
+  SQL_ULTIMO_ORCAMENTO_DO_CLIENTE,
 } from './consultasSql';
 import { carimbarDecisao } from '../utils/orcamentoDecisao';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { generateId } from '../utils/id';
+import { lerEncerramento } from '../utils/encerramentoOS';
 
 /**
  * Espelha uma mutação local na nuvem (painel web) em background.
@@ -142,6 +149,32 @@ async function lerMapaParticoes(): Promise<MapaParticoes> {
 }
 
 /**
+ * Alguém já entrou numa conta NESTE aparelho? Responde pelo mapa de partições
+ * (cada login registra a sua). Três estados: `true`, `false` e `null` = não sei
+ * (o AsyncStorage falhou ou o mapa está ilegível). Usado pelo banner de migração
+ * da tela Entrar: ele só faz sentido num aparelho onde ninguém nunca entrou — o
+ * banco "legado" é adotado pelo primeiro login, e depois de "Sair" a partição de
+ * quem saiu continua aberta, o que fazia a tela pedir "criar conta" a quem só
+ * queria entrar de novo (rejeição da Play, 02/10/2026).
+ */
+export async function alguemJaEntrouNesteAparelho(): Promise<boolean | null> {
+  let cru: string | null;
+  try {
+    cru = await AsyncStorage.getItem(DB_PARTICOES_KEY);
+  } catch {
+    return null;
+  }
+  if (!cru) return false;
+  try {
+    const mapa = JSON.parse(cru);
+    if (!mapa || typeof mapa !== 'object') return null;
+    return Object.keys(mapa).length > 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Garante que o banco ABERTO é a partição de `userId` — troca de arquivo se for
  * preciso. Chame no login, ANTES de qualquer leitura/sync (ver `syncOnLogin`).
  *
@@ -223,7 +256,11 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       cep TEXT,
       criado_em TEXT NOT NULL,
       excluido_em TEXT,
-      atualizado_em TEXT
+      atualizado_em TEXT,
+      lat REAL,
+      lon REAL,
+      ibge TEXT,
+      geo_precisao TEXT
     );
 
     CREATE TABLE IF NOT EXISTS servicos (
@@ -444,7 +481,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       recorrencia_ate TEXT,
       contrato_id TEXT,
       excecoes TEXT,
-      ordem_servico_id TEXT
+      ordem_servico_id TEXT,
+      externa INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_agendamentos_inicio ON agendamentos (inicio);
 
@@ -472,7 +510,12 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       valor REAL,
       criado_em TEXT NOT NULL,
       atualizado_em TEXT NOT NULL,
-      excluido_em TEXT
+      excluido_em TEXT,
+      asset_id TEXT,
+      garantia TEXT,
+      garantia_de_os_id TEXT,
+      encerramento TEXT,
+      materiais TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_status ON ordens_servico (status);
     CREATE INDEX IF NOT EXISTS idx_ordens_servico_tecnico ON ordens_servico (tecnico_id);
@@ -590,6 +633,10 @@ async function initDb(database: SQLite.SQLiteDatabase) {
   await database.execAsync(
     'CREATE INDEX IF NOT EXISTS idx_ordens_servico_concluido ON ordens_servico (concluido_em) WHERE status = \'concluida\' AND concluido_em IS NOT NULL',
   );
+  // Depende da coluna da migration v10 (histórico do equipamento / check-in pelo QR).
+  await database.execAsync(
+    'CREATE INDEX IF NOT EXISTS idx_ordens_servico_asset ON ordens_servico (asset_id) WHERE asset_id IS NOT NULL',
+  );
   await seedCodigosErro(database);
 
   // Sem dados-semente falsos: instalações novas começam SEM empresa e SEM
@@ -601,7 +648,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 13;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -700,6 +747,50 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   if (v < 8) {
     await addColumnIfMissing(database, 'agendamentos', 'excecoes', 'TEXT');
     await addColumnIfMissing(database, 'agendamentos', 'ordem_servico_id', 'TEXT');
+  }
+
+  // v < 9 — GEO DO CLIENTE e VISITA EXTERNA (Onda I1; espelha a migration da nuvem
+  // 20261002100000). Ponto (lat/lon + precisão) e IBGE do cliente; `externa` da
+  // visita como INTEGER 1/0 com NULL = "não informado" (nunca "interna"). Sem
+  // backfill aqui: o ponto chega pelo pull (o cron do worker preenche a nuvem) ou
+  // pela geocodificação no próximo salvar. `geo_tentado_em` NÃO existe no
+  // aparelho: é a fila do worker, só dele.
+  if (v < 9) {
+    for (const [coluna, def] of [['lat', 'REAL'], ['lon', 'REAL'], ['ibge', 'TEXT'], ['geo_precisao', 'TEXT']] as const) {
+      await addColumnIfMissing(database, 'clientes', coluna, def);
+    }
+    await addColumnIfMissing(database, 'agendamentos', 'externa', 'INTEGER');
+  }
+
+  // v < 10 — OS ligada ao EQUIPAMENTO atendido (check-in pelo QR; espelha a
+  // migration da nuvem 20261002153217). Sem backfill: nulo = "OS sem equipamento
+  // ligado", a verdade de toda OS anterior. As visitas PMOC já se ligam ao
+  // equipamento por `pmoc_ordens_geradas` e continuam assim.
+  if (v < 10) {
+    await addColumnIfMissing(database, 'ordens_servico', 'asset_id', 'TEXT');
+  }
+
+  // v < 11 — GARANTIA da OS (Onda I3, espelha a migration da nuvem
+  // 20261003103100): o prazo escrito na OS e o vínculo "retorno de garantia
+  // daquela OS". Sem backfill: nulo = a OS não declara garantia própria (a do
+  // orçamento de origem continua valendo na leitura).
+  if (v < 11) {
+    await addColumnIfMissing(database, 'ordens_servico', 'garantia', 'TEXT');
+    await addColumnIfMissing(database, 'ordens_servico', 'garantia_de_os_id', 'TEXT');
+  }
+
+  // v < 12 — "Encerrar atendimento" (encerramento em 60 s): o progresso do fluxo,
+  // a assinatura do cliente, o recibo e a próxima visita vivem na própria OS como
+  // TEXT JSON (espelha a migration da nuvem 20261003102500, jsonb). Nulo = a OS
+  // nunca passou pelo fluxo.
+  if (v < 12) {
+    await addColumnIfMissing(database, 'ordens_servico', 'encerramento', 'TEXT');
+  }
+
+  // v < 13 — BAIXA LEVE DE MATERIAL por OS (Onda I4; espelha a migration da nuvem
+  // 20261003104000). TEXT JSON; NULL = "não informado" (≠ '[]', "não usei material").
+  if (v < 13) {
+    await addColumnIfMissing(database, 'ordens_servico', 'materiais', 'TEXT');
   }
 
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -809,17 +900,67 @@ export async function saveCliente(cliente: Cliente): Promise<void> {
   // espelhado na nuvem tem que levar o MESMO carimbo que foi para o SQLite, senão
   // os dois lados divergem e o guard de conflito passa a comparar valores errados.
   const agora = new Date().toISOString();
-  const salvo: Cliente = { ...cliente, atualizadoEm: agora };
+  // GEO: a verdade é o que JÁ está gravado, não o que a tela devolveu (ela edita
+  // um objeto carregado antes, com a geo velha junto — inclusive depois de trocar
+  // o CEP). Endereço igual mantém o ponto; mudou, o ponto velho morre aqui
+  // (`geoAposEdicao`) e a nuvem faz o mesmo pelo trigger da migration 20261002100000.
+  const anteriorRow = await db.getFirstAsync<any>(
+    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao FROM clientes WHERE id = ?',
+    [cliente.id],
+  );
+  const anterior = anteriorRow ? { ...anteriorRow, ...lerGeoDaLinha(anteriorRow) } : null;
+  const { lat: _lat, lon: _lon, ibge: _ibge, geoPrecisao: _geoPrecisao, ...semGeo } = cliente;
+  const salvo: Cliente = { ...semGeo, ...geoAposEdicao(anterior, cliente), atualizadoEm: agora };
+  const geo = geoParaColunas(salvo);
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
-     (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em,
+      lat, lon, ibge, geo_precisao)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [salvo.id, salvo.nome, salvo.telefone, salvo.cpf ?? null,
      salvo.cnpj ?? null, salvo.endereco ?? null, salvo.complemento ?? null,
      salvo.estado ?? null, salvo.cidade ?? null, salvo.cep ?? null,
-     salvo.criadoEm, salvo.excluidoEm ?? null, agora]
+     salvo.criadoEm, salvo.excluidoEm ?? null, agora,
+     geo.lat, geo.lon, geo.ibge, geo.geo_precisao]
   );
   mirrorPush('clientes', salvo);
+  // Onde fica o cliente: DEPOIS de gravar, em segundo plano. Salvar nunca espera
+  // rede; sem rede o backfill do worker completa depois (ver cep.ts).
+  if (!salvo.excluidoEm && precisaGeocodificar(salvo)) {
+    void geocodificarClienteSalvo(salvo).catch(() => {});
+  }
+}
+
+/**
+ * Busca ponto + IBGE do cliente recém-salvo e grava SÓ se o endereço ainda for o
+ * mesmo (o prestador pode ter editado de novo enquanto a resposta voltava — ponto
+ * do endereço velho no endereço novo é erro calado). NÃO mexe em `atualizado_em`:
+ * geo é derivada do endereço, não é edição do usuário, e carimbar aqui faria esta
+ * escrita vencer uma edição real feita em outro aparelho.
+ */
+async function geocodificarClienteSalvo(c: Cliente): Promise<void> {
+  const r = await geocodificarEndereco(c);
+  if (r.estado === 'invalido') return;
+  const ponto = r.estado === 'ok' ? { lat: r.lat, lon: r.lon, precisao: r.precisao } : null;
+  const ibge = r.ibge ?? null;
+  // Nada novo (worker calado e sem IBGE): o backfill do cron tenta de novo depois.
+  if (!ponto && !ibge) return;
+  const db = await getDb();
+  // Só preenche o que está VAZIO e só se o endereço gravado ainda é o mesmo.
+  const res = await db.runAsync(
+    `UPDATE clientes
+        SET lat = CASE WHEN lat IS NULL THEN ? ELSE lat END,
+            lon = CASE WHEN lat IS NULL THEN ? ELSE lon END,
+            geo_precisao = CASE WHEN lat IS NULL THEN ? ELSE geo_precisao END,
+            ibge = COALESCE(ibge, ?)
+      WHERE id = ? AND excluido_em IS NULL
+        AND IFNULL(cep, '') = ? AND IFNULL(endereco, '') = ? AND IFNULL(cidade, '') = ? AND IFNULL(estado, '') = ?`,
+    [ponto?.lat ?? null, ponto?.lon ?? null, ponto?.precisao ?? null, ibge,
+     c.id, c.cep ?? '', c.endereco ?? '', c.cidade ?? '', c.estado ?? ''],
+  );
+  if (!res || res.changes < 1) return;
+  const atualizado = await getClienteRaw(c.id);
+  if (atualizado) mirrorPush('clientes', atualizado);
 }
 
 /**
@@ -884,6 +1025,8 @@ function rowToCliente(r: any): Cliente {
     cep: r.cep ?? undefined, criadoEm: r.criado_em,
     excluidoEm: r.excluido_em ?? undefined,
     atualizadoEm: r.atualizado_em ?? undefined,
+    // Ponto pela metade ou fora do planeta = sem ponto (nunca 0,0).
+    ...lerGeoDaLinha(r),
   };
 }
 
@@ -1044,6 +1187,27 @@ function rowToProduto(r: any): ProdutoItem {
   };
 }
 
+/** Item do catálogo com quantas vezes já entrou em orçamento (ver `getCatalogoMaisUsados`). */
+export interface CatalogoComUso {
+  item: ServicoItem | ProdutoItem;
+  uso: number;
+}
+
+/**
+ * "Você mais usa" do passo Itens: só itens que JÁ entraram em orçamento, mais
+ * usados primeiro (`sqlCatalogoMaisUsados`). Erro de leitura propaga — a tela
+ * mostra "não consegui ler", nunca uma lista vazia no lugar do erro.
+ */
+export async function getCatalogoMaisUsados(tipo: 'servico' | 'produto', limite = 8): Promise<CatalogoComUso[]> {
+  const db = await getDb();
+  const tabela = tipo === 'servico' ? 'servicos' : 'produtos';
+  const rows = await db.getAllAsync<any>(sqlCatalogoMaisUsados(tabela), [Math.max(1, Math.floor(limite))]);
+  return rows.map(r => ({
+    item: tipo === 'servico' ? rowToServico(r) : rowToProduto(r),
+    uso: Number(r.uso) || 0,
+  }));
+}
+
 // ─── ORÇAMENTOS ─────────────────────────────────────────────
 export async function getOrcamentos(): Promise<Orcamento[]> {
   const db = await getDb();
@@ -1059,6 +1223,17 @@ export async function getOrcamentos(): Promise<Orcamento[]> {
     "SELECT * FROM orcamentos WHERE json_extract(data, '$.excluidoEm') IS NULL ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC",
   );
   return rows.map(r => JSON.parse(r.data));
+}
+
+/**
+ * Último orçamento ativo do cliente com itens (fora `excluirId`), para o atalho
+ * "Repetir o último orçamento". `null` = o cliente não tem um; erro propaga.
+ */
+export async function getUltimoOrcamentoDoCliente(clienteId: string, excluirId = ''): Promise<Orcamento | null> {
+  if (!clienteId) return null;
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ data: string }>(SQL_ULTIMO_ORCAMENTO_DO_CLIENTE, [clienteId, excluirId]);
+  return row ? (JSON.parse(row.data) as Orcamento) : null;
 }
 
 /**
@@ -1821,6 +1996,12 @@ function rowToOrdemServico(r: any): OrdemServico {
     fotos,
     observacoes: r.observacoes ?? undefined,
     valor: r.valor ?? undefined,
+    equipamentoId: r.asset_id ?? undefined,
+    ...(r.garantia ? { garantia: r.garantia as string } : {}),
+    ...(r.garantia_de_os_id ? { garantiaDeOsId: r.garantia_de_os_id as string } : {}),
+    // Leitura tolerante: JSON inválido vira "sem encerramento", nunca quebra a lista.
+    encerramento: lerEncerramento(r.encerramento),
+    materiais: lerMateriais(r.materiais),
     criadoEm: r.criado_em,
     atualizadoEm: r.atualizado_em,
     excluidoEm: r.excluido_em ?? undefined,
@@ -1848,6 +2029,25 @@ export async function getOrdensServicoPagina(limite = 40, offset = 0): Promise<O
   return rows.map(rowToOrdemServico);
 }
 
+/**
+ * OS ATIVAS de um equipamento: as ligadas direto (`asset_id`, check-in pelo QR)
+ * e as visitas PMOC geradas para ele (`pmoc_ordens_geradas.ordem_id`). Uma OS
+ * que aparece pelos dois caminhos vem uma vez só (DISTINCT pelo id).
+ */
+export async function getOrdensServicoDoEquipamento(equipamentoId: string): Promise<OrdemServico[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    `SELECT DISTINCT os.* FROM ordens_servico os
+      WHERE os.excluido_em IS NULL
+        AND (os.asset_id = ?
+             OR os.id IN (SELECT g.ordem_id FROM pmoc_ordens_geradas g
+                           WHERE g.asset_id = ? AND g.excluido_em IS NULL))
+      ORDER BY os.criado_em DESC`,
+    [equipamentoId, equipamentoId],
+  );
+  return rows.map(rowToOrdemServico);
+}
+
 // Leitura por id NÃO filtra soft-delete (restaurar/detalhe da lixeira).
 export async function getOrdemServico(id: string): Promise<OrdemServico | null> {
   const db = await getDb();
@@ -1861,12 +2061,14 @@ export async function saveOrdemServico(os: OrdemServico): Promise<void> {
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento, materiais)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [os.id, os.numero, os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome,
      os.titulo, os.descricao ?? null, os.status, os.concluidoEm ?? null, os.tecnicoId ?? null, os.tecnicoNome ?? null,
      os.dataAgendada ?? null, JSON.stringify(os.checklist ?? []), JSON.stringify(os.fotos ?? []),
-     os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null],
+     os.observacoes ?? null, os.valor ?? null, os.criadoEm, os.atualizadoEm, os.excluidoEm ?? null,
+     os.equipamentoId ?? null, os.garantia ?? null, os.garantiaDeOsId ?? null,
+     os.encerramento ? JSON.stringify(os.encerramento) : null, materiaisParaTexto(os.materiais)],
   );
   // Espelho na nuvem pelo caminho PADRÃO de cloudSync (ordens_servico é SyncTable
   // de primeira classe: push/pull-no-login/tombstone/guard de timestamp + injeção
@@ -2577,6 +2779,7 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     contratoId: r.contrato_id ?? undefined,
     excecoes: lerExcecoes(r.excecoes),
     ordemServicoId: r.ordem_servico_id ?? undefined,
+    externa: lerExterna(r.externa),
   };
 }
 
@@ -2844,13 +3047,16 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
     // Snapshots antigos não têm o campo → caímos em criadoEm (nunca em "agora",
     // que faria o item restaurado vencer cópias remotas mais recentes).
     for (const c of clientes) {
+      // Geo do backup passa pelo mesmo filtro da leitura: ponto inválido não volta.
+      const geo = geoParaColunas(c);
       await db.runAsync(
         `INSERT OR REPLACE INTO clientes
-         (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, atualizado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+         (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, atualizado_em,
+          lat, lon, ibge, geo_precisao)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [c.id, c.nome, c.telefone, c.cpf ?? null, c.cnpj ?? null, c.endereco ?? null,
          c.complemento ?? null, c.estado ?? null, c.cidade ?? null, c.cep ?? null, c.criadoEm,
-         c.atualizadoEm ?? c.criadoEm],
+         c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao],
       );
     }
     for (const s of servicos) {
@@ -2904,8 +3110,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       await db.runAsync(
         `INSERT OR REPLACE INTO agendamentos
            (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em,
-            responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id, externa)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
          a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
          a.observacao ?? null, a.criadoEm, a.atualizadoEm,
@@ -2913,7 +3119,8 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
          a.recorrenciaAte ?? null, a.contratoId ?? null,
          // Backup é JSON: as exceções chegam como objeto (lerExcecoes valida e lança
          // se vierem ilegíveis — restore com série corrompida falha alto).
-         excecoesParaTexto(lerExcecoes(a.excecoes)), a.ordemServicoId ?? null],
+         excecoesParaTexto(lerExcecoes(a.excecoes)), a.ordemServicoId ?? null,
+         externaParaSqlite(lerExterna(a.externa))],
       );
     }
     for (const os of ordensServico) {
@@ -2923,15 +3130,20 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
         `INSERT OR REPLACE INTO ordens_servico
            (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
             tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-            criado_em, atualizado_em)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            criado_em, atualizado_em, garantia, garantia_de_os_id, encerramento, materiais)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [os.id, os.numero ?? '', os.orcamentoId ?? null, os.clienteId ?? null, os.clienteNome ?? '',
          os.titulo ?? '', os.descricao ?? null, os.status ?? 'aberta', os.concluidoEm ?? null, os.tecnicoId ?? null,
          os.tecnicoNome ?? null, os.dataAgendada ?? null,
          JSON.stringify(Array.isArray(os.checklist) ? os.checklist : []),
          JSON.stringify(Array.isArray(os.fotos) ? os.fotos : []),
          os.observacoes ?? null, os.valor ?? null,
-         os.criadoEm ?? new Date().toISOString(), os.atualizadoEm ?? new Date().toISOString()],
+         os.criadoEm ?? new Date().toISOString(), os.atualizadoEm ?? new Date().toISOString(),
+         typeof os.garantia === 'string' && os.garantia.trim() ? os.garantia.trim().slice(0, 200) : null,
+         typeof os.garantiaDeOsId === 'string' ? os.garantiaDeOsId : null,
+         // Encerramento ilegível no backup some (lerEncerramento), não derruba o restore.
+         (() => { const enc = lerEncerramento(os.encerramento); return enc ? JSON.stringify(enc) : null; })(),
+         materiaisParaTexto(lerMateriais(os.materiais))],
       );
     }
     for (const e of equipamentos) {
@@ -3116,6 +3328,15 @@ export async function clearAllLocalData(): Promise<void> {
   // Best-effort: uma falha aqui não deve impedir o logout (o SQLite já foi limpo).
   try {
     await AsyncStorage.multiRemove(APP_DATA_STORAGE_KEYS);
+  } catch {
+    // não bloqueia o logout
+  }
+  // 3b) Rascunhos por campo (texto digitado: nome de cliente, título de OS) têm
+  // chave dinâmica — saem por prefixo. Best-effort, igual ao passo 3.
+  try {
+    const chaves = await AsyncStorage.getAllKeys();
+    const rascunhos = chaves.filter((k) => k.startsWith(RASCUNHO_CAMPO_PREFIX));
+    if (rascunhos.length > 0) await AsyncStorage.multiRemove(rascunhos);
   } catch {
     // não bloqueia o logout
   }
@@ -3342,6 +3563,15 @@ export async function registrarOrdemGerada(g: PmocOrdemGerada): Promise<boolean>
   const inserida = (r?.changes ?? 0) > 0;
   if (inserida) mirrorPush('pmoc_ordens_geradas', { ...g, atualizadoEm: agora });
   return inserida;
+}
+
+/** Visitas PMOC geradas para UM equipamento (histórico/próxima manutenção da ficha). */
+export async function getOrdensGeradasDoEquipamento(equipamentoId: string): Promise<PmocOrdemGerada[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<any>(
+    'SELECT * FROM pmoc_ordens_geradas WHERE asset_id = ? AND excluido_em IS NULL ORDER BY vencimento ASC', [equipamentoId],
+  );
+  return rows.map(rowToPmocGeradaDb);
 }
 
 /** Todas as visitas já geradas para um plano (para saber o que NÃO regerar). */

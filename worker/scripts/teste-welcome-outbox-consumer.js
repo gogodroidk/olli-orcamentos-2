@@ -143,8 +143,11 @@ const ENV_PROD = Object.freeze({
   EMAIL_DESCADASTRO_URL: 'https://diagnostico.olliorcamentos.online/email/descadastrar',
 });
 
+// Renovação do Pro pago no Pix, D-3 (o único lembrete de cobrança desde que o
+// Grátis ficou ilimitado, 01/10/2026).
+const VENCE_LEMBRETE = '2026-10-02T02:00:00.000Z';
 function claimLembrete() {
-  const key = `lembrete:assinatura:${USER}:cota_quase:2026-09`;
+  const key = `lembrete:assinatura:${USER}:renovacao:${VENCE_LEMBRETE}:D-3`;
   return {
     ...claim('pessoa@example.com'),
     event_id: key,
@@ -154,7 +157,9 @@ function claimLembrete() {
     purpose: 'billing_reminder',
     dispatch_scope: 'production',
     user_id: USER,
-    template_dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 },
+    template_dados: {
+      tipo: 'renovar_pix', plano: 'pro', venceEm: VENCE_LEMBRETE, momento: 'D-3', sequencia: `renovacao:${VENCE_LEMBRETE}`,
+    },
   };
 }
 
@@ -195,7 +200,7 @@ async function casoProducaoBoasVindasELembrete() {
   const lembrete = enviados[1];
   assert.deepEqual(lembrete.body.to, ['pessoa@example.com']);
   assert.equal(lembrete.headers['Idempotency-Key'], claimLembrete().idempotency_key);
-  assert.equal(lembrete.body.subject, 'Faltam 2 orçamentos grátis este mês');
+  assert.equal(lembrete.body.subject, 'Seu plano Pro vence em 01/10 (quinta)');
   const unsub = lembrete.body.headers['List-Unsubscribe'];
   assert.match(unsub, /^<https:\/\/diagnostico\.olliorcamentos\.online\/email\/descadastrar\?u=00000000-0000-4000-8000-000000000041&e=lembretes&a=[A-Za-z0-9_-]{43}>$/);
   assert.equal(lembrete.body.headers['List-Unsubscribe-Post'], 'List-Unsubscribe=One-Click');
@@ -221,13 +226,35 @@ async function casoLembreteSemDescadastro() {
 async function casoLembreteComDadosInvalidos() {
   const fetchImpl = async (url, init) => {
     if (url.endsWith('/rpc/claim_email_welcome_outbox')) {
-      return Response.json([{ ...claimLembrete(), template_dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2, email: 'x@y.z' } }]);
+      return Response.json([{ ...claimLembrete(), template_dados: { ...claimLembrete().template_dados, email: 'x@y.z' } }]);
     }
     assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'));
     assert.equal(JSON.parse(init.body).p_status, 'dead_letter');
     return Response.json([{ applied: true, status: 'dead_letter', attempts: 1 }]);
   };
   const result = await processarWelcomeOutbox(ENV_PROD, deps(fetchImpl));
+  assert.equal(result.failed, 1);
+}
+
+/**
+ * Grátis ilimitado (01/10/2026): um "faltam 2 orçamentos grátis" que ficou na fila
+ * de antes do deploy NÃO pode chegar ao cliente — vai para dead_letter, sem Resend.
+ */
+async function casoLembreteDeCotaAntigoNaFilaNaoSai() {
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) {
+      const key = `lembrete:assinatura:${USER}:cota_quase:2026-09`;
+      return Response.json([{
+        ...claimLembrete(), event_id: key, idempotency_key: key,
+        template_dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 },
+      }]);
+    }
+    assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'), 'e-mail de cota descontinuado não pode chegar à Resend');
+    assert.equal(JSON.parse(init.body).p_status, 'dead_letter');
+    return Response.json([{ applied: true, status: 'dead_letter', attempts: 1 }]);
+  };
+  const result = await processarWelcomeOutbox(ENV_PROD, deps(fetchImpl));
+  assert.equal(result.sent, 0);
   assert.equal(result.failed, 1);
 }
 
@@ -314,6 +341,7 @@ try {
   await casoProducaoBoasVindasELembrete();
   await casoLembreteSemDescadastro();
   await casoLembreteComDadosInvalidos();
+  await casoLembreteDeCotaAntigoNaFilaNaoSai();
   await casoSimuladorNaoEnviaLembreteReal();
   await casoResumoDinheiro();
   await casoResumoSemNadaAcionavelNaoSai();

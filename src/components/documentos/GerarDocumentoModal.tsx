@@ -23,6 +23,7 @@ import {
   montarHtmlTermoGarantia,
 } from '../../utils/termosPdf';
 import { garantirDocumentoDerivadoDeOrcamento, registrarArtefatoDocumentoBiblioteca } from '../../services/documentosBiblioteca';
+import { exigirCadastroParaEnviar } from '../../services/exigirCadastro';
 
 /**
  * GerarDocumentoModal — o caminho curto entre "tenho um orçamento" e "tenho o
@@ -152,6 +153,9 @@ export function GerarDocumentoModal({ visivel, tipo, empresa, aoFechar }: Props)
 
   async function abrirPreviaDocumento() {
     if (!escolhido) return;
+    // Porta única do envio: contrato e termos saem com os dados do negócio. A prévia
+    // é o ÚNICO caminho até o PDF deste documento, então a porta fica antes dela.
+    if (!(await exigirCadastroParaEnviar('documento'))) return;
     try {
       const registro = await garantirDocumentoDerivadoDeOrcamento({
         tipo,

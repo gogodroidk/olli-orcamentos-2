@@ -9,10 +9,18 @@
 
 import {
   IA_USOS_GRATIS_MES,
-  ORCAMENTOS_ENVIADOS_GRATIS_MES,
   TRIAL_PRO_DIAS,
-} from '../../services/entitlements';
-import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos';
+} from '../../services/entitlements.ts';
+import { FRASE_GRATIS, planoBase } from '../../services/planosBase.ts';
+import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos.ts';
+
+/** Os recursos que um plano pago acrescenta, lidos da tabela única (com "em breve"). */
+function recursosDoPlano(id: 'pro' | 'empresa'): string {
+  return planoBase(id)
+    .bullets.filter((b) => b.recursos.length > 0)
+    .map((b) => (b.emBreve ? `${b.texto} (em breve)` : b.texto))
+    .join('; ');
+}
 
 /** Tipo de bloco do corpo de um artigo. */
 export type AjudaBlocoTipo = 'paragrafo' | 'passos' | 'aviso';
@@ -25,14 +33,27 @@ export interface AjudaBloco {
   tipo: AjudaBlocoTipo;
   conteudo: string | string[];
   /**
-   * Bloco que ensina a PAGAR (Pix, provedor do Pix): só aparece onde o OLLI pode
-   * vender — a web. Este conteúdo também roda no app das lojas (iOS e Android da
-   * Google Play), que não tem compra nem pode mandar pagar por fora — mesma regra
-   * de `lembreteAssinaturaLoja.ts` e da AssinaturaScreen. Lá a tela de Planos NÃO
-   * mostra "Pagar com Pix", então o texto também seria falso. Filtre com
-   * `corpoVisivel()`.
+   * Bloco que ensina a PAGAR ou cita o meio de pagamento da web (Stripe, cartão,
+   * 12x, portal de pagamento, Pix, AbacatePay, preço de tabela da web): só aparece
+   * onde o OLLI pode vender — a web. Este conteúdo também roda no app das lojas
+   * (iOS e Android da Google Play), que não pode mandar pagar por fora (política de
+   * Pagamentos da Play, "anti-steering") — mesma regra de `lembreteAssinaturaLoja.ts`
+   * e da AssinaturaScreen. Lá a tela de Planos NÃO mostra "Pagar com Pix", então o
+   * texto também seria falso. Filtre com `corpoVisivel()`.
    */
   soNaWeb?: boolean;
+  /**
+   * Bloco que só aparece no app das LOJAS (o inverso de `soNaWeb`): o que vale lá no
+   * lugar do texto da web — assinatura feita e gerenciada pela própria loja (Google
+   * Play no Android), sem preço de tabela da web e sem meio de pagamento externo.
+   */
+  soNaLoja?: boolean;
+  /**
+   * Bloco que cita a GOOGLE PLAY: só no app Android. O iPhone também é "loja", mas
+   * lá a assinatura não está disponível e citar outra loja é motivo de recusa na
+   * App Store (diretriz 2.3.10). Na web também some.
+   */
+  soNoAndroid?: boolean;
 }
 
 export interface AjudaCategoria {
@@ -437,24 +458,45 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          `No Grátis, rascunhos, recibos, clientes, agenda e histórico ficam sem limite; você pode enviar, compartilhar por link ou gerar PDF de até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos distintos por mês. Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem cartão e sem cobrança automática. Os planos pagos liberam recursos extras:`,
+          `O Grátis tem ${FRASE_GRATIS}; rascunhos, recibos, clientes, agenda e histórico também ficam sem limite. Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem pagar nada e sem cobrança automática. Os planos pagos liberam recursos extras:`,
       },
       {
+        // Preço de tabela da web: some nas lojas (a Play mostra só o preço da própria
+        // loja, na tela de compra). Logo abaixo, a versão das lojas, sem preço.
         tipo: 'passos',
+        soNaWeb: true,
         conteudo: [
-          // Preços e cota vêm da fonte (precosPlanos/entitlements), não digitados.
-          `Grátis (${reais(0)}) — tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
-          `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — IA incluída com uso justo diário, relatórios, metas, clientes para lembrar da manutenção, relatório do dia falado, modelos premium de PDF e a opção de remover a marca OLLI do documento.`,
-          // Mapa ao vivo e painel de gestão são concedidos, mas ainda não entregues
-          // (ver `emBreve` em web/src/data/recursos.ts) — aqui também dizem "em breve".
-          `Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês) — tudo do Pro, mais equipe com papéis e permissões. Mapa da equipe ao vivo e painel de gestão da empresa: em breve.`,
+          // Preços vêm de precosPlanos; recursos e "em breve" da tabela única planosBase.
+          `Grátis (${reais(0)}) — orçamentos ilimitados e tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
+          `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — ${recursosDoPlano('pro')}.`,
+          `Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês) — tudo do Pro, mais: ${recursosDoPlano('empresa')}.`,
         ],
       },
       {
         tipo: 'passos',
+        soNaLoja: true,
+        conteudo: [
+          `Grátis — orçamentos ilimitados e tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
+          `Pro — ${recursosDoPlano('pro')}.`,
+          `Empresa — tudo do Pro, mais: ${recursosDoPlano('empresa')}.`,
+        ],
+      },
+      {
+        tipo: 'passos',
+        soNaWeb: true,
         conteudo: [
           'Vá em Conta → Planos para comparar e assinar (mensal, anual com desconto, ou parcelado em até 12x sem juros).',
           'Para trocar de plano ou cancelar, use "Gerenciar assinatura" — abre o portal seguro de pagamento.',
+        ],
+      },
+      {
+        // No Android a assinatura é feita e gerenciada só pela Google Play.
+        tipo: 'passos',
+        soNaLoja: true,
+        soNoAndroid: true,
+        conteudo: [
+          'No aplicativo Android, a assinatura de um plano pago é feita e gerenciada pela Google Play. Em Conta → Planos você compara os planos e vê o que cada um libera.',
+          'Para ver, trocar ou cancelar a assinatura, abra a Google Play, toque na sua foto, vá em Pagamentos e assinaturas → Assinaturas e escolha o OLLI.',
         ],
       },
       {
@@ -466,7 +508,14 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       },
       {
         tipo: 'aviso',
+        soNaWeb: true,
         conteudo: 'O cartão é cobrado pela Stripe. O OLLI nunca guarda o número do seu cartão nem os seus dados bancários.',
+      },
+      {
+        tipo: 'aviso',
+        soNaLoja: true,
+        soNoAndroid: true,
+        conteudo: 'A cobrança da assinatura é feita pela Google Play. O OLLI nunca guarda os seus dados de pagamento.',
       },
     ],
   },
@@ -559,7 +608,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         tipo: 'passos',
         conteudo: [
           'Funciona sem internet: criar/editar orçamentos, clientes, serviços, produtos, agenda, ordens de serviço, checklist e o diagnóstico de códigos de erro (a base offline tem centenas de códigos).',
-          'Precisa de internet: enviar o link do orçamento pro cliente (é uma página pública na nuvem), IA (diagnóstico avançado, voz, chat), sincronizar/fazer backup, gerar a etiqueta QR de um equipamento pela 1ª vez, e assinar/gerenciar um plano pago.',
+          'Precisa de internet: enviar o link do orçamento pro cliente (é uma página pública na nuvem), IA (diagnóstico avançado, voz, chat), sincronizar/fazer backup, gerar a etiqueta QR de um equipamento pela 1ª vez, e consultar o seu plano.',
         ],
       },
       {
@@ -628,12 +677,20 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Os blocos que ESTA plataforma pode mostrar. `podeVender` = `plataformaPodeVender`
- * (`services/lembreteAssinaturaLoja.ts`): só a web. Nas lojas somem os blocos
- * `soNaWeb` (Pix e provedor do Pix).
+ * O bloco aparece NESTA plataforma (`Platform.OS`: 'web' | 'android' | 'ios')?
+ * Só a web vende por fora (mesma regra de `plataformaPodeVender`, em
+ * `services/lembreteAssinaturaLoja.ts`). Nas lojas somem os blocos `soNaWeb`
+ * (Stripe, cartão, 12x, portal, Pix e preço de tabela da web) e entram os
+ * `soNaLoja`; na web é o contrário. `soNoAndroid` (Google Play) só no Android.
  */
-export function corpoVisivel(artigo: AjudaArtigo, podeVender: boolean): AjudaBloco[] {
-  return podeVender ? artigo.corpo : artigo.corpo.filter((b) => !b.soNaWeb);
+function blocoVisivel(b: AjudaBloco, plataforma: string): boolean {
+  if (plataforma === 'web') return !b.soNaLoja && !b.soNoAndroid;
+  return !b.soNaWeb && (plataforma === 'android' || !b.soNoAndroid);
+}
+
+/** Os blocos que ESTA plataforma pode mostrar (ver `blocoVisivel`). */
+export function corpoVisivel(artigo: AjudaArtigo, plataforma: string): AjudaBloco[] {
+  return artigo.corpo.filter((b) => blocoVisivel(b, plataforma));
 }
 
 export function getCategoria(id: string): AjudaCategoria | undefined {
@@ -665,17 +722,30 @@ function textoDoBloco(b: AjudaBloco): string {
   return Array.isArray(b.conteudo) ? b.conteudo.join(' ') : b.conteudo;
 }
 
-/** Índice de busca (título + resumo + tags + corpo) — montado 1x no módulo. */
-const INDICE: { artigo: AjudaArtigo; texto: string }[] = ARTIGOS_AJUDA.map(a => ({
-  artigo: a,
-  texto: normalizar(
-    [a.titulo, a.resumo, ...(a.tags ?? []), ...a.corpo.map(textoDoBloco)].join(' '),
-  ),
-}));
+/** Índice de busca (título + resumo + tags + corpo VISÍVEL na plataforma) — 1x por plataforma. */
+const INDICES = new Map<string, { artigo: AjudaArtigo; texto: string }[]>();
 
-/** Busca simples por substring (sem acento, sem caixa) em título/resumo/tags/corpo. */
-export function buscarArtigos(query: string): AjudaArtigo[] {
+function indiceDa(plataforma: string): { artigo: AjudaArtigo; texto: string }[] {
+  let indice = INDICES.get(plataforma);
+  if (!indice) {
+    indice = ARTIGOS_AJUDA.map(a => ({
+      artigo: a,
+      texto: normalizar(
+        [a.titulo, a.resumo, ...(a.tags ?? []), ...corpoVisivel(a, plataforma).map(textoDoBloco)].join(' '),
+      ),
+    }));
+    INDICES.set(plataforma, indice);
+  }
+  return indice;
+}
+
+/**
+ * Busca simples por substring (sem acento, sem caixa) em título/resumo/tags e no
+ * corpo que ESTA plataforma mostra — no Android, "pix" ou "stripe" não acham o
+ * artigo pelo texto que só a web exibe.
+ */
+export function buscarArtigos(query: string, plataforma: string): AjudaArtigo[] {
   const q = normalizar(query);
   if (!q) return [];
-  return INDICE.filter(e => e.texto.includes(q)).map(e => e.artigo);
+  return indiceDa(plataforma).filter(e => e.texto.includes(q)).map(e => e.artigo);
 }

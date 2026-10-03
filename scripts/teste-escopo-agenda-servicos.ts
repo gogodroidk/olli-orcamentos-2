@@ -141,7 +141,7 @@ caso('fonte: ritualDiario só lê a próxima saída e o dia pelo escopo', () => 
   const chamadasSaida = src.match(/getProximaSaida\([^)]*\)/g) ?? [];
   assert.ok(chamadasSaida.length >= 2);
   for (const c of chamadasSaida) assert.equal(c, 'getProximaSaida(escopo)', `chamada sem escopo: ${c}`);
-  assert.match(src, /origemParaVisita\(proxima, aplicarEscopo\(doDia, escopo\)/);
+  assert.match(src, /doDia: aplicarEscopo\(doDia, escopo\)/, 'a origem do "saia às" vem da agenda DESTA pessoa');
   assert.match(src, /getAgendamentosDoDia\(inicio\)\.then\(d => aplicarEscopo\(d, escopo\)\)/);
   // Papel desconhecido: o aviso de saída não é criado nem cancelado.
   assert.match(src, /const escopo = escopoPronto \?\? \(await escopoAgendaAtual\(\)\);\s*if \(!escopoConhecido\(escopo\)\) return;/);
@@ -158,18 +158,18 @@ caso('fonte: getProximaSaida exige escopo conhecido e filtra antes de escolher',
 
 caso('fonte: escopo fora do React usa o store do papel, getCurrentUser e a matriz do hook', () => {
   const src = ler('src/services/escopoAgendaAtual.ts');
-  assert.match(src, /lerTipoContaAtual\(\)/);
+  assert.match(src, /resolverTipoContaAtual\(\)/);
   assert.match(src, /getCurrentUser\(\)/);
-  assert.match(src, /podeComPapel\('ver_agenda_equipe', conta\)/);
+  assert.match(src, /podeComPapel\('ver_agenda_equipe', conta\) === true/);
   assert.match(src, /papelCarregando: false/);
   assert.match(src, /catch \{\s*return \{ status: 'erro' \};/);
   const perm = ler('src/hooks/usePermissao.ts');
-  assert.match(perm, /podeComPapel\(acao, \{ tipo, org, resolvido \}\)/, 'o hook e o serviço decidem pela mesma função');
+  assert.match(perm, /podeComPapel\(acao, \{ tipo, org, resolvido \}\) === true/, 'o hook e o serviço decidem pela mesma função');
   const matriz = ler('src/utils/permissoesPapel.ts');
   assert.match(matriz, /export function podeComPapel\(/);
-  assert.match(matriz, /if \(!conta\.resolvido\) return false;/);
+  assert.match(matriz, /if \(!conta\.resolvido\) return null;/);
   const tipo = ler('src/hooks/useTipoConta.ts');
-  assert.match(tipo, /export async function lerTipoContaAtual\(\)/);
+  assert.match(tipo, /export async function resolverTipoContaAtual\(\)/);
   assert.match(tipo, /return \{ tipo: estado\.tipo, org: estado\.org, resolvido: estado\.resolvido \};/);
 });
 

@@ -1,17 +1,51 @@
 import type { PlanoId } from './entitlements';
 
-/** Fonte única do contrato comercial aprovado; migration e cópias têm testes de paridade. */
-export const ORCAMENTOS_ENVIADOS_GRATIS_MES = 5;
+/**
+ * CONTRATO COMERCIAL DO ENVIO DE ORÇAMENTOS — fonte única.
+ *
+ * ═══ GRÁTIS = ORÇAMENTOS ILIMITADOS (decisão do dono, 01/10/2026) ═══
+ *
+ * Até 01/10/2026 o Grátis tinha uma cota de 5 orçamentos enviados por mês. O
+ * diagnóstico de 29/09 mostrou que ninguém batia nela, e a avaliação mais curtida
+ * contra o concorrente era exatamente "só faz 5 orçamento por mês? to fora". A
+ * cota saiu. O que o Grátis paga agora é o SELO discreto "Feito com OLLI" no PDF,
+ * no recibo e no link (ver `src/utils/marcaOlli.ts`); o Pro tira o selo.
+ *
+ * ═══ O QUE CONTINUA EXISTINDO (e por quê) ═══
+ *
+ * A reserva/confirmação do envio (`reservar_envio_orcamento_gratis` e
+ * `confirmar_envio_orcamento_gratis`) continua — não como PORTÃO, mas como
+ * REGISTRO: é a confirmação do 1º envio que inicia o teste do Pro de 14 dias
+ * (migration 20260930120000) e alimenta o funil de receita. Por isso:
+ *
+ *  - o envio NUNCA é bloqueado por este módulo. Se o registro falhar (rede, RLS,
+ *    servidor antigo), o orçamento sai do mesmo jeito e o resultado diz
+ *    `motivo: 'sem_registro'` — um estado NOMEADO, não um vazio disfarçado. O que
+ *    se perde nesse caso é só o que dependeria do registro: o teste automático não
+ *    começa por ESTE envio (falha fechada para conceder, nunca para entregar);
+ *  - os nomes de fio (`dentro_da_cota`, `cota_esgotada`) ficam: o APK 1.1.x que
+ *    está nas mãos dos clientes rejeita `motivo` desconhecido e bloquearia o
+ *    envio. A migration 20261002150000 faz o servidor responder `dentro_da_cota`
+ *    para todo envio do Grátis, sem teto.
+ */
 export const TRIAL_PRO_DIAS = 14;
+/**
+ * Crédito de troca ("Vim de outro app"): quem já pagou outro app manda o
+ * comprovante e, depois da conferência MANUAL do admin, ganha o Pro por até este
+ * número de meses. Concessão de acesso, não venda. 1 crédito por conta.
+ * Paridade: migration 20261002153417_creditos_troca.sql e worker/src/creditoTroca.js.
+ */
+export const CREDITO_TROCA_MESES_MAX = 3;
+/** Pedidos no total por conta (recusado por print ilegível pode reenviar). */
+export const CREDITO_TROCA_PEDIDOS_MAX = 3;
 
 export type CanalEnvioOrcamento = 'pdf' | 'link' | 'whatsapp';
 export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';
 
 export interface EstadoOfertaComercial {
   planoEfetivo: PlanoId;
-  limiteEnvios: number | null;
+  /** Orçamentos distintos enviados neste mês (informativo — não existe teto). */
   enviosUsados: number;
-  enviosRestantes: number | null;
   trialEstado: TrialEstado;
   trialTerminaEm: string | null;
   trialDias: number;
@@ -27,22 +61,41 @@ export interface InicioTrialPro {
 }
 
 export interface ReservaEnvioOrcamento {
-  permitido: boolean;
+  /**
+   * Sempre `true` desde 01/10/2026: o Grátis é ilimitado e nenhum envio é barrado
+   * por cota. O tipo literal garante que nenhuma tela volte a ter um ramo de
+   * recusa (o último, o "Cota mensal utilizada" do detalhe, saiu em 02/10/2026).
+   */
+  permitido: true;
   planoEfetivo: PlanoId;
-  limite: number | null;
+  /** Orçamentos distintos registrados neste mês (informativo). */
   usados: number;
-  restantes: number | null;
   contabilizadoAgora: boolean;
   requerConfirmacao: boolean;
   reservaToken: string | null;
   trialElegivel: boolean;
-  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'cota_esgotada' | 'indisponivel' | 'ambiente_local';
+  /**
+   * - `dentro_da_cota`: envio do Grátis REGISTRADO (nome de fio mantido pelo APK antigo);
+   * - `plano_pago` / `trial_ativo`: plano que não precisa de registro;
+   * - `sem_registro`: o registro falhou (rede, servidor, resposta estranha) — o
+   *   envio segue, só não conta para o teste automático nem para o funil;
+   * - `ambiente_local`: sem Supabase configurado (desenvolvimento).
+   *
+   * `cota_esgotada` de um servidor antigo nunca chega aqui: `interpretarReservaEnvio`
+   * o transforma em `sem_registro`.
+   */
+  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local';
 }
 
 function inteiroNaoNegativo(valor: unknown, fallback: number): number {
   return typeof valor === 'number' && Number.isSafeInteger(valor) && valor >= 0 ? valor : fallback;
 }
 
+/**
+ * Lê `meu_estado_oferta_comercial`. Os campos de cota (`limite_envios`,
+ * `envios_restantes`) são IGNORADOS de propósito: o servidor antigo ainda os manda
+ * com o 5, o novo manda `null`, e nenhum dos dois pode reinventar uma cota no app.
+ */
 export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial | null {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
   const v = valor as Record<string, unknown>;
@@ -51,18 +104,13 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
   if (v.requires_card !== false || v.auto_renews !== false || v.data_disposition !== 'preserve') return null;
   if (v.trial_dias !== TRIAL_PRO_DIAS) return null;
   const plano = v.plano_efetivo === 'empresa' ? 'empresa' : v.plano_efetivo === 'pro' ? 'pro' : 'gratis';
-  const acessoAmpliado = plano !== 'gratis';
   const terminaEm = typeof v.trial_termina_em === 'string' && !Number.isNaN(Date.parse(v.trial_termina_em))
     ? v.trial_termina_em
     : null;
   if (v.trial_estado === 'active' && !terminaEm) return null;
   return {
     planoEfetivo: plano,
-    limiteEnvios: acessoAmpliado ? null : ORCAMENTOS_ENVIADOS_GRATIS_MES,
     enviosUsados: inteiroNaoNegativo(v.envios_usados, 0),
-    enviosRestantes: acessoAmpliado
-      ? null
-      : Math.max(0, inteiroNaoNegativo(v.envios_restantes, ORCAMENTOS_ENVIADOS_GRATIS_MES)),
     trialEstado: v.trial_estado as TrialEstado,
     trialTerminaEm: terminaEm,
     trialDias: TRIAL_PRO_DIAS,
@@ -81,73 +129,54 @@ export function interpretarInicioTrial(valor: unknown): InicioTrialPro | null {
   return { iniciado: v.iniciado, replay: v.replay, terminaEm: v.termina_em };
 }
 
-/** Resposta parcial ou inesperada nunca pode inventar cota, plano ou trial. */
+/**
+ * Interpreta a resposta de `reservar_envio_orcamento_gratis`.
+ *
+ * Resposta parcial ou inesperada nunca inventa plano, token ou teste — mas também
+ * nunca barra o envio: vira `sem_registro`. Um servidor ANTIGO que ainda responda
+ * `cota_esgotada` (antes da migration 20261002150000 ser aplicada) também vira
+ * `sem_registro`: a cota não existe mais no produto, e quem decide isso é o
+ * contrato comercial, não a versão do banco.
+ */
 export function interpretarReservaEnvio(valor: unknown): ReservaEnvioOrcamento {
-  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return reservaIndisponivel();
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return envioSemRegistro();
   const v = valor as Record<string, unknown>;
-  const plano = v.plano_efetivo === 'empresa' ? 'empresa' : v.plano_efetivo === 'pro' ? 'pro' : 'gratis';
   const motivo = v.motivo;
-  const motivos = new Set(['plano_pago', 'trial_ativo', 'dentro_da_cota', 'cota_esgotada']);
-  if (typeof v.permitido !== 'boolean' || !motivos.has(motivo as string)) return reservaIndisponivel();
+  const motivos = new Set(['plano_pago', 'trial_ativo', 'dentro_da_cota']);
+  if (v.permitido !== true || !motivos.has(motivo as string)) return envioSemRegistro();
 
-  const acessoAmpliado = plano !== 'gratis' || motivo === 'trial_ativo';
-  const limite: number | null = acessoAmpliado ? null : ORCAMENTOS_ENVIADOS_GRATIS_MES;
-  const usados = inteiroNaoNegativo(v.usados, 0);
-  const restantes = acessoAmpliado
-    ? null
-    : Math.max(0, inteiroNaoNegativo(v.restantes, ORCAMENTOS_ENVIADOS_GRATIS_MES - usados));
+  const plano: PlanoId = v.plano_efetivo === 'empresa' ? 'empresa' : v.plano_efetivo === 'pro' ? 'pro' : 'gratis';
   const reservaToken = typeof v.reserva_token === 'string' && /^[0-9a-f-]{36}$/i.test(v.reserva_token)
     ? v.reserva_token
     : null;
   const requerConfirmacao = v.requer_confirmacao === true;
-  if (requerConfirmacao && !reservaToken) return reservaIndisponivel();
+  if (requerConfirmacao && !reservaToken) return envioSemRegistro();
   return {
-    permitido: v.permitido,
+    permitido: true,
     planoEfetivo: plano,
-    limite,
-    usados,
-    restantes,
+    usados: inteiroNaoNegativo(v.usados, 0),
     contabilizadoAgora: v.contabilizado_agora === true,
     requerConfirmacao,
     reservaToken,
     trialElegivel: v.trial_elegivel === true,
-    motivo: motivo as ReservaEnvioOrcamento['motivo'],
+    motivo: motivo as 'plano_pago' | 'trial_ativo' | 'dentro_da_cota',
   };
 }
 
-export function reservaIndisponivel(): ReservaEnvioOrcamento {
+/** O registro do envio falhou: o envio segue, sem token, sem teste, sem inventar plano. */
+export function envioSemRegistro(): ReservaEnvioOrcamento {
   return {
-    permitido: false,
+    permitido: true,
     planoEfetivo: 'gratis',
-    limite: ORCAMENTOS_ENVIADOS_GRATIS_MES,
     usados: 0,
-    restantes: null,
     contabilizadoAgora: false,
     requerConfirmacao: false,
     reservaToken: null,
     trialElegivel: false,
-    motivo: 'indisponivel',
+    motivo: 'sem_registro',
   };
 }
 
 export function reservaAmbienteLocal(): ReservaEnvioOrcamento {
-  return {
-    permitido: true,
-    planoEfetivo: 'gratis',
-    limite: ORCAMENTOS_ENVIADOS_GRATIS_MES,
-    usados: 0,
-    restantes: ORCAMENTOS_ENVIADOS_GRATIS_MES,
-    contabilizadoAgora: false,
-    requerConfirmacao: false,
-    reservaToken: null,
-    trialElegivel: false,
-    motivo: 'ambiente_local',
-  };
-}
-
-export function mensagemBloqueioEnvio(reserva: ReservaEnvioOrcamento): string {
-  if (reserva.motivo === 'cota_esgotada') {
-    return `Você já enviou os ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos incluídos no Grátis neste mês. Seus rascunhos e dados continuam aqui. Experimente o Pro por ${TRIAL_PRO_DIAS} dias ou aguarde a renovação mensal da cota.`;
-  }
-  return 'Não conseguimos confirmar sua cota agora. Nenhum uso foi registrado. Verifique a conexão e tente novamente.';
+  return { ...envioSemRegistro(), motivo: 'ambiente_local' };
 }

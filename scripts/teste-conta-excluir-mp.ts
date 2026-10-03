@@ -5,6 +5,10 @@
  *    "conta apagada com assinatura viva = cartão cobrado sem ninguém para cancelar.
  *    Se não deu para cancelar, NÃO apaga — e não apaga calado."
  *
+ * C) x GOOGLE PLAY e ARQUIVOS DO STORAGE (meio do arquivo): assinatura da Play viva
+ *    bloqueia a exclusão como a do MP; fotos/logos/PDFs saem e são conferidos antes
+ *    do usuário.
+ *
  * B) x REVOGAÇÃO DO SIGN IN WITH APPLE (App Store 5.1.1(v)) — seção no fim do
  *    arquivo. Cobre a regra oposta à do MP: falhar a revogação NÃO pode travar a
  *    exclusão, porque a mesma guideline exige que excluir funcione. E assina um
@@ -72,6 +76,12 @@ let appleTokenStatus = 200; // resposta de POST /auth/token
 let appleRevokeStatus = 200; // resposta de POST /auth/revoke
 let appleChamadas: string[] = []; // caminhos batidos em appleid.apple.com
 let clientSecretVisto = ''; // o JWT que o worker mandou (conferido de verdade)
+// ── Google Play e Storage (metade C) ─────────────────────────────────────
+let playLinhas: any[] = []; // linhas de play_compras do usuário
+let playLeitura = 200; // status da leitura de play_compras (404 = tabela ausente)
+let arquivos = new Map<string, Set<string>>(); // bucket → caminhos completos
+let storageListaFalha = false;
+let storageDeleteNaoApaga = false; // DELETE 2xx que não apagou nada
 
 function reset(opts: {
   gravado?: any;
@@ -101,6 +111,24 @@ function reset(opts: {
   feedbackFalha = !!opts.feedbackFalha;
   feedbackRestante = !!opts.feedbackRestante;
   ordemExclusao = [];
+  playLinhas = [];
+  playLeitura = 200;
+  arquivos = new Map();
+  storageListaFalha = false;
+  storageDeleteNaoApaga = false;
+}
+
+/** Listagem de UM nível, como a API do Storage: pasta = entrada com id null. */
+function listarNivel(bucket: string, prefixo: string) {
+  const vistos = new Map<string, { name: string; id: string | null }>();
+  for (const caminho of arquivos.get(bucket) ?? []) {
+    if (!caminho.startsWith(prefixo)) continue;
+    const resto = caminho.slice(prefixo.length);
+    const [primeiro, ...mais] = resto.split('/');
+    if (mais.length) vistos.set(primeiro, { name: primeiro, id: null });
+    else vistos.set(primeiro, { name: primeiro, id: `obj-${primeiro}` });
+  }
+  return [...vistos.values()];
 }
 
 (globalThis as any).fetch = async (url: string, init?: { method?: string; body?: string }) => {
@@ -164,6 +192,23 @@ function reset(opts: {
       status: 200,
       json: async () => feedbackRestante ? [{ id: 'feedback-restante' }] : [],
     } as unknown as Response;
+  }
+  if (u.includes('/rest/v1/play_compras')) {
+    if (playLeitura !== 200) return { ok: false, status: playLeitura, json: async () => ({}) } as unknown as Response;
+    return { ok: true, status: 200, json: async () => playLinhas } as unknown as Response;
+  }
+  if (u.includes('/storage/v1/object/list/')) {
+    if (storageListaFalha) return { ok: false, status: 500, json: async () => ({}) } as unknown as Response;
+    const bucket = decodeURIComponent(u.split('/storage/v1/object/list/')[1]);
+    const { prefix } = JSON.parse(init?.body ?? '{}');
+    return { ok: true, status: 200, json: async () => listarNivel(bucket, prefix) } as unknown as Response;
+  }
+  if (u.includes('/storage/v1/object/') && metodo === 'DELETE') {
+    const bucket = decodeURIComponent(u.split('/storage/v1/object/')[1]);
+    const { prefixes } = JSON.parse(init?.body ?? '{}');
+    ordemExclusao.push(`arquivos:${bucket}`);
+    if (!storageDeleteNaoApaga) for (const c of prefixes) arquivos.get(bucket)?.delete(c);
+    return { ok: true, status: 200, json: async () => [] } as unknown as Response;
   }
   if (u.includes('api.mercadopago.com/preapproval/')) {
     if (metodo === 'PUT') return { ok: mpCancelStatus < 300, status: mpCancelStatus, json: async () => ({}) } as unknown as Response;
@@ -269,6 +314,85 @@ reset({ provedores: ['email'], feedbackRestante: true });
   const r = await excluir();
   checar('502 falha_exclusao', `${r.status}/${r.body.erro}`, '502/falha_exclusao');
   checar('usuário não foi apagado', usuarioApagado, false);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// METADE C — GOOGLE PLAY e ARQUIVOS DO STORAGE
+// ═══════════════════════════════════════════════════════════════════════════
+// Assinatura da Play viva = cobrança sem conta (fail-closed, igual MP). Arquivo
+// no Storage não sai pelo cascade: apaga e CONFIRMA antes do usuário. O
+// cancelamento de verdade pela API da Play (com JWT RS256 real) é coberto em
+// worker/scripts/teste-play-verificacao.js; aqui fica o encaixe na exclusão.
+
+console.log('\n── Google Play e Storage ──');
+console.log('\nC1) assinatura da Play ativa e o worker SEM credencial da Play: não apaga');
+reset({ provedores: ['email'] });
+playLinhas = [{ user_id: USER, token_sha256: 'a'.repeat(64), purchase_token: 'tok-play-ativo-0123456789', estado: 'SUBSCRIPTION_STATE_ACTIVE' }];
+{
+  const r = await excluir();
+  checar('502 falha_cancelamento', `${r.status}/${r.body.erro}`, '502/falha_cancelamento');
+  checar('conta intacta', usuarioApagado, false);
+  checar('nem tocou em arquivos', ordemExclusao, []);
+}
+
+console.log('\nC2) compra da Play já encerrada (EXPIRED/CANCELED) não exige credencial');
+reset({ provedores: ['email'] });
+playLinhas = [
+  { user_id: USER, purchase_token: 'tok-play-velho-0123456789', estado: 'SUBSCRIPTION_STATE_EXPIRED' },
+  { user_id: USER, purchase_token: 'tok-play-cancel-0123456789', estado: 'SUBSCRIPTION_STATE_CANCELED' },
+];
+{
+  const r = await excluir();
+  checar('ok', r.body.ok, true);
+  checar('usuário apagado', usuarioApagado, true);
+}
+
+console.log('\nC3) não SABER as compras da Play (PostgREST 500) = 502; tabela ausente (404) = segue');
+reset({ provedores: ['email'] });
+playLeitura = 500;
+{
+  const r = await excluir();
+  checar('502 falha_cancelamento', `${r.status}/${r.body.erro}`, '502/falha_cancelamento');
+  checar('conta intacta', usuarioApagado, false);
+}
+reset({ provedores: ['email'] });
+playLeitura = 404;
+{
+  const r = await excluir();
+  checar('migration play_compras pendente: exclui (nenhuma compra pode ter sido gravada)', r.body.ok, true);
+}
+
+console.log('\nC4) fotos, logos e PDFs do prefixo da conta são apagados ANTES do usuário');
+reset({ provedores: ['email'] });
+arquivos.set('olli-fotos', new Set([`${USER}/foto_servico/a.jpg`, `${USER}/foto_servico/b.jpg`, 'outro-dono/foto_servico/c.jpg']));
+arquivos.set('olli-logos', new Set([`${USER}/logo/l.png`]));
+arquivos.set('olli-documentos', new Set([`${USER}/pdf/o.pdf`, `${USER}/anexo/comprovante.pdf`]));
+{
+  const r = await excluir();
+  checar('ok', r.body.ok, true);
+  checar('ordem: feedback → arquivos (3 buckets) → usuário', ordemExclusao,
+    ['feedback', 'arquivos:olli-fotos', 'arquivos:olli-logos', 'arquivos:olli-documentos', 'usuario']);
+  checar('nada do prefixo da conta sobrou', [...arquivos.values()].flatMap((c) => [...c]).filter((c) => c.startsWith(`${USER}/`)), []);
+  checar('arquivo de OUTRO dono intacto', arquivos.get('olli-fotos')?.has('outro-dono/foto_servico/c.jpg'), true);
+}
+
+console.log('\nC5) listagem do Storage falhou: 502, conta intacta (não sei ≠ vazio)');
+reset({ provedores: ['email'] });
+storageListaFalha = true;
+{
+  const r = await excluir();
+  checar('502 falha_exclusao', `${r.status}/${r.body.erro}`, '502/falha_exclusao');
+  checar('conta intacta', usuarioApagado, false);
+}
+
+console.log('\nC6) DELETE 2xx que não apagou: a releitura pega e a conta fica');
+reset({ provedores: ['email'] });
+arquivos.set('olli-fotos', new Set([`${USER}/foto_servico/a.jpg`]));
+storageDeleteNaoApaga = true;
+{
+  const r = await excluir();
+  checar('502 falha_exclusao', `${r.status}/${r.body.erro}`, '502/falha_exclusao');
+  checar('conta intacta', usuarioApagado, false);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

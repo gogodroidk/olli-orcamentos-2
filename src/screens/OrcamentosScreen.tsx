@@ -1,5 +1,5 @@
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, RefreshControl, Animated, Modal, Pressable,
@@ -40,6 +40,12 @@ import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { FinanceiroBadge } from '../components/FinanceiroBadge';
 import { getStatusFinanceiro } from '../services/pagamentos';
 import { usePermissao } from '../hooks/usePermissao';
+import { useRecursoPlano } from '../components/RecursoPlano';
+import { TermometroChip } from '../components/orcamento/Termometro';
+import { useTermometro } from '../hooks/useTermometro';
+import { termometroDe } from '../services/termometro';
+import { mensagemDaAcao, type EstadoTermometro } from '../services/termometroRegra';
+import { validaAteYmd } from '../services/radarFollowUpRegra';
 
 // Perf: com listas longas, animar a entrada (fade+slide) de CADA linha monta um
 // Animated.Value + timing por item conforme a FlatList vai revelando novas
@@ -105,6 +111,8 @@ interface LinhaOrcamentoProps {
   onMenu: (item: Orcamento) => void;
   recibos: Recibo[];
   podeFinanceiro: boolean;
+  /** Termômetro do orçamento (Pro). `null`/ausente = sem medida ou sem leitura: não desenha. */
+  termometro?: EstadoTermometro | null;
 }
 
 /**
@@ -126,6 +134,7 @@ function LinhaOrcamentoBase({
   onMenu,
   recibos,
   podeFinanceiro,
+  termometro,
 }: LinhaOrcamentoProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -163,6 +172,7 @@ function LinhaOrcamentoBase({
           <Text style={styles.itemValor}>{formatCurrency(o.valorTotal)}</Text>
           <StatusBadge status={o.status} size="sm" />
           {podeFinanceiro && <FinanceiroBadge status={statusFin} />}
+          <TermometroChip estado={termometro ?? null} />
         </View>
       </View>
 
@@ -283,6 +293,12 @@ export default function OrcamentosScreen() {
   // Modo de seleção múltipla (exclusão em lote para a Lixeira).
   const [selecionando, setSelecionando] = useState(false);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  // TERMÔMETRO (Pro): quente/morno/frio em cada card de proposta esperando
+  // resposta. Sem o plano (ou sem leitura) o card fica como sempre foi — a lista
+  // não vende nem afirma nada; o "Disponível no Pro" mora no detalhe.
+  const { estado: estadoTermometroPlano } = useRecursoPlano('termometro_orcamento');
+  const termometroLiberado = estadoTermometroPlano === 'liberado';
+  const termometro = useTermometro(termometroLiberado);
 
   // itensRef: espelha `itens` p/ ler o tamanho atual (offset da próxima página)
   // sem depender de closure — evita reler `itens` como dependência e refazer
@@ -514,14 +530,36 @@ export default function OrcamentosScreen() {
   const handleRevision = useCallback((o: Orcamento) => criarDocumentoNovo(o, 'revisao'), [criarDocumentoNovo]);
 
   /** "Cobrar resposta": lembrete cordial no WhatsApp de quem recebeu a proposta. */
+  // Termômetro de cada card, calculado UMA vez por leitura/página (identidade
+  // estável: o React.memo da linha só re-renderiza quem mudou).
+  const termometros = useMemo(() => {
+    const mapa = new Map<string, EstadoTermometro>();
+    if (!termometroLiberado || termometro.estado !== 'ok' || !termometro.leitura) return mapa;
+    const agora = new Date();
+    for (const o of itens) mapa.set(o.id, termometroDe(o, termometro.leitura, agora));
+    return mapa;
+  }, [itens, termometro.leitura, termometro.estado, termometroLiberado]);
+  const termometrosRef = useRef(termometros);
+  termometrosRef.current = termometros;
+
   const handleCobrarResposta = useCallback(async (o: Orcamento) => {
     const telefone = (o.clienteTelefone || '').trim();
     if (!telefone) {
       Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${o.clienteNome} para cobrar a resposta por aqui.`);
       return;
     }
+    // Com o termômetro, o texto acompanha o sinal (vence amanhã, voltou ao preço,
+    // não abriu...). Sem ele, a mensagem de follow-up de sempre.
+    const sinal = termometrosRef.current.get(o.id);
+    const mensagem =
+      (sinal?.tipo === 'medido'
+        ? mensagemDaAcao(sinal.acao.tipo, o, {
+            validaAte: validaAteYmd(o),
+            contato: empresa?.telefone || empresa?.whatsapp || null,
+          })
+        : null) ?? montarMensagemFollowUpOrcamento(o, empresa);
     try {
-      await abrirWhatsApp(telefone, montarMensagemFollowUpOrcamento(o, empresa));
+      await abrirWhatsApp(telefone, mensagem);
     } catch {
       Alert.alert('Não consegui abrir o WhatsApp', 'Confira se o WhatsApp está instalado e tente de novo.');
     }
@@ -529,6 +567,7 @@ export default function OrcamentosScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
+    if (termometroLiberado) termometro.recarregar();
     await Promise.all([recarregar(), recarregarRecibos()]);
     setRefreshing(false);
   };
@@ -576,6 +615,7 @@ export default function OrcamentosScreen() {
   }
 
   const renderItem = useCallback(({ item: o, index }: { item: Orcamento; index: number }) => {
+    const sinal = termometros.get(o.id) ?? null;
     const marcado = selecionados.has(o.id);
 
     return (
@@ -592,9 +632,10 @@ export default function OrcamentosScreen() {
         onMenu={onMenuLinha}
         recibos={recibos}
         podeFinanceiro={podeFinanceiro}
+        termometro={sinal}
       />
     );
-  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onRevisarLinha, onCobrarRespostaLinha, onReciboLinha, onMenuLinha, recibos, podeFinanceiro]);
+  }, [selecionados, selecionando, onPressLinha, onEditarLinha, onRevisarLinha, onCobrarRespostaLinha, onReciboLinha, onMenuLinha, recibos, podeFinanceiro, termometros]);
 
   const keyExtractor = useCallback((o: Orcamento) => o.id, []);
 
@@ -604,6 +645,7 @@ export default function OrcamentosScreen() {
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title="Orçamentos"
+        comoFunciona="orcamentos"
         subtitle={clienteId && clienteNome ? `de ${clienteNome}` : undefined}
         right={
           <TouchableOpacity style={styles.newBtn} onPress={() => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {})} activeOpacity={0.85}>
@@ -667,6 +709,26 @@ export default function OrcamentosScreen() {
           icon="link-variant"
           texto="O status mostra em que pé está cada proposta. Abra um orçamento para enviar o link ao cliente: quando ele aprova por lá, o status atualiza sozinho aqui."
         />
+        {/* Só com o termômetro ligado (Pro) e lido: explica as cores na 1ª vez. */}
+        {termometroLiberado && termometro.estado === 'ok' ? (
+          <DicaContextual
+            id="orcamentos.termometro"
+            icon="thermometer"
+            texto="Quente, morno ou frio vem do que o cliente fez no link: quente abriu várias vezes ou voltou ao preço; frio ainda não abriu. Abra o orçamento para ver o porquê e o próximo passo."
+          />
+        ) : null}
+        {/* Leitura do termômetro falhou: diz, em vez de sumir com as cores calado. */}
+        {termometroLiberado && termometro.estado === 'erro' ? (
+          <TouchableOpacity
+            onPress={termometro.recarregar}
+            style={styles.termometroErro}
+            accessibilityRole="button"
+            accessibilityLabel="Não consegui ler o termômetro. Tentar de novo"
+          >
+            <MaterialCommunityIcons name="cloud-alert-outline" size={16} color={cores.warning} />
+            <Text style={styles.termometroErroTxt}>Não consegui ler o termômetro agora · tentar de novo</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* BANNER DE FILTRO POR CLIENTE (CRM) */}
@@ -808,6 +870,14 @@ export default function OrcamentosScreen() {
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+  termometroErro: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 6, paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: comAlfa(c.warning, 0.1),
+    borderWidth: 1, borderColor: comAlfa(c.warning, 0.3),
+  },
+  termometroErroTxt: { flex: 1, fontSize: 12.5, fontWeight: '600', color: c.onSurfaceVariant },
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,

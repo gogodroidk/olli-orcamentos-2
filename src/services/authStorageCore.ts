@@ -1,3 +1,5 @@
+import { ajustarSessaoParaGravar, prepararSessaoParaLeitura } from './sessaoRelogio.ts';
+
 const INSTALL_MARKER_KEY = 'olli.auth.install.v1';
 const CHUNK_CODEPOINTS = 400;
 const MAX_CHUNKS = 64;
@@ -14,6 +16,24 @@ export interface StorageSeguro {
   setItemAsync(key: string, value: string): Promise<void>;
   deleteItemAsync(key: string): Promise<void>;
 }
+
+/**
+ * Relógio usado para a sessão aguentar celular com data/hora errada (ver
+ * services/sessaoRelogio.ts). Injetado para o teste simular +21 dias e -2 h.
+ */
+export interface RelogioSessao {
+  agora(): number;
+  /** Medida mais recente (aparelho − servidor, ms) ou `null` quando ainda não há. */
+  defasagemAtualMs(): number | null;
+  /** Avisado quando um token recém-emitido revela a defasagem (segundos). */
+  aoMedirDefasagem(defasagemSeg: number, agoraMs: number): void;
+}
+
+const RELOGIO_PADRAO: RelogioSessao = {
+  agora: () => Date.now(),
+  defasagemAtualMs: () => null,
+  aoMedirDefasagem: () => {},
+};
 
 interface Manifesto {
   v: 1;
@@ -70,12 +90,28 @@ async function apagarPartes(seguro: StorageSeguro, chave: string, manifesto: Man
 export class AuthStorageSeguro {
   private readonly legado: StorageAsync;
   private readonly seguro: StorageSeguro;
+  private readonly relogio: RelogioSessao;
   /** Supabase pode persistir a sessão mais de uma vez em paralelo (login + refresh). */
   private filaEscrita: Promise<void> = Promise.resolve();
 
-  constructor(legado: StorageAsync, seguro: StorageSeguro) {
+  constructor(legado: StorageAsync, seguro: StorageSeguro, relogio: RelogioSessao = RELOGIO_PADRAO) {
     this.legado = legado;
     this.seguro = seguro;
+    this.relogio = relogio;
+  }
+
+  /**
+   * Toda leitura passa por aqui: o prazo da sessão é refeito com a defasagem
+   * atual do relógio e ganha o piso de 30 s entre refreshes. Valor que não é
+   * sessão volta idêntico. Nunca lança: na dúvida, devolve o que estava guardado.
+   */
+  private paraLeitura(valor: string | null): string | null {
+    if (valor === null) return null;
+    try {
+      return prepararSessaoParaLeitura(valor, this.relogio.agora(), this.relogio.defasagemAtualMs());
+    } catch {
+      return valor;
+    }
   }
 
   private async lerManifesto(chave: string): Promise<Manifesto | null> {
@@ -94,6 +130,10 @@ export class AuthStorageSeguro {
   }
 
   async getItem(chave: string): Promise<string | null> {
+    return this.paraLeitura(await this.lerItemBruto(chave));
+  }
+
+  private async lerItemBruto(chave: string): Promise<string | null> {
     const [marcador, legado, manifesto] = await Promise.all([
       this.legado.getItem(INSTALL_MARKER_KEY),
       this.legado.getItem(chave),
@@ -141,8 +181,12 @@ export class AuthStorageSeguro {
     }
 
     try {
-      await this.setItem(chave, legado);
-      return legado;
+      // Sessão migrada do texto puro antigo: a idade do token é desconhecida.
+      // Passa pela leitura antes (ganha a marca "não sei") para a gravação não a
+      // tratar como recém-emitida e esticar o prazo pela idade do token.
+      const migrada = this.paraLeitura(legado) ?? legado;
+      await this.setItem(chave, migrada);
+      return migrada;
     } catch {
       return null;
     }
@@ -176,7 +220,19 @@ export class AuthStorageSeguro {
   }
 
   async setItem(chave: string, valor: string): Promise<void> {
-    return this.enfileirar(() => this.escreverItem(chave, valor));
+    // O ajuste de relógio acontece ANTES da fila: a hora medida é a da chegada
+    // do token, não a de quando a escrita anterior terminou.
+    let paraGravar = valor;
+    try {
+      const agora = this.relogio.agora();
+      const ajuste = ajustarSessaoParaGravar(valor, agora);
+      paraGravar = ajuste.valor;
+      if (ajuste.defasagemMedidaSeg !== null) this.relogio.aoMedirDefasagem(ajuste.defasagemMedidaSeg, agora);
+    } catch {
+      // Sem ajuste a sessão continua válida; só não fica protegida do relógio.
+      paraGravar = valor;
+    }
+    return this.enfileirar(() => this.escreverItem(chave, paraGravar));
   }
 
   private async removerItem(chave: string): Promise<void> {

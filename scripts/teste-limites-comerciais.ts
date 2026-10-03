@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { preautorizarUsoIa } from '../worker/src/creditos.js';
+import * as limites from '../src/services/limitesComerciais.ts';
 import {
   interpretarReservaEnvio,
   interpretarEstadoOferta,
   interpretarInicioTrial,
-  mensagemBloqueioEnvio,
-  ORCAMENTOS_ENVIADOS_GRATIS_MES,
-  reservaIndisponivel,
+  envioSemRegistro,
   TRIAL_PRO_DIAS,
 } from '../src/services/limitesComerciais.ts';
+import * as entitlements from '../src/services/entitlements.ts';
 
 const ler = (caminho: string) => readFileSync(new URL(caminho, import.meta.url), 'utf8');
 const sql = ler('../supabase/migrations/20260905053000_cota_orcamentos_trial_pro.sql');
@@ -20,7 +20,10 @@ const web = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
 const eventosWorker = ler('../worker/src/monetizationEvents.js');
 const creditosWorker = ler('../worker/src/creditos.js');
 
-assert.equal(ORCAMENTOS_ENVIADOS_GRATIS_MES, 5, 'a cota do Grátis precisa ser explícita e única');
+// Grátis ILIMITADO (decisão do dono, 01/10/2026): a constante da cota SAIU da fonte.
+// Se alguém a recriar, qualquer tela voltaria a poder escrever "até N orçamentos".
+assert.equal('ORCAMENTOS_ENVIADOS_GRATIS_MES' in limites, false, 'a cota do Grátis não existe mais na fonte');
+assert.equal('ORCAMENTOS_ENVIADOS_GRATIS_MES' in entitlements, false, 'nem reexportada pelos entitlements');
 assert.equal(TRIAL_PRO_DIAS, 14, 'o trial aprovado tem 14 dias');
 
 const reservada = interpretarReservaEnvio({
@@ -37,7 +40,32 @@ const reservada = interpretarReservaEnvio({
 assert.equal(reservada.permitido, true);
 assert.equal(reservada.requerConfirmacao, true);
 assert.equal(reservada.reservaToken, '12345678-1234-1234-1234-123456789abc');
-assert.equal(reservada.restantes, 4);
+assert.equal(reservada.usados, 1);
+assert.equal('restantes' in reservada, false, 'o app novo não carrega "restantes"');
+assert.equal('limite' in reservada, false, 'o app novo não carrega "limite"');
+
+// O 6º, o 10º, o 50º envio do mês: o servidor novo responde dentro_da_cota com
+// restantes null, e o app envia.
+for (const usados of [6, 10, 50]) {
+  const r = interpretarReservaEnvio({
+    permitido: true, plano_efetivo: 'gratis', usados, restantes: null, contabilizado_agora: true,
+    trial_elegivel: false, motivo: 'dentro_da_cota', requer_confirmacao: true,
+    reserva_token: '12345678-1234-1234-1234-123456789abc',
+  });
+  assert.equal(r.permitido, true, `envio nº ${usados} do mês é permitido`);
+  assert.equal(r.usados, usados);
+}
+
+// Servidor ANTIGO (migration 20261002150000 ainda não aplicada) dizendo cota_esgotada:
+// a cota não existe mais no produto — o envio segue, só sem registro.
+const antigo = interpretarReservaEnvio({
+  permitido: false, plano_efetivo: 'gratis', usados: 5, restantes: 0, contabilizado_agora: false,
+  trial_elegivel: true, motivo: 'cota_esgotada', requer_confirmacao: false, reserva_token: null,
+});
+assert.equal(antigo.permitido, true, 'cota_esgotada do servidor antigo não barra mais o envio');
+assert.equal(antigo.motivo, 'sem_registro');
+assert.equal(antigo.reservaToken, null, 'sem registro, sem token: não há o que confirmar');
+assert.equal(antigo.trialElegivel, false, 'falha de registro não inventa elegibilidade');
 
 const pago = interpretarReservaEnvio({
   permitido: true,
@@ -50,8 +78,8 @@ const pago = interpretarReservaEnvio({
   requer_confirmacao: false,
   reserva_token: null,
 });
-assert.equal(pago.limite, null);
-assert.equal(pago.restantes, null);
+assert.equal(pago.motivo, 'plano_pago');
+assert.equal(pago.planoEfetivo, 'pro');
 
 const ofertaAtiva = interpretarEstadoOferta({
   plano_efetivo: 'pro',
@@ -67,6 +95,15 @@ const ofertaAtiva = interpretarEstadoOferta({
 });
 assert.equal(ofertaAtiva?.planoEfetivo, 'pro', 'trial ativo precisa liberar o Pro');
 assert.equal(ofertaAtiva?.trialEstado, 'active');
+const ofertaGratisAntiga = interpretarEstadoOferta({
+  plano_efetivo: 'gratis', limite_envios: 5, envios_usados: 7, envios_restantes: 0,
+  trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
+  requires_card: false, auto_renews: false, data_disposition: 'preserve',
+});
+assert.ok(ofertaGratisAntiga, 'oferta do servidor antigo continua legível');
+assert.equal(ofertaGratisAntiga.enviosUsados, 7);
+assert.equal('limiteEnvios' in ofertaGratisAntiga, false, 'o limite 5 do servidor antigo é ignorado');
+assert.equal('enviosRestantes' in ofertaGratisAntiga, false);
 assert.equal(
   interpretarEstadoOferta({ ...ofertaAtiva, trial_estado: 'active' }),
   null,
@@ -84,16 +121,18 @@ assert.equal(interpretarInicioTrial({
 
 assert.deepEqual(
   interpretarReservaEnvio({ permitido: true, motivo: 'dentro_da_cota', requer_confirmacao: true }),
-  reservaIndisponivel(),
-  'reserva sem token deve falhar fechada',
+  envioSemRegistro(),
+  'reserva sem token vira "sem registro" (envia, mas não confirma nem inicia teste)',
 );
-assert.equal(
-  interpretarReservaEnvio({ permitido: 'sim', motivo: 'dentro_da_cota' }).permitido,
-  false,
-  'payload inesperado não pode inventar autorização',
-);
-assert.match(mensagemBloqueioEnvio({ ...reservaIndisponivel(), motivo: 'cota_esgotada' }), /5 orçamentos/);
-assert.match(mensagemBloqueioEnvio({ ...reservaIndisponivel(), motivo: 'cota_esgotada' }), /14 dias/);
+const estranho = interpretarReservaEnvio({ permitido: 'sim', motivo: 'dentro_da_cota', plano_efetivo: 'empresa' });
+assert.equal(estranho.motivo, 'sem_registro', 'payload inesperado é nomeado, não escondido');
+assert.equal(estranho.planoEfetivo, 'gratis', 'payload inesperado não inventa plano');
+assert.equal(estranho.reservaToken, null, 'nem token');
+assert.equal(envioSemRegistro().permitido, true, 'o Grátis é ilimitado: falha de registro nunca barra o envio');
+// O ramo de recusa ("Cota mensal utilizada") saiu do detalhe em 02/10/2026, e com
+// ele a copy de bloqueio: o tipo de `permitido` agora é o literal `true`.
+assert.equal('mensagemBloqueioEnvio' in limites, false, 'nenhuma copy de bloqueio de envio sobrou');
+assert.doesNotMatch(mobile, /cota_esgotada|Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/, 'o detalhe não tem mais ramo de cota');
 
 assert.match(sql, /primary key \(tenant_id, periodo, orcamento_id\)/i, 'idempotência deve ser por tenant/mês/orçamento');
 assert.match(sql, /pg_advisory_xact_lock/i, 'a cota precisa de trava transacional');
@@ -119,7 +158,8 @@ assert.match(sqlEntitlementSeguro, /revoke all on function public\.plano_comerci
 
 assert.match(mobile, /reservarEnvioOrcamento\(orc\.id, canal\)/, 'app deve autorizar antes de entregar');
 assert.match(mobile, /cancelarReservaEnvioOrcamento/, 'app deve cancelar reserva se a entrega falhar');
-assert.match(web, /reservarEnvioOrcamento\(linha\.id, "pdf"\)/, 'painel web deve aplicar a mesma cota');
+assert.match(web, /reservarEnvioOrcamento\(linha\.id, "pdf"\)/, 'painel web registra o envio (teste automático do Pro)');
+assert.doesNotMatch(web, /cotaEsgotada|mensagemBloqueioEnvio/, 'painel web não barra mais o PDF por cota');
 assert.match(web, /confirmarEnvioOrcamento/, 'painel web só deve consumir após abrir o PDF');
 assert.match(eventosWorker, /MONETIZATION_TRIAL_DAYS\s*=\s*14/, 'contrato do worker precisa concordar com a oferta');
 assert.match(creditosWorker, /rpc\/plano_comercial_para_usuario/, 'IA do Worker precisa reconhecer trial autoritativo');
@@ -155,4 +195,4 @@ try {
   globalThis.fetch = fetchOriginal;
 }
 
-console.log('OK — cota mensal, reserva em duas fases e trial Pro opt-in validados.');
+console.log('OK — Grátis ilimitado, registro de envio em duas fases e trial Pro validados.');

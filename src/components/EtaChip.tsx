@@ -6,6 +6,8 @@ import { Motion, useReducedMotion } from '../theme/motion';
 import { OlliPressable } from './OlliPressable';
 import { OlliSkeleton } from './OlliSkeleton';
 import type { ResultadoEta } from '../services/eta';
+import { ROTULO_ESTIMATIVA } from '../services/etaEstimado';
+import { RecursoPlanoChip } from './RecursoPlano';
 
 export interface EtaChipProps {
   /** Resultado de `getEta()`. `null` enquanto a busca está em andamento (shimmer). */
@@ -55,8 +57,9 @@ function coresDoTom(tom: Tom, cores: Cores): { bg: string; fg: string; borda: st
 }
 
 /**
- * Chip presentacional do ETA com trânsito — mostra o tempo até a próxima
- * parada, colorido pela folga contra o horário do compromisso (quando dado).
+ * Chip presentacional do ETA ESTIMADO (sem trânsito, Onda I2) — mostra o tempo
+ * até a próxima parada, colorido pela folga contra o horário do compromisso
+ * (quando dado), sempre com o rótulo "estimativa, sem trânsito".
  * Sem estado próprio de busca: quem chama controla `resultado` (`null` =
  * carregando) via `getEta()` — este componente só decide COMO mostrar.
  *
@@ -64,7 +67,7 @@ function coresDoTom(tom: Tom, cores: Cores): { bg: string; fg: string; borda: st
  * `useReducedMotion` — sem movimento nenhum quando o usuário pediu menos
  * animação no sistema.
  */
-export function EtaChip({ resultado, horario, onTentarNovamente }: EtaChipProps) {
+function EtaChipConteudo({ resultado, horario, onTentarNovamente }: EtaChipProps) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const reduzirMovimento = useReducedMotion();
@@ -110,6 +113,18 @@ export function EtaChip({ resultado, horario, onTentarNovamente }: EtaChipProps)
     );
   }
 
+  if (resultado.estado === 'sem_destino') {
+    const tom = coresDoTom('mudo', cores);
+    return (
+      <Animated.View style={{ opacity }}>
+        <View style={[styles.chip, { backgroundColor: tom.bg, borderColor: tom.borda }]}>
+          <MaterialCommunityIcons name="map-marker-question-outline" size={14} color={tom.fg} />
+          <Text style={[styles.texto, { color: tom.fg }]} numberOfLines={1}>Visita sem local no mapa: confira o CEP do cliente</Text>
+        </View>
+      </Animated.View>
+    );
+  }
+
   if (resultado.estado === 'indisponivel') {
     const tom = coresDoTom('mudo', cores);
     return (
@@ -128,8 +143,8 @@ export function EtaChip({ resultado, horario, onTentarNovamente }: EtaChipProps)
     <Animated.View style={{ opacity }}>
       <View style={[styles.chip, { backgroundColor: tom.bg, borderColor: tom.borda }]}>
         <MaterialCommunityIcons name="car-clock" size={14} color={tom.fg} />
-        <Text style={[styles.texto, { color: tom.fg }]} numberOfLines={1}>
-          Saindo agora: {resultado.minutos} min · chega {formatarHora(resultado.chegada)}
+        <Text style={[styles.texto, { color: tom.fg }]} numberOfLines={2}>
+          Saindo agora: ~{resultado.minutos} min · chega ~{formatarHora(resultado.chegada)} · {ROTULO_ESTIMATIVA}
         </Text>
       </View>
     </Animated.View>
@@ -150,3 +165,17 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   texto: { fontSize: 11.5, fontWeight: '700' },
   skeleton: { alignSelf: 'flex-start' },
 });
+
+/**
+ * ETA estimado é inteligência do Pro (`hora_de_sair`, decisão de 01/10/2026).
+ * Com o recurso liberado (Pro/Empresa) é a peça de sempre; no Grátis vira o chip
+ * "Disponível no Pro"; com o plano ilegível, "plano não confirmado" — os 3 estados
+ * de `RecursoPlano.tsx`. Quem encaixa a peça numa tela não precisa saber de plano.
+ */
+export function EtaChip(props: EtaChipProps) {
+  return (
+    <RecursoPlanoChip recurso="hora_de_sair">
+      <EtaChipConteudo {...props} />
+    </RecursoPlanoChip>
+  );
+}

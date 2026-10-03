@@ -5,8 +5,11 @@ import {
   getUsosIaRestantes,
   consumirUsoIa as consumirUsoIaStorage,
   temAcessoRecurso,
+  estadoAcessoRecurso,
+  planoConfirmado,
   getPlanoCacheado,
   IA_USOS_GRATIS_MES,
+  type EstadoAcessoRecurso,
   type PlanoId,
   type Recurso,
 } from '../services/planos';
@@ -32,8 +35,16 @@ type PlanoRecurso = Recurso;
 
 interface EstadoPlano {
   plano: PlanoId;
+  /** Plano da empresa (membro de equipe) — só para `RECURSOS_DO_TENANT`. */
+  planoTenant?: PlanoId;
   usosIaRestantes: number;
   carregando: boolean;
+  /**
+   * `true` quando o plano veio do servidor ou do cache da MESMA conta (ou não há
+   * sessão — deslogado é Grátis de verdade). `false` = a leitura falhou: o plano
+   * em memória é o piso "gratis", não um fato. É o que separa "não tem" de "não sei".
+   */
+  confirmado: boolean;
   /** epoch ms da última revalidação bem-sucedida (0 = nunca). */
   atualizadoEm: number;
 }
@@ -45,6 +56,7 @@ let estado: EstadoPlano = {
   plano: 'gratis',
   usosIaRestantes: IA_USOS_GRATIS_MES,
   carregando: true,
+  confirmado: false,
   atualizadoEm: 0,
 };
 
@@ -69,6 +81,7 @@ function estadoInicial(): EstadoPlano {
     plano: 'gratis',
     usosIaRestantes: IA_USOS_GRATIS_MES,
     carregando: true,
+    confirmado: false,
     atualizadoEm: 0,
   };
 }
@@ -106,14 +119,15 @@ async function revalidar(): Promise<void> {
     if (minhaRevisao !== revisaoSessao) return;
     definir({ carregando: true });
     try {
-      const { plano } = await getPlanoAtual();
+      const { plano, fonte, planoTenant } = await getPlanoAtual();
       const usos = await getUsosIaRestantes(plano);
       if (minhaRevisao !== revisaoSessao) return;
-      definir({ plano, usosIaRestantes: usos, carregando: false, atualizadoEm: Date.now() });
+      const confirmado = planoConfirmado(fonte);
+      definir({ plano, planoTenant, usosIaRestantes: usos, carregando: false, confirmado, atualizadoEm: Date.now() });
     } catch {
       // getPlanoAtual/getUsosIaRestantes já são à prova de falha; se algo
       // escapar, apenas encerramos o carregando mantendo o último estado bom.
-      if (minhaRevisao === revisaoSessao) definir({ carregando: false });
+      if (minhaRevisao === revisaoSessao) definir({ carregando: false, confirmado: false });
     }
   })();
   leituraEmAndamento = execucao;
@@ -156,6 +170,15 @@ export interface UsePlano {
   ehPro: boolean;
   /** `true` se o plano atual libera o `recurso` (ver RECURSOS_POR_PLANO). */
   temAcesso: (recurso: PlanoRecurso) => boolean;
+  /** `false` = a última leitura do plano falhou (o "gratis" em memória é piso, não fato). */
+  confirmado: boolean;
+  /**
+   * Estado do recurso para a TELA, com os 3 estados de verdade (carregando /
+   * indeterminado / bloqueado, além de liberado e em breve). Use isto — e não
+   * `temAcesso` — para decidir entre mostrar o recurso, o "Disponível no Pro" ou
+   * o "não consegui confirmar seu plano". Regra pura em `entitlements.ts`.
+   */
+  estadoRecurso: (recurso: PlanoRecurso) => EstadoAcessoRecurso;
   /** Usos de IA restantes no mês. `Infinity` em planos com IA ilimitada. */
   usosIaRestantes: number;
   /** Atualiza a cota otimista e a reconcilia com o servidor. No-op no ilimitado. */
@@ -187,6 +210,19 @@ export function usePlano(): UsePlano {
     [snap.plano],
   );
 
+  // "Carregando" só conta na PRIMEIRA leitura: a revalidação de quando o app volta
+  // ao primeiro plano não pode piscar o muro em skeleton a cada foco — o último
+  // estado confirmado continua valendo até a nova leitura chegar.
+  const primeiraLeitura = snap.carregando && snap.atualizadoEm === 0;
+  const estadoRecurso = useCallback(
+    (recurso: PlanoRecurso) =>
+      estadoAcessoRecurso(
+        { plano: snap.plano, planoTenant: snap.planoTenant, carregando: primeiraLeitura, confirmado: snap.confirmado },
+        recurso,
+      ),
+    [snap.plano, snap.planoTenant, primeiraLeitura, snap.confirmado],
+  );
+
   const consumirUsoIa = useCallback(async () => {
     // Plano com IA ilimitada não tem cota para consumir.
     if (temAcessoRecurso(estado.plano, 'ia_ilimitada')) return;
@@ -205,6 +241,8 @@ export function usePlano(): UsePlano {
     carregando: snap.carregando,
     ehPro: snap.plano !== 'gratis',
     temAcesso,
+    confirmado: snap.confirmado,
+    estadoRecurso,
     usosIaRestantes: snap.usosIaRestantes,
     consumirUsoIa,
     recarregar,

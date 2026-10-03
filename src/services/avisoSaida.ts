@@ -1,13 +1,12 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Agendamento, Cliente, Empresa } from '../types';
+import type { Agendamento, Cliente } from '../types';
 import { LEMBRETE_MAP_KEY, SAIDA_AVISO_KEY } from './storageKeys';
 import { calcularSaida } from './etaSaida';
 import {
-  enderecoDoAgendamento,
-  origemParaVisita,
   textoNotificacaoSaida,
+  type PontoVisita,
   type ResultadoSaida,
   type SaidaOk,
 } from './saidaCalculo';
@@ -42,14 +41,14 @@ import {
  * O "não cancela nada" custou um bug para ficar claro e está anotado no corpo
  * de `reagendarAvisoSaida`: cancelar antes de saber se o novo cálculo daria
  * certo podia deixar o prestador SEM AVISO NENHUM — nem o calculado, nem o
- * fixo — por causa de uma checagem de trânsito que caiu na rua sem sinal.
+ * fixo — por causa de um recálculo que não deu certo.
  *
  * ─── CUSTO ─────────────────────────────────────────────────────────────────
- * Só a PRÓXIMA parada, uma chamada, e só quando ela está a menos de
- * `JANELA_H` horas. É a alavanca da seção 12.4b do doc ("a alavanca do lado
- * caro não é cache, é chamar menos"): não são as 6 visitas do dia, é a uma que
- * está chegando. `THROTTLE_MS` impede que reabrir o app 10× no mesmo intervalo
- * vire 10 chamadas pagas do SKU Pro.
+ * Zero. Desde a Onda I2 (01/10/2026) a hora de sair é ESTIMADA no aparelho
+ * (`etaEstimado.ts`), sem Google e sem rede — o billing do Google está desligado
+ * e o dono proibiu pagar. Continua sendo só a PRÓXIMA parada, e `THROTTLE_MS`
+ * continua existindo por outro motivo: reabrir o app 10× não deve cancelar e
+ * recriar a mesma notificação 10×.
  *
  * ─── IMPORTS (a ordem importa) ─────────────────────────────────────────────
  * Este módulo é FOLHA de propósito: não importa `agenda.ts` nem `database.ts`.
@@ -59,7 +58,7 @@ import {
  * hora velha), e o ciclo de import quebraria o bundle Hermes.
  */
 
-/** Só calcula para uma visita que começa dentro desta janela. Além disso, trânsito previsto vale pouco e o app vai reabrir antes. */
+/** Só calcula para uma visita que começa dentro desta janela. Além disso o app vai reabrir antes. */
 const JANELA_H = 12;
 
 /** O aviso dispara este tanto antes da hora de sair — tempo de guardar a ferramenta e ir. */
@@ -69,14 +68,13 @@ export const AVISO_ANTES_MIN = 10;
 const MIN_ANTECEDENCIA_MS = 20 * 60 * 1000;
 
 /**
- * Recalcula a MESMA parada no máximo a cada 4h automaticamente. Não é
- * performance, é dinheiro: cada recálculo é uma chamada do SKU Pro (US$ 10 por
- * 1.000). A previsão de trânsito da Google para uma saída das 14h23 quase não
- * muda entre as 8h e as 11h — recalcular de hora em hora gasta e não informa.
- * O prestador ainda pode forçar um recálculo com um toque (`forcar: true`),
- * porque aí ele pediu.
+ * Recalcula a MESMA parada no máximo a cada 30 min automaticamente. A conta é
+ * grátis, mas cada recálculo cancela e recria a notificação agendada — não há
+ * motivo para mexer na fila do sistema a cada abertura do app. O prestador pode
+ * forçar com um toque (`forcar: true`), e editar a visita (base, cliente, hora)
+ * já derruba o registro pelo caminho de `cancelarAvisoSaida`.
  */
-const THROTTLE_MS = 4 * 3600 * 1000;
+const THROTTLE_MS = 30 * 60 * 1000;
 
 const CANAL_ANDROID_ID = 'agenda-lembretes';
 
@@ -103,7 +101,7 @@ export interface AvisoSaida {
   agendamentoId: string;
   inicio: string;
   clienteNome: string;
-  /** Quando o app TENTOU calcular. Diferente de `calculadoEm` (quando a Routes API respondeu). */
+  /** Quando o app TENTOU calcular. */
   tentadoEm: Date;
   resultado: ResultadoSaida;
   /**
@@ -226,11 +224,14 @@ export interface DadosAvisoSaida {
   proxima: Agendamento | null;
   /** Agendamentos do MESMO dia da próxima parada: é de onde sai a origem (a visita anterior). */
   doDia: readonly Agendamento[];
-  empresa: Empresa | null;
+  /** Ponto de saída da empresa (`pontoDaBase`), para a 1ª visita do dia. `null` = sem base. */
+  base: PontoVisita | null;
+  /** `true` = a base não pôde ser localizada AGORA (offline): é "não sei", não "falta endereço". */
+  baseIndisponivel?: boolean;
   clientes: readonly Cliente[];
   /** Já sabido por quem chama (`agenda.temPermissaoNotificacao`). Este módulo NUNCA pede permissão. */
   temPermissao: boolean;
-  /** Toque explícito do prestador em "Atualizar": ignora throttle e cache. */
+  /** Toque explícito do prestador em "Atualizar": ignora o throttle. */
   forcar?: boolean;
   agora?: Date;
 }
@@ -242,7 +243,7 @@ export interface DadosAvisoSaida {
  *
  * O resultado é SEMPRE persistido, inclusive quando é falha, e SEMPRE fora do
  * gate de permissão de notificação: a Home mostra o card mesmo para quem negou
- * notificações, e mostra "não deu pra checar o trânsito" em vez de sumir com
+ * notificações, e mostra "não deu para estimar" em vez de sumir com
  * ele. Sumir com o card transformaria "não sei" em "não tem".
  */
 export async function reagendarAvisoSaida(d: DadosAvisoSaida): Promise<ResultadoSaida | null> {
@@ -273,8 +274,8 @@ export async function reagendarAvisoSaida(d: DadosAvisoSaida): Promise<Resultado
     if (!d.forcar && mesmaParada && anterior) {
       const idade = agora.getTime() - Date.parse(anterior.tentadoEm);
       // Já calculamos esta parada há pouco e o aviso já está agendado: nada a
-      // fazer. Este `return` é o que impede 10 aberturas do app virarem 10
-      // chamadas pagas.
+      // fazer. Este `return` é o que impede 10 aberturas do app de mexerem 10×
+      // na fila de notificações.
       if (Number.isFinite(idade) && idade >= 0 && idade < THROTTLE_MS) {
         return reviver(anterior.resultado);
       }
@@ -284,32 +285,20 @@ export async function reagendarAvisoSaida(d: DadosAvisoSaida): Promise<Resultado
     // A versão anterior deste arquivo cancelava o aviso agendado ANTES de saber
     // se o novo cálculo daria certo (o padrão cancela-e-recria dos outros
     // módulos). Parece inofensivo e não é: quando um cálculo dá certo, ele
-    // CANCELA o lembrete fixo de 1h. Se 4h depois o recálculo caísse na rua sem
-    // sinal, o app teria destruído o aviso bom e não teria nada para pôr no
-    // lugar — nem o calculado, nem o fixo. O prestador ficaria SEM AVISO NENHUM
-    // por causa de uma checagem de trânsito que falhou. É o pior desfecho
-    // possível desta feature, e vinha de graça.
+    // CANCELA o lembrete fixo de 1h. Se depois o recálculo falhasse (o cliente
+    // perdeu o local no mapa, a base saiu do cadastro), o app teria destruído o
+    // aviso bom e não teria nada para pôr no lugar — nem o calculado, nem o fixo.
+    // O prestador ficaria SEM AVISO NENHUM. É o pior desfecho possível desta
+    // feature, e vinha de graça.
     //
     // Então: aviso de OUTRA parada morre já (ele fala de uma visita que não é
     // mais a próxima); aviso da MESMA parada só é trocado quando existe um
     // número novo para colocar no lugar dele.
     if (!mesmaParada) await cancelarAvisoSaida();
 
-    const destino = enderecoDoAgendamento(proxima, d.clientes);
-    const origem = origemParaVisita(proxima, d.doDia, d.empresa, d.clientes);
-
-    const resultado = await calcularSaida({
-      origem: origem?.endereco ?? null,
-      destino,
-      chegarEm: new Date(inicioMs),
-      // 'confirmacao' = TRAFFIC_AWARE + departureTime = trânsito PREVISTO para a
-      // hora da saída. É o SKU caro, e é o certo aqui: este número vira um
-      // horário que o prestador vai obedecer. O barato ('planejamento', sem
-      // trânsito) fica para a linha do "Bom dia", que é panorama, não ordem.
-      modo: 'confirmacao',
-      forcar: d.forcar,
-      agora,
-    });
+    // Estimativa no aparelho (sem trânsito, rotulada como tal): origem = visita
+    // anterior do dia ou a base; destino = o ponto do cliente da visita.
+    const resultado = calcularSaida({ proxima, doDia: d.doDia, base: d.base, baseIndisponivel: d.baseIndisponivel, clientes: d.clientes, agora });
 
     const registro: RegistroSalvo = {
       agendamentoId: proxima.id,

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StatusBar, View, Text, StyleSheet, Platform, Dimensions } from 'react-native';
+import { StatusBar, View, Text, StyleSheet, Platform, Dimensions, Alert } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -29,6 +29,7 @@ import { OlliLogo } from './src/components/OlliLogo';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
+import { AvisoRelogioErrado } from './src/components/AvisoRelogioErrado';
 import { curvas } from './src/components/motion/curvas';
 import { DURACAO, MOLA, TOQUE, useReduzirMovimento } from './src/theme/motion';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -38,7 +39,9 @@ import { abrirParticaoDoUsuario, getDb, getEmpresa } from './src/database/databa
 import { supabase, sessaoAtiva } from './src/services/supabase';
 import { resolverEstadoEmpresaDaSessao, syncOnLogin } from './src/services/cloudSync';
 import { iniciarReligarSync } from './src/services/iniciarReligarSync';
+import { iniciarAvisoAberturaCliente } from './src/services/avisoAberturaCliente';
 import { iniciarAuthAutoRefreshNativo } from './src/services/authAutoRefresh';
+import { retomarCapturaOSInterrompida } from './src/services/capturaFotoOSNativa';
 import { sincronizarPagamentosPendentes } from './src/services/pagamentos';
 import { esquecerPseudonimo } from './src/services/analyticsRemoto';
 import { maybeAutoBackup } from './src/services/autoBackup';
@@ -164,10 +167,14 @@ type NotificacaoPendente = {
   ordemId?: string;
   agendamentoId?: string;
   ritual?: 'bomDia' | 'fecharDia';
-  /** Follow-up D+2/D+5 ou "Cliente aprovou/recusou" (services/followUpLembretes). */
+  /** Follow-up D+2/D+5, "Cliente aprovou/recusou" ou "Cliente abriu agora" (services/followUpLembretes). */
   orcamentoId?: string;
   /** Lembrete agrupado de follow-up ou aviso de rascunhos: abre a lista. */
   listaOrcamentos?: 'followUp' | 'rascunhos';
+  /** Onda I3: "Confirmar visitas de amanhã" (18h) → a fila. */
+  vespera?: boolean;
+  /** Onda I3: "Garantia vencendo em 7 dias" → as garantias para cuidar. */
+  garantia?: boolean;
 };
 
 /**
@@ -201,6 +208,8 @@ function abrirDestinoDaNotificacao(data: NotificacaoPendente) {
   // stack raiz (não abas), então o navigate direto funciona com app frio ou quente.
   else if (data.orcamentoId) (navigationRef.navigate as any)('VisualizarOrcamento', { orcamentoId: data.orcamentoId });
   else if (data.listaOrcamentos) navigationRef.navigate('Orcamentos' as never);
+  else if (data.vespera) navigationRef.navigate('ConfirmarVisitas' as never);
+  else if (data.garantia) navigationRef.navigate('Garantias' as never);
 }
 
 /**
@@ -361,7 +370,7 @@ function AppConteudo() {
       if (!resposta) return;
       try {
         const data = resposta.notification.request.content.data as NotificacaoPendente;
-        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual && !data?.orcamentoId && !data?.listaOrcamentos) return;
+        if (!data?.ordemId && !data?.agendamentoId && !data?.ritual && !data?.orcamentoId && !data?.listaOrcamentos && !data?.vespera && !data?.garantia) return;
         if (!navigationRef.isReady()) {
           notificacaoPendenteRef.current = data;
           return;
@@ -471,12 +480,32 @@ function AppConteudo() {
       // !session), reseta para a porta. Fecha o buraco sem tocar no fluxo OAuth:
       // o retorno ?code= dispara SIGNED_IN (não INITIAL_SESSION), então não cai
       // aqui. No nativo, onde não há deep link de URL de página, é inócuo.
+      //
+      // SEM INTERNET (I0 · sessão que não cai): com o token vencido e sem rede,
+      // o INITIAL_SESSION chega com `session: null` embora a sessão continue
+      // guardada no aparelho (o auth-js só apaga quando o SERVIDOR recusa). Antes
+      // de expulsar alguém para a porta, confere a sessão guardada — senão o
+      // técnico sem sinal caía no "Entrar" uma hora depois de abrir o app.
       if (event === 'INITIAL_SESSION' && !session && navigationRef.isReady()) {
-        navigationRef.reset({ index: 0, routes: [{ name: ROTA_DESLOGADO }] });
+        // setTimeout: nada de chamar o auth DENTRO do callback do auth (o lock
+        // interno ainda está com quem emitiu o evento).
+        setTimeout(() => {
+          void sessaoAtiva().then((guardada) => {
+            if (!guardada && navigationRef.isReady()) {
+              navigationRef.reset({ index: 0, routes: [{ name: ROTA_DESLOGADO }] });
+            }
+          });
+        }, 0);
       }
       // Sair da conta (em qualquer tela) volta SEMPRE para a porta: reset central
       // aqui evita corrida com o signOut chamado pela ContaScreen. Só reseta se o
       // container já montou (isReady) — no boot deslogado a rota inicial já é Entrar.
+      //
+      // Quem emite SIGNED_OUT: o "Sair" explícito ou o servidor dizendo que a
+      // credencial morreu (invalid_grant, refresh token inexistente/já usado).
+      // 429, 5xx, falha de rede e relógio errado NÃO chegam aqui: o fetch do
+      // cliente os converte em "tente de novo" e a sessão continua guardada
+      // (services/refreshResiliente.ts, rejeição da Play de 02/10/2026).
       if (event === 'SIGNED_OUT') {
         usuarioDaSessao = null;
         resetarPlano();
@@ -506,6 +535,12 @@ function AppConteudo() {
   // escrito offline ficava esperando o app ser morto e reaberto. Ver
   // services/religarSync.ts para o limite que este gatilho NÃO cobre.
   useEffect(() => iniciarReligarSync(sincronizarTudo), [sincronizarTudo]);
+
+  // "Cliente abriu seu orçamento agora" (termômetro, Pro): com o app ABERTO e
+  // logado, escuta os sinais do link do cliente (Realtime) e avisa na hora. Com o
+  // app no segundo plano a escuta desliga — não é push do servidor, e nenhum
+  // texto promete isso. Ver services/avisoAberturaCliente.ts.
+  useEffect(() => iniciarAvisoAberturaCliente(), []);
 
   // aplica o patch de fonte de forma síncrona (idempotente) antes de renderizar
   if (fontsLoaded) applyFontPatch();
@@ -587,6 +622,27 @@ function AppConteudo() {
                     notificacaoPendenteRef.current = null;
                     try { abrirDestinoDaNotificacao(pendente); } catch { /* best-effort */ }
                   }
+                  // I0 · "a câmera mata o app e a OS volta igual": se o Android
+                  // matou o app enquanto a pessoa fotografava para uma OS, recupera
+                  // a foto pendente do picker, anexa e REABRE aquela OS. Sem o
+                  // marcador gravado pela OS, não faz nada (services/capturaFotoOS).
+                  // Só com a porta aberta: na porta (Entrar/Landing, rotas públicas
+                  // que passam pelo guard acima) ou no Onboarding, reabrir a OS
+                  // empurraria alguém sem sessão para DENTRO do app e gravaria a foto
+                  // num banco sem dono. O marcador vence sozinho (30 min).
+                  if (precisaDePorta) return;
+                  void retomarCapturaOSInterrompida().then((retomada) => {
+                    if (retomada.tipo !== 'reabrir' || !navigationRef.isReady()) return;
+                    navigationRef.navigate('OrdemServico', { ordemId: retomada.ordemId });
+                    if (retomada.fotosPerdidas > 0) {
+                      Alert.alert(
+                        'Foto não recuperada',
+                        retomada.fotosPerdidas === 1
+                          ? 'O celular fechou o app durante a câmera e não consegui recuperar a última foto. Tire de novo, por favor.'
+                          : `O celular fechou o app durante a câmera e não consegui recuperar ${retomada.fotosPerdidas} fotos. Tire de novo, por favor.`,
+                      );
+                    }
+                  });
                 }}
               >
                 {/* Boundary de topo (item 1.12): envolve só o navegador de telas —
@@ -598,6 +654,10 @@ function AppConteudo() {
                 </ErrorBoundary>
               </NavigationContainer>
             )}
+            {/* "Data e hora do celular erradas" (rejeição da Play, 02/10/2026): aviso
+                por cima das telas, que NÃO bloqueia nada — a sessão já aguenta o
+                relógio errado; o aviso só explica a lentidão e as datas tortas. */}
+            {ready && <AvisoRelogioErrado />}
             {/* Por cima do navegador até terminar o fade de saída (ver BrandSplash). */}
             {splashNaTela && (
               <BrandSplash saindo={ready} aoDesenhar={marcarSplashDesenhada} aoSair={tirarSplash} />

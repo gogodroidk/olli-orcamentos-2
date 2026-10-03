@@ -13,13 +13,33 @@ import {
   novaTentativaOAuth,
 } from './oauthRetorno';
 import { urlRecuperacaoSenha } from './acessoCodigo';
+import { decidirSessaoNoBoot, erroDeRenovacaoEhDeRede, interpretarSessaoGuardada, type DecisaoSessao } from './sessaoOffline';
+import { criarFetchResiliente } from './refreshResiliente';
+import { registrarHoraDoServidor } from './relogioServidor';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
 }
 
+/**
+ * Fetch de TODO o cliente (auth, banco, storage). Duas coisas além do fetch
+ * normal (ver services/refreshResiliente.ts):
+ *  - refresh recusado por "servidor ocupado" (429, 5xx, resposta estranha) não
+ *    vira logout: só a credencial morta (`invalid_grant`, refresh token
+ *    inexistente) desloga; o resto mantém a sessão e espera ≥ 30 s;
+ *  - o cabeçalho `Date` de cada resposta mede o relógio do celular (aviso de
+ *    data/hora errada e decisões que comparam datas com o servidor).
+ * O `fetch` global é lido na hora da chamada, não na criação, para não prender
+ * uma referência antiga caso algum polyfill o troque depois do import.
+ */
+const fetchDoCliente = criarFetchResiliente(
+  (input, init) => fetch(input, init),
+  { aoReceberDataServidor: registrarHoraDoServidor },
+);
+
 export const supabase: SupabaseClient | null = isSupabaseConfigured()
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { fetch: fetchDoCliente },
       auth: {
         storage: authStorage,
         autoRefreshToken: true,
@@ -173,13 +193,62 @@ export async function getCurrentUser() {
  * sandbox nativo.
  */
 export async function sessaoAtiva(): Promise<Session | null> {
+  return (await sessaoComOrigem()).sessao;
+}
+
+/**
+ * Lê a sessão GUARDADA no aparelho, sem rede. Só é usada quando a renovação
+ * falhou por falta de internet (ver services/sessaoOffline.ts). Nunca lança.
+ */
+async function lerSessaoGuardada(): Promise<string | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.auth.getSession();
-    return data.session ?? null;
+    const chave = (supabase.auth as unknown as { storageKey?: string }).storageKey;
+    if (!chave) return null;
+    return await authStorage.getItem(chave);
   } catch {
     return null;
   }
+}
+
+/**
+ * Sessão + de onde ela veio. `guardada_offline` = o token venceu e não havia
+ * internet para renovar, mas a sessão continua no aparelho: o app abre em modo
+ * avião em vez de pedir login. O sync segue parado até a renovação dar certo
+ * (ele usa `getCurrentUser`, que continua estrito) — é só a PORTA que não fecha.
+ */
+export async function sessaoComOrigem(): Promise<DecisaoSessao<Session>> {
+  if (!supabase) return { origem: 'nenhuma', sessao: null };
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (data.session) return { origem: 'servidor', sessao: data.session };
+    // Só lê o storage quando o motivo do null foi REDE — evita IO à toa no
+    // caminho comum (deslogado de verdade não tem erro nenhum).
+    if (!erroDeRenovacaoEhDeRede(error)) return { origem: 'nenhuma', sessao: null };
+    return decidirSessaoNoBoot<Session>(null, error, await lerSessaoGuardada());
+  } catch {
+    return { origem: 'nenhuma', sessao: null };
+  }
+}
+
+/**
+ * Usuário da sessão para IDENTIFICAR quem está no aparelho (filtro "minhas OS"
+ * do técnico, chave da fila de fotos) — inclusive offline com o token vencido.
+ * NÃO use para decidir se pode falar com a nuvem: para isso é `getCurrentUser`,
+ * que devolve null enquanto a sessão não for renovada.
+ *
+ * Lê a sessão GUARDADA primeiro, sem passar pelo `getSession()`: com o token
+ * vencido e sem rede, cada `getSession()` tenta renovar com espera crescente
+ * (até ~25 s no auth-js) — e este helper roda a cada foto registrada e a cada
+ * leitura do selo. Para saber QUEM está no aparelho a sessão guardada basta (o
+ * auth-js a apaga quando o servidor a recusa ou no "sair"). Sem nada guardado,
+ * cai no caminho normal.
+ */
+export async function usuarioDaSessaoLocal(): Promise<{ id: string; email?: string | null } | null> {
+  const guardada = interpretarSessaoGuardada(await lerSessaoGuardada());
+  if (guardada) return guardada.user;
+  const { sessao } = await sessaoComOrigem();
+  return sessao?.user ?? null;
 }
 
 /**
@@ -188,10 +257,17 @@ export async function sessaoAtiva(): Promise<Session | null> {
  * convite para criar conta e vincular o que já fez. Import dinâmico do database
  * de propósito — evita um ciclo estático supabase → database → cloudSync → supabase.
  * Nunca lança: em erro devolve false (sem banner, degradação segura).
+ *
+ * Só vale num aparelho onde NINGUÉM nunca entrou (mapa de partições vazio). Se
+ * alguém já entrou, os dados no aparelho são de uma conta que já existe — a
+ * partição de quem saiu, ou o banco legado que o primeiro login adotou — e o
+ * convite a "criar conta" atrapalhava quem só queria entrar de novo. "Não sei"
+ * (mapa ilegível) também não mostra o banner.
  */
 export async function temDadosLocais(): Promise<boolean> {
   try {
     const db = await import('../database/database');
+    if ((await db.alguemJaEntrouNesteAparelho()) !== false) return false;
     const empresa = await db.getEmpresa();
     if (empresa !== null) return true;
     const orcamentos = await db.getOrcamentos();

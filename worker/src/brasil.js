@@ -217,16 +217,19 @@ export function lerViaCep(d, cep) {
   const cidade = String(d.localidade || '').trim();
   const uf = String(d.uf || '').trim().toUpperCase().slice(0, 2);
   if (!cidade || uf.length !== 2) return { estado: 'indisponivel' };
-  return {
-    estado: 'ok',
-    endereco: {
-      cep,
-      logradouro: String(d.logradouro || '').trim(),
-      bairro: String(d.bairro || '').trim(),
-      cidade,
-      uf,
-    },
+  const endereco = {
+    cep,
+    logradouro: String(d.logradouro || '').trim(),
+    bairro: String(d.bairro || '').trim(),
+    cidade,
+    uf,
   };
+  // Código IBGE do município (7 dígitos) — a chave dos alertas oficiais por
+  // município (Onda I1). Só o ViaCEP manda; a BrasilAPI v2 não tem o campo. Sem
+  // os 7 dígitos, o campo não aparece (nunca string vazia fingindo código).
+  const ibge = String(d.ibge ?? '').trim();
+  if (/^\d{7}$/.test(ibge)) endereco.ibge = ibge;
+  return { estado: 'ok', endereco };
 }
 
 /** `AbortSignal.timeout` existe no Workers e no Node 18+; se não existir, segue sem timeout. */
@@ -313,7 +316,8 @@ function guardarEResponder(cep, corpo, status, ttl, agora) {
   return json({ ...corpo, cache: false }, status);
 }
 
-async function consultarBrasilApi(fetchFn, cep) {
+/** Exportada para o geo do cliente (`geoClientes.js`): mesma porta, mesmos estados. */
+export async function consultarBrasilApi(fetchFn, cep) {
   try {
     const r = await fetchFn(`https://brasilapi.com.br/api/cep/v2/${cep}`, {
       headers: { Accept: 'application/json' },
@@ -330,7 +334,8 @@ async function consultarBrasilApi(fetchFn, cep) {
   }
 }
 
-async function consultarViaCep(fetchFn, cep) {
+/** Exportada para o geo do cliente (`geoClientes.js`): é ela que traz o IBGE. */
+export async function consultarViaCep(fetchFn, cep) {
   try {
     const r = await fetchFn(`https://viacep.com.br/ws/${cep}/json/`, {
       headers: { Accept: 'application/json' },
@@ -495,7 +500,8 @@ export async function handleFeriados(request, env, anoBruto, deps = {}) {
 const USER_CACHE_TTL_MS = 30_000;
 const userCache = new Map();
 
-async function getUserPadrao(request, env) {
+/** Exportada para `geoClientes.js` (mesma autenticação, mesmo cache de 30 s). */
+export async function getUserPadrao(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace(/^Bearer\s+/i, '').trim();
   if (!token) return null;

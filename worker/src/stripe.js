@@ -480,6 +480,16 @@ export async function handleFaturas(request, env) {
   );
   if (!ok || !data || !Array.isArray(data.data)) return json({ ok: false, erro: 'falha_faturas' }, 502);
 
+  // App Android da Google Play (Payments policy): o recibo é SÓ o PDF de fatura
+  // PAGA. A página hospedada da fatura (`hosted_invoice_url`) tem botão de pagar
+  // quando ela está em aberto — seria link-out de pagamento dentro do app.
+  let soPdfPago = false;
+  try {
+    soPdfPago = new URL(request.url).searchParams.get('plataforma') === 'android';
+  } catch {
+    soPdfPago = false;
+  }
+
   const faturas = data.data.map((inv) => {
     const pagoCentavos = typeof inv.amount_paid === 'number' ? inv.amount_paid : 0;
     const valorCentavos =
@@ -490,14 +500,17 @@ export async function handleFaturas(request, env) {
           : typeof inv.amount_due === 'number'
             ? inv.amount_due
             : 0;
+    const pago = inv.status === 'paid' || (pagoCentavos > 0 && inv.status !== 'void' && inv.status !== 'uncollectible');
     return {
       id: inv.id,
       data: typeof inv.created === 'number' ? inv.created * 1000 : null, // epoch ms
       valorCentavos,
       moeda: typeof inv.currency === 'string' ? inv.currency : 'brl',
       status: inv.status || null,
-      pago: inv.status === 'paid' || (pagoCentavos > 0 && inv.status !== 'void' && inv.status !== 'uncollectible'),
-      recibo: inv.hosted_invoice_url || inv.invoice_pdf || null,
+      pago,
+      recibo: soPdfPago
+        ? (inv.status === 'paid' && typeof inv.invoice_pdf === 'string' ? inv.invoice_pdf : null)
+        : inv.hosted_invoice_url || inv.invoice_pdf || null,
       intervalo: extrairIntervaloFatura(inv),
     };
   });

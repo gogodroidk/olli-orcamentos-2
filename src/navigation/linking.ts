@@ -88,13 +88,20 @@ export function criarLinkingConfig(
         OlliVoz: 'olli-voz',
         OlliChat: 'olli-chat',
         Planos: 'planos',
+        VimDeOutroApp: 'vim-de-outro-app',
         RelatorioDia: 'relatorio-do-dia',
+        ConfirmarVisitas: 'confirmar-visitas',
+        Garantias: 'garantias',
         CentralDocumentos: 'documentos',
+        // Troque em 5 minutos (contatos, planilha e foto de orçamento antigo).
+        Importar: 'importar',
         // Onda 2 — Equipe (empresa) + aceite de convite por deep link.
         // 'convite/:token' casa o deep link olliorcamentos://convite/<token> e a
         // URL web /convite/<token>; o token entra em route.params.token.
         Equipe: 'equipe',
         EquipeAoVivo: 'equipe/ao-vivo',
+        // Onda I2 — Mapa do dia (grátis: MapLibre + OpenFreeMap).
+        MapaDia: 'mapa',
         Convite: 'convite/:token',
         // Onda 4 — Ordens de serviço (gestão + técnico). URL real /ordens.
         OrdemServico: 'ordens',

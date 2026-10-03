@@ -19,10 +19,17 @@ import {
   getAgendamentosExpandidos, getAgendamento, saveAgendamento, deleteAgendamento, encontrarConflitoDeHorario,
 } from '../../services/agenda';
 import {
-  Agendamento, TipoAgendamento, StatusAgendamento, TIPOS_AGENDAMENTO,
+  Agendamento, Cliente, TipoAgendamento, StatusAgendamento, TIPOS_AGENDAMENTO,
   TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, STATUS_AGENDAMENTO_LABELS, type RecorrenciaAgendamento,
 } from '../../types';
 import { SeletorResponsavel, CamposRecorrencia } from '../../components/agenda/CamposEquipeRecorrencia';
+import { CampoVisitaExterna } from '../../components/agenda/CampoVisitaExterna';
+import { SugestaoEncaixe } from '../../components/agenda/SugestaoEncaixe';
+import { ClimaDaVisita } from '../../components/clima/ClimaDaVisita';
+import { useEncaixe } from '../../hooks/useEncaixe';
+import { sugerirVisitaExterna } from '../../services/verticais';
+import { getClientes } from '../../database/database';
+import { duracaoEstimadaMin } from '../../utils/agendaDominio';
 import { useEquipeResponsaveis } from '../../hooks/useEquipeResponsaveis';
 import {
   filtrarPorResponsavel, idBaseDaOcorrencia, rotuloRecorrencia, type FiltroResponsavel, type OcorrenciaAgendamento,
@@ -85,6 +92,8 @@ interface EditState {
    */
   excecoes?: Agendamento['excecoes'];
   ordemServicoId?: string;
+  /** Serviço externo (pega chuva). `undefined` = "Não sei"; a chave sempre vai para o save. */
+  externa?: boolean;
 }
 
 /**
@@ -102,6 +111,9 @@ export default function AgendaDesktopScreen() {
 
   const [semanaRef, setSemanaRef] = useState(new Date());
   const [itens, setItens] = useState<OcorrenciaAgendamento[]>([]);
+  // Cadastro dos clientes: ponto (clima e encaixe) e WhatsApp (remarcar por chuva).
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const clientePorId = useMemo(() => new Map(clientes.map((c) => [c.id, c] as const)), [clientes]);
   const [carregando, setCarregando] = useState(true);
   const [detalhe, setDetalhe] = useState<OcorrenciaAgendamento | null>(null);
   // VISÃO POR TÉCNICO (mesma regra do celular).
@@ -162,6 +174,21 @@ export default function AgendaDesktopScreen() {
     return encontrarConflitoDeHorario(itens, { inicio: ini, fim: fimDt }, editing.id);
   }, [itens, editing?.data, editing?.horaInicio, editing?.horaFim, editing?.id]);
 
+  // ENCAIXE INTELIGENTE — agendamento NOVO de um cliente cadastrado (vindo do CRM).
+  const clienteSel = editing?.clienteId ? clientePorId.get(editing.clienteId) ?? null : null;
+  const mostrarEncaixe = !!editing && !editing.id && !!clienteSel;
+  const encaixe = useEncaixe({
+    cliente: clienteSel,
+    ativo: mostrarEncaixe,
+    duracaoMin: duracaoEstimadaMin(editing?.tipo ?? 'visita'),
+    responsavelId: editing?.responsavelId,
+    clientes,
+  });
+  const sugestaoExterna = useMemo(
+    () => sugerirVisitaExterna({ titulo: editing?.titulo, observacao: editing?.observacao }),
+    [editing?.titulo, editing?.observacao],
+  );
+
   const rotuloSemana = useMemo(() => {
     const mesmoMes = inicioSemana.getMonth() === fimSemana.getMonth();
     const ini = format(inicioSemana, mesmoMes ? 'd' : "d 'de' MMM", { locale: ptBR });
@@ -171,8 +198,12 @@ export default function AgendaDesktopScreen() {
 
   const load = useCallback(async () => {
     // Inclui as ocorrências projetadas das séries recorrentes.
-    const data = await getAgendamentosExpandidos(inicioSemana.toISOString(), addDays(fimSemana, 1).toISOString());
+    const [data, cls] = await Promise.all([
+      getAgendamentosExpandidos(inicioSemana.toISOString(), addDays(fimSemana, 1).toISOString()),
+      getClientes(),
+    ]);
     setItens(data);
+    setClientes(cls);
     setCarregando(false);
   }, [inicioSemana.getTime(), fimSemana.getTime()]);
 
@@ -259,6 +290,7 @@ export default function AgendaDesktopScreen() {
       contratoId: a.contratoId,
       excecoes: a.excecoes,
       ordemServicoId: a.ordemServicoId,
+      externa: a.externa,
     });
   }
 
@@ -297,6 +329,8 @@ export default function AgendaDesktopScreen() {
       // série: tirar a repetição as descarta (o save grava nulo sem `recorrencia`).
       excecoes: e.excecoes,
       ordemServicoId: e.ordemServicoId,
+      // Chave sempre presente: o formulário conhece o campo ("Não sei" grava NULL).
+      externa: e.externa,
     };
     setSalvando(true);
     try {
@@ -505,6 +539,15 @@ export default function AgendaDesktopScreen() {
                 </View>
               ) : null}
 
+              {/* CLIMA — visitas das próximas 12h; externa com chuva forte abre "Remarcar e avisar". */}
+              <ClimaDaVisita
+                visita={detalhe}
+                cliente={detalhe.clienteId ? clientePorId.get(detalhe.clienteId) ?? null : null}
+                clientes={clientes}
+                aoRemarcado={() => { setDetalhe(null); void load(); }}
+                style={{ marginBottom: Spacing.sm }}
+              />
+
               {detalhe.status !== 'agendado' && (
                 <Text style={[styles.modalStatus, detalhe.status === 'concluido' ? { color: cores.success } : { color: cores.danger }]}>
                   {STATUS_AGENDAMENTO_LABELS[detalhe.status]}
@@ -618,6 +661,24 @@ export default function AgendaDesktopScreen() {
                   placeholder="Ex: D. Helena Souza"
                   leftIcon="account"
                 />
+                {mostrarEncaixe ? (
+                  <View style={{ marginBottom: Spacing.md }}>
+                    <SugestaoEncaixe
+                      resultado={encaixe}
+                      onEscolher={(s) => {
+                        const ini = new Date(s.inicio);
+                        const fimEnc = new Date(s.fim);
+                        if (isNaN(ini.getTime())) return;
+                        setEditing({
+                          ...editing,
+                          data: ini,
+                          horaInicio: format(ini, 'HH:mm'),
+                          horaFim: isNaN(fimEnc.getTime()) ? editing.horaFim : format(fimEnc, 'HH:mm'),
+                        });
+                      }}
+                    />
+                  </View>
+                ) : null}
 
                 <OlliInput
                   label="Título"
@@ -626,6 +687,11 @@ export default function AgendaDesktopScreen() {
                   placeholder="Ex: Manutenção Split 12.000 BTUs"
                   leftIcon="text"
                 />
+
+                {/* DIA — o Encaixe pode trocar o dia; ele precisa estar à vista. */}
+                <Text style={styles.fieldLabel}>
+                  Dia: {capitalizeFirst(format(editing.data, "EEEE, d 'de' MMMM", { locale: ptBR }))}
+                </Text>
 
                 {/* HORÁRIOS (1.7) — TimePickerModal do react-native-paper-dates no
                     lugar da máscara de texto manual (frágil: aceitava "25:99"). */}
@@ -716,6 +782,15 @@ export default function AgendaDesktopScreen() {
                     onChangeText={(v) => setEditing({ ...editing, endereco: v })}
                     placeholder="Rua, número, bairro"
                     leftIcon="map-marker"
+                  />
+                </View>
+
+                {/* SERVIÇO EXTERNO? — liga o "Remarcar por chuva" ("Não sei" ≠ interna). */}
+                <View style={{ marginTop: -Spacing.base, marginBottom: Spacing.base }}>
+                  <CampoVisitaExterna
+                    valor={editing.externa}
+                    sugestao={sugestaoExterna}
+                    onChange={(externa) => setEditing({ ...editing, externa })}
                   />
                 </View>
 

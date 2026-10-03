@@ -7,7 +7,9 @@ import { Spacing, BorderRadius, Typography, useCores, useEstilos, sombrasDe, tex
 import { OlliPressable } from './OlliPressable';
 import { usePlano } from '../hooks/usePlano';
 import type { Recurso, PlanoId } from '../services/planos';
+import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso } from '../services/planosBase';
 import { track, Eventos } from '../services/analytics';
+import { CartaoRecursoPlano } from './RecursoPlano';
 
 /**
  * <GatePro> — muro de conversão do freemium (Onda 1).
@@ -18,7 +20,14 @@ import { track, Eventos } from '../services/analytics';
  * breve" nem um bloco vazio: o preview é o que dá vontade de assinar.
  *
  * Regra de ouro: só se usa em recursos Pro/Empresa. NUNCA envolver o fluxo de
- * criar orçamento/recibo/cliente/agenda — esses são livres no Grátis.
+ * criar orçamento/recibo/cliente/agenda — esses são livres no Grátis (que desde
+ * 01/10/2026 tem orçamentos ILIMITADOS).
+ *
+ * TRÊS ESTADOS (regra da casa): com o plano CONFIRMADO sem o recurso, o muro
+ * "Disponível no Pro"; com a leitura do plano FALHANDO, o cartão "não consegui
+ * confirmar seu plano" com Tentar de novo — nunca o muro (rebaixaria quem paga por
+ * erro nosso) e nunca o conteúdo (daria de graça). Regra pura em
+ * `entitlements.ts` (`estadoAcessoRecurso`).
  */
 
 interface Props {
@@ -41,24 +50,17 @@ interface Props {
   mostrarPreviewNoCarregamento?: boolean;
 }
 
-/** Benefício padrão por recurso (1 linha, tom caloroso e concreto). */
-const COPY_RECURSO: Record<Recurso, string> = {
-  ia_ilimitada: 'IA incluída: voz, chat e diagnóstico com uso justo diário.',
-  relatorios: 'Veja quanto você faturou e sua taxa de aprovação.',
-  metas: 'Defina metas de venda e acompanhe seu progresso.',
-  radar_clientes: 'Veja quem está na hora da manutenção e lembre com 1 toque.',
-  relatorio_dia: 'Ouça o resumo do seu dia em um toque.',
-  modelos_pdf_premium: 'Modelos de orçamento premium que vendem por você.',
-  equipe: 'Vários técnicos, papéis e permissões.',
-  // `em_breve` em entitlements.ts: o app ainda não lê o GPS — não vender como pronto.
-  mapa_equipe: 'Equipe ao vivo no mapa (em breve).',
-  dashboard_empresa: 'Painel de gestão com a operação inteira.',
-  remove_olli_brand: 'Orçamento 100% com a sua marca, sem o selo do OLLI.',
-};
+/**
+ * Benefício padrão por recurso: vem da tabela única `planosBase.ts` (o mesmo
+ * texto do comparativo, do painel e da landing), não de uma cópia nesta tela.
+ */
+const COPY_RECURSO: Record<Recurso, string> = Object.fromEntries(
+  (Object.keys(ROTULO_RECURSO) as Recurso[]).map((r) => [r, beneficioRecurso(r)]),
+) as Record<Recurso, string>;
 
 const ROTULO_PLANO: Record<'pro' | 'empresa', string> = {
-  pro: 'PRO',
-  empresa: 'EMPRESA',
+  pro: `DISPONÍVEL NO ${NOME_PLANO.pro.toUpperCase()}`,
+  empresa: `DISPONÍVEL NO ${NOME_PLANO.empresa.toUpperCase()}`,
 };
 
 // Borrão real só na web (react-native-web repassa `filter`). No nativo, o mesmo
@@ -79,18 +81,24 @@ export function GatePro({
   children,
   mostrarPreviewNoCarregamento = true,
 }: Props) {
-  const { temAcesso, carregando } = usePlano();
-  const liberado = temAcesso(recurso);
+  const { estadoRecurso, carregando } = usePlano();
+  const estado = estadoRecurso(recurso);
 
-  // Com acesso: entrega o conteúdo real sem qualquer custo de layout.
-  if (liberado) {
+  // Com acesso: entrega o conteúdo real sem qualquer custo de layout. (`em_breve`
+  // também: a própria tela do recurso diz que ainda não chegou.)
+  if (estado === 'liberado' || estado === 'em_breve') {
     return <>{children}</>;
   }
 
   // Ainda carregando o plano: por padrão mostra o preview bloqueado (evita
   // piscar o conteúdo pago). Quem preferir esconder no carregamento passa false.
-  if (carregando && !mostrarPreviewNoCarregamento) {
+  if (estado === 'carregando' && !mostrarPreviewNoCarregamento) {
     return null;
+  }
+
+  // A leitura do plano FALHOU: nem muro nem conteúdo — o cartão que diz isso.
+  if (estado === 'indeterminado') {
+    return <CartaoRecursoPlano recurso={recurso} />;
   }
 
   return (

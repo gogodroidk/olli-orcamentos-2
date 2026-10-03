@@ -48,7 +48,7 @@ export function usePermissao(): UsePermissao {
       // faturamento) — e um técnico com a leitura da org ainda em voo, ou offline,
       // seria promovido a dono. "Não sei" nunca pode valer mais que "sou técnico".
       // Conta pessoal usa a matriz do solo (dono de si). Regra em `podeComPapel`.
-      podeComPapel(acao, { tipo, org, resolvido }),
+      podeComPapel(acao, { tipo, org, resolvido }) === true,
     [tipo, org, resolvido],
   );
 

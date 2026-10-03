@@ -8,19 +8,13 @@ import type { Coordenada } from './MapsProvider';
  * geocodifica/exibe, o outro calcula caminho — a pesquisa trata como portas
  * distintas justamente para poder trocar o motor de rota sem trocar o de mapa.
  *
- * Provider escolhido: Google Routes API como início (mesma chave server-side no
- * worker); OSRM ou GraphHopper como alternativa futura self-hosted quando o
- * volume justificar (ver backlog ROUTING). "OSM grátis" não é infra sem custo.
- *
- * Impl de-facto HOJE: NENHUM cálculo de rota. O que existe é só ABRIR o Google
- * Maps já com a rota traçada (`src/services/rotas.ts` → `abrirRotaGoogleMaps`),
- * onde o próprio app do Google mostra tempo/trânsito — não devolvemos os números
- * para dentro do OLLI. O "PLANO FUTURO" já esboçado em `rotas.ts` (rota
- * `POST /rota` no worker proxyando `computeRoutes`) é exatamente o que esta
- * porta padroniza.
- *
- * Onda de fiação: Onda 12 (Agenda avançada + Google) — depende de billing (B4)
- * para o embutido; o cálculo server-side pode vir antes atrás desta porta.
+ * Impl de-facto HOJE (Onda I2, 01/10/2026): GRÁTIS e no aparelho. O billing do
+ * Google está desligado e o dono proibiu pagar, então não há Routes API: o tempo
+ * entre pontos é a estimativa sem trânsito de `src/services/etaEstimado.ts` e a
+ * ordenação do dia é `src/services/rotaOtimizar.ts` (vizinho mais próximo + 2-opt
+ * respeitando horários fixos). Navegar continua sendo o deep link público do Maps
+ * (`src/services/rotas.ts`). OSRM/GraphHopper self-hosted ficam para quando o
+ * volume justificar — o servidor demo deles não permite uso comercial.
  */
 export interface RoutingProvider extends PortaDisponivel {
   /** Tempo e distância entre dois pontos (com trânsito se o provider oferecer). */

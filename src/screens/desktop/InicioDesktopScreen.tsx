@@ -342,7 +342,7 @@ export default function InicioDesktopScreen() {
                 <OlliSkeleton width="80%" height={14} />
               </View>
             ) : proxima ? (
-              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} telefoneCliente={telefoneProxima} />
+              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} telefoneCliente={telefoneProxima} clientes={clientes} />
             ) : (
               <VazioAgenda irParaAgenda={irParaAgenda} />
             )}
@@ -599,7 +599,7 @@ export default function InicioDesktopScreen() {
                 <OlliSkeleton width="80%" height={14} />
               </View>
             ) : proxima ? (
-              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} telefoneCliente={telefoneProxima} />
+              <ProximaVisita proxima={proxima} irParaAgenda={irParaAgenda} telefoneCliente={telefoneProxima} clientes={clientes} />
             ) : (
               <VazioAgenda irParaAgenda={irParaAgenda} />
             )}
@@ -809,10 +809,10 @@ function agruparOSPorTecnico(ordens: OrdemServico[]): LinhaTecnico[] {
   return [...mapa.values()].sort((a, b) => b.total - a.total);
 }
 
-function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Agendamento; irParaAgenda: () => void; telefoneCliente?: string }) {
+function ProximaVisita({ proxima, irParaAgenda, telefoneCliente, clientes }: { proxima: Agendamento; irParaAgenda: () => void; telefoneCliente?: string; clientes: readonly Cliente[] }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  // ETA com trânsito — mesmo serviço/chip do app mobile (o dono quer o tempo de
+  // ETA ESTIMADO (sem trânsito, grátis) — mesmo serviço/chip do app mobile (o dono quer o tempo de
   // chegada onde quer que a próxima parada apareça). No desktop web a origem vem
   // do navigator.geolocation; sem permissão, o chip mostra "ative a localização"
   // em vez de sumir (regra dos 3 estados: erro nunca vira vazio).
@@ -820,8 +820,8 @@ function ProximaVisita({ proxima, irParaAgenda, telefoneCliente }: { proxima: Ag
   const buscarEta = useCallback(() => {
     if (!temDestinoEta(proxima)) { setEtaRes(null); return; }
     setEtaRes(null);
-    getEtaAgendamento(proxima).then(setEtaRes).catch(() => setEtaRes({ estado: 'indisponivel' }));
-  }, [proxima]);
+    getEtaAgendamento(proxima, clientes).then(setEtaRes).catch(() => setEtaRes({ estado: 'indisponivel' }));
+  }, [proxima, clientes]);
   useEffect(() => { buscarEta(); }, [buscarEta]);
   const horarioVisita = !isNaN(new Date(proxima.inicio).getTime()) ? new Date(proxima.inicio) : undefined;
 

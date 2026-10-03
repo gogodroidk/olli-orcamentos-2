@@ -99,7 +99,7 @@ checar('o texto do upsell ("Assinando o Pro...") é condicionado a COMPRA_NO_APP
   return janela.includes('{COMPRA_NO_APP');
 })(), true);
 checar('o CTA de upsell não é renderizado no Android Play', assinaturaSrc.includes('BUILD_PLAY_SEM_COMPRA_EXTERNA ? ('), true);
-checar('o rótulo de compra só existe fora do Android Play', assinaturaSrc.includes("label={COMPRA_NO_APP ? 'Ver planos e assinar' : 'Ver os planos'}"), true);
+checar('o rótulo de compra só existe fora do Android Play', assinaturaSrc.includes("label={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}"), true);
 
 console.log('\n3) ContaScreen.tsx — mesmo interruptor, mesmo tratamento (regressão do achado 4 da rodada 1)');
 const contaSrc = ler('../src/screens/ContaScreen.tsx');

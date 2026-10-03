@@ -12,10 +12,10 @@
  *   CARTÃO        → `/stripe/*`   (checkout, portal, faturas, método)
  *   PIX CRÉDITOS  → `/mp/*`       (recarga de créditos, arquivo dono único)
  *   PIX DO PLANO  → `/abacate/*`  (período de plano, arquivo dono único)
- *   GOOGLE PLAY   → SDK `react-native-purchases` (RevenueCat), só no Android e só
- *                   em `src/services/playBilling.android.ts`; o servidor fica sabendo
- *                   pelo `/revenuecat/webhook`, que o CLIENTE NUNCA chama (é do
- *                   RevenueCat para o worker) e só `worker/src/revenuecat.js` atende
+ *   GOOGLE PLAY   → `expo-iap` (Play Billing direto), só no Android e só em
+ *                   `src/services/playBilling.android.ts`; o servidor fica sabendo
+ *                   pelo `/play/verificar` (`src/services/playBillingWorker.ts`), e só
+ *                   `worker/src/play.js` atende. Nada de RevenueCat (`/revenuecat/*`).
  *   NADA          → `/mp/plano/*` (plano no MP — o Pix de plano é da AbacatePay)
  *
  * Este script NÃO testa comportamento em runtime — ele tranca o DESTINO das chamadas.
@@ -29,10 +29,11 @@
  * removidos, senão o próprio docblock que documenta a rota proibida derrubaria o teste
  * (e o remédio seria apagar a documentação — exatamente o contrário do que se quer).
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, relative, sep } from 'node:path';
 import { regrasDaLoja, textosDaLoja } from '../src/config/lojaRegras.ts';
+import { ARTIGOS_AJUDA, buscarArtigos, corpoVisivel } from '../src/content/ajuda/index.ts';
 import {
   linhaValidade,
   mostraPortalStripe,
@@ -115,7 +116,7 @@ interface Alvo {
   donoDoPixPlano: string | null;
   /** Arquivos que podem CITAR a AbacatePay (o dono + a UI do Pix do plano). */
   citamAbacate: string[];
-  /** Arquivo único que pode importar o SDK de compra da Play (`react-native-purchases`), ou null. */
+  /** Arquivo único que pode importar o SDK de compra da Play (`expo-iap`), ou null. */
   donoDaPlay: string | null;
 }
 
@@ -226,32 +227,40 @@ for (const alvo of ALVOS) {
   const comPixPlano = [...porArquivo.entries()].filter(([, r]) => r.some((x) => x.startsWith('/abacate/'))).map(([f]) => f);
   checar('Pix do plano (/abacate/*) só no arquivo dono', comPixPlano, alvo.donoDoPixPlano ? [alvo.donoDoPixPlano] : []);
 
-  // Google Play: o SDK de compra (RevenueCat) mora num arquivo só. Qualquer outra
-  // tela que o importe direto pula as guardas de flag/Expo Go/login de lá.
+  // Google Play: o SDK de compra (`expo-iap`) mora num arquivo só. Qualquer outra
+  // tela que o importe direto pula as guardas de flag/Expo Go/login/servidor de lá.
   const importamSdkPlay = arquivos.filter((rel) =>
-    /from\s+['"]react-native-purchases(?:-ui)?['"]|require\(\s*['"]react-native-purchases/.test(readFileSync(join(RAIZ, rel), 'utf8')),
+    /from\s+['"]expo-iap['"]|require\(\s*['"]expo-iap['"]/.test(readFileSync(join(RAIZ, rel), 'utf8')),
   ).sort();
-  checar('SDK da Play (react-native-purchases) só no arquivo dono', importamSdkPlay, alvo.donoDaPlay ? [alvo.donoDaPlay] : []);
+  checar('SDK da Play (expo-iap) só no arquivo dono', importamSdkPlay, alvo.donoDaPlay ? [alvo.donoDaPlay] : []);
+  const restoRevenueCat = arquivos.filter((rel) =>
+    /from\s+['"]react-native-purchases(?:-ui)?['"]|require\(\s*['"]react-native-purchases/.test(readFileSync(join(RAIZ, rel), 'utf8')),
+  );
+  checar('nenhum arquivo importa o SDK do RevenueCat (react-native-purchases)', restoRevenueCat, []);
 
   const comStripe = [...porArquivo.entries()].filter(([, r]) => r.some((x) => x.startsWith('/stripe/'))).map(([f]) => f).sort();
   checar('cartão (/stripe/*) só nos arquivos donos', comStripe, [...alvo.donosDoCartao].sort());
 }
 
-console.log('\n── Worker: /revenuecat/* só no arquivo dono ──');
+console.log('\n── Worker: /play/* só no arquivo dono (Play Billing direto) ──');
 {
-  // Do lado do servidor, a rota nova tem UM dono (revenuecat.js) e UM ponto de
-  // entrada (o roteador do index.js). Um segundo arquivo atendendo /revenuecat/
-  // seria um segundo caminho para gravar plano pago sem as guardas de lá.
-  const doWorker = readdirSync(join(RAIZ, 'worker/src'))
+  // Do lado do servidor, a assinatura da Play tem UM dono (play.js) e UM ponto de
+  // entrada (o roteador do index.js). Um segundo arquivo atendendo /play/ seria um
+  // segundo caminho para gravar plano pago sem as guardas de lá. O webhook do
+  // RevenueCat saiu junto com o SDK dele: a rota antiga não pode voltar.
+  const citam = (trecho: string) => readdirSync(join(RAIZ, 'worker/src'))
     .filter((n) => n.endsWith('.js'))
     .map((n) => `worker/src/${n}`)
-    .filter((rel) => semComentarios(readFileSync(join(RAIZ, rel), 'utf8')).includes("'/revenuecat/"))
+    .filter((rel) => semComentarios(readFileSync(join(RAIZ, rel), 'utf8')).includes(trecho))
     .sort();
-  checar('só index.js (roteia) e revenuecat.js (atende) citam /revenuecat/', doWorker, ['worker/src/index.js', 'worker/src/revenuecat.js']);
+  checar('só index.js (roteia) e play.js (atende) citam /play/', citam("'/play/"), ['worker/src/index.js', 'worker/src/play.js']);
+  checar('nenhum arquivo do worker roteia /revenuecat/', citam("'/revenuecat/"), []);
+  checar('revenuecat.js não existe mais', existsSync(join(RAIZ, 'worker/src/revenuecat.js')), false);
   const idx = readFileSync(join(RAIZ, 'worker/src/index.js'), 'utf8');
-  checar('index.js delega /revenuecat/ para handleRevenueCat', idx.includes("url.pathname.startsWith('/revenuecat/')") && idx.includes('return handleRevenueCat(request, env, url);'), true);
-  const rc = readFileSync(join(RAIZ, 'worker/src/revenuecat.js'), 'utf8');
-  checar('revenuecat.js não chama gateway de outro provedor', /api\.stripe\.com|mercadopago\.com|abacatepay\.com/.test(rc), false);
+  checar('index.js delega /play/ para handlePlay', idx.includes("url.pathname.startsWith('/play/')") && idx.includes('return handlePlay(request, env, url);'), true);
+  const play = readFileSync(join(RAIZ, 'worker/src/play.js'), 'utf8');
+  checar('play.js não chama gateway de outro provedor', /api\.stripe\.com|mercadopago\.com|abacatepay\.com/.test(play), false);
+  checar('play.js não expõe rota pública de RTDN (o RTDN chega por pull)', /\/play\/rtdn/.test(semComentarios(play)), false);
 }
 
 console.log('\n── Contrato de tipo do painel ──');
@@ -319,6 +328,51 @@ console.log('\n── Loja: o build da Play não anuncia compra externa ──')
   checar('a Conta não promete estoque em Produtos', conta.includes("'Materiais e estoque'"), false);
 }
 
+console.log('\n── Ajuda no Android: sem rota de pagamento externa (anti-steering) ──');
+{
+  // Política de Pagamentos da Play: no Android o app não pode ensinar a pagar por
+  // fora. O texto da Ajuda roda nas duas pontas, então o que cita Stripe, cartão,
+  // 12x, portal ou Pix de plano tem de estar marcado `soNaWeb` — e este teste lê o
+  // que o Android REALMENTE mostra (`corpoVisivel(artigo, 'android')`), não a marca.
+  const PROIBIDO_NO_ANDROID: Array<[string, RegExp]> = [
+    ['Stripe', /stripe/i],
+    ['12x', /\b12\s*x\b/i],
+    ['cartão de crédito pela web', /cart[aã]o/i],
+    ['portal de pagamento', /portal (seguro )?de pagamento|gerenciar assinatura/i],
+    ['Pix para plano', /pix[^.]{0,60}plano|plano[^.]{0,60}pix|abacate|pagar com pix/i],
+    ['assinar pelo site', /pelo site|no site|olliorcamentos\.online\/planos/i],
+  ];
+  const visivelAndroid = (a: (typeof ARTIGOS_AJUDA)[number]): string =>
+    [a.titulo, a.resumo, ...corpoVisivel(a, 'android').map((b) => (Array.isArray(b.conteudo) ? b.conteudo.join(' ') : b.conteudo))].join('\n');
+  const visivelEm = (a: (typeof ARTIGOS_AJUDA)[number], plataforma: string): string =>
+    [a.titulo, a.resumo, ...corpoVisivel(a, plataforma).map((b) => (Array.isArray(b.conteudo) ? b.conteudo.join(' ') : b.conteudo))].join('\n');
+
+  for (const [rotulo, re] of PROIBIDO_NO_ANDROID) {
+    const achados = ARTIGOS_AJUDA.filter((a) => re.test(visivelAndroid(a))).map((a) => a.id);
+    checar(`Android: nenhum artigo da Ajuda cita "${rotulo}"`, achados, []);
+  }
+
+  const planos = ARTIGOS_AJUDA.find((a) => a.id === 'planos-assinatura');
+  const textoAndroid = planos ? visivelAndroid(planos) : '';
+  const textoWeb = planos
+    ? corpoVisivel(planos, 'web').map((b) => (Array.isArray(b.conteudo) ? b.conteudo.join(' ') : b.conteudo)).join('\n')
+    : '';
+  // iPhone (App Store 2.3.10): nenhum artigo cita a Google Play, nem a cobrança/gestão por ela.
+  checar('iOS: nenhum artigo da Ajuda cita "Google Play"', ARTIGOS_AJUDA.filter((a) => /google play|play store/i.test(visivelEm(a, 'ios'))).map((a) => a.id), []);
+  checar('iOS: também sem rota de pagamento da web (Stripe/12x/Pix de plano)', ARTIGOS_AJUDA.filter((a) => PROIBIDO_NO_ANDROID.some(([, re]) => re.test(visivelEm(a, 'ios')))).map((a) => a.id), []);
+  // Busca: no Android o índice só cobre o que o Android mostra.
+  checar('Android: buscar "stripe" não acha nada pelo texto que só a web mostra', buscarArtigos('stripe', 'android').map((a) => a.id), []);
+  checar('web: buscar "stripe" ainda acha o artigo de planos', buscarArtigos('stripe', 'web').some((a) => a.id === 'planos-assinatura'), true);
+  // A página pública da Ajuda (Astro) renderiza o corpo da WEB, nunca o das lojas.
+  const astroAjuda = readFileSync(join(RAIZ, 'web/src/pages/ajuda/index.astro'), 'utf8');
+  checar('site público da Ajuda filtra com corpoVisivel(artigo, "web")', /corpoVisivel\(artigo,\s*["']web["']\)/.test(astroAjuda), true);
+  checar('site público da Ajuda não renderiza artigo.corpo direto', /artigo\.corpo\.map\(/.test(astroAjuda), false);
+  checar('Android: a ajuda de assinatura diz que é feita e gerenciada pela Google Play', /feita e gerenciada pela Google Play/.test(textoAndroid), true);
+  checar('Android: a ajuda de assinatura não mostra preço de tabela da web', /R\$\s*\d/.test(textoAndroid), false);
+  checar('web: a ajuda continua ensinando cartão, 12x e Pix', [/12x/, /portal seguro de pagamento/, /Pix/].every((re) => re.test(textoWeb)), true);
+  checar('web: a ajuda não cita a Google Play (texto de loja não vaza para a web)', /Google Play/.test(textoWeb), false);
+}
+
 console.log('\n── Assinatura: cada origem com o seu texto ──');
 {
   const concedido = { planoEfetivo: 'empresa' as const, origem: 'admin' as const, validoAte: '2026-12-31T00:00:00Z' };
@@ -343,6 +397,9 @@ console.log('\n── Assinatura: cada origem com o seu texto ──');
   checar('cartão: "Próxima cobrança"', linhaValidade(cartao).rotulo, 'Próxima cobrança');
   checar('cartão: portal da Stripe', mostraPortalStripe(cartao), true);
   checar('Play: método "Google Play"', rotuloMetodo({ ...cartao, temClienteStripe: false, renovaPelaPlay: true }, null), 'Google Play');
+  checar('Play VIVA vence o cartão antigo da Stripe', rotuloMetodo({ ...cartao, renovaPelaPlay: true }, 'Visa •••• 4242'), 'Google Play');
+  checar('iPhone não cita a Google Play no método', rotuloMetodo({ ...cartao, renovaPelaPlay: true }, null, { ios: true }).includes('Google'), false);
+  checar('Android da Play não cita Pix no método', rotuloMetodo(pix, null, { semCompraExterna: true }), 'Pagamento avulso (sem renovação automática)');
 
   checar('plano pago sem status conhecido não vira "Sem assinatura"', pilulaAssinatura({ planoEfetivo: 'empresa' }).rotulo, 'Ativa');
   checar('Grátis sem status: "Sem assinatura"', pilulaAssinatura({ planoEfetivo: 'gratis' }).rotulo, 'Sem assinatura');

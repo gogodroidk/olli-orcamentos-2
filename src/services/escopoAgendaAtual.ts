@@ -1,5 +1,5 @@
-import { lerTipoContaAtual } from '../hooks/useTipoConta';
-import { podeComPapel } from '../hooks/usePermissao';
+import { resolverTipoContaAtual } from '../hooks/useTipoConta';
+import { podeComPapel } from '../utils/permissoesPapel';
 import { getCurrentUser } from './supabase';
 import { resolverEscopoAgenda, type EntradaEscopo, type EscopoAgenda } from '../utils/agendaDominio';
 
@@ -18,16 +18,16 @@ import { resolverEscopoAgenda, type EntradaEscopo, type EscopoAgenda } from '../
 export async function escopoAgendaAtual(): Promise<EscopoAgenda> {
   try {
     const [conta, usuario] = await Promise.all([
-      lerTipoContaAtual(),
+      resolverTipoContaAtual(),
       getCurrentUser()
         .then((u): EntradaEscopo['usuario'] => ({ status: 'ok', id: u?.id ?? null }))
         .catch((): EntradaEscopo['usuario'] => ({ status: 'ok', id: null })),
     ]);
     return resolverEscopoAgenda({
       papelResolvido: conta.resolvido,
-      // A leitura já terminou (lerTipoContaAtual espera): sem papel aqui é erro, não espera.
+      // A leitura já terminou (resolverTipoContaAtual espera): sem papel aqui é erro, não espera.
       papelCarregando: false,
-      podeVerEquipe: podeComPapel('ver_agenda_equipe', conta),
+      podeVerEquipe: podeComPapel('ver_agenda_equipe', conta) === true,
       usuario,
     });
   } catch {

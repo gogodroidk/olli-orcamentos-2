@@ -57,6 +57,9 @@ export interface LocalizacaoMembro {
  * package.json. Enquanto for `false`, as entradas "Equipe ao vivo" mostram o selo
  * "Em breve — localização desligada" (EquipeScreen e EquipeDesktopScreen). Não é env
  * var: é uma constante de código que muda junto com o APK que instalar o módulo.
+ * ATENÇÃO ao ligar: o app.json BLOQUEIA `ACCESS_FINE_LOCATION`/`ACCESS_COARSE_LOCATION`
+ * (o manifest do MapLibre as traz sem o OLLI usar). Ligar a captura exige tirá-las de
+ * `android.blockedPermissions`, divulgação em destaque e o Data safety da Play.
  */
 export const LOCALIZACAO_DISPONIVEL = false;
 

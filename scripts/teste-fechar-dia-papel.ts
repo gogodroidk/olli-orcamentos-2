@@ -9,10 +9,11 @@
  * `utils/permissoesPapel.ts` o técnico não tem `ver_relatorios` nem
  * `ver_valores_agregados`, e a `RelatorioDiaScreen` é guardada por
  * `<GuardaPapel acao="ver_relatorios">`. Este teste trava:
- *  1) a matriz: técnico e papel desconhecido NÃO veem relatórios; dono, admin,
- *     gestor e conta pessoal veem;
- *  2) o ritual: "Fechar o dia" só monta a prévia depois de `podeComPapel(
- *     'ver_relatorios', await lerTipoContaAtual())` — antes de ler o relatório;
+ *  1) a matriz: técnico NÃO vê relatórios; dono, admin, gestor e conta pessoal
+ *     veem; papel desconhecido é `null` (3 estados), nunca `true`;
+ *  2) o ritual: "Fechar o dia" só monta a prévia com `podeComPapel(
+ *     'ver_relatorios', await resolverTipoContaAtual()) === true` — antes de ler
+ *     o relatório; papel desconhecido (`null`) não agenda;
  *  3) as portas para a tela: o card "Como foi seu dia?" do Hoje e o toggle
  *     "Fechar o dia" em Conta só aparecem com o papel conhecido e permitido.
  */
@@ -55,9 +56,9 @@ caso('matriz: dono, admin, gestor e conta pessoal veem relatórios', () => {
   assert.equal(podeComPapel('ver_relatorios', PESSOAL), true);
 });
 
-caso('matriz: papel desconhecido nega, mesmo com o tipo padrão "pessoal"', () => {
-  assert.equal(podeComPapel('ver_relatorios', DESCONHECIDO), false);
-  assert.equal(podeComPapel('ver_relatorios', TECNICO_SEM_CONFIRMAR), false);
+caso('matriz: papel desconhecido é null (não sei), nunca "pode" — mesmo com o tipo padrão "pessoal"', () => {
+  assert.equal(podeComPapel('ver_relatorios', DESCONHECIDO), null);
+  assert.equal(podeComPapel('ver_relatorios', TECNICO_SEM_CONFIRMAR), null);
 });
 
 caso('matriz: quem vê relatórios também vê valores agregados (o relatório é agregado)', () => {
@@ -74,11 +75,11 @@ caso('ritual: "Fechar o dia" checa o papel ANTES de ler o relatório', () => {
   const src = ler('src/services/ritualDiario.ts');
   const corpo = src.slice(src.indexOf('async function montarFecharDia('));
   assert.ok(corpo.length > 0, 'montarFecharDia sumiu');
-  const gate = corpo.indexOf("if (!podeComPapel('ver_relatorios', await lerTipoContaAtual())) return null;");
+  const gate = corpo.indexOf("if (podeComPapel('ver_relatorios', await resolverTipoContaAtual()) !== true) return null;");
   const leitura = corpo.indexOf('gerarRelatorioDia()');
   assert.ok(gate >= 0, 'sem gate de ver_relatorios no "Fechar o dia"');
   assert.ok(leitura > gate, 'o relatório é lido antes de checar o papel');
-  assert.match(src, /import \{ lerTipoContaAtual \} from '\.\.\/hooks\/useTipoConta';/);
+  assert.match(src, /import \{ resolverTipoContaAtual \} from '\.\.\/hooks\/useTipoConta';/);
   assert.match(src, /import \{ podeComPapel \} from '\.\.\/utils\/permissoesPapel';/);
 });
 
@@ -100,22 +101,29 @@ caso('Hoje: card "Como foi seu dia?" só com papel conhecido que vê relatórios
   assert.match(src, /const mostraRelatorioDia = !papelCarregando && pode\('ver_relatorios'\);/);
   const card = src.indexOf('>Como foi seu dia?</Text>');
   const gate = src.lastIndexOf('{mostraRelatorioDia && (', card);
-  assert.ok(gate >= 0 && gate < card, 'o card não está dentro do gate');
+  assert.ok(gate >= 0 && card - gate < 1500, 'o card não está dentro do gate');
+  // Sem o card, o checklist fecha a linha do tempo (sem traço pendurado).
+  assert.match(src, /icone: 'checkbox-marked-outline' \}\} ultimo=\{!mostraRelatorioDia\}>/);
 });
 
-caso('Conta: toggle "Fechar o dia" só com papel conhecido que vê relatórios', () => {
+caso('Conta: toggle "Fechar o dia" só com papel conhecido que vê relatórios (tela e busca)', () => {
   const src = ler('src/screens/ContaScreen.tsx');
-  const toggle = src.indexOf("handleToggleRitual('fecharDia', v)");
-  const gate = src.lastIndexOf("{!carregandoPermissao && pode('ver_relatorios') && (", toggle);
-  assert.ok(toggle >= 0, 'toggle sumiu');
-  assert.ok(gate >= 0 && toggle - gate < 1500, 'o toggle não está dentro do gate');
+  // O catálogo de ajustes decide o que existe; a linha só checa `mostra(id)`.
+  assert.match(
+    src,
+    /\.\.\.\(!carregandoPermissao && pode\('ver_relatorios'\)\s*\? \[\{ id: 'notifFecharDia'/,
+    'notifFecharDia entra no catálogo sem o gate de papel',
+  );
+  assert.equal((src.match(/id: 'notifFecharDia'/g) ?? []).length, 1, 'notifFecharDia duplicado no catálogo');
+  assert.match(src, /\{mostra\('notifFecharDia'\) \? \(/, 'a linha não passa pelo catálogo');
 });
 
 caso('hook e serviços decidem pela mesma matriz', () => {
   const hook = ler('src/hooks/usePermissao.ts');
   assert.match(hook, /import \{ podeComPapel, type Acao \} from '\.\.\/utils\/permissoesPapel';/);
-  assert.match(hook, /podeComPapel\(acao, \{ tipo, org, resolvido \}\)/);
+  assert.match(hook, /podeComPapel\(acao, \{ tipo, org, resolvido \}\) === true/, 'o hook não trata "não sei" como "pode"');
   assert.doesNotMatch(hook, /const PERMISSOES/, 'matriz duplicada no hook');
+  assert.doesNotMatch(hook, /export function podeComPapel/, 'segunda podeComPapel no hook');
 });
 
 console.log(`\n${passos} casos ok`);

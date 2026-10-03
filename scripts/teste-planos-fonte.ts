@@ -36,6 +36,7 @@ import {
   precoNoPeriodo,
 } from '../src/services/precosPlanos.ts';
 import { disponibilidadeRecurso } from '../src/services/entitlements.ts';
+import { beneficioRecurso, planoBase } from '../src/services/planosBase.ts';
 
 let falhas = 0;
 let passes = 0;
@@ -114,11 +115,16 @@ checar('comparativo renderiza sem guarda de plataforma', tela.includes('<Compara
 console.log('\n6) VERDADE COMERCIAL, RECUPERAÇÃO E ACESSIBILIDADE');
 checar('mapa Empresa está marcado em breve', disponibilidadeRecurso('empresa', 'mapa_equipe'), 'em_breve');
 checar('dashboard Empresa está marcado em breve', disponibilidadeRecurso('empresa', 'dashboard_empresa'), 'em_breve');
-checar('app não vende mapa como pronto', tela.includes('Equipe ao vivo no mapa (em breve)'), true);
-checar('app não vende dashboard como pronto', tela.includes('Painel de gestão da empresa (em breve)'), true);
+// Os cartões vêm da tabela ÚNICA (planosBase.ts) desde 01/10/2026 — a tela só a lê.
+checar('a tela lê a tabela única de planos', /from '\.\.\/services\/planosBase'/.test(tela), true);
+checar('app não vende mapa como pronto', planoBase('empresa').beneficios.includes('Equipe ao vivo no mapa (em breve)'), true);
+checar('app não vende dashboard como pronto', planoBase('empresa').beneficios.includes('Painel de gestão da empresa (em breve)'), true);
+// Termômetro entregue na frente I2 (sinais do link /o/<token> + cartão no detalhe):
+// sai no Pro como pronto, sem "(em breve)".
+checar('termômetro do orçamento sai como pronto no Pro', planoBase('pro').beneficios.some((b) => b.startsWith('Termômetro do orçamento') && !b.endsWith('(em breve)')), true);
 // GPS: o expo-location não está instalado. Nenhuma tela promete localização
 // "no próximo update" nem vende "onde cada técnico está agora" (faxina 30/09).
-checar('paywall do mapa não vende como pronto', gatePro.includes("mapa_equipe: 'Equipe ao vivo no mapa (em breve).'"), true);
+checar('paywall do mapa não vende como pronto', beneficioRecurso('mapa_equipe').endsWith('(em breve).') && gatePro.includes('beneficioRecurso(r)'), true);
 checar('Equipe ao vivo diz que a localização pelo app está desligada', equipeAoVivo.includes('Em breve — localização desligada'), true);
 checar('Equipe ao vivo não promete o "próximo update"', /pr[oó]ximo update/i.test(equipeAoVivo), false);
 checar('Equipe ao vivo não promete "onde cada técnico está agora"', equipeAoVivo.includes('onde cada técnico está agora'), false);

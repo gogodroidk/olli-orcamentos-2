@@ -98,14 +98,16 @@ const PERMISSOES_PESSOAL: ReadonlySet<Acao> = new Set<Acao>([
 
 /**
  * A mesma decisão do `pode` do hook, sem React: para serviços que rodam fora de
- * componente (ex.: `services/escopoAgendaAtual.ts`, usado pelo ritual diário).
- * Papel INDETERMINADO nega tudo (ver o comentário dentro de `usePermissao`).
+ * componente (escopo da agenda, ritual diário, porta do cadastro). Três estados:
+ * `true`/`false` com o papel conhecido; `null` = papel INDETERMINADO — quem chama
+ * decide, e nunca pode tratar como "pode" algo que exponha dado de dono (ver o
+ * comentário dentro de `usePermissao`).
  */
 export function podeComPapel(
   acao: Acao,
   conta: { tipo: 'pessoal' | 'empresa'; org: { papel: Papel } | null; resolvido: boolean },
-): boolean {
-  if (!conta.resolvido) return false;
+): boolean | null {
+  if (!conta.resolvido) return null;
   const papel = conta.tipo === 'empresa' && conta.org ? conta.org.papel : null;
   if (!papel) return PERMISSOES_PESSOAL.has(acao);
   return PERMISSOES[papel]?.has(acao) ?? false;

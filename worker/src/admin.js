@@ -12,6 +12,9 @@
  *   POST /admin/api/me/password          → trocar a própria senha (do admin)
  *   GET  /admin/api/funil?semanas=12     → funil de receita por coorte semanal (sem PII)
  *   POST /admin/api/funil/exclusao?id=   → tirar/devolver uma conta interna do funil
+ *   GET  /admin/api/creditos-troca       → pedidos de crédito de troca (ver creditoTroca.js)
+ *   GET  /admin/api/creditos-troca/comprovante?id= → URL assinada do print do pedido
+ *   POST /admin/api/creditos-troca/decidir → aprovar (Pro 1..3 meses) ou recusar com motivo
  *
  * Segurança: toda rota /admin/api exige JWT validado pelo Supabase. O e-mail
  * ADMIN_EMAIL é o owner de recuperação; administradores adicionais vivem em
@@ -19,7 +22,9 @@
  * trilha append-only. Só depois disso o Worker usa SERVICE_ROLE, nunca o browser.
  */
 
-import { getAssinatura, cancelarAssinaturaStripe } from './conta.js';
+import { apagarArquivosDoUsuario, cancelarAssinaturaStripe, excluirFeedbackDoUsuario, getAssinatura } from './conta.js';
+import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
+import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
 import {
   ADMIN_DATA_POLICY_VERSION,
@@ -30,6 +35,7 @@ import {
   selectAdminDataset,
 } from './adminDataPolicy.js';
 import { montarFunil, semanasFunil } from './funilReceita.js';
+import { CREDITO_TROCA_MESES_MAX, decidirPedidoTroca, listarPedidosTroca, urlComprovante } from './creditoTroca.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -351,6 +357,16 @@ async function userDetail(env, id, actor) {
   // O customer id é uma dependência interna para listar faturas autorizadas;
   // ele nunca é devolvido pela projeção ao navegador.
   if (assinaturaSelect.length && podeFaturas && !assinaturaSelect.includes('stripe_customer_id')) assinaturaSelect.push('stripe_customer_id');
+  // Vínculos de gateway: lidos só para virar booleanos (stripeVinculado,
+  // mercadoPagoVinculado, playVinculado). `projetarLinhas` filtra pela política,
+  // então os ids em si nunca chegam ao navegador. Sem eles no select os três
+  // indicadores saíam sempre "—", mesmo com assinatura vinculada.
+  // Independe de `podeFaturas`: quem lê a assinatura vê os indicadores (só booleanos).
+  if (assinaturaSelect.length) {
+    for (const c of ['stripe_subscription_id', 'mp_preapproval_id', 'revenuecat_transacao_id']) {
+      if (!assinaturaSelect.includes(c)) assinaturaSelect.push(c);
+    }
+  }
   const [empresaArr, orcamentosBrutos, clientesBrutos, agendaBruta, recibosBrutos, assinaturaArr, creditosBrutos, usosIaBrutos, auditoriaBruta, atividadeBruta, funilLeitura] = await Promise.all([
     ler('empresa') ? rest(env, `empresa?user_id=eq.${enc}&select=dados`) : Promise.resolve([]),
     consultar('orcamentos', `orcamentos?user_id=eq.${enc}`, '&order=criado_em.desc&limit=100'),
@@ -383,6 +399,9 @@ async function userDetail(env, id, actor) {
   if (assinatura && assinaturaInterna) {
     assinatura.stripeVinculado = !!assinaturaInterna.stripe_subscription_id;
     assinatura.mercadoPagoVinculado = !!assinaturaInterna.mp_preapproval_id;
+    // Google Play (Play Billing direto): o vínculo é o hash do purchaseToken gravado
+    // em `revenuecat_transacao_id` (nome antigo mantido — ver worker/src/play.js).
+    assinatura.playVinculado = !!assinaturaInterna.revenuecat_transacao_id;
   }
   return json({
     ok: true,
@@ -534,6 +553,29 @@ async function deleteUser(env, id, actor, body = {}) {
     const r = await cancelarAssinaturaStripe(env, assinatura.stripe_subscription_id);
     if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
   }
+  // Mercado Pago (assinatura recorrente no cartão, preapproval): mesma regra e as
+  // MESMAS funções de /conta/excluir. Sem isto, quem pede a exclusão pelo WhatsApp
+  // (canal da página /excluir-conta) continuava sendo cobrado pelo MP.
+  const preapproval = await lerPreapprovalGravado(env, id);
+  if (preapproval.error) return json({ ok: false, erro: 'assinatura_indeterminada' }, 502); // não sei ≠ não tem
+  if (preapproval.ausente) {
+    console.error('[olli-admin] mp_preapproval_id indisponível (migration 20260728?) — excluindo sem checar o MP:', id);
+  } else if (preapproval.id) {
+    const r = await cancelarPreapprovalMp(env, preapproval.id);
+    if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
+  }
+  // Google Play: mesma regra e a MESMA função da exclusão pelo app (play.js).
+  const play = await cancelarPlayDoUsuario(env, id);
+  if (play !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
+
+  // Dados sem CASCADE, na MESMA ordem de /conta/excluir: o feedback (reversível
+  // de pedir de novo) antes; os arquivos do Storage (fotos, logos, PDFs — o
+  // cascade não os alcança) por último, logo antes do usuário. Qualquer falha =
+  // 502 e a conta fica, para nova tentativa. Sem isto a exclusão pelo painel
+  // deixava os arquivos órfãos para sempre — contra a página de exclusão e a
+  // seção Segurança dos dados da Play.
+  if (!(await excluirFeedbackDoUsuario(env, id))) return json({ ok: false, erro: 'falha_exclusao' }, 502);
+  if (!(await apagarArquivosDoUsuario(env, id))) return json({ ok: false, erro: 'falha_exclusao' }, 502);
 
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', headers: svc(env) });
@@ -767,7 +809,10 @@ export async function handleAdmin(request, env, url) {
         // /admin/api e para o Supabase Auth (login).
         'Content-Security-Policy':
           `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline' https://fonts.googleapis.com; ` +
-          "font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' " +
+          "font-src https://fonts.gstatic.com; img-src 'self' data: " +
+          // Prévia do comprovante do crédito de troca (URL assinada de 5 min do Storage).
+          (env.SUPABASE_URL || '') +
+          "; connect-src 'self' " +
           (env.SUPABASE_URL || '') +
           "; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
       },
@@ -842,6 +887,19 @@ export async function handleAdmin(request, env, url) {
     }
     if (m === 'POST' && p === '/admin/api/funil/exclusao') {
       return exigir(user, 'admin', { aal2: true }) || setExclusaoFunil(env, user, id, body);
+    }
+    // Crédito de troca: concessão de plano → mesmo gate do "Conceder Pro" manual
+    // (financeiro/admin/owner + AAL2). Ver o comprovante também exige isso: é
+    // documento pessoal do prestador.
+    if (m === 'GET' && p === '/admin/api/creditos-troca') {
+      return exigir(user, 'financeiro', { aal2: true })
+        || listarPedidosTroca(env, { status: url.searchParams.get('status'), listarUsuarios: () => listAuthUsers(env) });
+    }
+    if (m === 'GET' && p === '/admin/api/creditos-troca/comprovante') {
+      return exigir(user, 'financeiro', { aal2: true }) || urlComprovante(env, id);
+    }
+    if (m === 'POST' && p === '/admin/api/creditos-troca/decidir') {
+      return exigir(user, 'financeiro', { aal2: true }) || decidirPedidoTroca(env, user, body);
     }
     if (m === 'GET' && p === '/admin/api/feedback') {
       if ((gate = exigir(user, 'suporte', { aal2: true }))) return gate;
@@ -1002,6 +1060,9 @@ function adminHtml(env, nonce) {
    <div class="sec-head"><h2>Funil de receita <span class="muted" id="funilSub"></span></h2></div>
    <div class="tbl funil" id="funilBox" aria-live="polite"></div>
    <div class="nota" id="funilNota"></div>
+   <div class="sec-head"><h2>Crédito de troca <span class="muted" id="tcount"></span></h2><div id="tfilters" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
+   <div class="tbl" id="trocaBox" aria-live="polite"></div>
+   <div class="nota">Quem já pagou outro app manda o comprovante pelo app ("Vim de outro app"). Confira o print antes de aprovar: libera o Pro por até ${CREDITO_TROCA_MESES_MAX} meses, 1 vez por conta, e fica na auditoria.</div>
    <div class="sec-head">
     <h2>Usuários <span class="muted" id="ucount"></span></h2>
     <div class="search"><span class="mag">⌕</span><input id="usearch" placeholder="Buscar por e-mail ou empresa…"/></div>
@@ -1278,10 +1339,70 @@ async function carregarFunil(){
  catch(e){if(String(e.message)==='401')return;box.innerHTML='';box.append(el('div',{className:'empty'},'Funil indisponível: '+(ERRO_FUNIL[e.codigo]||'não consegui ler os dados.')+' Nenhum número foi zerado — a leitura falhou.'));}
 }
 
+// ─── crédito de troca (conferência manual; concessão de acesso, não venda) ───
+let TROCA=[],TROCA_FILTRO='pendente',TROCA_MAX=${CREDITO_TROCA_MESES_MAX};
+const ERRO_TROCA={credito_troca_sem_migration:'a migration do crédito de troca ainda não foi aplicada.',credito_troca_indisponivel:'não consegui ler os pedidos.',sem_permissao:'seu papel não permite ver pedidos.',mfa_necessario:'confirme o MFA em Segurança.'};
+const ERRO_DECISAO={pedido_ja_decidido:'Este pedido já foi decidido. Atualize a lista.',meses_invalidos:'Escolha um período válido.',motivo_invalido:'Motivo entre 3 e 500 caracteres.',pedido_inexistente:'Pedido não encontrado.',autoaprovacao_proibida:'Você não pode decidir o seu próprio pedido. Peça a outro administrador.'};
+const ST_TROCA={pendente:'em análise',aprovado:'aprovado',recusado:'recusado'};
+function dataSimples(d){return d?fmtDate(String(d).slice(0,10)+'T12:00:00'):'—';}
+function renderTrocaFiltros(){const box=$('tfilters');box.innerHTML='';[['pendente','Em análise'],['','Todos']].forEach(f=>box.append(el('button',{className:'btn sm '+(TROCA_FILTRO===f[0]?'':'ghost'),onclick:()=>{TROCA_FILTRO=f[0];carregarTroca();}},f[1])));}
+async function carregarTroca(){
+ const box=$('trocaBox');renderTrocaFiltros();box.innerHTML='';box.append(el('div',{className:'empty'},'Carregando pedidos…'));
+ try{const j=await api('creditos-troca'+(TROCA_FILTRO?'?status='+TROCA_FILTRO:''));TROCA=j.pedidos||[];TROCA_MAX=j.mesesMax||TROCA_MAX;renderTroca();}
+ catch(e){if(String(e.message)==='401')return;box.innerHTML='';$('tcount').textContent='';box.append(el('div',{className:'empty'},'Pedidos indisponíveis: '+(ERRO_TROCA[e.codigo]||'não consegui ler os dados.')+' Isso não quer dizer que não há pedidos.'));}
+}
+function renderTroca(){
+ const box=$('trocaBox');box.innerHTML='';$('tcount').textContent='('+TROCA.length+')';
+ if(!TROCA.length){box.append(el('div',{className:'empty'},TROCA_FILTRO==='pendente'?'Nenhum pedido em análise.':'Nenhum pedido ainda.'));return;}
+ const t=el('table'),hd=el('thead'),tr=el('tr');['Prestador','App anterior','Vence lá','Pedido','Situação',''].forEach((h,i)=>tr.append(el('th',{className:(i===2||i===3)?'hideSm':''},h)));hd.append(tr);t.append(hd);
+ const tb=el('tbody');
+ for(const p of TROCA){
+  const sit=p.status==='aprovado'?(p.meses_concedidos+(p.meses_concedidos===1?' mês':' meses')+' · até '+fmtDate(p.concedido_ate)+(p.aviso_email_em?' · e-mail enviado':'')):p.status==='recusado'?(p.motivo_recusa||''):'aguardando conferência';
+  const acts=el('td');acts.append(el('button',{className:'btn ghost sm',onclick:()=>openTroca(p)},p.status==='pendente'?'Conferir':'Ver'));
+  const row=el('tr');
+  row.append(el('td',{},el('div',{className:'uem'},p.email||('id '+String(p.user_id).slice(0,8))),p.observacao?el('div',{className:'ues'},p.observacao):null),el('td',{},p.app_anterior),el('td',{className:'hideSm'},dataSimples(p.vence_em)),el('td',{className:'hideSm'},fmtDate(p.criado_em)),el('td',{},el('span',{className:'pill '+(p.status==='recusado'?'off':'on')},ST_TROCA[p.status]||p.status),el('div',{className:'ues'},sit)),acts);
+  tb.append(row);
+ }
+ t.append(tb);box.append(t);
+}
+function openTroca(p){
+ const d=$('modal');d.innerHTML='';$('ov').classList.add('show');
+ d.append(el('h3',{},'Crédito de troca · '+p.app_anterior),el('div',{className:'sub'},(p.email||p.user_id)+' · pedido em '+fmtDate(p.criado_em)+(p.vence_em?' · vence lá em '+dataSimples(p.vence_em):'')));
+ if(p.observacao)d.append(el('div',{className:'li'},el('span',{},'Observação'),el('span',{className:'muted'},p.observacao)));
+ const prev=el('div',{style:'margin:14px 0;min-height:60px'},el('p',{className:'muted'},'Carregando comprovante…'));d.append(prev);
+ api('creditos-troca/comprovante?id='+encodeURIComponent(p.id)).then(j=>{prev.innerHTML='';prev.append(el('img',{src:j.url,alt:'Comprovante enviado pelo prestador',style:'max-width:100%;max-height:60vh;border-radius:12px;border:1px solid var(--line);display:block'}),el('a',{href:j.url,target:'_blank',rel:'noopener noreferrer',style:'color:var(--cyl);font-size:13px;display:inline-block;margin-top:8px'},'Abrir em nova aba (vale 5 min)'));}).catch(e=>{if(String(e.message)==='401')return;prev.innerHTML='';prev.append(el('p',{className:'err'},'Não consegui abrir o comprovante ('+(e.codigo||'erro')+'). Não aprove sem conferir.'));});
+ const acts=el('div',{className:'acts'});acts.append(el('button',{className:'btn soft sm',onclick:modalClose},'Fechar'));
+ if(p.status==='pendente'){
+  const meses=el('select');for(let i=1;i<=TROCA_MAX;i++)meses.append(el('option',{value:String(i),selected:i===(p.mesesSugeridos||TROCA_MAX)},i+(i===1?' mês':' meses')+' de Pro'));
+  const motivo=el('input',{placeholder:'Motivo (vai para a auditoria; na recusa, o prestador lê)'});
+  d.append(el('div',{className:'sub'},'Concessão de acesso, não venda: o gateway não é tocado. Nunca rebaixa um plano maior nem encurta uma vigência maior. 1 vez por conta.'),el('label',{},'Liberar por'),meses,el('label',{},'Motivo'),motivo);
+  const aprovar=el('button',{className:'btn sm'},'Aprovar'),recusar=el('button',{className:'btn danger sm'},'Recusar');
+  const decidir=async ok=>{
+   const m=motivo.value.trim()||(ok?'Comprovante conferido':'');
+   if(m.length<3){toast('Na recusa, escreva o motivo para o prestador.','err');return;}
+   if(!confirm(ok?('Liberar Pro por '+meses.value+(meses.value==='1'?' mês':' meses')+' para '+(p.email||'este prestador')+'? É 1 vez por conta.'):'Recusar este pedido? O prestador vai ler o motivo.'))return;
+   aprovar.disabled=true;recusar.disabled=true;
+   try{
+    const j=await api('creditos-troca/decidir',{method:'POST',body:JSON.stringify({id:p.id,aprovar:ok,meses:ok?Number(meses.value):null,motivo:m,requestId:crypto.randomUUID()})});
+    modalClose();
+    const em=j.aviso&&j.aviso.email;
+    const aviso=em==='enviado'?'E-mail enviado.':em==='desligado'?'E-mail desligado; o prestador vê no app.':'E-mail não saiu; o prestador vê no app.';
+    toast(ok?('Aprovado: '+(j.planoEfetivo||'pro')+' até '+(j.acessoAte?fmtDate(j.acessoAte):'sem data final')+'. '+aviso):'Pedido recusado.','ok');
+    await carregarTroca();
+   }catch(e){toast(ERRO_DECISAO[e.codigo]||mensagemErro(e),'err');}
+   finally{aprovar.disabled=false;recusar.disabled=false;}
+  };
+  aprovar.onclick=()=>decidir(true);recusar.onclick=()=>decidir(false);
+  acts.append(recusar,aprovar);
+ }
+ d.append(acts);
+}
+
 async function loadDash(){
  if(!ME||ME.aal!=='aal2'){mostrarGateMfa();return;}
  liberarDados();
  carregarFunil();
+ carregarTroca();
  show('dash');$('cards').innerHTML='';$('urows').innerHTML='';
  for(let i=0;i<6;i++){const c=el('div',{className:'card'});c.append(el('div',{className:'skel',style:'width:60%;height:24px'}),el('div',{className:'skel',style:'width:40%;margin-top:10px'}));$('cards').append(c);}
  try{
@@ -1328,6 +1449,7 @@ async function openUser(x){
    ['Override manual',ass.admin_override_ativo?((ass.admin_plano_override||'—')+' até '+(ass.admin_override_ate?fmtDate(ass.admin_override_ate):'revogação')):'inativo'],
    ['Mercado Pago',ass.mercadoPagoVinculado?'vinculado':'—'],
    ['Stripe',ass.stripeVinculado?'vinculada':'—'],
+   ['Google Play',ass.playVinculado?'vinculada':'—'],
   ]:[['Estado','Sem assinatura; plano Grátis']]))
   d.append(mk('Faturas Stripe',det.faturas.slice(0,12).map(f=>[fmtDate(f.criadoEm)+' · '+(f.status||'—'),fmtBRL((f.valorCentavos||0)/100)])));
   d.append(mk('Créditos recentes',det.creditos.slice(0,12).map(c=>[(Number(c.delta)>0?'+':'')+c.delta+' · '+c.origem,fmtDate(c.criado_em)])));

@@ -8,6 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
+import { SinalizarIA } from '../components/SinalizarIA';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { prepararPreviaAutopilot, type AutopilotPrevia, type IntencaoAutopilot } from '../services/iaAutopilot';
@@ -40,6 +41,9 @@ export default function AutopilotScreen() {
   const [pedido, setPedido] = useState('');
   const [intencao, setIntencao] = useState<IntencaoAutopilot>('cadastro');
   const [previa, setPrevia] = useState<AutopilotPrevia | null>(null);
+  // O que o usuário pediu QUANDO a prévia foi gerada (não o que está digitado agora): é o
+  // "pedido" que acompanha a denúncia de IA (<SinalizarIA>), para o moderador ver a pergunta.
+  const [pedidoDaPrevia, setPedidoDaPrevia] = useState('');
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   // Checklist de cadastro (item 2.13). `existentes` null = ainda lendo o cadastro do aparelho.
@@ -157,8 +161,10 @@ export default function AutopilotScreen() {
       texto: fonte ? undefined : texto, pedidoOriginal: pedido, intencao,
     });
     setCarregando(false);
-    if (result.ok) setPrevia(result.previa);
-    else setErro(mensagemErro(result.erro));
+    if (result.ok) {
+      setPedidoDaPrevia(descreverPedido(intencao, pedido));
+      setPrevia(result.previa);
+    } else setErro(mensagemErro(result.erro));
   }
 
   // Parâmetros do Orçar: cliente (id do cadastro feito agora ou já existente,
@@ -266,6 +272,16 @@ export default function AutopilotScreen() {
           {previa.candidatos.documentos.map((doc) => <View key={`doc-${doc.titulo}`} style={styles.documento}><MaterialCommunityIcons name="file-edit-outline" size={18} color={cores.primaryLight} /><View style={{ flex: 1 }}><Text style={styles.linhaTitulo}>{doc.titulo}</Text><Text style={styles.linhaSub} numberOfLines={3}>{doc.texto || 'Documento identificado; abra a origem para revisar o texto completo.'}</Text></View></View>)}
           {previa.candidatos.avisos.length > 0 && <View style={styles.aviso}><Text style={styles.avisoTitulo}>Revise antes de usar</Text>{previa.candidatos.avisos.map((aviso) => <Text key={aviso} style={styles.avisoTexto}>• {aviso}</Text>)}</View>}
           <OlliButton label="Abrir orçamento rascunho" variant="gradient" size="lg" fullWidth onPress={abrirOrcamento} disabled={!paramsOrcamento} icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />} style={{ marginTop: Spacing.md }} />
+          {/* Sinalizar IA: política de conteúdo gerado por IA da Google Play — denunciar sem sair do app, em
+              TODA superfície generativa (Chat, Voz e Diagnóstico já têm). `key` = id da prévia: cada prévia
+              nova remonta o botão, senão o "Obrigado" de uma denúncia antiga grudaria na prévia seguinte. */}
+          <SinalizarIA
+            key={previa.id}
+            tela="AutopilotScreen"
+            resposta={textoGeradoDaPrevia(previa)}
+            pedido={pedidoDaPrevia}
+            style={{ marginTop: Spacing.sm, alignSelf: 'center' }}
+          />
           <TouchableOpacity style={styles.limpar} onPress={limpar} disabled={cadastrando} accessibilityRole="button" accessibilityState={{ disabled: cadastrando }}><MaterialCommunityIcons name="refresh" size={16} color={cores.accentLight} /><Text style={styles.limparTexto}>Começar outra prévia</Text></TouchableOpacity>
         </View>}
 
@@ -273,6 +289,27 @@ export default function AutopilotScreen() {
       </ScrollView>
     </KeyboardAvoidingView>
   );
+}
+
+/** O pedido que gerou a prévia: a intenção escolhida + a instrução opcional (nunca o conteúdo do arquivo). */
+function descreverPedido(intencao: IntencaoAutopilot, instrucao: string): string {
+  const rotulo = INTENCOES.find((i) => i.value === intencao)?.label ?? intencao;
+  const extra = instrucao.trim();
+  return extra ? `${rotulo}: ${extra}` : rotulo;
+}
+
+/** Tudo o que a IA gerou na prévia (candidatos, itens, observações, documentos e avisos), para a denúncia. */
+function textoGeradoDaPrevia(previa: AutopilotPrevia): string {
+  const c = previa.candidatos;
+  const linhas: string[] = [];
+  const grupos = [['Cliente', c.clientes], ['Produto', c.produtos], ['Serviço', c.servicos], ['Item', c.orcamento.itens]] as const;
+  for (const [rotulo, lista] of grupos) {
+    for (const x of lista) linhas.push(`${rotulo}: ${x.nome}${x.descricao ? ` — ${x.descricao}` : ''}`);
+  }
+  if (c.orcamento.observacoes) linhas.push(`Observações: ${c.orcamento.observacoes}`);
+  for (const d of c.documentos) linhas.push(`Documento: ${d.titulo ?? d.nome}${d.texto ? ` — ${d.texto}` : ''}`);
+  for (const a of c.avisos) linhas.push(`Aviso: ${a}`);
+  return linhas.join('\n').slice(0, 3500);
 }
 
 function mensagemErro(erro: string): string {
