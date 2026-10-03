@@ -206,9 +206,9 @@ try {
 
   const htmlUrl = new URL('https://api.exemplo/admin');
   const html = await (await handleAdmin(new Request(htmlUrl), env, htmlUrl)).text();
-  checar('painel tem a seção Funil de receita', html.includes('Funil de receita') && html.includes('id="funilBox"'));
+  checar('painel tem a seção Funil', html.includes("id:'funil',rot:'Funil'") && html.includes('id="v-funil"'));
   checar('painel diz que não sabe quando o funil falha', html.includes('Nenhum número foi zerado'));
-  checar('botão de conta interna fica desabilitado quando o estado é desconhecido', html.includes("fe==='indisponivel'") && html.includes('disabled:true'));
+  checar('botão de conta interna fica desabilitado quando o estado é desconhecido', html.includes("fe==='indisponivel'?fc(") && html.includes("disabled:!!desligado") && html.includes("()=>{},'',true)"));
 } finally {
   globalThis.fetch = originalFetch;
 }

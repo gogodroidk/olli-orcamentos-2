@@ -31,7 +31,7 @@ const baseEnv: any = {
 
 console.log('\nAdmin OLLI — allowlist de detalhe e consultas mínimas');
 
-checar('versão de política explícita', ADMIN_DATA_POLICY_VERSION === '2026-09-18.v2');
+checar('versão de política explícita', ADMIN_DATA_POLICY_VERSION === '2026-10-05.v3');
 checar('suporte lê apenas status da assinatura', podeLerDadosAdmin('suporte', 'assinatura') && selectAdminDataset('suporte', 'assinatura') === 'plano,status,current_period_end');
 checar('financeiro lê recibos', podeLerDadosAdmin('financeiro', 'recibos'));
 checar('leitura não recebe dataset', camposAdmin('leitura', 'orcamentos').length === 0);
@@ -90,7 +90,9 @@ try {
   const suporteBody: any = await suporteResposta.json();
   checar('suporte consulta detalhe com sucesso', suporteResposta.status === 200 && suporteBody.ok === true);
   checar('suporte consulta orçamento sem campos financeiros', chamadasSuporte.some((url) => url.includes('/rest/v1/orcamentos?') && url.includes('select=numero,status,criado_em') && !url.includes('valor_total')));
-  checar('suporte não consulta IDs/faturas/ledger/auditoria', !chamadasSuporte.some((url) => /\/rest\/v1\/(recibos|credit_ledger|admin_audit_log)\?/.test(url)) && chamadasSuporte.some((url) => url.includes('/rest/v1/assinaturas?') && url.includes('select=plano,status,current_period_end') && !url.includes('stripe_customer_id')));
+  checar('suporte não consulta IDs/faturas/ledger/auditoria', !chamadasSuporte.some((url) => /\/rest\/v1\/(recibos|credit_ledger)\?/.test(url))
+    // Suporte só lê as NOTAS internas da trilha, nunca a auditoria completa.
+    && chamadasSuporte.filter((url) => url.includes('/rest/v1/admin_audit_log?')).every((url) => url.includes('acao=eq.nota_interna')) && chamadasSuporte.some((url) => url.includes('/rest/v1/assinaturas?') && url.includes('select=plano,status,current_period_end') && !url.includes('stripe_customer_id')));
   checar('suporte resposta não contém CPF/Pix/valor de orçamento', JSON.stringify(suporteBody).includes('proibido') === false && JSON.stringify(suporteBody).includes('valor_total') === false);
 
   const chamadasFinanceiro: string[] = [];

@@ -30,14 +30,17 @@ const corpoRelatorio = codigoAdmin.match(/async function userReport\([\s\S]*?\n}
 const csp = html.headers.get('content-security-policy') || '';
 checar('painel usa nonce no script', /<script nonce="[a-f0-9]{36}">/.test(pagina));
 checar('CSP não libera script unsafe-inline', !/script-src[^;]*unsafe-inline/.test(csp));
-checar('token fica em sessionStorage', pagina.includes("sessionStorage.getItem('olli_admin_tok')"));
-checar('token não fica em localStorage', !pagina.includes("localStorage.getItem('olli_admin_tok')"));
+// Sessão: o access token vive só em memória; o refresh token mora num cookie
+// HttpOnly gerenciado pelo Worker (adminSessao.js). Nenhum token em storage.
+checar('token não fica em sessionStorage', !/sessionStorage\.(get|set)Item\('olli_admin_(tok|refresh)'/.test(pagina));
+checar('token não fica em localStorage', !/localStorage\.(get|set)Item\('olli_admin_(tok|refresh)'/.test(pagina));
+checar('painel renova sessão pelo cookie do Worker', pagina.includes("sessaoPost('sessao/renovar')") && pagina.includes("credentials:'same-origin'"));
 checar(
   'MFA lista fatores pelo usuário autenticado, como o SDK oficial',
   /async function listarFatoresMfa\(\)\{[\s\S]*?authFetch\('user'\)[\s\S]*?j&&j\.factors/.test(pagina)
     && !/async function listarFatoresMfa\(\)\{[\s\S]*?authFetch\('factors'\)/.test(pagina),
 );
-checar('sessão admin preserva refresh token só na aba', pagina.includes("sessionStorage.getItem('olli_admin_refresh')") && !pagina.includes("localStorage.getItem('olli_admin_refresh')"));
+checar('refresh token nunca fica no JavaScript da página após o login', !/olli_admin_refresh/.test(pagina) && pagina.includes("guardarSessao(j.refresh_token)"));
 checar('campo MFA usa autocomplete móvel refletido no DOM', pagina.includes("autocomplete:'one-time-code'") && !pagina.includes("autoComplete:'one-time-code'"));
 checar('botão MFA só libera com seis números', pagina.includes("save.disabled=true") && pagina.includes("save.disabled=code.value.length!==6") && pagina.includes("code.value.replace(/\\D/g,'')"));
 checar('admin resume atividade por usuário sem conteúdo sensível', codigoAdmin.includes('user_activity_log?select=user_id,id,evento,plataforma,criado_em') && codigoAdmin.includes("frequencia = 'frequente'"));

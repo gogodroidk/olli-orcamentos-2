@@ -10,7 +10,7 @@
  * contrato próprio, consentimento/finalidade, auditoria e aprovação humana.
  */
 
-export const ADMIN_DATA_POLICY_VERSION = '2026-09-18.v2';
+export const ADMIN_DATA_POLICY_VERSION = '2026-10-05.v3';
 
 const ROLES = Object.freeze(['suporte', 'financeiro', 'admin', 'owner']);
 export const ADMIN_DATA_ROLES = ROLES;
@@ -73,6 +73,14 @@ const CAMPOS = Object.freeze({
     suporte: Object.freeze(['evento', 'plataforma', 'criado_em']),
     admin: Object.freeze(['id', 'evento', 'plataforma', 'criado_em']),
     owner: Object.freeze(['id', 'evento', 'plataforma', 'criado_em']),
+  }),
+  // Notas internas (linhas `nota_interna` da trilha): todo papel com acesso ao
+  // detalhe lê, para o suporte saber o que já foi combinado com o cliente.
+  notas: Object.freeze({
+    suporte: Object.freeze(['id', 'actor_role', 'motivo', 'criado_em']),
+    financeiro: Object.freeze(['id', 'actor_role', 'motivo', 'criado_em']),
+    admin: Object.freeze(['id', 'actor_role', 'motivo', 'criado_em']),
+    owner: Object.freeze(['id', 'actor_role', 'motivo', 'criado_em']),
   }),
   auditoria: Object.freeze({
     admin: Object.freeze(['id', 'actor_role', 'acao', 'motivo', 'criado_em']),
