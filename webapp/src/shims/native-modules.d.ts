@@ -11,6 +11,13 @@
 declare module "react-native" {
 	export const Platform: { OS: string };
 	export const Linking: { openURL: (url: string) => Promise<void> };
+	// `src/hooks/useTipoConta.ts` entra na árvore pelo ritual diário (database.ts →
+	// ritualDiario → escopoAgendaAtual). Só a assinatura que ele usa.
+	export type AppStateStatus = "active" | "background" | "inactive" | "unknown" | "extension";
+	export const AppState: {
+		currentState: AppStateStatus;
+		addEventListener: (tipo: "change", ouvinte: (estado: AppStateStatus) => void) => { remove: () => void };
+	};
 }
 
 declare module "expo-print" {

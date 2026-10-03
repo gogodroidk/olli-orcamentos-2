@@ -464,7 +464,7 @@ export default function HojeScreen() {
   // só as visitas DELE; gestão e conta pessoal veem a equipe inteira. Enquanto o
   // papel não é conhecido, a linha do tempo não aparece (nem vazia, nem a da
   // equipe); se a leitura falhar, a tela diz isso e deixa tentar de novo.
-  const { pode } = usePermissao();
+  const { pode, carregando: papelCarregando } = usePermissao();
   const tipoConta = useTipoConta();
   const [usuario, setUsuario] = useState<EntradaEscopo['usuario']>({ status: 'carregando' });
   const lerUsuario = useCallback(() => {
@@ -484,6 +484,11 @@ export default function HojeScreen() {
   // O total em R$ das propostas paradas é valor AGREGADO da empresa: o técnico
   // vê a contagem, não a soma (mesma matriz do resto do app).
   const podeValores = pode('ver_valores_agregados');
+  // "Como foi seu dia?" abre o relatório com os totais da EMPRESA (orçamentos,
+  // recibos, clientes novos), guardado por `ver_relatorios`. Técnico não tem essa
+  // permissão: o card levaria a uma tela bloqueada, então nem aparece. Papel
+  // ainda desconhecido também esconde (fail-closed, sem piscar o card de dono).
+  const mostraRelatorioDia = !papelCarregando && pode('ver_relatorios');
 
   const [itens, setItens] = useState<OcorrenciaAgendamento[]>([]);
   // Cadastro dos clientes: o ponto (clima da visita) e o WhatsApp (remarcar por chuva).
@@ -1089,7 +1094,8 @@ export default function HojeScreen() {
 
         {/* 3. CHECKLIST DO DIA */}
         <Aparecer indice={ordem++}>
-          <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'checkbox-marked-outline' }}>
+          {/* Sem o "Fim do dia" (técnico), o checklist fecha a linha do tempo. */}
+          <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'checkbox-marked-outline' }} ultimo={!mostraRelatorioDia}>
             <View style={styles.noTituloRow}>
               <Text style={styles.noTitulo}>Checklist do dia</Text>
               {checklist.length > 0 && <Text style={styles.checkCount}>{feitos}/{checklist.length}</Text>}
@@ -1134,36 +1140,39 @@ export default function HojeScreen() {
           </NoLinhaDoTempo>
         </Aparecer>
 
-        {/* 4. FIM DO DIA — "Como foi seu dia?" (relatório falado é Pro; KPIs seguem grátis dentro da tela) */}
-        <Aparecer indice={ordem++}>
-          <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'weather-night' }} ultimo>
-            <OlliPressable
-              style={styles.relatorioCard}
-              haptic="light"
-              accessibilityLabel="Como foi seu dia? Abrir relatório do dia"
-              onPress={() => {
-                if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
-                nav.navigate('RelatorioDia');
-              }}
-            >
-              <View style={styles.relatorioIcon}>
-                <MaterialCommunityIcons name="volume-high" size={20} color={cores.accentLight} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
-                <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
-              </View>
-              {relatorioLiberado ? (
-                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-              ) : (
-                <View style={styles.relatorioProBadge}>
-                  <MaterialCommunityIcons name="lock-outline" size={11} color={cores.plan} />
-                  <Text style={styles.relatorioProBadgeText}>Pro</Text>
+        {/* 4. FIM DO DIA — "Como foi seu dia?" (relatório falado é Pro; KPIs seguem grátis dentro da tela).
+            Só para quem vê relatórios (ver `mostraRelatorioDia`). */}
+        {mostraRelatorioDia && (
+          <Aparecer indice={ordem++}>
+            <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'weather-night' }} ultimo>
+              <OlliPressable
+                style={styles.relatorioCard}
+                haptic="light"
+                accessibilityLabel="Como foi seu dia? Abrir relatório do dia"
+                onPress={() => {
+                  if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
+                  nav.navigate('RelatorioDia');
+                }}
+              >
+                <View style={styles.relatorioIcon}>
+                  <MaterialCommunityIcons name="volume-high" size={20} color={cores.accentLight} />
                 </View>
-              )}
-            </OlliPressable>
-          </NoLinhaDoTempo>
-        </Aparecer>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
+                  <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
+                </View>
+                {relatorioLiberado ? (
+                  <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+                ) : (
+                  <View style={styles.relatorioProBadge}>
+                    <MaterialCommunityIcons name="lock-outline" size={11} color={cores.plan} />
+                    <Text style={styles.relatorioProBadgeText}>Pro</Text>
+                  </View>
+                )}
+              </OlliPressable>
+            </NoLinhaDoTempo>
+          </Aparecer>
+        )}
 
         {/* PULSO DA SEMANA — micro-feedback discreto, pulável, no máximo 1x/14 dias */}
         {pulsoVisivel && (

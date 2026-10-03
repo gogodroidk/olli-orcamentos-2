@@ -29,6 +29,7 @@ import {
   escolherProximaParada, escolherProximaSaida, filtrarVisitasSemBaixa, limitesDoDiaLocal,
   JANELA_EM_ANDAMENTO_DIAS, JANELA_PROXIMA_PARADA_DIAS, JANELA_SEM_BAIXA_DIAS,
 } from '../utils/agendaDia';
+import { aplicarEscopo, type EscopoConhecido } from '../utils/agendaDominio';
 import { alcanceDaBaixa } from '../utils/linhaDoTempoHoje';
 
 const MS_DIA = 24 * 60 * 60 * 1000;
@@ -392,11 +393,13 @@ export async function getProximoAgendamento(agora: Date = new Date()): Promise<O
  * próximos 60 dias, já com as séries recorrentes, que ainda NÃO começou. A visita
  * em andamento fica de fora de propósito: ela é a Próxima parada do Início, mas o
  * aviso de saída tem que mirar a SEGUINTE (ver `escolherProximaSaida`).
+ * Exige escopo CONHECIDO (`EscopoConhecido`) e filtra ANTES de escolher: o
+ * técnico sai para a visita DELE, não a do colega. Sem papel, quem chama fica quieto.
  */
-export async function getProximaSaida(agora: Date = new Date()): Promise<OcorrenciaAgendamento | null> {
+export async function getProximaSaida(escopo: EscopoConhecido, agora: Date = new Date()): Promise<OcorrenciaAgendamento | null> {
   const ate = new Date(agora.getTime() + JANELA_PROXIMA_PARADA_DIAS * MS_DIA);
   const ocorrencias = await getAgendamentosExpandidos(agora.toISOString(), ate.toISOString());
-  return escolherProximaSaida(ocorrencias, agora);
+  return escolherProximaSaida(aplicarEscopo(ocorrencias, escopo), agora);
 }
 
 /**

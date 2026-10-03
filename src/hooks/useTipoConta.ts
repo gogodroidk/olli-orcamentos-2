@@ -256,3 +256,34 @@ export function recarregarTipoConta(): Promise<void> {
 export function lerTipoContaAtual(): Pick<UseTipoConta, 'tipo' | 'org' | 'resolvido'> {
   return { tipo: estado.tipo, org: estado.org, resolvido: estado.resolvido };
 }
+
+/** Retrato do papel para quem roda FORA de componente (serviços, ritual diário). */
+export interface TipoContaAtual {
+  tipo: TipoConta;
+  org: Organizacao | null;
+  /** `false` = não sei o papel (leitura falhou e não há cache). Quem decide permissão nega. */
+  resolvido: boolean;
+}
+
+/**
+ * O papel atual sem React, ESPERANDO resolver (mesmo store do hook) — diferente
+ * de `lerTipoContaAtual`, que só fotografa o que já se sabe. Se ninguém resolveu ainda — o
+ * ritual diário roda no sync de login, às vezes antes de qualquer tela montar —,
+ * faz o mesmo caminho do hook: cache do último login (amarrado ao usuário) e
+ * depois a rede, reaproveitando a leitura em voo. Nunca inventa papel: falhou
+ * tudo, volta `resolvido: false`. NUNCA lança.
+ */
+export async function resolverTipoContaAtual(): Promise<TipoContaAtual> {
+  if (!estado.resolvido) {
+    try {
+      if (estado.atualizadoEm === 0) await hidratarDoCache();
+      // Cache do usuário logado já basta (é o que o hook usa offline); a rede
+      // confirma em segundo plano. Sem cache, espera a rede.
+      if (estado.resolvido) void revalidar();
+      else await revalidar();
+    } catch {
+      // revalidar já é à prova de falha; o estado abaixo diz o que se sabe.
+    }
+  }
+  return { tipo: estado.tipo, org: estado.org, resolvido: estado.resolvido };
+}

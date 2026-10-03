@@ -834,7 +834,12 @@ export default function ContaScreen() {
     ...ferramentasVisiveis.map(f => ({ id: `ferramenta:${f.key}`, secao: SECAO_AJUSTES.ferramentas, titulo: f.label, descricao: f.desc })),
     { id: 'aparencia', secao: SECAO_AJUSTES.aparencia, titulo: 'Tema e cor da marca' },
     { id: 'notifBomDia', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifBomDia },
-    { id: 'notifFecharDia', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifFecharDia },
+    // "Fechar o dia" é a prévia do relatório com os totais da EMPRESA: só existe
+    // para quem vê relatórios (o ritual nem agenda para técnico — ver
+    // ritualDiario.ts). Papel desconhecido esconde, como as ferramentas.
+    ...(!carregandoPermissao && pode('ver_relatorios')
+      ? [{ id: 'notifFecharDia', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifFecharDia }]
+      : []),
     { id: 'notifResumoEmail', secao: SECAO_AJUSTES.notificacoes, titulo: ROTULO_RESUMO_EMAIL },
     { id: 'notifDomingo', secao: SECAO_AJUSTES.notificacoes, ...TEXTO_AJUSTE.notifDomingo },
     // Mesma condição da tela: a linha de status só existe com sessão; sem nuvem

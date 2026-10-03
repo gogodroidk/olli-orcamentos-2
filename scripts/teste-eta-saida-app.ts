@@ -228,9 +228,10 @@ checar('os dois passam pelo gate de hora de sair', /RecursoPlanoChip recurso="ho
 checar('ETA sem o recurso confirmado não estima', /acessoRecursoAgora\('hora_de_sair'\)\)\s*!==\s*'liberado'\) return \{ estado: 'indisponivel' \}/.test(etaSrc), true);
 
 console.log('\n12) O RITUAL — reusa o mecanismo, com a base');
-checar('o aviso roda no reagendamento do ritual', /reagendarAvisoSaidaDoDia\(\)/.test(ritualSrc), true);
+checar('o aviso roda no reagendamento do ritual, com o escopo do papel', /reagendarAvisoSaidaDoDia\(false, escopo\)/.test(ritualSrc), true);
 checar('o ritual localiza a base antes de calcular', /pontoDaBase\(empresa\)/.test(ritualSrc), true);
-checarOrdem('roda ANTES do return dos toggles do ritual', ritualSrc, 'reagendarAvisoSaidaDoDia()', 'if (!bomDiaAtivo && !fecharDiaAtivo) return');
+checarOrdem('roda ANTES do return dos toggles do ritual', ritualSrc, 'reagendarAvisoSaidaDoDia(false, escopo)', 'if (!bomDiaAtivo && !fecharDiaAtivo) return');
+checarOrdem('e antes do gate de permissão (a Home mostra mesmo sem notificação)', ritualSrc, 'reagendarAvisoSaidaDoDia(false, escopo)', 'await temPermissaoNotificacao()');
 checar('o Bom dia não ganha notificação nova', ritualSrc.split('scheduleNotificationAsync').length - 1, 2);
 const bomDiaSrc = (() => {
   const i = ritualSrc.indexOf('async function linhaDeSaidaParaBomDia');

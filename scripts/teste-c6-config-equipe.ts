@@ -6,7 +6,8 @@ const config = ler('../webapp/src/pages/olli/configuracoes/index.tsx');
 const equipe = ler('../webapp/src/pages/olli/equipe/index.tsx');
 const equipeApi = ler('../webapp/src/pages/olli/equipe/api.ts');
 const negocio = ler('../webapp/src/pages/olli/meu-negocio/index.tsx');
-const permissao = ler('../src/hooks/usePermissao.ts');
+// A matriz de papéis saiu do hook para utils/permissoesPapel (sem React).
+const permissao = ler('../src/utils/permissoesPapel.ts');
 const clientes = ler('../src/screens/ClientesScreen.tsx');
 const clientesDesktop = ler('../src/screens/desktop/ClientesDesktopScreen.tsx');
 

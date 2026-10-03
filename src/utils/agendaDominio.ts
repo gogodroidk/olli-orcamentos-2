@@ -182,6 +182,14 @@ export function aplicarEscopo<T extends Pick<Agendamento, 'responsavelId'>>(iten
   return [];
 }
 
+/** Escopo em que já sei de quem são as visitas (`equipe` ou `propria`). */
+export type EscopoConhecido = Extract<EscopoAgenda, { status: 'equipe' | 'propria' }>;
+
+/** `true` quando dá para filtrar. Fora disso, quem chama não afirma nada sobre a agenda. */
+export function escopoConhecido(e: EscopoAgenda): e is EscopoConhecido {
+  return e.status === 'equipe' || e.status === 'propria';
+}
+
 /* ─────────────────────────────  Busca de cliente  ──────────────────────────── */
 
 /**

@@ -10,6 +10,11 @@ import { linhaBomDiaSaida } from './saidaCalculo';
 import { orcamentosParaCobrar } from './radarCobranca';
 import { clientesParaReconquistar } from './radarClientes';
 import { gerarRelatorioDia, relatorioParaTexto } from './relatorioDia';
+import { escopoAgendaAtual } from './escopoAgendaAtual';
+import { resolverTipoContaAtual } from '../hooks/useTipoConta';
+import { podeComPapel } from '../utils/permissoesPapel';
+import { aplicarEscopo, escopoConhecido, type EscopoConhecido } from '../utils/agendaDominio';
+import { semMovimentosConhecidos } from '../utils/relatorioDiaTexto';
 import { formatCurrency } from '../utils/currency';
 import type { Agendamento } from '../types';
 import {
@@ -44,6 +49,19 @@ import {
  *    `pmocLembretes.ts`): se o usuário já liberou pela Agenda (ou pelo toggle
  *    em Conta, que chama `pedirPermissaoNotificacao` explicitamente), o ritual
  *    dispara; se negou, fica quieto até liberar por um desses dois lugares.
+ *
+ * QUEM VÊ O QUÊ — mesma regra da Agenda/Hoje (`escopoAgendaAtual`): o técnico
+ * só ouve falar das visitas em que é o responsável (nada de "Bom dia" nem
+ * "saia às" da visita do colega). Papel desconhecido = a agenda fica fora:
+ * nenhum aviso é criado ou trocado a partir dela, e o "Bom dia" cai para os
+ * outros sinais (ou silêncio). Nunca vira "sem visita" nem a agenda da equipe.
+ *
+ * "FECHAR O DIA" SÓ PARA QUEM VÊ RELATÓRIOS — o relatório do dia soma
+ * orçamentos, recibos e clientes novos da base INTEIRA (valores agregados da
+ * empresa), e a `RelatorioDiaScreen` é guardada por `ver_relatorios`. O técnico
+ * não tem essa permissão: agendar para ele vazaria os totais da empresa na
+ * prévia e o toque cairia numa tela bloqueada. Papel desconhecido = não agenda
+ * (silêncio, nunca "não sei" promovido a dono).
  *
  * REGRA DE OURO (ENGAJAMENTO_VISAO.md): sinal real ou silêncio. Nunca "bom dia
  * sem novidades", nunca badge vazio. Teto de 2 notificações de engajamento/dia
@@ -157,7 +175,7 @@ function avancarSeDomingoMudo(d: Date, domingoAtivo: boolean): Date {
  *
  * NUNCA lança: qualquer falha vira `null` e o "Bom dia" sai como antes.
  */
-async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | null> {
+async function linhaDeSaidaParaBomDia(proxima: Agendamento, escopo: EscopoConhecido): Promise<string | null> {
   try {
     const inicio = new Date(proxima.inicio);
     if (isNaN(inicio.getTime())) return null;
@@ -175,7 +193,8 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | nu
     const base = await pontoDaBase(empresa);
     const r = calcularSaida({
       proxima,
-      doDia,
+      // A origem é a visita anterior DESTA pessoa no dia, nunca a do colega.
+      doDia: aplicarEscopo(doDia, escopo),
       base: base.estado === 'ok' ? base.ponto : null,
       baseIndisponivel: base.estado === 'indisponivel',
       clientes,
@@ -197,9 +216,13 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento): Promise<string | nu
  * prestador (`forcar`) — o único caminho que ignora o throttle, porque aí
  * quem pediu foi ele.
  *
+ * Papel desconhecido: não mexe em nada (nem cria, nem cancela). Trocar o aviso
+ * pela visita de outra pessoa, ou apagá-lo como se não houvesse visita, seria
+ * afirmar o que não sei; o que já estava agendado continua valendo.
+ *
  * NUNCA lança.
  */
-export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
+export async function reagendarAvisoSaidaDoDia(forcar = false, escopoPronto?: EscopoConhecido): Promise<void> {
   try {
     // "Hora de sair" é inteligência do Pro (`hora_de_sair`). Sem o recurso
     // confirmado não calcula; e plano
@@ -207,15 +230,18 @@ export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
     // substituiu o lembrete fixo de 1h daquela visita, e apagá-lo deixaria o
     // prestador sem aviso nenhum. As próximas visitas seguem com o lembrete fixo.
     if ((await acessoRecursoAgora('hora_de_sair')) !== 'liberado') return;
+    // Papel desconhecido: não troca nem cancela o aviso (ver o docblock).
+    const escopo = escopoPronto ?? (await escopoAgendaAtual());
+    if (!escopoConhecido(escopo)) return;
     // Próxima SAÍDA, não Próxima parada: a visita em andamento (14h–16h) é a
     // parada do Início, mas o aviso de sair tem que ser o da visita seguinte.
-    const proxima = await getProximaSaida().catch(() => null);
+    const proxima = await getProximaSaida(escopo).catch(() => null);
     const inicio = proxima ? new Date(proxima.inicio) : null;
     const [empresa, clientes, doDia, temPermissao] = await Promise.all([
       getEmpresa().catch(() => null),
       getClientes().catch(() => null),
       inicio && !isNaN(inicio.getTime())
-        ? getAgendamentosDoDia(inicio).catch(() => [] as Agendamento[])
+        ? getAgendamentosDoDia(inicio).then(d => aplicarEscopo(d, escopo)).catch(() => [] as Agendamento[])
         : Promise.resolve([] as Agendamento[]),
       temPermissaoNotificacao().catch(() => false),
     ]);
@@ -248,10 +274,13 @@ export async function reagendarAvisoSaidaDoDia(forcar = false): Promise<void> {
  * reagendamento inteiro — o pior caso aceitável aqui é silêncio, o mesmo
  * resultado de "não há sinal", nunca uma exceção que também derruba o canal
  * "Fechar o dia" no mesmo reagendamento.
+ *
+ * Sem escopo conhecido, a visita não entra (não sei de quem é a próxima): o
+ * "Bom dia" usa os outros sinais ou fica em silêncio.
  */
-async function montarBomDia(alvo: Date): Promise<{ titulo: string; corpo: string } | null> {
+async function montarBomDia(alvo: Date, escopo: EscopoConhecido | null): Promise<{ titulo: string; corpo: string } | null> {
   const [proxima, cobranca, radar] = await Promise.all([
-    getProximaSaida().catch(() => null),
+    escopo ? getProximaSaida(escopo).catch(() => null) : Promise.resolve(null),
     orcamentosParaCobrar().catch(() => []),
     clientesParaReconquistar().catch(() => []),
   ]);
@@ -265,7 +294,7 @@ async function montarBomDia(alvo: Date): Promise<{ titulo: string; corpo: string
       // calcular, `linhaSaida` é null e o corpo sai EXATAMENTE como já saía
       // (cliente, horário, endereço) — falha de trânsito não pode piorar uma
       // notificação que já funciona nem inventar um horário dentro dela.
-      const linhaSaida = await linhaDeSaidaParaBomDia(proxima);
+      const linhaSaida = escopo ? await linhaDeSaidaParaBomDia(proxima, escopo) : null;
       return {
         titulo: 'Bom dia da OLLI',
         corpo: linhaSaida
@@ -310,19 +339,27 @@ function horarioFecharHojeOuNull(): Date | null {
 }
 
 /**
- * Prévia do "Fechar o dia": `null` se não há relatório (falha de leitura) ou
+ * Prévia do "Fechar o dia": `null` se o papel não pode ver relatórios (técnico
+ * ou papel desconhecido), se não há relatório (falha de leitura) ou
  * se `semMovimentos` (dia sem nenhum movimento — nunca notifica um dia vazio).
  * A prévia é a 1ª frase da MESMA narrativa que `RelatorioDiaScreen` fala em
  * voz alta (`relatorioParaTexto`) — nunca um resumo reescrito à parte.
  */
 async function montarFecharDia(): Promise<{ titulo: string; corpo: string } | null> {
+  // Antes de ler o relatório: quem não pode vê-lo não recebe nem a prévia (ver
+  // o cabeçalho). `resolverTipoContaAtual` nunca lança; papel desconhecido
+  // (`null`) não é "pode" — silêncio.
+  if (podeComPapel('ver_relatorios', await resolverTipoContaAtual()) !== true) return null;
+
   let relatorio;
   try {
     relatorio = await gerarRelatorioDia();
   } catch {
     return null;
   }
-  if (relatorio.semMovimentos) return null;
+  // Agenda fora do resumo (papel desconhecido) e nada mais no dia: não há sinal
+  // real para notificar, só o aviso de que a agenda ficou de fora.
+  if (relatorio.semMovimentos || semMovimentosConhecidos(relatorio)) return null;
 
   const narrativa = relatorioParaTexto(relatorio);
   const previa = narrativa.split('. ')[0];
@@ -363,13 +400,17 @@ export async function reagendarRitualDiario(): Promise<void> {
   try {
     await cancelarRitualDiario();
 
+    // Uma leitura do papel para o reagendamento inteiro (aviso de saída + "Bom dia").
+    const escopoLido = await escopoAgendaAtual();
+    const escopo = escopoConhecido(escopoLido) ? escopoLido : null;
+
     // ANTES dos toggles e ANTES do gate de permissão, de propósito. O aviso
     // "saia às HH:MM" não é um terceiro canal de engajamento: ele SUBSTITUI o
     // lembrete de agenda que já existe (ver avisoSaida.ts), então não obedece
     // aos toggles de "Bom dia"/"Fechar o dia". E ele grava o resultado — inclusive
     // a falha — para a Home mostrar; quem negou notificações continua vendo o
     // horário de saída na tela, que é onde ele vale mais.
-    await reagendarAvisoSaidaDoDia();
+    if (escopo) await reagendarAvisoSaidaDoDia(false, escopo);
 
     const { bomDia: bomDiaAtivo, fecharDia: fecharDiaAtivo, domingo: domingoAtivo } = await getPreferenciasRitual();
     if (!bomDiaAtivo && !fecharDiaAtivo) return; // os 2 canais desligados: nada a fazer
@@ -384,7 +425,7 @@ export async function reagendarRitualDiario(): Promise<void> {
 
     if (bomDiaAtivo) {
       const alvo = avancarSeDomingoMudo(proximaOcorrencia(HORA_BOM_DIA), domingoAtivo);
-      const conteudo = await montarBomDia(alvo);
+      const conteudo = await montarBomDia(alvo, escopo);
       if (conteudo) {
         try {
           const id = await Notifications.scheduleNotificationAsync({

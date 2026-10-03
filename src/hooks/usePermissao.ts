@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import { useTipoConta } from './useTipoConta';
 import type { Papel } from '../services/equipe';
+import { podeComPapel, type Acao } from '../utils/permissoesPapel';
+
+// A matriz mora em utils/permissoesPapel (sem React); re-exporta para quem já importa daqui.
+export { podeComPapel, type Acao };
 
 /**
  * usePermissao — o que o usuário PODE fazer, dado o papel dele na organização
@@ -18,96 +22,6 @@ import type { Papel } from '../services/equipe';
  * Uso: const { papel, pode } = usePermissao(); if (pode('gerenciar_equipe')) …
  */
 
-/** Ações gateáveis por papel. String union → autocomplete + typo em compile. */
-export type Acao =
-  | 'criar_orcamento'      // criar/editar orçamentos
-  | 'ver_clientes'         // acessar a base de clientes
-  | 'gerenciar_clientes'   // editar/excluir cadastros de clientes
-  | 'ver_agenda_propria'   // a própria agenda
-  | 'ver_agenda_equipe'    // a agenda de todos os técnicos
-  | 'ver_relatorios'       // relatórios de faturamento/conversão
-  | 'ver_valores_agregados'// KPIs/totais da empresa (dashboard)
-  | 'ver_metas'            // metas de vendas
-  | 'gerenciar_equipe'     // convidar/ativar/desativar membros, mudar papéis
-  | 'ver_equipe'           // ver a lista da equipe (sem necessariamente gerenciar)
-  | 'ver_acessos'          // ver o histórico de acessos dos membros
-  | 'gerenciar_faturamento'// assinar/gerenciar plano da empresa (billing)
-  | 'excluir_organizacao'; // apagar a org
-
-/**
- * Matriz de permissões por papel. Conjunto do que CADA papel libera. Mantida
- * explícita (sem herança implícita) para ser auditável de relance — owner e
- * admin listam tudo que podem; gestor/tecnico o subconjunto exato do contrato.
- */
-const PERMISSOES: Record<Papel, ReadonlySet<Acao>> = {
-  owner: new Set<Acao>([
-    'criar_orcamento',
-    'ver_clientes',
-    'gerenciar_clientes',
-    'ver_agenda_propria',
-    'ver_agenda_equipe',
-    'ver_relatorios',
-    'ver_valores_agregados',
-    'ver_metas',
-    'gerenciar_equipe',
-    'ver_equipe',
-    'ver_acessos',
-    'gerenciar_faturamento',
-    'excluir_organizacao',
-  ]),
-  admin: new Set<Acao>([
-    'criar_orcamento',
-    'ver_clientes',
-    'gerenciar_clientes',
-    'ver_agenda_propria',
-    'ver_agenda_equipe',
-    'ver_relatorios',
-    'ver_valores_agregados',
-    'ver_metas',
-    'gerenciar_equipe',
-    'ver_equipe',
-    'ver_acessos',
-    // admin NÃO tem: gerenciar_faturamento, excluir_organizacao
-  ]),
-  gestor: new Set<Acao>([
-    'criar_orcamento',
-    'ver_clientes',
-    'gerenciar_clientes',
-    'ver_agenda_propria',
-    'ver_agenda_equipe',
-    'ver_relatorios',
-    'ver_valores_agregados',
-    'ver_metas',
-    'ver_equipe', // vê a equipe, mas não gerencia
-    // gestor NÃO tem: gerenciar_equipe, ver_acessos, faturamento, excluir
-  ]),
-  tecnico: new Set<Acao>([
-    'criar_orcamento',
-    'ver_clientes',
-    'ver_agenda_propria',
-    // tecnico NÃO tem: agenda da equipe, relatórios, valores agregados, metas,
-    // nada de equipe/acessos, nada de faturamento.
-  ]),
-};
-
-/**
- * Conta PESSOAL (sem organização): o usuário é dono do próprio negócio. Pode
- * tudo que faz sentido para um solo — criar orçamento, clientes, agenda,
- * relatórios, metas, faturamento (assinar o próprio plano). Não há "equipe" nem
- * "acessos" (não há outros membros), e não há organização para excluir.
- */
-const PERMISSOES_PESSOAL: ReadonlySet<Acao> = new Set<Acao>([
-  'criar_orcamento',
-  'ver_clientes',
-  'gerenciar_clientes',
-  'ver_agenda_propria',
-  'ver_agenda_equipe',
-  'ver_relatorios',
-  'ver_valores_agregados',
-  'ver_metas',
-  'gerenciar_faturamento',
-]);
-
 export interface UsePermissao {
   /** Papel do usuário na org, ou null quando conta pessoal. `null` também enquanto indeterminado — cheque `carregando`. */
   papel: Papel | null;
@@ -123,37 +37,19 @@ export interface UsePermissao {
   pode: (acao: Acao) => boolean;
 }
 
-/**
- * Mesma regra do `pode` do hook, como função pura sobre um retrato do tipo de
- * conta. Três estados: `true`/`false` com o papel conhecido; `null` = papel ainda
- * indeterminado (quem chama decide — nunca tratar como "pode").
- */
-export function podeComPapel(
-  acao: Acao,
-  conta: { tipo: 'pessoal' | 'empresa'; org: { papel: Papel } | null; resolvido: boolean },
-): boolean | null {
-  if (!conta.resolvido) return null;
-  const papel = conta.tipo === 'empresa' && conta.org ? conta.org.papel : null;
-  if (!papel) return PERMISSOES_PESSOAL.has(acao);
-  return PERMISSOES[papel]?.has(acao) ?? false;
-}
-
 export function usePermissao(): UsePermissao {
   const { tipo, org, carregando, resolvido } = useTipoConta();
   const papel = tipo === 'empresa' && org ? org.papel : null;
 
   const pode = useCallback(
-    (acao: Acao): boolean => {
+    (acao: Acao): boolean =>
       // Papel INDETERMINADO nega tudo. Sem isto, `papel === null` cairia na matriz
       // PESSOAL — que é a MAIS permissiva (relatórios, valores agregados,
       // faturamento) — e um técnico com a leitura da org ainda em voo, ou offline,
       // seria promovido a dono. "Não sei" nunca pode valer mais que "sou técnico".
-      if (!resolvido) return false;
-      // Conta pessoal: usa a matriz do solo (dono de si).
-      if (!papel) return PERMISSOES_PESSOAL.has(acao);
-      return PERMISSOES[papel]?.has(acao) ?? false;
-    },
-    [papel, resolvido],
+      // Conta pessoal usa a matriz do solo (dono de si). Regra em `podeComPapel`.
+      podeComPapel(acao, { tipo, org, resolvido }) === true,
+    [tipo, org, resolvido],
   );
 
   return {
