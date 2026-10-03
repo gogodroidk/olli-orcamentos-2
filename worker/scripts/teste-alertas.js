@@ -48,6 +48,7 @@ import {
   validarIbge,
 } from '../src/alertas.js';
 import { metodosDaRota } from '../src/util.js';
+import { CRON_PLAY } from '../src/play.js';
 
 let ok = 0;
 async function caso(nome, fn) {
@@ -563,8 +564,11 @@ await caso('crons do wrangler.jsonc batem com ALERTAS_CRONS', () => {
   const deAlertas = crons.filter((c) => fonteDoCron(c));
   assert.deepEqual(deAlertas.sort(), Object.keys(ALERTAS_CRONS).sort());
   assert.deepEqual(Object.values(ALERTAS_CRONS), ['inmet']); // fonte desligada não gasta Cron Trigger
-  // Conta Free = 5 Cron Triggers no total: esta worker usa no máximo 2.
-  assert.ok(crons.length <= 2, `crons em produção: ${crons.length}`);
+  // Conta Free = 5 Cron Triggers no total: esta worker usa no máximo 3 — minuto,
+  // alertas e o cron PRÓPRIO da Google Play (CRON_PLAY, desde 03/10/2026).
+  assert.ok(crons.includes(CRON_PLAY), 'o cron próprio da Play está no wrangler.jsonc');
+  assert.equal(fonteDoCron(CRON_PLAY), null, 'o cron da Play não dispara alertas');
+  assert.ok(crons.length <= 3, `crons em produção: ${crons.length}`);
   // `triggers` é herdado pelo env de staging: ele precisa fixar os próprios crons.
   const staging = wr.slice(wr.indexOf('"olli-diagnostico-staging"'));
   const ms = /"triggers"\s*:\s*\{\s*"crons"\s*:\s*\[([^\]]*)\]/.exec(staging);

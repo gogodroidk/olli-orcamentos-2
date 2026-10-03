@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { GLOBAL_CONFIG } from "@/global-config";
+import { origemUtmParaCadastro, registrarCadastroConcluido } from "@/lib/marketing";
 import { supabase } from "@/lib/supabase";
 import { mapAuthErrorMessage } from "@/store/userStore";
 import { SENHA_MINIMA } from "@auth-policy";
@@ -65,10 +66,15 @@ function RegisterForm() {
 						full_name: values.name.trim(),
 						name: values.name.trim(),
 						phone,
+						// Origem da campanha (UTM/fbclid/gclid) capturada na landing ou nesta URL.
+						...origemUtmParaCadastro(),
 					},
 				},
 			});
 			if (error) throw error;
+			// E-mail já cadastrado volta "sucesso" sem identidades (o Supabase não revela
+			// que a conta existe): isso não é um cadastro novo e não vira conversão.
+			if (data.user?.identities?.length !== 0) registrarCadastroConcluido("email", data.user?.id);
 			if (data.session) {
 				toast.success("Conta criada. Seu espaço está pronto!", { position: "top-center" });
 				navigate(destinoPosLogin ?? GLOBAL_CONFIG.defaultRoute, { replace: true });

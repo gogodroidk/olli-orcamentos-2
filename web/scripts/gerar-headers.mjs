@@ -55,7 +55,29 @@ const CF_ANALYTICS_BEACON = "https://cloudflareinsights.com";
 // se a org do Sentry mudar, ele muda junto.
 const SENTRY_INGEST = "https://o4511745793327104.ingest.us.sentry.io";
 
-const scriptSrc = ["'self'", CF_ANALYTICS_SCRIPT, ...hashes].join(" ");
+// Meta Pixel (web/src/lib/metaPixel.ts): o fbevents.js vem de connect.facebook.net
+// (script-src) e os eventos saem para www.facebook.com/tr (img-src e connect-src).
+// Sem estes hosts o navegador bloqueia o Pixel em silêncio — o painel de Eventos do
+// Meta simplesmente não recebe nada. Só estes dois hosts, nada de `https:` solto.
+const META_SCRIPT = "https://connect.facebook.net";
+const META_EVENTOS = "https://www.facebook.com";
+
+// Google tag do Google Ads (web/src/lib/googleTag.ts): gtag.js vem do
+// googletagmanager; a conversão e o cookie do gclid saem para googleadservices,
+// doubleclick e google.com(.br); o td.doubleclick.net abre um iframe invisível.
+// Lista oficial: developers.google.com/tag-platform/security/guides/csp (Google Ads).
+const GOOGLE_SCRIPT = ["https://www.googletagmanager.com", "https://www.googleadservices.com", "https://googleads.g.doubleclick.net"];
+const GOOGLE_EVENTOS = [
+	"https://www.googletagmanager.com",
+	"https://www.googleadservices.com",
+	"https://googleads.g.doubleclick.net",
+	"https://www.google.com",
+	"https://www.google.com.br",
+	"https://pagead2.googlesyndication.com",
+];
+const GOOGLE_FRAME = ["https://td.doubleclick.net", "https://www.googletagmanager.com"];
+
+const scriptSrc = ["'self'", CF_ANALYTICS_SCRIPT, META_SCRIPT, ...GOOGLE_SCRIPT, ...hashes].join(" ");
 
 // style-src precisa de 'unsafe-inline': o Astro/Tailwind emitem atributos style=""
 // e o CSP não tem como "hashear" atributo. Estilo inline não executa código —
@@ -64,9 +86,10 @@ const csp = [
 	"default-src 'self'",
 	`script-src ${scriptSrc}`,
 	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data:",
+	`img-src 'self' data: ${META_EVENTOS} ${GOOGLE_EVENTOS.join(" ")}`,
 	"font-src 'self' data:",
-	`connect-src 'self' ${CF_ANALYTICS_BEACON} ${SENTRY_INGEST}`,
+	`connect-src 'self' ${CF_ANALYTICS_BEACON} ${SENTRY_INGEST} ${META_EVENTOS} ${META_SCRIPT} ${GOOGLE_EVENTOS.join(" ")}`,
+	`frame-src ${GOOGLE_FRAME.join(" ")}`,
 	"form-action 'self'",
 	"base-uri 'self'",
 	"frame-ancestors 'none'",

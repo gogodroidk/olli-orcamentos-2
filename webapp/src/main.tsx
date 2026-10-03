@@ -11,6 +11,7 @@ import App from "./App";
 import { registerLocalIcons } from "./components/icon";
 import { GLOBAL_CONFIG } from "./global-config";
 import { ligarWebVitals } from "./olli/webVitals";
+import { iniciarMarketing } from "./lib/marketing";
 import ErrorBoundary from "./routes/components/error-boundary";
 import { routesSection } from "./routes/sections";
 import { urlJoin } from "./utils";
@@ -46,6 +47,10 @@ const aoRejeitar = (e: PromiseRejectionEvent) => capturarExcecao(e.reason, { ori
 
 window.addEventListener("error", aoErro);
 window.addEventListener("unhandledrejection", aoRejeitar);
+
+// Origem da visita (UTM) + Meta Pixel nas telas de entrada. Síncrono e à prova de falha:
+// precisa rodar antes do router para a URL de chegada ainda trazer o `?utm_*`.
+iniciarMarketing();
 
 async function iniciarSentry() {
 	try {
