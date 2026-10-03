@@ -81,7 +81,16 @@
 			"@ajuda": ["../src/content/ajuda/index.ts"],
 			// ASSINATURA PELA GOOGLE PLAY — catálogo e URL de gerenciar, os mesmos do app
 			// e do worker (src/services/playBillingRegras.ts). Módulo puro, zero imports.
-			"@play-billing-regras": ["../src/services/playBillingRegras.ts"]
+			"@play-billing-regras": ["../src/services/playBillingRegras.ts"],
+
+
+			// MARKETING — origem da visita (UTM) e Meta Pixel. Mesma fonte da landing
+			// (`web/src/lib`), para o ID do Pixel e as regras de first/last-touch não
+			// divergirem entre os dois sites. TypeScript puro, zero imports.
+			"@atribuicao": ["../web/src/lib/atribuicao.ts"],
+			"@meta-pixel": ["../web/src/lib/metaPixel.ts"],
+			"@consentimento": ["../web/src/lib/consentimento.ts"],
+			"@google-tag": ["../web/src/lib/googleTag.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

@@ -40,6 +40,11 @@ const acessoCodigoFonte = fileURLToPath(new URL("../src/services/acessoCodigo.ts
 const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import.meta.url));
 // Assinatura pela Google Play: o MESMO catálogo/URL de gerenciar que o app usa. Módulo puro.
 const playBillingRegrasFonte = fileURLToPath(new URL("../src/services/playBillingRegras.ts", import.meta.url));
+// Marketing (origem UTM + Meta Pixel): a MESMA fonte da landing — ver tsconfig.json.
+const atribuicaoFonte = fileURLToPath(new URL("../web/src/lib/atribuicao.ts", import.meta.url));
+const metaPixelFonte = fileURLToPath(new URL("../web/src/lib/metaPixel.ts", import.meta.url));
+const consentimentoFonte = fileURLToPath(new URL("../web/src/lib/consentimento.ts", import.meta.url));
+const googleTagFonte = fileURLToPath(new URL("../web/src/lib/googleTag.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -99,6 +104,10 @@ export default defineConfig(({ mode }) => {
 				"@acesso-codigo": acessoCodigoFonte,
 				"@ajuda": ajudaFonte,
 				"@play-billing-regras": playBillingRegrasFonte,
+				"@atribuicao": atribuicaoFonte,
+				"@meta-pixel": metaPixelFonte,
+				"@consentimento": consentimentoFonte,
+				"@google-tag": googleTagFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

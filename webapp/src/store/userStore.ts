@@ -5,6 +5,7 @@ import type { UserInfo, UserToken } from "#/entity";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
 import { esquecerValoresVistos } from "@/components/animate/memoria-visto";
+import { registrarNovaContaSocial } from "@/lib/marketing";
 import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint";
 import { resetBrandColor } from "@/olli/branding";
 import { queryClient } from "./queryClient";
@@ -225,6 +226,11 @@ export function useAuthSync() {
 			// o lock interno do Auth. Adie a telemetria ate o evento terminar.
 			if (session && event === "SIGNED_IN") {
 				window.setTimeout(() => void registrarAtividade("login", session), 0);
+			}
+			// Origem do cadastro por Google/Apple (só age em conta criada há minutos). Fora
+			// do callback: chamar o Supabase de dentro dele, com a sessão travada, trava.
+			if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+				window.setTimeout(() => void registrarNovaContaSocial(session.user), 0);
 			}
 		});
 		return () => {
