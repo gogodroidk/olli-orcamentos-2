@@ -12,8 +12,9 @@
  *     não vira "sem movimentos";
  *  2) ritual diário ("Bom dia" e aviso "saia às"): a próxima saída e a origem da
  *     rota passam pelo escopo; papel desconhecido não cria nem cancela aviso;
- *  3) o papel vem do store de `useTipoConta` (cache → rede) e o usuário de
- *     `getCurrentUser`, com a mesma matriz de permissão do hook.
+ *  3) o papel vem do store de `useTipoConta` (cache → rede) pela ponte
+ *     `services/papelAtual.ts` (sem React Native, o painel também compila isto) e o
+ *     usuário de `getCurrentUser`, com a mesma matriz de permissão do hook.
  */
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
@@ -26,6 +27,7 @@ import {
   type RelatorioDia,
 } from '../src/utils/relatorioDiaTexto.ts';
 import type { Agendamento } from '../src/types/index.ts';
+import { lerPapelAtual, registrarLeitorPapel } from '../src/services/papelAtual.ts';
 
 let passos = 0;
 function caso(nome: string, fn: () => void) {
@@ -156,20 +158,38 @@ caso('fonte: getProximaSaida exige escopo conhecido e filtra antes de escolher',
   assert.match(src, /escolherProximaSaida\(aplicarEscopo\(ocorrencias, escopo\), agora\)/);
 });
 
-caso('fonte: escopo fora do React usa o store do papel, getCurrentUser e a matriz do hook', () => {
+// Ponte do papel (sem React Native): sem leitor, leitor que falha ou papel não
+// resolvido = desconhecido; nunca "pode ver a equipe".
+{
+  assert.deepEqual(await lerPapelAtual(), { resolvido: false, podeVerAgendaEquipe: false });
+  registrarLeitorPapel(async () => { throw new Error('rede'); });
+  assert.deepEqual(await lerPapelAtual(), { resolvido: false, podeVerAgendaEquipe: false });
+  registrarLeitorPapel(async () => ({ resolvido: false, podeVerAgendaEquipe: true }));
+  assert.deepEqual(await lerPapelAtual(), { resolvido: false, podeVerAgendaEquipe: false });
+  registrarLeitorPapel(async () => ({ resolvido: true, podeVerAgendaEquipe: false }));
+  assert.deepEqual(await lerPapelAtual(), { resolvido: true, podeVerAgendaEquipe: false });
+  passos++;
+  console.log('  ok  ponte do papel: sem leitor, falha ou não resolvido = desconhecido, nunca "pode"');
+}
+
+caso('fonte: escopo fora do React usa a ponte do papel, getCurrentUser e a matriz do hook', () => {
   const src = ler('src/services/escopoAgendaAtual.ts');
-  assert.match(src, /resolverTipoContaAtual\(\)/);
+  assert.match(src, /lerPapelAtual\(\)/);
   assert.match(src, /getCurrentUser\(\)/);
-  assert.match(src, /podeComPapel\('ver_agenda_equipe', conta\) === true/);
+  assert.match(src, /podeVerEquipe: conta\.podeVerAgendaEquipe/);
   assert.match(src, /papelCarregando: false/);
   assert.match(src, /catch \{\s*return \{ status: 'erro' \};/);
+  // Nada de React Native no caminho do serviço: ele entra no type-check do painel.
+  assert.doesNotMatch(src, /hooks\/useTipoConta|hooks\/usePermissao/);
+  assert.doesNotMatch(ler('src/services/papelAtual.ts'), /^import /m);
   const perm = ler('src/hooks/usePermissao.ts');
-  assert.match(perm, /export function podeComPapel\(/);
-  assert.match(perm, /podeComPapel\(acao, \{ tipo, org, resolvido \}\) === true/, 'o hook e o serviço decidem pela mesma função');
+  assert.match(perm, /registrarLeitorPapel\(async \(\) => \{\s*const conta = await resolverTipoContaAtual\(\);\s*return \{ resolvido: conta\.resolvido, podeVerAgendaEquipe: podeComPapel\('ver_agenda_equipe', conta\) === true \};/);
+  assert.match(perm, /podeComPapel\(acao, \{ tipo, org, resolvido \}\) === true/, 'o hook e a ponte decidem pela mesma função');
   assert.match(perm, /if \(!conta\.resolvido\) return null;/, 'papel indeterminado não é "pode"');
   const tipo = ler('src/hooks/useTipoConta.ts');
   assert.match(tipo, /export async function resolverTipoContaAtual\(\)/);
-  assert.match(tipo, /return \{ tipo: estado\.tipo, org: estado\.org, resolvido: estado\.resolvido \};/);
+  // O leitor é carregado no boot (AppNavigator importa usePermissao), antes do sync que roda o ritual.
+  assert.match(ler('src/navigation/AppNavigator.tsx'), /hooks\/usePermissao/);
 });
 
 caso('fonte: a tela do relatório não mostra 0 quando a agenda ficou de fora', () => {

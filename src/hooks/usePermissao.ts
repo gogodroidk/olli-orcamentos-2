@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
-import { useTipoConta } from './useTipoConta';
+import { resolverTipoContaAtual, useTipoConta } from './useTipoConta';
 import type { Papel } from '../services/equipe';
+import { registrarLeitorPapel } from '../services/papelAtual';
 
 /**
  * usePermissao — o que o usuário PODE fazer, dado o papel dele na organização
@@ -137,6 +138,13 @@ export function podeComPapel(
   if (!papel) return PERMISSOES_PESSOAL.has(acao);
   return PERMISSOES[papel]?.has(acao) ?? false;
 }
+
+// Serviços fora de componente (relatório do dia, ritual diário) leem o papel por
+// esta ponte, com a MESMA matriz. Ver services/papelAtual.ts (por que a ponte).
+registrarLeitorPapel(async () => {
+  const conta = await resolverTipoContaAtual();
+  return { resolvido: conta.resolvido, podeVerAgendaEquipe: podeComPapel('ver_agenda_equipe', conta) === true };
+});
 
 export function usePermissao(): UsePermissao {
   const { tipo, org, carregando, resolvido } = useTipoConta();
