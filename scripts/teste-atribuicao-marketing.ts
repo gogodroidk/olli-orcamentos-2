@@ -416,4 +416,21 @@ assert.equal(chamadas[1].corpo.test_event_code, 'TEST1');
 assert.deepEqual(chamadas[2].corpo.p_itens.map((x: EventoCapi) => x.estado), ['erro'], 'evento de teste não fecha a pendência');
 assert.equal(resTeste.enviados, 0);
 
+// Token no Supabase Vault (Workers Free no teto de 64 variáveis): três estados.
+const envSemSegredo = { SUPABASE_URL: 'https://sb', SUPABASE_SERVICE_ROLE_KEY: 'k' };
+const fetchComVault = (respostaToken: Response) => async (url: string, opcoes: { body: string }) => {
+  if (!url.includes('anuncios_meta_token')) return fetchFalso(url, opcoes);
+  chamadas.push({ url, corpo: JSON.parse(opcoes.body) });
+  return respostaToken.clone();
+};
+chamadas.length = 0;
+const resVault = (await processarConversoesAnuncios(envSemSegredo, { forcar: true, agora: new Date(AGORA), fetchImpl: fetchComVault(new Response(JSON.stringify('tok-vault'), { status: 200 })) as unknown as typeof fetch })) as EventoCapi;
+assert.equal(resVault.enviados, 1, 'token do Vault liga a CAPI');
+assert.equal(chamadas.length, 4, 'pendências, Vault, envio, registro');
+assert.match(chamadas[2].url, /access_token=tok-vault$/);
+chamadas.length = 0;
+assert.deepEqual(await processarConversoesAnuncios(envSemSegredo, { forcar: true, agora: new Date(AGORA), fetchImpl: fetchComVault(new Response('null', { status: 200 })) as unknown as typeof fetch }), { estado: 'desligado' }, 'Vault vazio = desligado');
+assert.deepEqual(await processarConversoesAnuncios(envSemSegredo, { forcar: true, agora: new Date(AGORA), fetchImpl: fetchComVault(new Response('x', { status: 500 })) as unknown as typeof fetch }), { estado: 'erro_token' }, 'erro no Vault ≠ desligado');
+assert.ok(!chamadas.some((c) => c.url.includes('graph.facebook.com')), 'sem token, nada vai ao Meta');
+
 console.log('PASSOU: parser, first/last-touch, expiração, cookie, propagação, origem_utm, consentimento, Pixel, Google tag, CSP, fiação e CAPI do worker.');
