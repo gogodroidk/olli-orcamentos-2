@@ -14,13 +14,15 @@
  * 'sim'`) e não está em `funil_exclusoes` — o filtro mora no SQL
  * (`anuncios_conversoes_pendentes`, migration 20261005090000).
  *
- * LIGA/DESLIGA: sem o segredo `META_CAPI_TOKEN` o job não faz nada e diz isso no log.
+ * LIGA/DESLIGA: o token vem do segredo `META_CAPI_TOKEN` ou, como o Workers Free já está
+ * no teto de 64 variáveis, do Supabase Vault (`meta_capi_token`, migration 20261005090100).
+ * Sem nenhum dos dois o job não faz nada e diz isso no log.
  * Nada de modo sombra. `META_CAPI_TEST_CODE` (opcional) manda tudo como evento de TESTE
  * (aparece só em Events Manager > Testar eventos) — para verificar sem poluir.
  *
  * ORÇAMENTO (plano Free, 50 subrequests por invocação, divididos com os outros jobs do
- * cron de minuto): roda 1 vez a cada 10 min e gasta 3 subrequests — pendências, envio
- * em lote, registro do resultado.
+ * cron de minuto): roda 1 vez a cada 10 min. Rodada vazia = 1 subrequest (pendências);
+ * com o que enviar = até 4 (pendências, token no Vault, envio em lote, registro).
  *
  * PRIVACIDADE: e-mail e id da conta vão como SHA-256 (exigência do Meta e da nossa
  * política); nome, telefone e dados dos clientes nunca saem.
@@ -113,11 +115,13 @@ async function rpc(env, f, nome, corpo) {
  */
 export async function processarConversoesAnuncios(env, { agora = new Date(), forcar = false, fetchImpl } = {}) {
   if (!forcar && !horaDeEnviarConversoes(agora)) return { estado: 'fora_do_horario' };
-  if (!env?.META_CAPI_TOKEN) {
-    console.log('[anuncios] Conversions API DESLIGADA: segredo META_CAPI_TOKEN ausente.');
+  const desligado = () => {
+    console.log('[anuncios] Conversions API DESLIGADA: sem token (segredo META_CAPI_TOKEN ou Vault meta_capi_token).');
     return { estado: 'desligado' };
+  };
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) {
+    return env?.META_CAPI_TOKEN ? { estado: 'sem_supabase' } : desligado();
   }
-  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return { estado: 'sem_supabase' };
   const f = fetchImpl ?? fetch;
   try {
     const rPend = await rpc(env, f, 'anuncios_conversoes_pendentes', { p_limite: 20 });
@@ -127,6 +131,21 @@ export async function processarConversoesAnuncios(env, { agora = new Date(), for
     }
     const pendencias = await rPend.json();
     if (!Array.isArray(pendencias) || pendencias.length === 0) return { estado: 'nada', enviados: 0 };
+
+    // Token: segredo do worker, ou o Vault do Supabase (o Workers Free tem teto de 64
+    // variáveis e já estava cheio). Só busca quando há o que enviar: 1 subrequest a
+    // menos nas rodadas vazias. Erro ao ler o Vault ≠ token ausente (três estados).
+    let token = env.META_CAPI_TOKEN || null;
+    if (!token) {
+      const rTok = await rpc(env, f, 'anuncios_meta_token', {});
+      if (!rTok.ok) {
+        console.log(`[anuncios] erro ao ler o token no Vault: HTTP ${rTok.status}`);
+        return { estado: 'erro_token' };
+      }
+      const valor = await rTok.json().catch(() => null);
+      token = typeof valor === 'string' && valor.trim() ? valor.trim() : null;
+    }
+    if (!token) return desligado();
 
     const resultado = [];
     const eventos = [];
@@ -145,7 +164,7 @@ export async function processarConversoesAnuncios(env, { agora = new Date(), for
       let estado = 'erro';
       let detalhe = '';
       try {
-        const r = await f(`https://graph.facebook.com/${GRAPH_VERSAO}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(env.META_CAPI_TOKEN)}`, {
+        const r = await f(`https://graph.facebook.com/${GRAPH_VERSAO}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(corpo),

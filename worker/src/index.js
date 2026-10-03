@@ -927,8 +927,8 @@ const handler = {
     // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
     ctx.waitUntil(limparEventosAntigos(env, agendado));
     // Conversões de anúncio pelo servidor (Meta CAPI: cadastro e assinatura de quem
-    // aceitou o aviso de cookies). A cada 10 min, 3 subrequests. Sem META_CAPI_TOKEN,
-    // desligado (e diz isso no log). Ver anunciosConversoes.js.
+    // aceitou o aviso de cookies). A cada 10 min, 1 a 4 subrequests. Sem token (segredo
+    // ou Vault do Supabase), desligado (e diz isso no log). Ver anunciosConversoes.js.
     ctx.waitUntil(processarConversoesAnuncios(env, { agora: agendado }));
     // A Google Play NÃO roda aqui (orçamento de subrequests): tem cron próprio
     // (`CRON_PLAY`, ramo acima).
