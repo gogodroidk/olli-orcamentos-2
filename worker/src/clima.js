@@ -25,6 +25,7 @@
  *   200 { ok:true, fonte:'MET Norway', licenca:'CC BY 4.0', local:{geohash,lat,lon},
  *         fuso:'America/Sao_Paulo', atual:{temperatura,simbolo,ehDia,medidoEm},
  *         hoje:{data,max,min}, chuvaPorHora:[{inicio,hora,mm,simbolo}],
+ *         dias:[{data,max,min,chuvaMm}] (resumo diário, ver resumirDias),
  *         atualizadoEm, cache }
  *   400 { ok:false, motivo:'coordenadas_invalidas' }
  *   429 { ok:false, motivo:'muitas_requisicoes' }
@@ -100,6 +101,18 @@ export const CLIMA_HORAS = 12;
 
 /** Quantas horas da série do MET guardamos (a janela de 12h a partir das 13h cruza a meia-noite). */
 export const CLIMA_HORAS_GUARDADAS = 48;
+
+/**
+ * Resumo por DIA (Onda I4 · Radar do Tempo para vender): quantos dias à frente.
+ * O /compact cobre ~9 a 10 dias (horário até ~60h, depois de 6 em 6 horas).
+ */
+export const CLIMA_DIAS = 9;
+
+/** Horas de chuva conhecidas para o dia ter `chuvaMm` (abaixo disso: `null`, "não sei"). */
+export const CLIMA_DIA_HORAS_MIN_CHUVA = 18;
+
+/** Amostras de temperatura para o dia ter máxima/mínima (o trecho de 6 em 6 h dá 4). */
+export const CLIMA_DIA_AMOSTRAS_MIN_TEMP = 3;
 
 /** Rede ruim é o normal deste público: melhor falhar rápido e mostrar "indisponível". */
 export const CLIMA_TIMEOUT_MS = 5000;
@@ -258,7 +271,74 @@ export function lerMet(d) {
     fonte: CLIMA_FONTE,
     previsaoDe: textoOuNull(meta.updated_at),
     horas,
+    dias: resumirDias(serie),
   };
+}
+
+/**
+ * Resumo por DIA LOCAL da série inteira do MET (não só das 48h guardadas): a
+ * máxima e a mínima previstas e a chuva somada. É o que o Radar do Tempo do app
+ * lê ("3 dias com 33 °C a partir de terça").
+ *
+ * Honestidade, igual ao resto deste arquivo:
+ *  - a chuva usa `next_1_hours` onde existe e `next_6_hours` depois (sem contar
+ *    a mesma hora duas vezes). Dia com menos de `CLIMA_DIA_HORAS_MIN_CHUVA` horas
+ *    cobertas sai com `chuvaMm: null` ("não sei"), NUNCA 0;
+ *  - máxima/mínima saem das temperaturas instantâneas (e do máx/mín de 6 h, se o
+ *    MET mandar). Menos de `CLIMA_DIA_AMOSTRAS_MIN_TEMP` amostras → `null`.
+ * Item malformado no meio da série encerra o resumo ali (o que veio antes vale).
+ * Nunca lança.
+ */
+export function resumirDias(serie) {
+  if (!Array.isArray(serie)) return [];
+  const porDia = new Map();
+  let cobertoAte = -Infinity;
+  for (const item of serie) {
+    const t = item && typeof item.time === 'string' && RE_HORA_UTC.test(item.time) ? Date.parse(item.time) : NaN;
+    if (!Number.isFinite(t)) break;
+    const data = partesLocais(t).data;
+    let dia = porDia.get(data);
+    if (!dia) {
+      if (porDia.size >= CLIMA_DIAS + 1) break;
+      dia = { data, temps: [], chuva: 0, horasChuva: 0 };
+      porDia.set(data, dia);
+    }
+    const dados = (item && item.data) || {};
+    const temp = numOuNull(dados.instant && dados.instant.details ? dados.instant.details.air_temperature : null);
+    if (temp !== null) dia.temps.push(temp);
+    const seis = dados.next_6_hours && dados.next_6_hours.details ? dados.next_6_hours.details : null;
+    if (seis) {
+      const tMax = numOuNull(seis.air_temperature_max);
+      const tMin = numOuNull(seis.air_temperature_min);
+      if (tMax !== null) dia.temps.push(tMax);
+      if (tMin !== null) dia.temps.push(tMin);
+    }
+    if (t < cobertoAte) continue;
+    const um = dados.next_1_hours && dados.next_1_hours.details ? numOuNull(dados.next_1_hours.details.precipitation_amount) : null;
+    if (um !== null && um >= 0) {
+      dia.chuva += um;
+      dia.horasChuva += 1;
+      cobertoAte = t + HORA_MS;
+      continue;
+    }
+    const mm6 = seis ? numOuNull(seis.precipitation_amount) : null;
+    if (mm6 !== null && mm6 >= 0) {
+      dia.chuva += mm6;
+      dia.horasChuva += 6;
+      cobertoAte = t + 6 * HORA_MS;
+    }
+  }
+  const dias = [];
+  for (const dia of porDia.values()) {
+    const temTemp = dia.temps.length >= CLIMA_DIA_AMOSTRAS_MIN_TEMP;
+    dias.push({
+      data: dia.data,
+      max: temTemp ? Math.max(...dia.temps) : null,
+      min: temTemp ? Math.min(...dia.temps) : null,
+      chuvaMm: dia.horasChuva >= CLIMA_DIA_HORAS_MIN_CHUVA ? Math.round(dia.chuva * 10) / 10 : null,
+    });
+  }
+  return dias;
 }
 
 let fmtLocal = null;
@@ -347,6 +427,9 @@ export function montarResposta(bruto, agoraMs, celula) {
       min: tempsHoje.length ? Math.min(...tempsHoje) : null,
     },
     chuvaPorHora: janela,
+    // Resumo por dia (de hoje em diante). Ausente em previsão guardada antes do
+    // campo existir: o app lê ausência como "não sei", nunca como "tempo bom".
+    ...(Array.isArray(bruto.dias) ? { dias: bruto.dias.filter((x) => x && x.data >= dataHoje) } : {}),
   };
 }
 
@@ -495,7 +578,13 @@ export async function handleClima(request, env, url, deps = {}) {
   let ultimaModificacao;
   if (r.tipo === 'naoModificado' && revalidar) {
     // 304: a série guardada continua sendo a atual do MET — só renova o frescor.
-    bruto = { v: 2, fonte: revalidar.fonte, previsaoDe: revalidar.previsaoDe ?? null, horas: revalidar.horas };
+    bruto = {
+      v: 2,
+      fonte: revalidar.fonte,
+      previsaoDe: revalidar.previsaoDe ?? null,
+      horas: revalidar.horas,
+      ...(Array.isArray(revalidar.dias) ? { dias: revalidar.dias } : {}),
+    };
     ultimaModificacao = revalidar.ultimaModificacao;
   } else if (r.tipo === 'naoModificado') {
     return json({ ok: false, motivo: 'clima_indisponivel' }, 503);

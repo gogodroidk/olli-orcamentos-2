@@ -1,167 +1,84 @@
 /**
- * OLLI — "A que horas eu preciso SAIR" (POST /eta/saida).
+ * OLLI — ETA e "a que horas eu preciso SAIR", versão GRÁTIS (Onda I2, 01/10/2026).
  *
- * FUNDAÇÃO da feature descrita em docs/ENXAME/IDEIA_ETA_TRANSITO.md. É a parte
- * que NÃO depende de permissão de localização no aparelho: a origem vem do
- * cadastro (visita anterior ou endereço da empresa), não do GPS. Sem permissão
- * nova = sem passo de loja, sem política de privacidade nova, sem prebuild.
+ *   POST /eta        → "quanto tempo daqui até lá, saindo agora"
+ *   POST /eta/saida  → "a que horas eu saio para CHEGAR às 15h"
  *
- * DIFERENÇA PARA O /eta (`handleEtaAgora`, no fim deste arquivo):
- *   /eta       → "quanto tempo daqui até lá, AGORA". Trânsito de agora.
- *   /eta/saida → "a que horas eu saio para CHEGAR às 15h". Trânsito PREVISTO
- *                para o horário da saída (`departureTime`), que é o campo que o
- *                /eta não manda — e sem ele o número calculado de manhã para uma
- *                visita da tarde está simplesmente errado, sem ninguém perceber.
+ * ATÉ 30/09/2026 estas rotas pagavam a Routes API e a Geocoding API do Google. O
+ * billing do projeto Google está DESLIGADO e o dono proibiu pagar. Agora as duas
+ * respondem com a MESMA estimativa que o app faz no aparelho
+ * (`src/services/etaEstimado.ts`: linha reta × 1,4 ÷ velocidade urbana do
+ * horário de Brasília) — sem chave, sem terceiro, sem custo.
  *
- * ─── A REGRA DURA DESTE ARQUIVO ────────────────────────────────────────────
- * NENHUM caminho devolve `ok:true` com um número que não veio da Routes API
- * (direto ou de um cache que veio dela). Não existe estimativa por linha reta,
- * não existe "~10 min, pertinho", não existe chute otimista. Errar a hora de
- * sair faz o prestador chegar ATRASADO no cliente — é pior do que não ter a
- * função. Quando não dá para calcular, o estado é `indisponivel` e o app cai no
- * lembrete fixo que já existe.
+ * O app novo (1.1.9+) nem chama mais estas rotas: estima localmente. Elas ficam de
+ * pé para o APK antigo instalado não quebrar.
+ *
+ * ─── HONESTIDADE (P0) ──────────────────────────────────────────────────────
+ *  - Toda resposta de sucesso leva `comTransito:false`, `estimado:true` e
+ *    `rotulo:'estimativa, sem trânsito'`. Nunca "com trânsito".
+ *  - Endereço em TEXTO não é mais geocodificado aqui (era Google). Quem manda
+ *    texto recebe `indisponivel` com `erro:'geocodificacao_desligada'` — "não sei",
+ *    nunca um ponto chutado. O app novo manda coordenadas (as dos clientes, que o
+ *    `POST /geo` grátis já preenche).
  *
  * TRÊS ESTADOS, sempre (regra da casa `olli-gate-erro-vira-vazio`):
  *   { ok:true,  estado:'ok', ... }
- *   { ok:false, estado:'indisponivel', erro }            → rede/API/cota. "Não consegui calcular".
- *   { ok:false, estado:'endereco_insuficiente', qual }   → não dá para geocodificar. Ação: corrigir endereço.
- * "Não sei" nunca vira "não tem", e nunca vira sucesso.
+ *   { ok:false, estado:'indisponivel', erro }
+ *   { ok:false, estado:'endereco_insuficiente', qual }
  *
- * ─── CUSTO (é o que decide o desenho) ──────────────────────────────────────
- * Preços conferidos na web em 2026-07-18 (fontes no fim do doc do cluster):
- *   Compute Routes Essentials — 10.000 grátis/mês · US$  5,00 / 1.000
- *   Compute Routes Pro        —  5.000 grátis/mês · US$ 10,00 / 1.000
- *   Geocoding                 — 10.000 grátis/mês · US$  5,00 / 1.000
- * O SKU é decidido pelo `routingPreference`: TRAFFIC_AWARE / TRAFFIC_AWARE_OPTIMAL
- * caem no **Pro** (dobro do preço, metade da franquia); TRAFFIC_UNAWARE fica no
- * Essentials. Por isso `modo` é OBRIGATÓRIO no corpo — quem chama escolhe, e a
- * escolha fica visível no call site em vez de escondida num default:
- *   modo:'planejamento' → TRAFFIC_UNAWARE, sem departureTime  → Essentials
- *   modo:'confirmacao'  → TRAFFIC_AWARE  + departureTime      → Pro
- *
- * ─── SEGURANÇA ─────────────────────────────────────────────────────────────
- * A chave (OLLI_ROUTES_API_KEY) é secret do Worker e NUNCA vai para o aparelho —
- * mesma regra do /eta e do /geocodificar. Exige JWT do Supabase. Rate limit por
- * usuário ANTES de qualquer fetch pago, no binding ETA_RL que já existe.
- *
- * O rate limit aqui é FAIL-CLOSED (`sensivel:true`), diferente do /eta atual.
- * Motivo: esta rota gasta dinheiro de terceiro a cada chamada, e um limitador
- * "indisponível" não é sinônimo de "dentro do limite" (ver rateLimit.js — o
- * incidente real em que um build apagou os 5 limiters em produção). O custo de
- * negar é conhecido e tratado: o app mostra "não consegui calcular" e usa o
- * lembrete fixo. O custo de liberar sem vigia é uma conta aberta na Google.
+ * SEGURANÇA: exige JWT do Supabase e passa pelo rate limit ETA_RL por usuário.
+ * Sem custo de terceiro, o limitador deixa de ser trava de gasto: política
+ * `sensivel:false` (mudo = deixa passar), igual ao /cep.
  */
 
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
 import { parseJsonBody } from './util.js';
+import {
+  MAX_DISTANCIA_KM,
+  ROTULO_ESTIMATIVA,
+  distanciaRetaKm,
+  estimarParaChegar,
+  estimarViagem,
+  folgaEstimativaMin,
+} from '../../src/services/etaEstimado.ts';
 
-// ─── Constantes de política (nada de número mágico solto no corpo) ─────────
+// ─── Constantes de política ────────────────────────────────────────────────
 
-/** Modos aceitos. Sem default de propósito: a escolha de SKU é do call site. */
-export const MODOS = new Set(['planejamento', 'confirmacao']);
-
-/**
- * Chute inicial do problema da galinha e do ovo: para pedir a duração com
- * trânsito previsto é preciso informar a hora da saída, que depende da duração.
- * Resolve-se com UMA iteração (nunca duas — dobra o custo para ganhar ~3 min):
- * estimativa → departureTime → duração real → hora de sair.
- */
-export const ESTIMATIVA_INICIAL_MIN = 45;
-
-/** Folga = max(5 min, 12% da duração). Chegar 5 min antes é profissional; 10 min atrasado é reclamação. */
-export const FOLGA_PISO_MIN = 5;
-export const FOLGA_FRACAO = 0.12;
-export const FOLGA_MAX_MIN = 120;
-
-/**
- * Acima disto a rota quase certamente veio de um endereço geocodificado errado
- * ("Rua São João" existe em 300 cidades). Devolver "saia às 3h da manhã" seria
- * pior do que admitir que não entendemos o endereço.
- */
-export const MAX_DISTANCIA_KM = 600;
-
-/** Google rejeita departureTime no passado quando o modo NÃO é TRANSIT. Margem p/ latência e relógio torto. */
-export const MARGEM_DEPARTURE_MS = 30_000;
-
-/** Teto de horizonte: agenda de prestador é de dias, não de meses. Além disso o trânsito previsto não vale nada. */
+/** Teto de horizonte: agenda de prestador é de dias, não de meses. */
 export const MAX_HORIZONTE_MS = 14 * 24 * 3600 * 1000;
 
-/**
- * TTL do cache de trajeto, por modo. Os dois números são MUITO diferentes de
- * propósito, e o motivo é honestidade, não performance:
- *
- * - planejamento (TRAFFIC_UNAWARE): é a duração da VIA em fluxo livre. Só muda
- *   com obra. 30 dias — e 30, não 7, porque o padrão de ouro do público é o
- *   cliente recorrente visitado toda semana ou a cada quinze dias: com TTL de 7
- *   dias a visita semanal cai exatamente na borda e o cache erra justo o caso
- *   que ele existe para pegar.
- *
- * - confirmacao (TRAFFIC_AWARE): é o trânsito de AGORA. 10 minutos. Servir isso
- *   de um cache de horas seria apresentar número velho como atual — a versão
- *   sofisticada de "erro vira vazio". Consequência de custo, dita aqui porque
- *   contraria a intuição: **cache não é a alavanca principal de custo desta
- *   feature.** Ele corta o lado barato (Essentials); o lado caro (Pro) é
- *   incomprimível por cache sem mentir. A alavanca do lado caro é chamar menos
- *   — só a PRÓXIMA parada, não as 6 do dia. Ver o cálculo no doc do cluster.
- */
-export const TTL_CACHE_MS = { planejamento: 30 * 24 * 3600 * 1000, confirmacao: 10 * 60 * 1000 };
-
-/** Endereço não se muda de lugar. O que muda é o texto, e aí a chave muda junto. */
-export const TTL_GEOCODE_MS = 90 * 24 * 3600 * 1000;
-
-/** Corpo é minúsculo por natureza (2 endereços + 1 horário). Mesmo teto do /eta. */
+/** Corpo é minúsculo por natureza (2 pontos + 1 horário). */
 export const MAX_BODY_BYTES = 4096;
+
+export { MAX_DISTANCIA_KM };
 
 // ─── Helpers puros (testáveis sem rede) ────────────────────────────────────
 
-/** Coordenada plausível? Mesmo critério do coordOk do /eta. */
+/** Coordenada plausível no contrato do worker ({lat, lng}). */
 export function coordOk(p) {
   return !!p && Number.isFinite(p.lat) && Number.isFinite(p.lng)
-    && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
+    && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180
+    && !(p.lat === 0 && p.lng === 0);
 }
 
-/**
- * Distância em linha reta (km). NÃO é ETA e nunca vira ETA — 2 km em linha reta
- * podem ser 25 min em Copacabana às 18h. Serve só como sanidade: se dois pontos
- * estão a 900 km, gastar uma chamada paga para descobrir que o endereço está
- * errado é jogar dinheiro fora.
- */
+/** {lat, lng} (contrato HTTP) → {lat, lon} (contrato do estimador). */
+function paraPonto(p) {
+  return { lat: p.lat, lon: p.lng };
+}
+
+/** Distância em linha reta (km) entre dois {lat, lng}. */
 export function haversineKm(a, b) {
-  const R = 6371;
-  const rad = (g) => (g * Math.PI) / 180;
-  const dLat = rad(b.lat - a.lat);
-  const dLng = rad(b.lng - a.lng);
-  const s = Math.sin(dLat / 2) ** 2
-    + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
-}
-
-/** Folga em minutos para uma duração em segundos. */
-export function folgaPadraoMin(duracaoSeg) {
-  const min = Math.max(0, Number(duracaoSeg) || 0) / 60;
-  return Math.max(FOLGA_PISO_MIN, Math.ceil(min * FOLGA_FRACAO));
-}
-
-/** Folga escolhida: a do corpo se for um número são; senão a padrão. */
-export function folgaEscolhida(folgaBruta, duracaoSeg) {
-  if (Number.isFinite(folgaBruta) && folgaBruta >= 0 && folgaBruta <= FOLGA_MAX_MIN) {
-    return Math.round(folgaBruta);
-  }
-  return folgaPadraoMin(duracaoSeg);
+  return distanciaRetaKm(paraPonto(a), paraPonto(b));
 }
 
 /**
- * Exige designador de fuso (offset ou Z). "2026-07-18T15:00:00" sozinho é
- * ambíguo — e um horário de chegada ambíguo é exatamente a classe de erro que
- * faz o prestador chegar na hora errada. Melhor recusar do que adivinhar.
+ * Exige designador de fuso (offset ou Z): "15:00" sem fuso pode ser 15h em
+ * qualquer lugar do planeta, e chegada ambígua erra a hora de sair por horas.
  */
 const RE_TZ = /(?:Z|[+-]\d{2}:?\d{2})$/;
 
-/**
- * Valida o horário de chegada desejado.
- * @returns {{ok:true, ms:number, offsetMin:number} | {ok:false, erro:string}}
- */
+/** @returns {{ok:true, ms:number} | {ok:false, erro:string}} */
 export function lerChegada(iso, agoraMs) {
   if (typeof iso !== 'string' || !iso.trim()) return { ok: false, erro: 'chegar_em_ausente' };
   const s = iso.trim();
@@ -170,89 +87,18 @@ export function lerChegada(iso, agoraMs) {
   if (!Number.isFinite(ms)) return { ok: false, erro: 'chegar_em_invalido' };
   if (ms <= agoraMs) return { ok: false, erro: 'chegar_em_passado' };
   if (ms - agoraMs > MAX_HORIZONTE_MS) return { ok: false, erro: 'chegar_em_distante' };
-  return { ok: true, ms, offsetMin: offsetDoIso(s) };
-}
-
-/** Offset em minutos declarado na própria string (Z = 0). Usado só para bucketar cache. */
-export function offsetDoIso(s) {
-  const m = /([+-])(\d{2}):?(\d{2})$/.exec(s);
-  if (!m) return 0; // Z
-  const sinal = m[1] === '-' ? -1 : 1;
-  return sinal * (Number(m[2]) * 60 + Number(m[3]));
+  return { ok: true, ms };
 }
 
 /**
- * `departureTime` a mandar para o Google. Nunca no passado: a API rejeita
- * horário passado fora do modo TRANSIT, e um 400 do Google aqui viraria um
- * "indisponivel" que na verdade era um bug nosso.
+ * Ponto do corpo: coordenada vira ponto; TEXTO é recusado com o motivo certo
+ * (geocodificação por texto era Google e foi desligada); vazio é "insuficiente".
+ * @returns {{ok:true, ponto:{lat,lng}} | {ok:false, erro:'vazio'|'texto_sem_coordenada'}}
  */
-export function departureTimeMs({ chegarEmMs, estimativaSeg, folgaMin, agoraMs }) {
-  const alvo = chegarEmMs - estimativaSeg * 1000 - folgaMin * 60_000;
-  return Math.max(alvo, agoraMs + MARGEM_DEPARTURE_MS);
-}
-
-/**
- * O cálculo que o dono pediu: dada a duração REAL, a que horas sair.
- * `atrasado:true` significa "a hora de sair já passou" — e isso é informação
- * verdadeira e útil, não um erro. O app mostra "você já devia ter saído" com a
- * chegada prevista se sair agora, em vez de um horário no passado sem contexto.
- */
-export function calcularSaida({ duracaoSeg, chegarEmMs, folgaMin, agoraMs }) {
-  const sairEmMs = chegarEmMs - duracaoSeg * 1000 - folgaMin * 60_000;
-  return {
-    sairEmMs,
-    folgaMin,
-    atrasado: sairEmMs < agoraMs,
-    sairAgoraChegaEmMs: agoraMs + duracaoSeg * 1000,
-  };
-}
-
-/** ~110 m de granularidade: o suficiente para o mesmo cliente cair sempre no mesmo balde. */
-export function arredondarCoord(n) {
-  return Math.round(n * 1000) / 1000;
-}
-
-/**
- * Chave do cache de trajeto. O mesmo par origem→destino se repete muito
- * (cliente recorrente), mas o trânsito das 8h não é o das 14h — daí a faixa de
- * hora — e sábado não é terça — daí o tipo de dia.
- */
-export function chaveTrajeto({ origem, destino, partidaMs, offsetMin, modo }) {
-  const local = new Date(partidaMs + offsetMin * 60_000);
-  const hora = local.getUTCHours();
-  const dia = local.getUTCDay(); // 0=dom 6=sáb, já no fuso local declarado
-  const tipoDia = dia === 0 || dia === 6 ? 'fs' : 'du';
-  return [
-    modo,
-    `${arredondarCoord(origem.lat)},${arredondarCoord(origem.lng)}`,
-    `${arredondarCoord(destino.lat)},${arredondarCoord(destino.lng)}`,
-    `h${hora}`,
-    tipoDia,
-  ].join('|');
-}
-
-/**
- * Marcas de acentuação separadas pelo NFD (U+0300..U+036F). Montada por código
- * em vez de literal: escrita direto no fonte, a classe fica INVISÍVEL no editor
- * (são combining marks — grudam no colchete anterior) e o próximo a mexer
- * apaga sem ver. Aqui está explícito o que é.
- */
-const RE_DIACRITICO = new RegExp('[' + String.fromCharCode(0x300) + '-' + String.fromCharCode(0x36f) + ']', 'g');
-
-/**
- * Chave do cache de geocodificação. Absorve acento, caixa e pontuação:
- * "Av. São João, 100" e "AV SAO JOAO 100" viram a mesma linha — que é a
- * diferença entre pagar 1 geocoding e pagar 2 pelo mesmo cliente.
- * NÃO absorve abreviação ("Av." ≠ "Avenida"): expandir abreviatura é adivinhar,
- * e adivinhar endereço é como se chega no lugar errado. Fica como cache miss.
- */
-export function normalizarEndereco(s) {
-  return String(s || '')
-    .normalize('NFD')
-    .replace(RE_DIACRITICO, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+export function lerPonto(valor) {
+  if (coordOk(valor)) return { ok: true, ponto: { lat: valor.lat, lng: valor.lng } };
+  if (typeof valor === 'string' && valor.trim().length >= 5) return { ok: false, erro: 'texto_sem_coordenada' };
+  return { ok: false, erro: 'vazio' };
 }
 
 // ─── Autenticação (mesma cópia local dos outros módulos do worker) ─────────
@@ -283,217 +129,6 @@ async function getUserPadrao(request, env) {
   }
 }
 
-// ─── Cache no Supabase (best-effort, igual ao cnpj_cache) ──────────────────
-// As tabelas `eta_cache` e `geocode_cache` ainda NÃO existem (a migration está
-// escrita no doc do cluster, não aplicada). Enquanto não existirem, toda leitura
-// devolve null e toda escrita é engolida: o endpoint funciona igual, só mais
-// caro. Cache que quebra a rota é pior que cache nenhum.
-
-function cacheHeaders(env, extra) {
-  return {
-    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    ...(extra || {}),
-  };
-}
-
-function temSupabase(env) {
-  return !!(env && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
-}
-
-/** @returns {Promise<{duracaoSeg:number, distanciaM:number|null, calculadoEm:string}|null>} */
-export async function lerCacheTrajeto(env, chave, ttlMs, f) {
-  if (!temSupabase(env)) return null;
-  const fetchFn = f || fetch;
-  try {
-    const url = `${env.SUPABASE_URL}/rest/v1/eta_cache?chave=eq.${encodeURIComponent(chave)}`
-      + '&select=duracao_seg,distancia_m,atualizado_em&limit=1';
-    const r = await fetchFn(url, { headers: cacheHeaders(env) });
-    if (!r.ok) return null;
-    const arr = await r.json().catch(() => null);
-    if (!Array.isArray(arr) || !arr.length) return null;
-    const linha = arr[0];
-    const carimbo = new Date(linha.atualizado_em).getTime();
-    const idade = Date.now() - carimbo;
-    if (!(idade >= 0) || idade > ttlMs) return null; // stale: melhor pagar do que mentir
-    const seg = Number(linha.duracao_seg);
-    if (!Number.isFinite(seg) || seg <= 0) return null;
-    return {
-      duracaoSeg: seg,
-      distanciaM: Number.isFinite(Number(linha.distancia_m)) ? Number(linha.distancia_m) : null,
-      calculadoEm: new Date(carimbo).toISOString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function gravarCacheTrajeto(env, chave, dados, f) {
-  if (!temSupabase(env)) return;
-  const fetchFn = f || fetch;
-  try {
-    await fetchFn(`${env.SUPABASE_URL}/rest/v1/eta_cache?on_conflict=chave`, {
-      method: 'POST',
-      headers: cacheHeaders(env, {
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      }),
-      body: JSON.stringify({
-        chave,
-        duracao_seg: dados.duracaoSeg,
-        distancia_m: dados.distanciaM,
-        atualizado_em: new Date().toISOString(),
-      }),
-    });
-  } catch { /* best-effort */ }
-}
-
-export async function lerCacheGeocode(env, norm, f) {
-  if (!temSupabase(env)) return null;
-  const fetchFn = f || fetch;
-  try {
-    const url = `${env.SUPABASE_URL}/rest/v1/geocode_cache?endereco_norm=eq.${encodeURIComponent(norm)}`
-      + '&select=lat,lng,formatado,atualizado_em&limit=1';
-    const r = await fetchFn(url, { headers: cacheHeaders(env) });
-    if (!r.ok) return null;
-    const arr = await r.json().catch(() => null);
-    if (!Array.isArray(arr) || !arr.length) return null;
-    const idade = Date.now() - new Date(arr[0].atualizado_em).getTime();
-    if (!(idade >= 0) || idade > TTL_GEOCODE_MS) return null;
-    const p = { lat: Number(arr[0].lat), lng: Number(arr[0].lng) };
-    return coordOk(p) ? { ...p, formatado: arr[0].formatado || null } : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function gravarCacheGeocode(env, norm, ponto, f) {
-  if (!temSupabase(env)) return;
-  const fetchFn = f || fetch;
-  try {
-    await fetchFn(`${env.SUPABASE_URL}/rest/v1/geocode_cache?on_conflict=endereco_norm`, {
-      method: 'POST',
-      headers: cacheHeaders(env, {
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      }),
-      body: JSON.stringify({
-        endereco_norm: norm,
-        lat: ponto.lat,
-        lng: ponto.lng,
-        formatado: ponto.formatado || null,
-        atualizado_em: new Date().toISOString(),
-      }),
-    });
-  } catch { /* best-effort */ }
-}
-
-// ─── Resolução de ponto (texto → coordenada) ───────────────────────────────
-
-/**
- * Aceita `{lat,lng}` (barato: zero chamada) ou texto (1 Geocoding, cacheado 90
- * dias). O app DEVE mandar coordenada quando já tiver — ver o contrato no doc:
- * geocodificar é trabalho de quem salva o endereço, não de quem calcula a rota.
- *
- * @returns {Promise<{ok:true, ponto:{lat,lng,formatado?}, geocodou:boolean, cache:boolean}
- *                 | {ok:false, erro:'vazio'|'nao_encontrado'|'indisponivel'}>}
- */
-export async function resolverPonto(valor, env, fetchFn) {
-  if (coordOk(valor)) {
-    return { ok: true, ponto: { lat: valor.lat, lng: valor.lng }, geocodou: false, cache: false };
-  }
-  const texto = typeof valor === 'string' ? valor.trim() : '';
-  if (texto.length < 5) return { ok: false, erro: 'vazio' };
-
-  const norm = normalizarEndereco(texto);
-  const doCache = await lerCacheGeocode(env, norm, fetchFn);
-  if (doCache) return { ok: true, ponto: doCache, geocodou: false, cache: true };
-
-  try {
-    const alvo = 'https://maps.googleapis.com/maps/api/geocode/json?address='
-      + encodeURIComponent(texto)
-      + '&region=br&language=pt-BR&key=' + env.OLLI_ROUTES_API_KEY;
-    const resp = await fetchFn(alvo);
-    if (!resp.ok) return { ok: false, erro: 'indisponivel' };
-    const data = await resp.json().catch(() => ({}));
-    // ZERO_RESULTS é resposta VÁLIDA dizendo "não existe" → endereço insuficiente.
-    // Qualquer outro status não-OK é "não sei" → indisponivel. Os dois nunca se
-    // confundem: um pede pro prestador corrigir o endereço, o outro não.
-    if (data && data.status === 'ZERO_RESULTS') return { ok: false, erro: 'nao_encontrado' };
-    const r0 = data && data.status === 'OK' && Array.isArray(data.results) ? data.results[0] : null;
-    const loc = r0 && r0.geometry && r0.geometry.location;
-    if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) {
-      return { ok: false, erro: data && data.status === 'OK' ? 'nao_encontrado' : 'indisponivel' };
-    }
-    const ponto = { lat: loc.lat, lng: loc.lng, formatado: r0.formatted_address || null };
-    await gravarCacheGeocode(env, norm, ponto, fetchFn);
-    return { ok: true, ponto, geocodou: true, cache: false };
-  } catch {
-    return { ok: false, erro: 'indisponivel' };
-  }
-}
-
-// ─── Chamada à Routes API ──────────────────────────────────────────────────
-
-/**
- * @returns {Promise<{ok:true, duracaoSeg:number, duracaoSemTransitoSeg:number|null, distanciaM:number|null}
- *                 | {ok:false, erro:'rota_indisponivel'|'sem_rota'|'eta_falhou'}>}
- */
-export async function chamarRotas({ origem, destino, modo, partidaMs, env, fetchFn }) {
-  const comTransito = modo === 'confirmacao';
-  const campos = comTransito
-    ? 'routes.duration,routes.staticDuration,routes.distanceMeters'
-    : 'routes.duration,routes.distanceMeters';
-  const corpo = {
-    origin: { location: { latLng: { latitude: origem.lat, longitude: origem.lng } } },
-    destination: { location: { latLng: { latitude: destino.lat, longitude: destino.lng } } },
-    travelMode: 'DRIVE',
-    // O campo que decide o SKU. TRAFFIC_UNAWARE = Essentials (US$5/1k, 10k
-    // grátis); TRAFFIC_AWARE = Pro (US$10/1k, 5k grátis).
-    routingPreference: comTransito ? 'TRAFFIC_AWARE' : 'TRAFFIC_UNAWARE',
-    languageCode: 'pt-BR',
-    units: 'METRIC',
-  };
-  // departureTime SÓ no modo com trânsito: em TRAFFIC_UNAWARE ele não muda nada
-  // e é feature a mais numa requisição que queremos manter no SKU barato. Sem
-  // `partidaMs` (o /eta, "saindo agora") a Google usa o trânsito de agora.
-  if (comTransito && Number.isFinite(partidaMs)) corpo.departureTime = new Date(partidaMs).toISOString();
-
-  try {
-    const resp = await fetchFn(
-      'https://routes.googleapis.com/directions/v2:computeRoutes?key=' + env.OLLI_ROUTES_API_KEY,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Goog-FieldMask': campos },
-        body: JSON.stringify(corpo),
-      },
-    );
-    if (!resp.ok) return { ok: false, erro: 'rota_indisponivel' };
-    const data = await resp.json().catch(() => ({}));
-    const rota = data && Array.isArray(data.routes) ? data.routes[0] : null;
-    if (!rota || !rota.duration) return { ok: false, erro: 'sem_rota' };
-    const seg = segundosDe(rota.duration);
-    if (!Number.isFinite(seg) || seg <= 0) return { ok: false, erro: 'sem_rota' };
-    return {
-      ok: true,
-      duracaoSeg: seg,
-      duracaoSemTransitoSeg: segundosDe(rota.staticDuration),
-      distanciaM: Number.isFinite(rota.distanceMeters) ? rota.distanceMeters : null,
-    };
-  } catch {
-    return { ok: false, erro: 'eta_falhou' };
-  }
-}
-
-/** "1234s" → 1234. Nunca 0-por-acidente: valor ilegível vira null, e null não vira ETA. */
-export function segundosDe(v) {
-  if (typeof v !== 'string') return null;
-  const m = /^(\d+(?:\.\d+)?)s$/.exec(v.trim());
-  if (!m) return null;
-  const n = Math.round(Number(m[1]));
-  return Number.isFinite(n) ? n : null;
-}
-
 // ─── Respostas (os três estados, num lugar só) ─────────────────────────────
 
 const CORS = {
@@ -510,257 +145,142 @@ function json(obj, status = 200) {
   });
 }
 
-/** "Não consegui calcular." Nunca acompanha número. */
+/** "Não consegui estimar." Nunca acompanha número. */
 export function respIndisponivel(erro, status = 200) {
   return json({ ok: false, estado: 'indisponivel', erro }, status);
 }
 
-/** "Não reconheci este endereço." Ação do prestador: corrigir. Nunca acompanha número. */
+/** "Falta o local no mapa." Ação do prestador: corrigir. Nunca acompanha número. */
 export function respEnderecoInsuficiente(qual, detalhe, extra) {
   return json({ ok: false, estado: 'endereco_insuficiente', qual, detalhe, ...(extra || {}) });
 }
 
-// ─── A rota ────────────────────────────────────────────────────────────────
+/** Leitura comum: auth, teto de corpo, rate limit. Devolve o corpo ou a Response de erro. */
+async function prepararPedido(request, env, deps) {
+  const getUser = deps.getUser || getUserPadrao;
+  const user = await getUser(request, env);
+  if (!user) return { resp: json({ ok: false, estado: 'indisponivel', erro: 'nao_autorizado', motivo: 'nao_autorizado' }, 401) };
+
+  // Teto de payload ANTES do parse (nunca `request.text()` sem olhar o tamanho).
+  if (!cabeNoTeto(request, MAX_BODY_BYTES).ok) return { resp: respIndisponivel('payload_grande', 413) };
+  const lido = await lerCorpoLimitado(request, MAX_BODY_BYTES);
+  if (lido.grande) return { resp: respIndisponivel('payload_grande', 413) };
+
+  const estado = await checarLimite(env.ETA_RL, user.id);
+  if (!deixaPassar(estado, { sensivel: false })) return { resp: respIndisponivel('muitas_requisicoes', 429) };
+
+  return { corpo: parseJsonBody(lido.raw) || {} };
+}
+
+// ─── POST /eta/saida ───────────────────────────────────────────────────────
 
 /**
- * POST /eta/saida
+ * Corpo: { origem:{lat,lng}, destino:{lat,lng}, chegarEm:"ISO com fuso", modo? }
+ * (`modo` do APK antigo é aceito e ignorado: não há mais SKU para escolher.)
  *
- * Corpo:
- *   {
- *     origem:   "Rua X, 123, São Paulo/SP"  |  { lat, lng },
- *     destino:  "Rua Y, 456, Santo André"   |  { lat, lng },
- *     chegarEm: "2026-07-18T15:00:00-03:00",   // ISO 8601 COM fuso, obrigatório
- *     modo:     "planejamento" | "confirmacao", // obrigatório: decide o SKU
- *     folgaMin: 8                               // opcional (0..120); default = max(5, 12%)
- *   }
- *
- * Resposta de sucesso:
- *   {
- *     ok: true, estado: 'ok',
- *     minutos, minutosSemTransito, distanciaKm,
- *     sairEm, chegarEm, sairAgoraChegaEm,        // ISO 8601 UTC
- *     folgaMin, atrasado, comTransito, modo, sku,
- *     cache, calculadoEm                          // carimbo: ETA sem hora é mentira em potência
- *   }
+ * Sucesso:
+ *   { ok:true, estado:'ok', minutos, distanciaKm, sairEm, chegarEm, sairAgoraChegaEm,
+ *     folgaMin, atrasado, comTransito:false, estimado:true, rotulo, calculadoEm }
  *
  * @param {Request} request
  * @param {Record<string, any>} env
- * @param {{fetch?:Function, agora?:Function, getUser?:Function}} [deps] — injeção para teste.
+ * @param {{agora?:Function, getUser?:Function}} [deps] — injeção para teste.
  */
 export async function handleEtaSaida(request, env, deps = {}) {
-  const fetchFn = deps.fetch || fetch;
   const agoraMs = deps.agora ? deps.agora() : Date.now();
-  const getUser = deps.getUser || getUserPadrao;
-
-  const user = await getUser(request, env);
-  if (!user) return json({ ok: false, estado: 'indisponivel', erro: 'nao_autorizado' }, 401);
-  if (!env.OLLI_ROUTES_API_KEY) return respIndisponivel('eta_nao_configurado');
-
-  // Teto de payload ANTES do parse (corpo é minúsculo por natureza). Nunca
-  // `request.text()` antes de olhar o tamanho: o Content-Length barra sem ler, e
-  // a leitura incremental pega o chunked/sem header SEM bufferizar o corpo todo
-  // (mesma defesa de index.js/bodyMuitoGrande — B1/O2-18).
-  if (!cabeNoTeto(request, MAX_BODY_BYTES).ok) {
-    return json({ ok: false, estado: 'indisponivel', erro: 'payload_grande' }, 413);
-  }
-  const lido = await lerCorpoLimitado(request, MAX_BODY_BYTES);
-  if (lido.grande) {
-    return json({ ok: false, estado: 'indisponivel', erro: 'payload_grande' }, 413);
-  }
-  const raw = lido.raw;
-
-  // Rate limit ANTES de qualquer fetch pago. FAIL-CLOSED: limiter que não
-  // responde não é permissão. Ver o docblock do topo.
-  const estado = await checarLimite(env.ETA_RL, user.id);
-  if (!deixaPassar(estado, { sensivel: true })) {
-    return respIndisponivel(estado === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel', 429);
-  }
-
-  const corpo = parseJsonBody(raw);
-
-  const modo = typeof corpo.modo === 'string' ? corpo.modo.trim() : '';
-  if (!MODOS.has(modo)) return respIndisponivel('modo_invalido', 400);
+  const pedido = await prepararPedido(request, env, deps);
+  if (pedido.resp) return pedido.resp;
+  const corpo = pedido.corpo;
 
   const chegada = lerChegada(corpo.chegarEm, agoraMs);
   if (!chegada.ok) return respIndisponivel(chegada.erro, 400);
 
-  // Endereços: coordenada (grátis) ou texto (1 Geocoding, cacheado).
-  const [ro, rd] = await Promise.all([
-    resolverPonto(corpo.origem, env, fetchFn),
-    resolverPonto(corpo.destino, env, fetchFn),
-  ]);
-  // "Não sei" (API fora) e "não existe" (ZERO_RESULTS) são estados DIFERENTES e
-  // levam a ações diferentes: um é esperar, o outro é corrigir o endereço.
-  if (!ro.ok && ro.erro === 'indisponivel') return respIndisponivel('geocode_indisponivel');
-  if (!rd.ok && rd.erro === 'indisponivel') return respIndisponivel('geocode_indisponivel');
-  if (!ro.ok && !rd.ok) return respEnderecoInsuficiente('ambos', ro.erro);
-  if (!ro.ok) return respEnderecoInsuficiente('origem', ro.erro);
-  if (!rd.ok) return respEnderecoInsuficiente('destino', rd.erro);
+  const ro = lerPonto(corpo.origem);
+  const rd = lerPonto(corpo.destino);
+  // Texto sem coordenada: não é endereço errado, é serviço desligado → "não sei".
+  if ((!ro.ok && ro.erro === 'texto_sem_coordenada') || (!rd.ok && rd.erro === 'texto_sem_coordenada')) {
+    return respIndisponivel('geocodificacao_desligada');
+  }
+  if (!ro.ok && !rd.ok) return respEnderecoInsuficiente('ambos', 'vazio');
+  if (!ro.ok) return respEnderecoInsuficiente('origem', 'vazio');
+  if (!rd.ok) return respEnderecoInsuficiente('destino', 'vazio');
 
-  const origem = ro.ponto;
-  const destino = rd.ponto;
-
-  // Sanidade ANTES de gastar a chamada paga: 900 km entre duas visitas do mesmo
-  // dia é endereço errado, não viagem. Barato (offline) e evita tanto o gasto
-  // quanto a resposta absurda.
-  const retaKm = haversineKm(origem, destino);
-  if (retaKm > MAX_DISTANCIA_KM) {
-    return respEnderecoInsuficiente('ambos', 'distancia_implausivel', {
-      distanciaRetaKm: Math.round(retaKm),
-    });
+  const origem = paraPonto(ro.ponto);
+  const destino = paraPonto(rd.ponto);
+  const reta = distanciaRetaKm(origem, destino);
+  if (reta > MAX_DISTANCIA_KM) {
+    return respEnderecoInsuficiente('ambos', 'distancia_implausivel', { distanciaRetaKm: Math.round(reta) });
   }
 
-  // Galinha e ovo, uma iteração só: estimativa (cache ou 45 min) → departureTime.
-  const folgaChute = folgaEscolhida(corpo.folgaMin, ESTIMATIVA_INICIAL_MIN * 60);
-  const partidaMs = departureTimeMs({
-    chegarEmMs: chegada.ms,
-    estimativaSeg: ESTIMATIVA_INICIAL_MIN * 60,
-    folgaMin: folgaChute,
-    agoraMs,
-  });
-
-  const chave = chaveTrajeto({ origem, destino, partidaMs, offsetMin: chegada.offsetMin, modo });
-  const cacheado = await lerCacheTrajeto(env, chave, TTL_CACHE_MS[modo], fetchFn);
-
-  let duracaoSeg;
-  let duracaoSemTransitoSeg = null;
-  let distanciaM = null;
-  let veioDoCache = false;
-  let calculadoEm = new Date(agoraMs).toISOString();
-
-  if (cacheado) {
-    duracaoSeg = cacheado.duracaoSeg;
-    distanciaM = cacheado.distanciaM;
-    veioDoCache = true;
-    // Carimbo do cálculo ORIGINAL, não de agora. Apresentar número de ontem com
-    // a hora de hoje é a versão sofisticada de "erro vira vazio".
-    calculadoEm = cacheado.calculadoEm;
-  } else {
-    const rota = await chamarRotas({ origem, destino, modo, partidaMs, env, fetchFn });
-    if (!rota.ok) return respIndisponivel(rota.erro);
-    duracaoSeg = rota.duracaoSeg;
-    duracaoSemTransitoSeg = rota.duracaoSemTransitoSeg;
-    distanciaM = rota.distanciaM;
-    await gravarCacheTrajeto(env, chave, { duracaoSeg, distanciaM }, fetchFn);
-  }
-
-  const distanciaKm = Number.isFinite(distanciaM) ? Math.round(distanciaM / 100) / 10 : null;
-  if (distanciaKm !== null && distanciaKm > MAX_DISTANCIA_KM) {
-    return respEnderecoInsuficiente('ambos', 'distancia_implausivel', { distanciaKm });
-  }
-
-  const folgaMin = folgaEscolhida(corpo.folgaMin, duracaoSeg);
-  const saida = calcularSaida({ duracaoSeg, chegarEmMs: chegada.ms, folgaMin, agoraMs });
+  const est = estimarParaChegar(origem, destino, chegada.ms);
+  if (!est) return respIndisponivel('estimativa_falhou');
+  const agoraEst = estimarViagem(origem, destino, agoraMs) || est;
+  const folgaMin = folgaEstimativaMin(est.minutos);
+  const sairEmMs = chegada.ms - (est.minutos + folgaMin) * 60_000;
 
   return json({
     ok: true,
     estado: 'ok',
-    minutos: Math.max(1, Math.round(duracaoSeg / 60)),
-    minutosSemTransito: Number.isFinite(duracaoSemTransitoSeg)
-      ? Math.max(1, Math.round(duracaoSemTransitoSeg / 60))
-      : null,
-    distanciaKm,
-    sairEm: new Date(saida.sairEmMs).toISOString(),
+    minutos: est.minutos,
+    // O APK antigo lê este campo: sem trânsito, a duração "sem trânsito" é a própria.
+    minutosSemTransito: est.minutos,
+    distanciaKm: est.distanciaKm,
+    sairEm: new Date(sairEmMs).toISOString(),
     chegarEm: new Date(chegada.ms).toISOString(),
-    sairAgoraChegaEm: new Date(saida.sairAgoraChegaEmMs).toISOString(),
-    folgaMin: saida.folgaMin,
-    atrasado: saida.atrasado,
-    comTransito: modo === 'confirmacao',
-    modo,
-    sku: modo === 'confirmacao' ? 'pro' : 'essentials',
-    cache: veioDoCache,
-    calculadoEm,
+    sairAgoraChegaEm: new Date(agoraMs + agoraEst.minutos * 60_000).toISOString(),
+    folgaMin,
+    atrasado: sairEmMs < agoraMs,
+    comTransito: false,
+    estimado: true,
+    rotulo: ROTULO_ESTIMATIVA,
+    cache: false,
+    calculadoEm: new Date(agoraMs).toISOString(),
   });
 }
 
-// ─── POST /eta — "quanto tempo daqui até lá, AGORA" ────────────────────────
+// ─── POST /eta — "saindo agora" ────────────────────────────────────────────
 
 /**
- * Antes morava inteira em index.js, com uma cópia própria do fetch à Routes
- * API. Veio para cá para usar o MESMO `chamarRotas` e a mesma sanidade do
- * /eta/saida.
- *
- * Por que continua TRAFFIC_AWARE (SKU Pro, US$ 10/1.000, 5.000 grátis/mês) e
- * não TRAFFIC_UNAWARE (Essentials, metade do preço), revisado em 30/09/2026:
- * esta rota é o "estou a caminho" — a mensagem ao cliente diz "chego entre
- * 14:50 e 15:10" e o chip diz "com trânsito". Sem trânsito, às 18h o número
- * seria o da via vazia: uma promessa que o prestador não cumpre, que é pior do
- * que não ter a função (a regra dura do topo deste arquivo). É o mesmo caso do
- * `modo:'confirmacao'`. A alavanca de custo aqui é CHAMAR MENOS, não mentir:
- *   - o app só pede com a localização do aparelho (hoje: navegador; o APK não
- *     tem `expo-location`) e guarda o resultado 5 min por destino;
- *   - rate limit FAIL-CLOSED por usuário antes de qualquer fetch pago;
- *   - distância em linha reta acima de MAX_DISTANCIA_KM não gasta chamada:
- *     é coordenada errada, e a resposta seria absurda de qualquer jeito;
- *   - a FieldMask pede só duração, duração estática e distância.
- * O teto de gasto de verdade é o orçamento/alerta no Google Cloud (passo do
- * dono). A resposta leva `sku:'pro'` para o custo ficar visível no log.
- *
- * Contrato (inalterado para o app instalado): corpo `{origem:{lat,lng},
- * destino:{lat,lng}}`; sucesso `{ok:true, minutos, distanciaKm, comTransito:true}`
- * (+ `minutosSemTransito`, `sku`); falha sempre `ok:false` SEM número.
+ * Corpo `{origem:{lat,lng}, destino:{lat,lng}}`. Sucesso
+ * `{ok:true, minutos, distanciaKm, comTransito:false, estimado:true, rotulo}`;
+ * falha sempre `ok:false` SEM número.
  *
  * @param {Request} request
  * @param {Record<string, any>} env
- * @param {{fetch?:Function, getUser?:Function}} [deps] — injeção para teste.
+ * @param {{agora?:Function, getUser?:Function}} [deps]
  */
 export async function handleEtaAgora(request, env, deps = {}) {
-  const fetchFn = deps.fetch || fetch;
-  const getUser = deps.getUser || getUserPadrao;
+  const agoraMs = deps.agora ? deps.agora() : Date.now();
+  const pedido = await prepararPedido(request, env, deps);
+  if (pedido.resp) return pedido.resp;
+  const corpo = pedido.corpo;
 
-  const user = await getUser(request, env);
-  if (!user) return json({ ok: false, motivo: 'nao_autorizado' }, 401);
-  if (!env.OLLI_ROUTES_API_KEY) return json({ ok: false, motivo: 'eta_nao_configurado' });
+  if (!coordOk(corpo.origem) || !coordOk(corpo.destino)) return json({ ok: false, erro: 'coordenadas_invalidas' }, 400);
+  const origem = paraPonto(corpo.origem);
+  const destino = paraPonto(corpo.destino);
+  if (distanciaRetaKm(origem, destino) > MAX_DISTANCIA_KM) return json({ ok: false, erro: 'distancia_implausivel' });
 
-  // Teto de payload ANTES do parse — corpo minúsculo por natureza (2 coordenadas).
-  // Mesma leitura limitada do /eta/saida acima: em index.js esta rota já usava
-  // `bodyMuitoGrande` (leitura incremental) e a mudança para cá não pode trocar
-  // isso por um `request.text()` que bufferiza o que o cliente mandar.
-  if (!cabeNoTeto(request, MAX_BODY_BYTES).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
-  const lido = await lerCorpoLimitado(request, MAX_BODY_BYTES);
-  if (lido.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
-  const raw = lido.raw;
-
-  // Rate limit por usuário ANTES do fetch pago. FAIL-CLOSED: limiter ausente ou
-  // mudo não é permissão (ver o docblock do topo e rateLimit.js).
-  const estado = await checarLimite(env.ETA_RL, user.id);
-  if (!deixaPassar(estado, { sensivel: true })) {
-    return json({ ok: false, erro: estado === 'negado' ? 'muitas_requisicoes' : 'limite_indisponivel' }, 429);
-  }
-
-  const corpo = parseJsonBody(raw);
-  const origem = corpo && corpo.origem;
-  const destino = corpo && corpo.destino;
-  if (!coordOk(origem) || !coordOk(destino)) return json({ ok: false, erro: 'coordenadas_invalidas' }, 400);
-
-  // Sanidade offline ANTES de pagar: 900 km "até a próxima visita" é
-  // coordenada errada, não viagem.
-  if (haversineKm(origem, destino) > MAX_DISTANCIA_KM) {
-    return json({ ok: false, erro: 'distancia_implausivel' });
-  }
-
-  const rota = await chamarRotas({
-    origem: { lat: origem.lat, lng: origem.lng },
-    destino: { lat: destino.lat, lng: destino.lng },
-    modo: 'confirmacao',
-    partidaMs: null,
-    env,
-    fetchFn,
-  });
-  if (!rota.ok) return json({ ok: false, erro: rota.erro }, rota.erro === 'rota_indisponivel' ? 502 : 200);
-
-  const distanciaKm = Number.isFinite(rota.distanciaM) ? Math.round(rota.distanciaM / 100) / 10 : null;
-  if (distanciaKm !== null && distanciaKm > MAX_DISTANCIA_KM) {
-    return json({ ok: false, erro: 'distancia_implausivel' });
-  }
+  const est = estimarViagem(origem, destino, agoraMs);
+  if (!est) return json({ ok: false, erro: 'estimativa_falhou' });
   return json({
     ok: true,
-    minutos: Math.max(1, Math.round(rota.duracaoSeg / 60)),
-    minutosSemTransito: Number.isFinite(rota.duracaoSemTransitoSeg)
-      ? Math.max(1, Math.round(rota.duracaoSemTransitoSeg / 60))
-      : null,
-    distanciaKm,
-    comTransito: true,
-    sku: 'pro',
+    minutos: est.minutos,
+    minutosSemTransito: est.minutos,
+    distanciaKm: est.distanciaKm,
+    comTransito: false,
+    estimado: true,
+    rotulo: ROTULO_ESTIMATIVA,
   });
+}
+
+// ─── POST /geocodificar — desligado com honestidade ────────────────────────
+
+/**
+ * Era a Geocoding API do Google (texto livre → ponto). Desligada junto com o
+ * billing. Responde "não sei" com o motivo; quem precisa de ponto usa o
+ * `POST /geo` (BrasilAPI + Nominatim/OSM, grátis), que é o que o app novo faz
+ * ao salvar o cliente.
+ */
+export function handleGeocodificarDesligado() {
+  return json({ ok: false, estado: 'indisponivel', erro: 'geocodificacao_desligada', motivo: 'use_post_geo' });
 }

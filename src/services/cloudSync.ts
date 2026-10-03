@@ -59,6 +59,14 @@ import type {
 } from '../types';
 import { dataBrParaIsoSeguro } from '../utils/date';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
+import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisual';
+import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCliente';
+import { garantiaAteDaOS } from '../utils/garantiaServico';
+import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
+import { externaParaSqlite, lerExterna } from './verticais';
+import { empresaSemCadastro } from './perfilOperacional';
+import { decidirPushEmpresa, type EstadoEmpresaAntesDoPush } from './carimboEmpresa';
+import { lerEncerramento } from '../utils/encerramentoOS';
 import {
   erroEhColisaoNumero,
   numeroDocumentoAposColisao,
@@ -122,8 +130,11 @@ function remoteNome(table: SyncTable): string {
 // As tabelas com jsonb (`empresa`, `orcamentos`, `recibos`, `modelos`) guardam o
 // objeto completo do app em `dados`, e replicam as colunas que o painel lê.
 
+// Sem `atualizado_em`: o carimbo da empresa é do SERVIDOR (default now() no INSERT
+// e trigger `empresa_set_atualizado_em` BEFORE INSERT OR UPDATE — migration
+// 20261004110200). O relógio do aparelho pode estar dias adiantado.
 function empresaToRow(e: Empresa): Record<string, unknown> {
-  return { dados: e, atualizado_em: new Date().toISOString() };
+  return { dados: e };
 }
 
 function clienteToRow(c: Cliente): Record<string, unknown> {
@@ -144,7 +155,31 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
     // Relógio de sync. NUNCA null: a coluna na nuvem é NOT NULL, e um objeto vindo
     // de snapshot antigo (backup pré-v3) não tem o campo — caímos em criadoEm.
     atualizado_em: c.atualizadoEm ?? c.criadoEm,
+    ...geoParaRow(c),
   };
+}
+
+/**
+ * GEO do cliente (migration 20261002100000). Vai SÓ o que este aparelho SABE: um
+ * campo vazio aqui é "não sei", e mandar `null` apagaria o ponto que o backfill do
+ * worker já gravou na nuvem. Endereço trocado não depende disto: o trigger da
+ * nuvem zera o ponto velho quando o UPDATE muda o endereço sem trazer ponto novo.
+ * Servidor sem a migration: o push cai para sem as colunas (COLUNAS_CLIENTE_GEO).
+ */
+const COLUNAS_CLIENTE_GEO = ['lat', 'lon', 'ibge', 'geo_precisao'] as const;
+let clientesSemColunasGeo = false;
+
+function geoParaRow(c: Cliente): Record<string, unknown> {
+  if (clientesSemColunasGeo) return {};
+  const g = geoParaColunas(c);
+  const row: Record<string, unknown> = {};
+  if (g.lat !== null && g.lon !== null && g.geo_precisao !== null) {
+    row.lat = g.lat;
+    row.lon = g.lon;
+    row.geo_precisao = g.geo_precisao;
+  }
+  if (g.ibge !== null) row.ibge = g.ibge;
+  return row;
 }
 
 function servicoToRow(s: ServicoItem): Record<string, unknown> {
@@ -270,8 +305,67 @@ let agendaSemColunasEquipe = false;
 const COLUNAS_AGENDA_EXCECOES = ['excecoes', 'ordem_servico_id'] as const;
 let agendaSemColunasExcecoes = false;
 
+/**
+ * Visita externa (migration 20261002100000). Degrau MAIS NOVO da escada: servidor
+ * sem a migration recusa só esta coluna, então ela cai primeiro. Com o flag ligado
+ * (ou pull sem a coluna), o pull preserva o valor local em vez de apagar.
+ */
+const COLUNA_AGENDA_EXTERNA = 'externa' as const;
+let agendaSemColunaExterna = false;
+
+/**
+ * OS ligada ao EQUIPAMENTO (check-in pelo QR, migration 20261002153217). Mesma
+ * escada da agenda: servidor sem a coluna recusa o upsert INTEIRO, então ao
+ * primeiro erro de coluna o push passa a ir sem `asset_id` (a OS continua
+ * sincronizando; o vínculo com o equipamento fica só neste aparelho até a
+ * migration existir) e o pull PRESERVA o vínculo local em vez de apagá-lo.
+ */
+let osSemColunaAsset = false;
+/**
+ * Nuvem ainda sem `ordens_servico.materiais` (migration 20261003104000, baixa leve
+ * de material da Onda I4): o push some com a coluna e o pull preserva a baixa
+ * local. Mesmo padrão de `osSemColunaAsset`.
+ */
+let osSemColunaMateriais = false;
+
+/**
+ * GARANTIA da OS (migration 20261003103100): `garantia`, `garantia_ate` (último
+ * dia, calculado aqui pela regra única de utils/garantiaServico) e
+ * `garantia_de_os_id`. Degrau MAIS NOVO da escada da OS: servidor sem as colunas
+ * recusa o upsert inteiro, então ao primeiro erro de coluna elas saem do payload
+ * (a OS continua sincronizando) e o pull PRESERVA a garantia local.
+ */
+const COLUNAS_OS_GARANTIA = ['garantia', 'garantia_ate', 'garantia_de_os_id'] as const;
+let osSemColunasGarantia = false;
+
+/**
+ * "Encerrar atendimento" na OS (migration 20261003102500, coluna jsonb
+ * `encerramento`). Mesma escada: servidor sem a coluna → o push segue sem ela e o
+ * pull PRESERVA o encerramento local (assinatura do cliente, passos) em vez de
+ * apagá-lo. Sem sinal ou sem migration, nada do que o técnico fez se perde.
+ */
+let osSemColunaEncerramento = false;
+
 function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): boolean {
   return error?.code === '42703' || error?.code === 'PGRST204';
+}
+
+/**
+ * O erro de coluna desconhecida é DESTA coluna? Com dois recuos na mesma tabela
+ * (ordens_servico: `asset_id` e `materiais`), o primeiro `if` não pode assumir que
+ * a coluna que falta é a dele — senão a nuvem COM `asset_id` e SEM `materiais`
+ * derrubava o `asset_id` do push pelo resto da sessão. O PostgREST nomeia a coluna
+ * ("Could not find the 'materiais' column…" / column "materiais" … does not
+ * exist); sem nome reconhecível na mensagem, cai no comportamento antigo (true).
+ */
+function erroDeColunaDesconhecidaDe(
+  error: { code?: string; message?: string } | null | undefined,
+  coluna: string,
+): boolean {
+  if (!erroDeColunaDesconhecida(error)) return false;
+  const msg = typeof error?.message === 'string' ? error.message : '';
+  const m = /['"]([A-Za-z0-9_]+)['"]/.exec(msg);
+  return !m || m[1] === coluna;
 }
 
 function agendamentoToRow(a: Agendamento): Record<string, unknown> {
@@ -304,6 +398,10 @@ function agendamentoToRow(a: Agendamento): Record<string, unknown> {
     row.excecoes = a.recorrencia && a.excecoes ? a.excecoes : {};
     row.ordem_servico_id = a.ordemServicoId ?? null;
   }
+  if (!agendaSemColunaExterna) {
+    // null = "não informado" (a coluna é nullable de propósito; nunca vira false).
+    row[COLUNA_AGENDA_EXTERNA] = lerExterna(a.externa) ?? null;
+  }
   return row;
 }
 
@@ -331,6 +429,20 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
     atualizado_em: o.atualizadoEm,
     // Espelha o soft-delete: sem isso, um pull ressuscitaria itens da lixeira.
     excluido_em: o.excluidoEm ?? null,
+    // Equipamento atendido (ver osSemColunaAsset): some do payload se a nuvem
+    // ainda não tem a coluna.
+    ...(osSemColunaAsset ? {} : { asset_id: o.equipamentoId ?? null }),
+    // Garantia (ver osSemColunasGarantia). `garantia_ate` só existe para OS
+    // concluída com prazo legível: a etiqueta pública nunca afirma o que não foi escrito.
+    ...(osSemColunasGarantia ? {} : {
+      garantia: o.garantia?.trim() ? o.garantia.trim().slice(0, 200) : null,
+      garantia_ate: garantiaAteDaOS(o) ?? null,
+      garantia_de_os_id: o.garantiaDeOsId ?? null,
+    }),
+    // Encerramento (ver osSemColunaEncerramento): objeto vai como jsonb.
+    ...(osSemColunaEncerramento ? {} : { encerramento: o.encerramento ?? null }),
+    // Baixa de material (Onda I4): null = não informado; [] = "não usei material".
+    ...(osSemColunaMateriais ? {} : { materiais: Array.isArray(o.materiais) ? o.materiais : null }),
   };
 }
 
@@ -380,7 +492,14 @@ function rowToCliente(row: any): Cliente {
     // Relógio remoto: é o que o localUpsert compara com o local para decidir se
     // esta linha da nuvem pode ou não sobrescrever a versão deste aparelho.
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined,
+    ...lerGeoDaLinhaNuvem(row),
   };
+}
+
+/** `select('*')` sem a coluna = servidor sem a migration de geo: liga o modo "preservar o local". */
+function lerGeoDaLinhaNuvem(row: any) {
+  if (row && typeof row === 'object' && !('lat' in row)) clientesSemColunasGeo = true;
+  return lerGeoDaLinha(row);
 }
 
 function rowToServico(row: any): ServicoItem {
@@ -459,6 +578,7 @@ function rowToAgendamento(row: any): Agendamento {
   // `select('*')` sem a coluna = servidor ainda sem a migration 20261001120000: o
   // upsert local passa a preservar exceções/OS deste aparelho (ver localUpsertAgendamento).
   if (row && typeof row === 'object' && !('excecoes' in row)) agendaSemColunasExcecoes = true;
+  if (row && typeof row === 'object' && !(COLUNA_AGENDA_EXTERNA in row)) agendaSemColunaExterna = true;
   return {
     id: row.id,
     clienteId: row.cliente_id ?? undefined,
@@ -482,6 +602,7 @@ function rowToAgendamento(row: any): Agendamento {
     contratoId: row.contrato_id ?? undefined,
     excecoes: lerExcecoes(row.excecoes),
     ordemServicoId: row.ordem_servico_id ?? undefined,
+    externa: lerExterna(row.externa),
   };
 }
 
@@ -560,6 +681,13 @@ function rowToEquipamentoCloud(row: any): Equipamento {
 }
 
 function rowToOrdemServico(row: any): OrdemServico {
+  // Linha da NUVEM vinda de `select('*')` sem a coluna = servidor ainda sem a
+  // migration 20261002153217 (a linha LOCAL do SQLite sempre tem `asset_id`).
+  if (row && typeof row === 'object' && 'cliente_nome' in row && !('asset_id' in row)) osSemColunaAsset = true;
+  // Idem para a garantia (migration 20261003103100).
+  if (row && typeof row === 'object' && 'cliente_nome' in row && !('garantia' in row)) osSemColunasGarantia = true;
+  if (row && typeof row === 'object' && 'cliente_nome' in row && !('encerramento' in row)) osSemColunaEncerramento = true;
+  if (row && typeof row === 'object' && 'cliente_nome' in row && !('materiais' in row)) osSemColunaMateriais = true;
   return {
     id: row.id,
     numero: row.numero ?? '',
@@ -577,6 +705,12 @@ function rowToOrdemServico(row: any): OrdemServico {
     fotos: arrOrParse(row.fotos),
     observacoes: row.observacoes ?? undefined,
     valor: row.valor ?? undefined,
+    equipamentoId: row.asset_id ?? undefined,
+    ...(typeof row.garantia === 'string' && row.garantia ? { garantia: row.garantia } : {}),
+    ...(typeof row.garantia_de_os_id === 'string' && row.garantia_de_os_id ? { garantiaDeOsId: row.garantia_de_os_id } : {}),
+    // jsonb (nuvem) ou TEXT JSON (linha local): leitura tolerante, nunca lança.
+    encerramento: lerEncerramento(row.encerramento),
+    materiais: lerMateriais(row.materiais),
     criadoEm: row.criado_em ?? new Date().toISOString(),
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? new Date().toISOString(),
     // Preserva o soft-delete vindo da nuvem — senão o pull ressuscita o item.
@@ -791,6 +925,12 @@ export async function resolverEstadoEmpresaDaSessao(): Promise<EstadoEmpresaDaSe
         if (data) {
           const empresa = rowToEmpresa(data);
           if (!empresa) return 'nao_sei';
+          // Linha que existe mas não identifica negócio nenhum (só o segmento
+          // padrão — o caso da conta de revisão da Play) não é "tem": o dono vai
+          // ao Onboarding, que monta o cadastro. A guarda de envio deixa o
+          // Onboarding gravar por cima dela (decidirPushEmpresa). Para o membro
+          // de equipe nada muda: ele não escreve a empresa do dono.
+          if (alvo.souDono && empresaSemCadastro(empresa)) return 'nao_tem';
           await localUpsertEmpresa(empresa, (data as any)?.atualizado_em);
           return 'tem';
         }
@@ -1012,10 +1152,50 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
     let { error } = await supabase
       .from(remoteNome(table))
       .upsert(row, { onConflict: ON_CONFLICT[table] });
+    if (error && table === 'clientes' && !clientesSemColunasGeo && erroDeColunaDesconhecida(error)) {
+      // Servidor sem a migration de geo: reenvia sem as colunas (ver COLUNAS_CLIENTE_GEO).
+      clientesSemColunasGeo = true;
+      for (const c of COLUNAS_CLIENTE_GEO) delete (row as Record<string, unknown>)[c];
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
+    if (error && table === 'agendamentos' && !agendaSemColunaExterna && erroDeColunaDesconhecida(error)) {
+      // Servidor sem a migration da visita externa: reenvia sem ela (ver COLUNA_AGENDA_EXTERNA).
+      agendaSemColunaExterna = true;
+      delete (row as Record<string, unknown>)[COLUNA_AGENDA_EXTERNA];
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
     if (error && table === 'agendamentos' && !agendaSemColunasExcecoes && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration de exceções: reenvia sem elas (ver COLUNAS_AGENDA_EXCECOES).
       agendaSemColunasExcecoes = true;
       for (const c of COLUNAS_AGENDA_EXCECOES) delete (row as Record<string, unknown>)[c];
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+    }
+    // A OS tem QUATRO degraus de recuo e a nuvem pode estar sem qualquer combinação
+    // deles, na ordem que o PostgREST reclamar. Até 4 voltas, cada uma tirando só a(s)
+    // coluna(s) que o erro NOMEOU. Erro sem nome de coluna cai no degrau mais novo
+    // primeiro: materiais (20261003104000), garantia (20261003103100), encerramento
+    // (20261003102500) e, por último, equipamento (20261002153217) — assim um
+    // servidor que já tem o `asset_id` nunca perde o vínculo por coluna mais nova.
+    for (let volta = 0; volta < 4 && error && table === 'ordens_servico'; volta++) {
+      if (!osSemColunaMateriais && erroDeColunaDesconhecidaDe(error, 'materiais')) {
+        // Servidor sem a migration da baixa de material: reenvia sem `materiais`.
+        osSemColunaMateriais = true;
+        delete (row as Record<string, unknown>).materiais;
+      } else if (!osSemColunasGarantia && COLUNAS_OS_GARANTIA.some((c) => erroDeColunaDesconhecidaDe(error, c))) {
+        // Servidor sem a migration da garantia: reenvia sem as colunas (ver COLUNAS_OS_GARANTIA).
+        osSemColunasGarantia = true;
+        for (const c of COLUNAS_OS_GARANTIA) delete (row as Record<string, unknown>)[c];
+      } else if (!osSemColunaEncerramento && erroDeColunaDesconhecidaDe(error, 'encerramento')) {
+        // Servidor sem a migration do encerramento: reenvia sem `encerramento`.
+        osSemColunaEncerramento = true;
+        delete (row as Record<string, unknown>).encerramento;
+      } else if (!osSemColunaAsset && erroDeColunaDesconhecidaDe(error, 'asset_id')) {
+        // Servidor sem a migration do equipamento na OS: reenvia sem `asset_id`.
+        osSemColunaAsset = true;
+        delete (row as Record<string, unknown>).asset_id;
+      } else {
+        break;
+      }
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
     }
     if (error && table === 'agendamentos' && !agendaSemColunasEquipe && erroDeColunaDesconhecida(error)) {
@@ -1031,7 +1211,7 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       }
       return;
     }
-    if (table === 'empresa') await marcarEmpresaVistaAgora();
+    if (table === 'empresa') await marcarEmpresaComHoraDoServidor((row as Record<string, unknown>).user_id);
   } catch {
     // idem: silencioso
   }
@@ -1041,36 +1221,29 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
  * Decide se o push de `empresa` pode seguir. O terceiro estado é obrigatório:
  * erro ao consultar a nuvem não é prova de que a linha não existe e, portanto,
  * adia a escrita em vez de sobrescrever um cadastro que este aparelho nunca viu.
+ *
+ * A regra mora em `decidirPushEmpresa` (services/carimboEmpresa.ts, testada):
+ * sem carimbo, a nuvem que já tem empresa vence (aparelho novo de usuário
+ * existente — o P0 da auditoria); linha da nuvem sem cadastro nenhum pode ser
+ * sobrescrita; carimbo vindo do relógio adiantado de versão antiga não vale.
+ * `.eq(user_id)`: sem o filtro, um membro de equipe enxerga (RLS `empresa_select`
+ * → donos_visiveis) a linha do DONO além da própria, e o maybeSingle devolvia
+ * erro com 2 linhas — ou, pior, a resposta era sobre a empresa de OUTRA pessoa.
  */
-type EstadoEmpresaAntesDoPush = 'pode_escrever' | 'nuvem_mais_nova' | 'nao_sei';
-
 async function estadoEmpresaAntesDoPush(userId: string): Promise<EstadoEmpresaAntesDoPush> {
   try {
     if (!supabase) return 'nao_sei';
     const stampLocal = await AsyncStorage.getItem(EMPRESA_STAMP_KEY).catch(() => null);
-    if (!stampLocal) {
-      // Sem carimbo = este aparelho NUNCA puxou a empresa. Se a nuvem JÁ tem uma
-      // empresa, NÃO empurrar por cima: seria sobrescrever o cadastro real de um
-      // usuário existente que logou em aparelho novo (mecanismo do P0 da auditoria —
-      // o antigo "return false" era o piso INSEGURO). Devolver true faz o chamador
-      // puxar a nuvem em vez de empurrar, e o local converge. Se a nuvem não tem
-      // empresa, é usuário novo criando a dele → false libera o push (fluxo correto).
-      // `.eq(user_id)`: sem o filtro, um membro de equipe enxerga (RLS
-      // `empresa_select` → donos_visiveis) a linha do DONO além da própria, e o
-      // maybeSingle devolvia erro com 2 linhas — ou, pior, a resposta era sobre a
-      // empresa de OUTRA pessoa. Só perguntamos sobre a linha do nosso tenant.
-      const { data, error } = await supabase.from('empresa').select('user_id').eq('user_id', userId).maybeSingle();
-      if (error) return 'nao_sei';
-      return data ? 'nuvem_mais_nova' : 'pode_escrever';
-    }
     const { data, error } = await supabase
       .from('empresa')
-      .select('atualizado_em')
+      .select('atualizado_em, dados')
       .eq('user_id', userId)
       .maybeSingle();
     if (error) return 'nao_sei';
-    const remoto = (data as any)?.atualizado_em as string | undefined;
-    return tsMaisNovo(remoto, stampLocal) ? 'nuvem_mais_nova' : 'pode_escrever';
+    const remoto = data
+      ? { atualizadoEm: (data as any)?.atualizado_em as string | undefined, semCadastro: empresaSemCadastro(data) }
+      : null;
+    return decidirPushEmpresa(stampLocal, remoto);
   } catch {
     return 'nao_sei';
   }
@@ -1095,12 +1268,28 @@ async function pullEmpresaMaisNova(userId: string): Promise<void> {
   }
 }
 
-/** Grava o carimbo local de `empresa` = agora (última vez que vimos/escrevemos a nuvem). NUNCA lança. */
-async function marcarEmpresaVistaAgora(): Promise<void> {
+/**
+ * Depois de um envio aceito, o carimbo local de `empresa` passa a ser o
+ * `atualizado_em` que o SERVIDOR gravou (trigger `empresa_set_atualizado_em`),
+ * nunca o relógio do aparelho (ver services/carimboEmpresa.ts — foi assim que um
+ * celular adiantado empurrou a empresa vazia por cima da corrigida).
+ *
+ * Se a releitura falhar, o carimbo fica como estava: o próximo envio vê a nuvem
+ * "mais nova" (é a nossa própria escrita), puxa e converge — nada se perde,
+ * porque o que está na nuvem é exatamente o que este aparelho mandou. NUNCA lança.
+ */
+async function marcarEmpresaComHoraDoServidor(userIdDaLinha: unknown): Promise<void> {
   try {
-    await AsyncStorage.setItem(EMPRESA_STAMP_KEY, new Date().toISOString());
+    if (!supabase) return;
+    let userId = typeof userIdDaLinha === 'string' && userIdDaLinha ? userIdDaLinha : null;
+    if (!userId) userId = (await alvoEmpresa())?.userId ?? null;
+    if (!userId) return;
+    const { data, error } = await supabase.from('empresa').select('atualizado_em').eq('user_id', userId).maybeSingle();
+    const atualizadoEm = (data as any)?.atualizado_em;
+    if (error || typeof atualizadoEm !== 'string' || !atualizadoEm) return;
+    await AsyncStorage.setItem(EMPRESA_STAMP_KEY, atualizadoEm);
   } catch {
-    // Sem carimbo, o próximo push consulta a nuvem; se não conseguir, adia.
+    // Sem carimbo novo, o próximo push consulta a nuvem; se não conseguir, adia.
   }
 }
 
@@ -1302,6 +1491,18 @@ async function localMaisNovoRecibo(id: string, recebidoEm?: string): Promise<boo
  */
 async function localUpsertEmpresa(e: Empresa, recebidoEm?: string): Promise<void> {
   const db = await getDb();
+  // Vazio não apaga cadastro (mesma regra do trigger 20261004100000 no banco): uma
+  // linha da nuvem sem dado nenhum não sobrescreve a empresa que a pessoa acabou
+  // de preencher aqui (ex.: Onboarding salvo antes de o envio chegar à nuvem).
+  // O carimbo também não muda, para o próximo envio subir o cadastro local.
+  if (empresaSemCadastro(e)) {
+    const atual = await db.getFirstAsync<{ data: string }>('SELECT data FROM empresa LIMIT 1');
+    if (atual?.data) {
+      let local: unknown = null;
+      try { local = JSON.parse(atual.data); } catch { local = null; }
+      if (local && !empresaSemCadastro(local)) return;
+    }
+  }
   await db.runAsync('INSERT OR REPLACE INTO empresa (id, data) VALUES (?, ?)', [
     e.id ?? 'empresa_1',
     JSON.stringify(e),
@@ -1319,15 +1520,34 @@ async function localUpsertCliente(c: Cliente): Promise<void> {
   // Guard de conflito: se este aparelho escreveu depois, a linha remota não entra.
   if (await localMaisNovoColuna('clientes', c.id, c.atualizadoEm)) return;
   const db = await getDb();
+  // GEO: a nuvem sem ponto é "não sei", não "apagou" (inclusive a nuvem sem a
+  // migration, que nem tem as colunas). Se o endereço é o MESMO e este aparelho já
+  // tem ponto/IBGE (geocodificou ao salvar e o espelho ainda não subiu), mantém o
+  // local. Endereço diferente = o ponto local é de outro lugar e cai.
+  let geo = geoParaColunas(c);
+  const local = await db.getFirstAsync<any>(
+    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao FROM clientes WHERE id = ?', [c.id],
+  );
+  if (local) {
+    const geoLocal = geoParaColunas(lerGeoDaLinha(local));
+    const mudou = mudancaDeEndereco(local, c);
+    if (!mudou.coordenada && geo.lat === null && geoLocal.lat !== null) {
+      geo = { ...geo, lat: geoLocal.lat, lon: geoLocal.lon, geo_precisao: geoLocal.geo_precisao };
+    }
+    if (!mudou.municipio && geo.ibge === null && geoLocal.ibge !== null) {
+      geo = { ...geo, ibge: geoLocal.ibge };
+    }
+  }
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
-       (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em,
+        lat, lon, ibge, geo_precisao)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [c.id, c.nome, c.telefone ?? null, c.cpf ?? null, c.cnpj ?? null,
      c.endereco ?? null, c.complemento ?? null, c.estado ?? null,
      c.cidade ?? null, c.cep ?? null, c.criadoEm, c.excluidoEm ?? null,
-     c.atualizadoEm ?? c.criadoEm],
+     c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao],
   );
 }
 
@@ -1410,6 +1630,12 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   if (await localMaisNovoAgendamento(a.id, a.atualizadoEm)) return;
   let excecoes = a.recorrencia ? excecoesParaTexto(a.excecoes) : null;
   let ordemServicoId = a.ordemServicoId ?? null;
+  let externa = externaParaSqlite(a.externa);
+  if (agendaSemColunaExterna) {
+    // Nuvem sem a coluna: o vazio que veio é "não sei". Mantém o que este aparelho tem.
+    const local = await db.getFirstAsync<{ externa: number | null }>('SELECT externa FROM agendamentos WHERE id = ?', [a.id]);
+    if (local) externa = externaParaSqlite(lerExterna(local.externa));
+  }
   if (agendaSemColunasExcecoes) {
     // A nuvem não tem as colunas: o que veio vazio é "não sei", não "apagou".
     // Mantém o que este aparelho tem (lerExcecoes valida; ilegível lança e o pull
@@ -1426,13 +1652,13 @@ async function localUpsertAgendamento(a: Agendamento): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO agendamentos
        (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em,
-        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id, externa)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
      a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
      a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null,
      a.responsavelId ?? null, a.responsavelNome ?? null, a.recorrencia ?? null,
-     a.recorrenciaAte ?? null, a.contratoId ?? null, excecoes, ordemServicoId],
+     a.recorrenciaAte ?? null, a.contratoId ?? null, excecoes, ordemServicoId, externa],
   );
 }
 
@@ -1440,26 +1666,57 @@ async function localUpsertOrdemServico(o: OrdemServico): Promise<void> {
   const db = await getDb();
   // Anti-perda: se a OS local for mais nova, preserva a edição local (o técnico
   // pode ter tocado status/checklist/fotos offline entre o pull e a escrita).
+  let assetLocal: string | null = null;
+  let garantiaLocal: string | null = null;
+  let garantiaDeLocal: string | null = null;
+  let encerramentoLocal: string | null = null;
+  let materiaisLocal: string | null = null;
   try {
-    const loc = await db.getFirstAsync<{ atualizado_em: string }>(
-      'SELECT atualizado_em FROM ordens_servico WHERE id = ?', [o.id],
+    const loc = await db.getFirstAsync<{
+      atualizado_em: string; asset_id: string | null; garantia: string | null;
+      garantia_de_os_id: string | null; encerramento: string | null; materiais: string | null;
+    }>(
+      'SELECT atualizado_em, asset_id, garantia, garantia_de_os_id, encerramento, materiais FROM ordens_servico WHERE id = ?', [o.id],
     );
     if (loc?.atualizado_em && tsMaisNovo(loc.atualizado_em, o.atualizadoEm)) return;
+    assetLocal = loc?.asset_id ?? null;
+    garantiaLocal = loc?.garantia ?? null;
+    garantiaDeLocal = loc?.garantia_de_os_id ?? null;
+    encerramentoLocal = loc?.encerramento ?? null;
+    materiaisLocal = loc?.materiais ?? null;
   } catch {
     // sem linha local / erro de leitura → segue e grava (piso seguro)
   }
+  // Vínculo com o equipamento: nuvem VAZIA nunca apaga o vínculo local. O vazio
+  // pode ser "nuvem sem a coluna" (osSemColunaAsset) ou "OS enviada enquanto a
+  // coluna não existia" (a linha da nuvem ficou com asset_id nulo e o MESMO
+  // atualizado_em — sem isto o pull seguinte zerava o vínculo para sempre). Não
+  // existe fluxo de "desligar" a OS do equipamento: o vínculo só nasce no check-in.
+  const assetId = o.equipamentoId ?? assetLocal;
+  // Garantia: mesma regra do vínculo — nuvem vazia (sem a coluna, ou OS enviada
+  // antes da migration) nunca apaga a garantia escrita neste aparelho.
+  const garantia = o.garantia ?? garantiaLocal;
+  const garantiaDeOsId = o.garantiaDeOsId ?? garantiaDeLocal;
+  // Encerramento: mesma regra do vínculo — nuvem VAZIA (sem a coluna ou OS enviada
+  // antes da migration) nunca apaga a assinatura/os passos gravados no aparelho.
+  const encerramento = o.encerramento ? JSON.stringify(o.encerramento) : encerramentoLocal;
+  // Baixa de material: mesma regra — nuvem VAZIA (sem a coluna, ou OS enviada antes
+  // dela) nunca apaga a baixa local. Não existe "desinformar" material na tela
+  // (o técnico só troca a lista ou marca "não usei material", que é `[]`).
+  const materiais = materiaisParaTexto(o.materiais) ?? materiaisLocal;
   // checklist/fotos como TEXT JSON (mesmo schema local de database.ts).
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO ordens_servico
        (id, numero, orcamento_id, cliente_id, cliente_nome, titulo, descricao, status, concluido_em,
         tecnico_id, tecnico_nome, data_agendada, checklist, fotos, observacoes, valor,
-        criado_em, atualizado_em, excluido_em)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        criado_em, atualizado_em, excluido_em, asset_id, garantia, garantia_de_os_id, encerramento, materiais)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [o.id, o.numero, o.orcamentoId ?? null, o.clienteId ?? null, o.clienteNome,
      o.titulo, o.descricao ?? null, o.status, o.concluidoEm ?? null, o.tecnicoId ?? null, o.tecnicoNome ?? null,
      o.dataAgendada ?? null, JSON.stringify(o.checklist ?? []), JSON.stringify(o.fotos ?? []),
-     o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null],
+     o.observacoes ?? null, o.valor ?? null, o.criadoEm, o.atualizadoEm, o.excluidoEm ?? null, assetId,
+     garantia, garantiaDeOsId, encerramento, materiais],
   );
 }
 
@@ -2424,6 +2681,8 @@ function rowToClienteLocal(r: any): Cliente {
     excluidoEm: r.excluido_em ?? undefined,
     // Idem para o relógio: sem ele o push mandaria atualizado_em=null (coluna NOT NULL).
     atualizadoEm: r.atualizado_em ?? r.criado_em,
+    // Geo local sobe junto (o que o aparelho geocodificou e ainda não espelhou).
+    ...lerGeoDaLinha(r),
   };
 }
 function rowToServicoLocal(r: any): ServicoItem {
@@ -2474,6 +2733,8 @@ function rowToAgendamentoLocal(r: any): Agendamento {
     // Idem: sem estes, o push apagaria na nuvem as exceções da série e a OS ligada.
     excecoes: lerExcecoes(r.excecoes),
     ordemServicoId: r.ordem_servico_id ?? undefined,
+    // E a visita externa (0/1/NULL no SQLite → boolean | undefined).
+    externa: lerExterna(r.externa),
   };
 }
 
@@ -2855,6 +3116,20 @@ function syncAbortado(geracao: number | undefined): boolean {
 }
 
 /**
+ * Botão [Tentar agora] do SeloSync (I0). Força o envio das fotos paradas —
+ * ignorando a espera crescente e incluindo as que a nuvem recusou — e dispara um
+ * sync completo em seguida, em segundo plano. Devolve o resultado das fotos (null
+ * = envio desligado ou não deu para ler a fila). Nunca lança.
+ */
+export async function tentarSincronizarAgora(): Promise<{ enviadas: number; falhas: number; erroLeitura: boolean } | null> {
+  const resultado = await import('./filaFotosNativa')
+    .then(m => m.enviarFotosPendentes({ forcar: true }))
+    .catch(() => null);
+  void syncOnLogin();
+  return resultado;
+}
+
+/**
  * No login (ordem importa):
  *  1) pullAll()           — aplica exclusões da nuvem, traz o estado da nuvem e
  *                           funde contadores. Vem ANTES para o aparelho recém-
@@ -2879,6 +3154,43 @@ function syncAbortado(geracao: number | undefined): boolean {
  * Cancelável por `abortarSyncEmAndamento` (checagem de geração antes de gravar).
  */
 export async function syncOnLogin(): Promise<void> {
+  if (syncing) return;
+  const p = executarSyncOnLogin();
+  syncEmVoo = p;
+  void p.finally(() => {
+    if (syncEmVoo === p) syncEmVoo = null;
+  });
+  return p;
+}
+
+/** O sync que está rodando agora (para "puxar para atualizar" esperar por ele), ou null. */
+let syncEmVoo: Promise<void> | null = null;
+
+/**
+ * PUXAR PARA ATUALIZAR — busca da nuvem AGORA. Antes as telas chamavam
+ * `syncOnLogin` direto: se o sync do boot ainda estava rodando (push longo), a
+ * trava de reentrância devolvia na hora, a tela relia só o SQLite e a visita
+ * recém-atribuída só aparecia reabrindo o app. Aqui: espera o sync em voo e roda
+ * um NOVO pull. Responde 'ok' (veio da nuvem), 'falhou' (o que está na tela é o
+ * do aparelho) ou 'demorou' (passou do teto; segue em segundo plano e a tela
+ * recarrega sozinha pelo `onSyncAplicado`). Nunca lança.
+ */
+export async function sincronizarAgora(tetoMs = 20_000): Promise<ResultadoAtualizacao> {
+  try {
+    return await atualizarDaNuvem({
+      emVoo: () => syncEmVoo,
+      sincronizar: () => syncOnLogin(),
+      ultimoPull: () => ultimoPull,
+      tetoMs,
+      agora: () => Date.now(),
+      esperar: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    });
+  } catch {
+    return 'falhou';
+  }
+}
+
+async function executarSyncOnLogin(): Promise<void> {
   if (syncing) return;
   syncing = true;
   const geracao = syncGeneration;
@@ -2947,6 +3259,16 @@ export async function syncOnLogin(): Promise<void> {
       .then(m => m.espelharVersoesPendentes())
       .catch(() => 0);
     if (syncAbortado(geracao)) return;
+    // Fotos da OS (I0 · selo "no aparelho/enviada"): o arquivo já está salvo no
+    // aparelho desde o clique; aqui só sobe a cópia para o bucket privado. Vem
+    // DEPOIS das linhas (a OS existe na nuvem antes da foto) e respeita a espera
+    // crescente de cada foto. Fila própria e por usuário (filaFotosNativa).
+    // SEM await: subir dezenas de fotos em 3G leva minutos, e enquanto o
+    // syncOnLogin não termina (`syncing`) nenhum outro sync roda — o orçamento
+    // editado ficaria preso atrás das fotos. A fila se serializa sozinha.
+    void import('./filaFotosNativa')
+      .then(m => m.enviarFotosPendentes())
+      .catch(() => null);
     await podarTombstonesAntigos();
     if (syncAbortado(geracao)) return;
     // Extras chave-valor (checklist do Hoje, snooze do radar, relatórios diários)
@@ -2977,6 +3299,15 @@ export async function syncOnLogin(): Promise<void> {
       .catch(() => {})
       .then(() => import('./followUpLembretes'))
       .then(m => m.reagendarFollowUps())
+      .catch(() => {})
+      // Onda I3 — "Confirmar visitas de amanhã" (18h) e "a garantia vence em 7
+      // dias". Encadeados DEPOIS do resincronizarLembretes pelo mesmo motivo dos
+      // follow-ups (o cancelAll derrubaria os dois). Nunca lançam.
+      .then(() => import('./confirmacaoVisita'))
+      .then(m => m.reagendarAvisoVespera())
+      .catch(() => {})
+      .then(() => import('./garantias'))
+      .then(m => m.reagendarAvisosGarantia())
       .catch(() => {});
     // Mesmo motivo, para os lembretes de vencimento PMOC: o pull grava
     // ordens_servico/pmoc_ordens_geradas direto no SQLite (localUpsert*, sem

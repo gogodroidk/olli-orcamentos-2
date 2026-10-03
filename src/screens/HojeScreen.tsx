@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, RefreshControl, Animated,
-  LayoutAnimation, Platform, UIManager, Alert,
+  LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,28 +12,46 @@ import { vibrar } from '../utils/haptico';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { capitalizeFirst } from '../utils/date';
-import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, type Cores } from '../theme';
+import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, corCategoriaEmChip, comAlfa, type Cores } from '../theme';
 import { Motion, useReducedMotion } from '../theme/motion';
-import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { OlliPressable } from '../components/OlliPressable';
 import { OlliMascot } from '../components/OlliMascot';
-import { EmptyState } from '../components/EmptyState';
-import { OlliSkeleton } from '../components/OlliSkeleton';
-import { getAgendamentosDoDia } from '../services/agenda';
-import { getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
+import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
+import { Aparecer, Skeleton } from '../components/motion';
+import { AcaoNo, NoLinhaDoTempo } from '../components/hoje/LinhaDoTempo';
+import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
+import { SeloConfirmacao } from '../components/vespera/SeloConfirmacao';
+import { CartaoVespera } from '../components/vespera/CartaoVespera';
+import { CartaoGarantias } from '../components/garantia/CartaoGarantias';
+import { MalaVesperaCard } from '../components/hoje/MalaVesperaCard';
+import { toast } from '../components/feedback';
+import { getAgendamentosDoDia, getVisitasSemBaixa, mudarStatusVisitaDoDia } from '../services/agenda';
+import { getCliente, getClientes, getOrcamentosAgregadoPorStatus, getOrcamentosDatasCriacao } from '../database/database';
 import { onSyncAplicado, pushExtraChave } from '../services/cloudSync';
 import { abrirRotaGoogleMaps } from '../services/rotas';
+import { mensagemEstouACaminho } from '../services/eta';
 import { orcamentosParaFollowUp, mensagemFollowUp, OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { maisPrioritarioFollowUp } from '../utils/prioridadeFollowUp';
+import { limitesDoDiaLocal } from '../utils/agendaDia';
+import { aplicarEscopo, resolverEscopoAgenda, type EntradaEscopo } from '../utils/agendaDominio';
+import {
+  ROTULO_FASE, detalheHorario, montarLinhaDoTempo, resumoDoDia, type ItemLinhaDoTempo,
+} from '../utils/linhaDoTempoHoje';
+import type { OcorrenciaAgendamento } from '../utils/contratoRecorrente';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
 import {
-  Agendamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS,
+  Agendamento, TIPO_AGENDAMENTO_COLORS, TIPO_AGENDAMENTO_LABELS, type Cliente,
 } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { CHECKLIST_KEY, PULSO_ULTIMO_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
+import { usePermissao } from '../hooks/usePermissao';
+import { useTipoConta } from '../hooks/useTipoConta';
+import { getCurrentUser } from '../services/supabase';
 import { track, Eventos } from '../services/analytics';
 import { enviarFeedback } from '../services/feedback';
 
@@ -295,6 +313,146 @@ function PulsoSemana({ onFechar }: { onFechar: () => void }) {
   );
 }
 
+/** Atualiza o relógio da linha do tempo (fase de cada visita) enquanto a tela está em foco. */
+const TICK_RELOGIO_MS = 60_000;
+
+interface VisitaNaLinhaProps {
+  item: ItemLinhaDoTempo<OcorrenciaAgendamento>;
+  agora: Date;
+  baixando: boolean;
+  avisando: boolean;
+  onAbrir: (a: OcorrenciaAgendamento) => void;
+  onConcluir: (a: OcorrenciaAgendamento) => void;
+  onEstouACaminho: (a: OcorrenciaAgendamento) => void;
+  /** Cadastro do cliente da visita (ponto para o clima, WhatsApp para remarcar). */
+  cliente: Cliente | null;
+  clientes: Cliente[];
+  /** Depois de remarcar por chuva: relê o dia. */
+  aoRemarcado: () => void;
+}
+
+/**
+ * Card de uma visita na linha do tempo. A FASE manda no que aparece:
+ *  - agora     → destaque, "Concluí" e rota;
+ *  - sem baixa → aviso, "Dar baixa" e "Remarcar ou cancelar" (abre na Agenda);
+ *  - próxima   → "Traçar rota" e "Estou a caminho" (WhatsApp do cliente);
+ *  - mais tarde/feita → compacto; o toque abre a visita na Agenda.
+ */
+const VisitaNaLinha = React.memo(function VisitaNaLinha({
+  item, agora, baixando, avisando, onAbrir, onConcluir, onEstouACaminho, cliente, clientes, aoRemarcado,
+}: VisitaNaLinhaProps) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const { visita: a, fase } = item;
+  // Matiz = significado; luminosidade cede contra o fundo real do chip.
+  const corChip = TIPO_AGENDAMENTO_COLORS[a.tipo];
+  const cor = corCategoriaEmChip(corChip, cores.surface);
+  const detalhe = detalheHorario(item, agora);
+  const temEndereco = !!a.endereco?.trim();
+  const corFase = fase === 'agora' ? cores.accentLight
+    : fase === 'sem_baixa' ? cores.warning
+      : fase === 'feita' ? cores.success
+        : fase === 'proxima' ? cores.accentLight
+          : cores.onSurfaceMuted;
+
+  return (
+    <View>
+      <OlliPressable
+        style={[
+          styles.visitaCard,
+          fase === 'agora' && styles.visitaCardAgora,
+          fase === 'sem_baixa' && styles.visitaCardSemBaixa,
+          fase === 'feita' && styles.visitaCardFeita,
+        ]}
+        // Abre ESTA visita na Agenda. Repetição de série vai com o id
+        // inteiro (`<base>@<dia>`), o mesmo formato da notificação: a
+        // Agenda abre a base e foca o DIA da repetição. Mandar só a base
+        // focaria a semana em que a série começou.
+        onPress={() => onAbrir(a)}
+        haptic="selection"
+        accessibilityLabel={`${ROTULO_FASE[fase]}: ${hhmm(a.inicio)}, ${a.titulo}, ${a.clienteNome}. Abrir na agenda`}
+      >
+        <View style={styles.visitaTopo}>
+          <Text style={[styles.visitaHora, fase === 'feita' && styles.textoFeito]}>{hhmm(a.inicio)}</Text>
+          <View style={[styles.faseChip, { backgroundColor: comAlfa(corFase, 0.14), borderColor: comAlfa(corFase, 0.4) }]}>
+            <Text style={[styles.faseChipTexto, { color: corFase }]}>{ROTULO_FASE[fase].toUpperCase()}</Text>
+          </View>
+          {detalhe ? <Text style={styles.visitaDetalhe} numberOfLines={1}>{detalhe}</Text> : null}
+        </View>
+        <Text style={[styles.visitaTitulo, fase === 'feita' && styles.textoFeito]} numberOfLines={1}>{a.titulo}</Text>
+        <Text style={styles.visitaCliente} numberOfLines={1}>
+          {a.clienteNome}{temEndereco && fase !== 'feita' ? ` · ${a.endereco!.trim()}` : ''}
+        </Text>
+        {fase !== 'feita' && (
+          <View style={[styles.tipoChip, { backgroundColor: corChip + '22', borderColor: corChip + '55' }]}>
+            <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[a.tipo]}</Text>
+          </View>
+        )}
+        {/* CONFIRMAÇÃO DE VÉSPERA (Onda I3): "Confirmada pelo cliente" / "Pediu
+            para remarcar" / "Aguardando". Some sem pedido de confirmação. */}
+        {fase !== 'feita' ? <SeloConfirmacao visita={a} style={styles.visitaClima} /> : null}
+        {/* CLIMA DA VISITA — só o que importa agora (some na visita feita/passada).
+            Visita externa com chuva forte: tocar abre "Remarcar e avisar". */}
+        {fase !== 'feita' ? (
+          <ClimaDaVisita visita={a} cliente={cliente} clientes={clientes} aoRemarcado={aoRemarcado} style={styles.visitaClima} />
+        ) : null}
+      </OlliPressable>
+
+      {(fase === 'agora' || fase === 'sem_baixa') && (
+        <View style={styles.acoesRow}>
+          <AcaoNo
+            variante="principal"
+            icone="check"
+            rotulo={fase === 'agora' ? 'Concluí' : 'Dar baixa'}
+            accessibilityLabel={`Marcar a visita de ${a.clienteNome} como concluída`}
+            carregando={baixando}
+            onPress={() => onConcluir(a)}
+          />
+          {fase === 'agora' && temEndereco ? (
+            <AcaoNo
+              icone="navigation-variant"
+              rotulo="Rota"
+              accessibilityLabel={`Traçar rota até ${a.endereco}`}
+              onPress={() => { void abrirRotaGoogleMaps(a.endereco!); }}
+            />
+          ) : null}
+          {fase === 'sem_baixa' ? (
+            <AcaoNo
+              icone="calendar-edit"
+              rotulo="Remarcar ou cancelar"
+              accessibilityLabel={`Remarcar ou cancelar a visita de ${a.clienteNome} na agenda`}
+              onPress={() => onAbrir(a)}
+            />
+          ) : null}
+        </View>
+      )}
+
+      {fase === 'proxima' && (temEndereco || a.clienteId) ? (
+        <View style={styles.acoesRow}>
+          {temEndereco ? (
+            <AcaoNo
+              icone="navigation-variant"
+              rotulo="Traçar rota"
+              accessibilityLabel={`Traçar rota até ${a.endereco}`}
+              onPress={() => { void abrirRotaGoogleMaps(a.endereco!); }}
+            />
+          ) : null}
+          {a.clienteId ? (
+            <AcaoNo
+              variante="whatsapp"
+              icone="whatsapp"
+              rotulo="Estou a caminho"
+              accessibilityLabel={`Avisar ${a.clienteNome} no WhatsApp que você está a caminho`}
+              carregando={avisando}
+              onPress={() => onEstouACaminho(a)}
+            />
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+});
+
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -302,8 +460,37 @@ export default function HojeScreen() {
   const styles = useEstilos(criarEstilos);
   const { temAcesso } = usePlano();
   const relatorioLiberado = temAcesso('relatorio_dia');
+  // QUEM VÊ O QUÊ — mesma regra da Agenda (`resolverEscopoAgenda`): o técnico vê
+  // só as visitas DELE; gestão e conta pessoal veem a equipe inteira. Enquanto o
+  // papel não é conhecido, a linha do tempo não aparece (nem vazia, nem a da
+  // equipe); se a leitura falhar, a tela diz isso e deixa tentar de novo.
+  const { pode } = usePermissao();
+  const tipoConta = useTipoConta();
+  const [usuario, setUsuario] = useState<EntradaEscopo['usuario']>({ status: 'carregando' });
+  const lerUsuario = useCallback(() => {
+    setUsuario({ status: 'carregando' });
+    getCurrentUser()
+      .then(u => setUsuario({ status: 'ok', id: u?.id ?? null }))
+      .catch(() => setUsuario({ status: 'ok', id: null }));
+  }, []);
+  useEffect(() => { lerUsuario(); }, [lerUsuario]);
+  const escopo = useMemo(() => resolverEscopoAgenda({
+    papelResolvido: tipoConta.resolvido,
+    papelCarregando: tipoConta.carregando,
+    podeVerEquipe: pode('ver_agenda_equipe'),
+    usuario,
+  }), [tipoConta.resolvido, tipoConta.carregando, pode, usuario]);
+  const escopoPronto = escopo.status === 'equipe' || escopo.status === 'propria';
+  // O total em R$ das propostas paradas é valor AGREGADO da empresa: o técnico
+  // vê a contagem, não a soma (mesma matriz do resto do app).
+  const podeValores = pode('ver_valores_agregados');
 
-  const [itens, setItens] = useState<Agendamento[]>([]);
+  const [itens, setItens] = useState<OcorrenciaAgendamento[]>([]);
+  // Cadastro dos clientes: o ponto (clima da visita) e o WhatsApp (remarcar por chuva).
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  // Visitas de DIAS ANTERIORES que terminaram e seguem "agendado" (ninguém deu
+  // baixa). As de hoje já aparecem na própria linha do tempo como "Sem baixa".
+  const [semBaixaAntigas, setSemBaixaAntigas] = useState<Agendamento[]>([]);
   const [orcamentosResumo, setOrcamentosResumo] = useState({ aguardandoAssinatura: 0, houveRecente: false });
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [novo, setNovo] = useState('');
@@ -315,6 +502,15 @@ export default function HojeScreen() {
   const [carregandoErro, setCarregandoErro] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [pulsoVisivel, setPulsoVisivel] = useState(false);
+  // Relógio da linha do tempo: a fase de cada visita depende da hora. Atualiza
+  // a cada minuto só com a tela em foco (não é animação; é o "agora" andando).
+  const [agora, setAgora] = useState(() => new Date());
+  // Muda a cada foco → o ponto "agora" pulsa de novo (N ondas e para).
+  const [gatilhoPulso, setGatilhoPulso] = useState(0);
+  // Id da visita com ação em andamento (baixa / aviso de saída): o botão mostra
+  // "carregando" e não aceita toque duplo.
+  const [baixando, setBaixando] = useState<string | null>(null);
+  const [avisando, setAvisando] = useState<string | null>(null);
 
   // PROPOSTAS PARADAS — vem do radar (`orcamentosParaFollowUp`), não de uma
   // regra recalculada aqui. Esta tela tinha a SUA versão de "parado" (>= 5 dias
@@ -340,16 +536,29 @@ export default function HojeScreen() {
     }
   }, []);
 
+  // Dia (local) da última leitura da agenda. Se o relógio passar da meia-noite
+  // com a tela aberta, a linha do tempo é de ONTEM: o tique recarrega em vez de
+  // pintar as visitas de ontem como "Sem baixa" sob o título de hoje.
+  const diaCarregadoRef = useRef<string | null>(null);
+
   const load = useCallback(async () => {
     setCarregandoErro(false);
     try {
-      const [ag, assinatura, datasCriacao, raw] = await Promise.all([
+      const [ag, semBaixa, assinatura, datasCriacao, raw, cls] = await Promise.all([
         getAgendamentosDoDia(),
+        getVisitasSemBaixa(),
         getOrcamentosAgregadoPorStatus(['aguardando_assinatura']),
         getOrcamentosDatasCriacao(),
         AsyncStorage.getItem(CHECKLIST_KEY),
+        getClientes(),
       ]);
+      setClientes(cls);
+      const agoraLeitura = new Date();
+      diaCarregadoRef.current = format(agoraLeitura, 'yyyy-MM-dd');
+      setAgora(agoraLeitura);
       setItens(ag.filter(a => a.status !== 'cancelado').sort((a, b) => a.inicio.localeCompare(b.inicio)));
+      const inicioDeHoje = limitesDoDiaLocal(agoraLeitura).inicio.getTime();
+      setSemBaixaAntigas(semBaixa.filter(a => new Date(a.inicio).getTime() < inicioDeHoje));
       // A tela só precisa destes dois sinais; não carregue o blob inteiro de
       // orçamentos (itens, fotos, assinaturas e formas de pagamento) para
       // calcular um contador e um recorte de sete dias.
@@ -374,7 +583,17 @@ export default function HojeScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); loadFollowUp(); }, [load, loadFollowUp]));
+  useFocusEffect(useCallback(() => {
+    load();
+    loadFollowUp();
+    setGatilhoPulso(n => n + 1);
+    const relogio = setInterval(() => {
+      const n = new Date();
+      setAgora(n);
+      if (diaCarregadoRef.current && diaCarregadoRef.current !== format(n, 'yyyy-MM-dd')) void load();
+    }, TICK_RELOGIO_MS);
+    return () => clearInterval(relogio);
+  }, [load, loadFollowUp]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo agendamentos/orçamentos que ainda não existiam localmente).
@@ -385,6 +604,9 @@ export default function HojeScreen() {
 
   const refresh = async () => {
     setRefreshing(true);
+    // Puxar para atualizar também relê o papel e o usuário: sem isto, quem caiu
+    // no aviso "não deu para confirmar seu acesso" ficaria preso nele.
+    if (escopo.status === 'erro') { void tipoConta.recarregar(); lerUsuario(); }
     try {
       await Promise.all([load(), loadFollowUp()]);
     } finally {
@@ -429,6 +651,77 @@ export default function HojeScreen() {
     persist(checklist.filter(i => i.id !== id));
   }, [checklist, persist, reduzirMovimento]);
 
+  // ── LINHA DO TEMPO ──
+  // Só o que este usuário pode ver (técnico = as dele). Fora de equipe/própria, nada.
+  const itensVisiveis = useMemo(() => aplicarEscopo(itens, escopo), [itens, escopo]);
+  const semBaixaVisiveis = useMemo(() => aplicarEscopo(semBaixaAntigas, escopo), [semBaixaAntigas, escopo]);
+  const linha = useMemo(() => montarLinhaDoTempo(itensVisiveis, agora), [itensVisiveis, agora]);
+  const resumo = useMemo(() => resumoDoDia(linha), [linha]);
+  // Até onde o dia já "andou": o trilho é pintado até a última visita que já
+  // começou (feita, em andamento ou que passou sem baixa).
+  const ultimoPercorrido = useMemo(() => {
+    let idx = -1;
+    linha.forEach((i, k) => { if (i.fase !== 'proxima' && i.fase !== 'depois') idx = k; });
+    return idx;
+  }, [linha]);
+
+  const clientePorId = useMemo(() => new Map(clientes.map(c => [c.id, c] as const)), [clientes]);
+
+  const abrirVisita = useCallback((a: OcorrenciaAgendamento) => {
+    (nav as any).navigate('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId: a.id } });
+  }, [nav]);
+
+  const mudarStatus = useCallback(async (a: OcorrenciaAgendamento, status: 'concluido' | 'agendado') => {
+    setBaixando(a.id);
+    try {
+      await mudarStatusVisitaDoDia(a, status);
+      if (status === 'concluido') {
+        vibrar('sucesso');
+        toast.sucesso(`Visita de ${a.clienteNome} concluída.`, {
+          acao: { rotulo: 'Desfazer', aoTocar: () => { void mudarStatusRef.current(a, 'agendado'); } },
+        });
+      } else {
+        toast.info(`A visita de ${a.clienteNome} voltou para agendada.`);
+      }
+      await load();
+    } catch (e) {
+      vibrar('erro');
+      const motivo = e instanceof Error && e.message ? ` ${e.message}` : '';
+      toast.erro(`Não deu para atualizar a visita.${motivo} Tente de novo.`);
+    } finally {
+      setBaixando(null);
+    }
+  }, [load]);
+  // O "Desfazer" do toast chama a versão MAIS NOVA da função (o toast vive mais
+  // que o render em que nasceu).
+  const mudarStatusRef = useRef(mudarStatus);
+  useEffect(() => { mudarStatusRef.current = mudarStatus; }, [mudarStatus]);
+
+  const concluirVisita = useCallback((a: OcorrenciaAgendamento) => {
+    if (baixando) return;
+    void mudarStatus(a, 'concluido');
+  }, [baixando, mudarStatus]);
+
+  const estouACaminho = useCallback(async (a: OcorrenciaAgendamento) => {
+    if (!a.clienteId || avisando) return;
+    setAvisando(a.id);
+    try {
+      const cliente = await getCliente(a.clienteId);
+      const telefone = cliente?.telefone?.trim();
+      if (!telefone) {
+        toast.info(`Cadastre o WhatsApp de ${a.clienteNome} em Clientes para avisar por aqui.`);
+        return;
+      }
+      // Sem previsão de chegada aqui: a mensagem sai sem horário (nada inventado).
+      await abrirWhatsApp(telefone, mensagemEstouACaminho(a.clienteNome, null));
+      registrarEventoDica('primeiro_a_caminho');
+    } catch {
+      toast.erro('Não deu para abrir o WhatsApp agora. Tente de novo.');
+    } finally {
+      setAvisando(null);
+    }
+  }, [avisando]);
+
   // ── lembretes REAIS (sem inventar) ──
   // `followUp` é a lista do radar; o dinheiro e o tempo abaixo são SOMA e MÁXIMO
   // do que ele já devolve (valorTotal e diasParado) — nenhuma estimativa nova.
@@ -441,18 +734,21 @@ export default function HojeScreen() {
   const maisUrgente = maisPrioritarioFollowUp(followUp);
 
   const feitos = checklist.filter(i => i.feito).length;
-  // "Tudo em dia!" é uma AFIRMAÇÃO: só pode aparecer quando as duas leituras
+  const temLembrete = followUpErro || followUp.length > 0 || aguardandoAssinatura > 0 || semBaixaVisiveis.length > 0;
+  // "Nada pendente" é uma AFIRMAÇÃO: só pode aparecer quando as leituras
   // responderam de verdade. Com o radar em erro, `followUp` é [] — e sem este
   // `!followUpErro` a falha viraria a mensagem mais cara possível: dizer que não
   // há nada a cobrar quando não fazemos ideia.
-  const semNada = itens.length === 0 && followUp.length === 0 && aguardandoAssinatura === 0;
+  // O escopo entra porque as visitas sem baixa são filtradas por ele: sem papel
+  // conhecido a lista fica vazia, e isso não pode virar "nada parado".
+  const lembretesConferidos = !carregando && !carregandoErro && !followUpCarregando && !followUpErro && escopoPronto;
 
   // Sinal SIMPLES de "semana com movimento" (sem consulta nova): agenda de hoje,
   // checklist com item concluído hoje, ou algum orçamento criado nos últimos 7
   // dias. O Pulso da semana só aparece quando há sinal de uso real — nunca numa
   // semana parada, onde a pergunta soaria deslocada.
   const houveMovimentoNaSemana =
-    itens.length > 0 || feitos > 0 || orcamentosResumo.houveRecente;
+    itensVisiveis.length > 0 || feitos > 0 || orcamentosResumo.houveRecente;
 
   // Gate do Pulso da semana: checa 1x por sessão (quando o carregamento inicial
   // termina) se já passaram 14 dias desde a última exibição — grava o carimbo NO
@@ -487,14 +783,14 @@ export default function HojeScreen() {
   const chamarFollowUp = useCallback(async (item: OrcamentoParaFollowUp) => {
     const telefone = item.orcamento.clienteTelefone || item.cliente?.telefone;
     if (!telefone?.trim()) {
-      Alert.alert('Sem telefone', `Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
+      toast.info(`Cadastre o WhatsApp de ${item.orcamento.clienteNome} em Clientes para dar retorno por aqui.`);
       return;
     }
     vibrar('selecao');
     try {
       await abrirWhatsApp(telefone, mensagemFollowUp(item));
     } catch {
-      // silencioso: mesmo padrão das demais chamadas de WhatsApp no app
+      toast.erro('Não deu para abrir o WhatsApp agora. Tente de novo.');
     }
   }, []);
 
@@ -503,6 +799,13 @@ export default function HojeScreen() {
     track(Eventos.pulsoDispensado, {});
     setPulsoVisivel(false);
   }, []);
+
+  const irParaAgenda = useCallback(() => {
+    (nav as any).navigate('Tabs', { screen: 'Agenda' });
+  }, [nav]);
+
+  // Índice de entrada escalonada: cada nó entra um passo depois do anterior.
+  let ordem = 0;
 
   return (
     <View style={styles.container}>
@@ -513,305 +816,360 @@ export default function HojeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={cores.accentLight} colors={[cores.accentLight]} />}
       >
         {/* CABEÇALHO */}
-        <AnimatedEntrance index={0} from="bottom">
+        <Aparecer indice={ordem++}>
           <View style={styles.head}>
             <View style={{ flex: 1 }}>
               <Text style={styles.kicker}>MEU DIA</Text>
               <Text style={styles.title}>{saudacao()}</Text>
               <Text style={styles.date}>{capitalizeFirst(format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR }))}</Text>
+              {/* Resumo do dia — só com a agenda lida de verdade. */}
+              {!carregando && !carregandoErro && escopoPronto && resumo.total > 0 ? (
+                <Text style={styles.resumoDia}>
+                  {resumo.total === 1 ? '1 visita hoje' : `${resumo.total} visitas hoje`}
+                  {` · ${resumo.feitas} ${resumo.feitas === 1 ? 'feita' : 'feitas'}`}
+                  {resumo.semBaixa > 0 ? ` · ${resumo.semBaixa} sem baixa` : ''}
+                </Text>
+              ) : null}
             </View>
-            <OlliMascot size={40} onDark />
+            <View style={styles.headAcoes}>
+              <BotaoComoFunciona tela="hoje" />
+              <OlliMascot size={40} onDark />
+            </View>
           </View>
-        </AnimatedEntrance>
+          {/* Dica do momento (roteiro I5): "Estou a caminho" e chuva na visita. */}
+          <DicaDoRoteiro local="hoje" style={{ marginHorizontal: Spacing.base }} />
+        </Aparecer>
 
-        {/* LEMBRETES DA OLLI (reais) — dinheiro primeiro, ação junto.
+        {/* ── LINHA DO TEMPO DO DIA ── */}
+
+        {/* 1. LEMBRETES DA OLLI (reais) — dinheiro primeiro, ação junto.
             O bloco também aparece quando o radar FALHOU: antes ele simplesmente
             sumia, e sumir é a mesma mentira de mostrar zero — o prestador lê a
             ausência como "não tenho nada parado". */}
-        {(followUpErro || followUp.length > 0 || aguardandoAssinatura > 0) && (
-          <AnimatedEntrance index={1}>
-            <View style={styles.lembretes}>
-              <View style={styles.lembretesHead}>
-                <OlliMascot size={26} float={false} onDark />
-                <Text style={styles.lembretesTitle}>Lembretes da OLLI</Text>
-              </View>
-
-              {followUpErro && (
-                <View style={styles.lembreteErro}>
-                  <MaterialCommunityIcons name="alert-circle-outline" size={18} color={cores.warning} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.lembreteText}>Não deu para verificar as propostas paradas.</Text>
-                    <Text style={styles.lembreteSub}>Não quer dizer que está tudo em dia — só que não conseguimos conferir agora.</Text>
+        <Aparecer indice={ordem++}>
+          <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'bell-outline' }} primeiro percorrido={ultimoPercorrido >= 0}>
+            <Text style={styles.noTitulo}>Lembretes da OLLI</Text>
+            {temLembrete ? (
+              <View style={styles.lembretes}>
+                {followUpErro && (
+                  <View style={styles.lembreteErro}>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={18} color={cores.warning} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.lembreteText}>Não deu para verificar as propostas paradas.</Text>
+                      <Text style={styles.lembreteSub}>Não quer dizer que está tudo em dia — só que não conseguimos conferir agora.</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.lembreteRetry}
+                      onPress={() => { vibrar('selecao'); loadFollowUp(); }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Tentar verificar as propostas paradas de novo"
+                    >
+                      <Text style={styles.lembreteRetryTexto}>Tentar de novo</Text>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity
-                    style={styles.lembreteRetry}
-                    onPress={() => { vibrar('selecao'); loadFollowUp(); }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Tentar verificar as propostas paradas de novo"
-                  >
-                    <Text style={styles.lembreteRetryTexto}>Tentar de novo</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                )}
 
-              {followUp.length > 0 && (
-                <>
+                {semBaixaVisiveis.length > 0 && (
+                  <OlliPressable
+                    style={styles.lembreteRow}
+                    onPress={() => abrirVisita(semBaixaVisiveis[0])}
+                    haptic="selection"
+                    accessibilityLabel="Abrir a visita sem baixa mais recente na agenda"
+                  >
+                    <View style={[styles.lembreteIcon, { backgroundColor: cores.warningLight }]}>
+                      <MaterialCommunityIcons name="calendar-alert" size={18} color={cores.warning} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.lembreteText}>
+                        {semBaixaVisiveis.length === 1
+                          ? '1 visita de outro dia sem baixa'
+                          : `${semBaixaVisiveis.length} visitas de outros dias sem baixa`}
+                      </Text>
+                      <Text style={styles.lembreteSub}>Ninguém concluiu nem cancelou. Toque para abrir a mais recente.</Text>
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+                  </OlliPressable>
+                )}
+
+                {followUp.length > 0 && (
+                  <>
+                    <OlliPressable
+                      style={styles.lembreteRow}
+                      onPress={() => nav.navigate('Orcamentos')}
+                      haptic="selection"
+                      accessibilityLabel="Ver propostas paradas"
+                    >
+                      <View style={[styles.lembreteIcon, { backgroundColor: cores.warningLight }]}>
+                        <MaterialCommunityIcons name="clock-alert-outline" size={18} color={cores.warning} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        {/* O dinheiro na frente: "R$ 2.400 esperando resposta" diz
+                            muito mais que "3 orçamentos parados". */}
+                        <Text style={styles.lembreteText}>
+                          {podeValores
+                            ? `${formatCurrency(valorFollowUp)} esperando resposta`
+                            : followUp.length === 1 ? '1 proposta esperando resposta' : `${followUp.length} propostas esperando resposta`}
+                        </Text>
+                        <Text style={styles.lembreteSub}>
+                          {followUp.length === 1
+                            ? `1 proposta parada há ${maisAntigoFollowUp} ${maisAntigoFollowUp === 1 ? 'dia' : 'dias'}`
+                            : `${followUp.length} propostas · a mais antiga há ${maisAntigoFollowUp} dias`}
+                        </Text>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+                    </OlliPressable>
+
+                    {/* Ação em UM toque, na proposta de maior prioridade: abre o
+                        WhatsApp com a mensagem de follow-up já montada (a mesma de
+                        `mensagemFollowUp`, derivada do próprio orçamento). Sem isto
+                        o lembrete só sabia mandar o prestador procurar na lista. */}
+                    {maisUrgente && (
+                      <OlliPressable
+                        style={styles.lembreteAcao}
+                        onPress={() => chamarFollowUp(maisUrgente)}
+                        haptic={false}
+                        accessibilityLabel={`Chamar ${maisUrgente.orcamento.clienteNome} no WhatsApp sobre a proposta parada`}
+                      >
+                        <MaterialCommunityIcons
+                          name="whatsapp"
+                          size={16}
+                          color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                        />
+                        <Text style={styles.lembreteAcaoTexto} numberOfLines={1}>
+                          Chamar {maisUrgente.orcamento.clienteNome} no WhatsApp
+                        </Text>
+                      </OlliPressable>
+                    )}
+                  </>
+                )}
+
+                {aguardandoAssinatura > 0 && (
                   <OlliPressable
                     style={styles.lembreteRow}
                     onPress={() => nav.navigate('Orcamentos')}
                     haptic="selection"
-                    accessibilityLabel="Ver propostas paradas"
+                    accessibilityLabel="Ver orçamentos aguardando assinatura"
                   >
-                    <View style={[styles.lembreteIcon, { backgroundColor: cores.warningLight }]}>
-                      <MaterialCommunityIcons name="clock-alert-outline" size={18} color={cores.warning} />
+                    <View style={[styles.lembreteIcon, { backgroundColor: comAlfa(cores.accentLight, 0.14) }]}>
+                      <MaterialCommunityIcons name="draw-pen" size={18} color={cores.accentLight} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      {/* O dinheiro na frente: "R$ 2.400 esperando resposta" diz
-                          muito mais que "3 orçamentos parados". */}
-                      <Text style={styles.lembreteText}>{formatCurrency(valorFollowUp)} esperando resposta</Text>
-                      <Text style={styles.lembreteSub}>
-                        {followUp.length === 1
-                          ? `1 proposta parada há ${maisAntigoFollowUp} ${maisAntigoFollowUp === 1 ? 'dia' : 'dias'}`
-                          : `${followUp.length} propostas · a mais antiga há ${maisAntigoFollowUp} dias`}
+                      <Text style={styles.lembreteText}>
+                        {aguardandoAssinatura} aguardando assinatura
                       </Text>
+                      <Text style={styles.lembreteSub}>Toque para acompanhar.</Text>
                     </View>
                     <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
                   </OlliPressable>
+                )}
+              </View>
+            ) : lembretesConferidos ? (
+              <Text style={styles.noSub}>Nada parado por agora: nenhuma proposta esperando resposta nem assinatura pendente.</Text>
+            ) : carregando || followUpCarregando || escopo.status === 'carregando' ? (
+              <Skeleton width="80%" height={13} style={{ marginTop: 6 }} />
+            ) : (
+              // Leitura de orçamentos/agenda falhou: não afirmamos nada.
+              <Text style={styles.noSub}>Não deu para conferir os lembretes agora. Puxe a tela para baixo para tentar de novo.</Text>
+            )}
+          </NoLinhaDoTempo>
+        </Aparecer>
 
-                  {/* Ação em UM toque, na proposta de maior prioridade: abre o
-                      WhatsApp com a mensagem de follow-up já montada (a mesma de
-                      `mensagemFollowUp`, derivada do próprio orçamento). Sem isto
-                      o lembrete só sabia mandar o prestador procurar na lista. */}
-                  {maisUrgente && (
-                    <OlliPressable
-                      style={styles.lembreteAcao}
-                      onPress={() => chamarFollowUp(maisUrgente)}
-                      haptic={false}
-                      accessibilityLabel={`Chamar ${maisUrgente.orcamento.clienteNome} no WhatsApp sobre a proposta parada`}
-                    >
-                      <MaterialCommunityIcons
-                        name="whatsapp"
-                        size={16}
-                        color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
-                      />
-                      <Text style={styles.lembreteAcaoTexto} numberOfLines={1}>
-                        Chamar {maisUrgente.orcamento.clienteNome} no WhatsApp
-                      </Text>
-                    </OlliPressable>
-                  )}
-                </>
-              )}
-
-              {aguardandoAssinatura > 0 && (
-                <OlliPressable
-                  style={styles.lembreteRow}
-                  onPress={() => nav.navigate('Orcamentos')}
-                  haptic="selection"
-                  accessibilityLabel="Ver orçamentos aguardando assinatura"
-                >
-                  <View style={[styles.lembreteIcon, { backgroundColor: 'rgba(52,198,217,0.14)' }]}>
-                    <MaterialCommunityIcons name="draw-pen" size={18} color={cores.accentLight} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.lembreteText}>
-                      {aguardandoAssinatura} aguardando assinatura
-                    </Text>
-                    <Text style={styles.lembreteSub}>Toque para acompanhar.</Text>
-                  </View>
-                  <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-                </OlliPressable>
-              )}
+        {/* 2. VISITAS DO DIA */}
+        <Aparecer indice={ordem++}>
+          <NoLinhaDoTempo
+            marcador={{ tipo: 'secao', icone: 'map-marker-path' }}
+            percorridoAcima={ultimoPercorrido >= 0}
+            percorrido={ultimoPercorrido >= 0}
+          >
+            <View style={styles.noTituloRow}>
+              <Text style={styles.noTitulo}>Visitas de hoje</Text>
+              <TouchableOpacity
+                onPress={() => { vibrar('selecao'); irParaAgenda(); }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Abrir a agenda"
+              >
+                <Text style={styles.seeAll}>Abrir agenda</Text>
+              </TouchableOpacity>
             </View>
-          </AnimatedEntrance>
-        )}
-
-        {/* AGENDA DE HOJE */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Agenda de hoje</Text>
-          <TouchableOpacity onPress={() => (nav as any).navigate('Tabs', { screen: 'Agenda' })}>
-            <Text style={styles.seeAll}>ver agenda</Text>
-          </TouchableOpacity>
-        </View>
-
-        {carregando ? (
-          <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
-            {[0, 1, 2].map(i => (
-              // Skeleton no formato REAL do agendaCard (hora + barra + título/cliente/chip),
-              // entrando escalonado como os cards de verdade — sem "salto" ao carregar.
-              <AnimatedEntrance key={i} index={i} from="scale">
-                <View style={styles.agendaCard}>
-                  <View style={styles.agendaTime}>
-                    <OlliSkeleton width={38} height={15} radius={6} />
-                    <OlliSkeleton width={30} height={10} radius={5} style={{ marginTop: 4 }} />
+            {carregando || escopo.status === 'carregando' ? (
+              <View style={{ gap: 10, marginTop: 8 }}>
+                {[0, 1].map(i => (
+                  // Skeleton no formato REAL do card da visita (hora + chip, título, cliente).
+                  <View key={i} style={styles.visitaCard}>
+                    <Skeleton width={90} height={14} radius={6} />
+                    <Skeleton width="70%" height={14} style={{ marginTop: 8 }} />
+                    <Skeleton width="45%" height={12} style={{ marginTop: 6 }} />
                   </View>
-                  <View style={[styles.agendaBar, { backgroundColor: cores.surfaceVariant }]} />
-                  <View style={{ flex: 1, gap: 7 }}>
-                    <OlliSkeleton width="70%" height={14} />
-                    <OlliSkeleton width="45%" height={12} />
-                    <OlliSkeleton width={82} height={18} radius={BorderRadius.full} />
-                  </View>
+                ))}
+              </View>
+            ) : escopo.status === 'erro' ? (
+              // Não sei o papel: nem "nada agendado" (o técnico acharia que não tem
+              // visita) nem a agenda da equipe inteira (não sei se ele pode ver).
+              <View style={styles.estadoCard}>
+                <MaterialCommunityIcons name="account-lock-outline" size={20} color={cores.warning} />
+                <Text style={styles.estadoTitulo}>Não deu para confirmar seu acesso</Text>
+                <Text style={styles.estadoSub}>Sem saber se você é da gestão ou técnico, o Hoje poderia mostrar visitas erradas. Verifique a conexão e tente de novo.</Text>
+                <View style={styles.acoesRow}>
+                  <AcaoNo
+                    variante="principal"
+                    icone="refresh"
+                    rotulo="Tentar de novo"
+                    onPress={() => { void tipoConta.recarregar(); lerUsuario(); }}
+                  />
                 </View>
-              </AnimatedEntrance>
-            ))}
-          </View>
-        ) : carregandoErro ? (
-          <View style={styles.emptyDay}>
-            <EmptyState
-              icon="alert-circle-outline"
-              title="Não deu para carregar"
-              subtitle="Não conseguimos buscar sua agenda de hoje. Verifique a conexão e tente de novo."
-              actionLabel="Tentar de novo"
-              onAction={load}
-            />
-          </View>
-        ) : itens.length === 0 ? (
-          <View style={styles.emptyDay}>
-            <EmptyState
-              icon="calendar-check-outline"
-              title="Nada agendado para hoje"
-              subtitle="Aproveite para organizar a semana ou cadastrar novos orçamentos."
-              actionLabel="Abrir agenda"
-              onAction={() => { vibrar('selecao'); (nav as any).navigate('Tabs', { screen: 'Agenda' }); }}
-            />
-          </View>
-        ) : (
-          <View style={{ paddingHorizontal: Spacing.base, gap: 10 }}>
-            {itens.map((a, i) => {
-              // Matiz = significado; luminosidade cede contra o fundo real do chip.
-              const corChip = TIPO_AGENDAMENTO_COLORS[a.tipo];
-              const cor = corCategoriaEmChip(corChip, cores.surface);
-              return (
-                <AnimatedEntrance key={a.id} index={i}>
-                  <OlliPressable
-                    style={styles.agendaCard}
-                    // Abre ESTA visita na Agenda. Repetição de série vai com o id
-                    // inteiro (`<base>@<dia>`), o mesmo formato da notificação: a
-                    // Agenda abre a base e foca o DIA da repetição. Mandar só a base
-                    // focaria a semana em que a série começou.
-                    onPress={() => (nav as any).navigate('Tabs', { screen: 'Agenda', params: { abrirAgendamentoId: a.id } })}
-                    haptic="selection"
-                    accessibilityLabel={`Abrir visita — ${a.titulo}`}
-                  >
-                    <View style={styles.agendaTime}>
-                      <Text style={styles.agendaHour}>{hhmm(a.inicio)}</Text>
-                      {a.fim ? <Text style={styles.agendaHourEnd}>{hhmm(a.fim)}</Text> : null}
-                    </View>
-                    <View style={[styles.agendaBar, { backgroundColor: cor }]} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.agendaTitle} numberOfLines={1}>{a.titulo}</Text>
-                      <Text style={styles.agendaClient} numberOfLines={1}>{a.clienteNome}</Text>
-                      <View style={[styles.tipoChip, { backgroundColor: corChip + '22', borderColor: corChip + '55' }]}>
-                        <Text style={[styles.tipoChipText, { color: cor }]}>{TIPO_AGENDAMENTO_LABELS[a.tipo]}</Text>
-                      </View>
-                    </View>
-                    {a.endereco?.trim() ? (
-                      <TouchableOpacity
-                        style={styles.rotaBtn}
-                        onPress={(e) => { e.stopPropagation(); vibrar('selecao'); abrirRotaGoogleMaps(a.endereco!); }}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Traçar rota no Google Maps"
-                      >
-                        <MaterialCommunityIcons name="navigation-variant" size={18} color={cores.accentLight} />
-                      </TouchableOpacity>
-                    ) : null}
-                    {a.status === 'concluido' && <MaterialCommunityIcons name="check-circle" size={20} color={cores.success} />}
-                  </OlliPressable>
-                </AnimatedEntrance>
-              );
-            })}
-          </View>
-        )}
-
-        {/* CHECKLIST DO DIA */}
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Checklist do dia</Text>
-          {checklist.length > 0 && <Text style={styles.checkCount}>{feitos}/{checklist.length}</Text>}
-        </View>
-
-        <View style={styles.checklistCard}>
-          <View style={styles.addRow}>
-            <MaterialCommunityIcons name="plus-circle-outline" size={20} color={cores.accentLight} />
-            <TextInput
-              style={styles.addInput}
-              value={novo}
-              onChangeText={setNovo}
-              onSubmitEditing={addItem}
-              returnKeyType="done"
-              placeholder="Adicionar tarefa…"
-              placeholderTextColor={cores.onSurfaceMuted}
-            />
-            {novo.trim() ? (
-              <OlliPressable onPress={addItem} haptic={false} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Adicionar tarefa">
-                <MaterialCommunityIcons name="arrow-up-circle" size={24} color={cores.accentLight} />
-              </OlliPressable>
+              </View>
+            ) : carregandoErro ? (
+              <View style={styles.estadoCard}>
+                <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
+                <Text style={styles.estadoTitulo}>Não deu para carregar</Text>
+                <Text style={styles.estadoSub}>Não conseguimos buscar sua agenda de hoje. Verifique a conexão e tente de novo.</Text>
+                <View style={styles.acoesRow}>
+                  <AcaoNo variante="principal" icone="refresh" rotulo="Tentar de novo" onPress={load} />
+                </View>
+              </View>
+            ) : linha.length === 0 ? (
+              <View style={styles.estadoCard}>
+                <MaterialCommunityIcons name="calendar-check-outline" size={20} color={cores.accentLight} />
+                <Text style={styles.estadoTitulo}>Nada agendado para hoje</Text>
+                <Text style={styles.estadoSub}>Aproveite para organizar a semana ou cadastrar novos orçamentos.</Text>
+                <View style={styles.acoesRow}>
+                  <AcaoNo icone="calendar-plus" rotulo="Abrir agenda" onPress={irParaAgenda} />
+                </View>
+              </View>
             ) : null}
-          </View>
+          </NoLinhaDoTempo>
+        </Aparecer>
 
-          {checklist.length === 0 ? (
-            <View style={styles.checklistEmptyWrap}>
-              <MaterialCommunityIcons name="checkbox-marked-circle-outline" size={26} color={cores.onSurfaceMuted} />
-              <Text style={styles.checklistEmpty}>Sem tarefas por aqui. Anote o que precisa fazer hoje.</Text>
-            </View>
-          ) : (
-            checklist.map(item => (
-              <CheckRow key={item.id} item={item} onToggle={toggle} onRemove={remove} />
-            ))
+        {!carregando && !carregandoErro && escopoPronto && linha.map((item, k) => (
+          <Aparecer key={item.visita.id} indice={ordem++}>
+            <NoLinhaDoTempo
+              marcador={{ tipo: 'visita', fase: item.fase, pulso: gatilhoPulso }}
+              percorridoAcima={k <= ultimoPercorrido}
+              percorrido={k < ultimoPercorrido}
+            >
+              <VisitaNaLinha
+                item={item}
+                agora={agora}
+                baixando={baixando === item.visita.id}
+                avisando={avisando === item.visita.id}
+                onAbrir={abrirVisita}
+                onConcluir={concluirVisita}
+                onEstouACaminho={estouACaminho}
+                cliente={item.visita.clienteId ? clientePorId.get(item.visita.clienteId) ?? null : null}
+                clientes={clientes}
+                aoRemarcado={load}
+              />
+            </NoLinhaDoTempo>
+          </Aparecer>
+        ))}
+
+        {/* CONFIRMAR VISITAS DE AMANHÃ (Onda I3) — some sem visita amanhã. */}
+        {!carregando && escopoPronto ? (
+          <CartaoVespera escopo={escopo} clientes={clientes} indice={ordem++} />
+        ) : null}
+
+        {/* GARANTIAS PARA CUIDAR (Onda I3) — só para quem vê a empresa inteira. */}
+        <CartaoGarantias indice={ordem++} visivel={escopo.status === 'equipe'} />
+        {/* MALA DA VÉSPERA (Onda I4) — a partir das 19h, o que levar amanhã. */}
+        <MalaVesperaCard
+          agora={agora}
+          escopo={escopo}
+          envolver={(conteudo) => (
+            <Aparecer indice={ordem}>
+              <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'bag-personal-outline' }}>
+                <View style={styles.noTituloRow}>
+                  <Text style={styles.noTitulo}>Mala de amanhã</Text>
+                </View>
+                {conteudo}
+              </NoLinhaDoTempo>
+            </Aparecer>
           )}
+        />
 
-          {/* Nota discreta: checklist agora sincroniza com a nuvem (extras_sync) */}
-          <View style={styles.checklistNota}>
-            <MaterialCommunityIcons name="cloud-check-outline" size={12} color={cores.onSurfaceMuted} />
-            <Text style={styles.checklistNotaText}>Sua lista fica salva na nuvem e acompanha você em qualquer aparelho.</Text>
-          </View>
-        </View>
+        {/* 3. CHECKLIST DO DIA */}
+        <Aparecer indice={ordem++}>
+          <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'checkbox-marked-outline' }}>
+            <View style={styles.noTituloRow}>
+              <Text style={styles.noTitulo}>Checklist do dia</Text>
+              {checklist.length > 0 && <Text style={styles.checkCount}>{feitos}/{checklist.length}</Text>}
+            </View>
+
+            <View style={styles.checklistCard}>
+              <View style={styles.addRow}>
+                <MaterialCommunityIcons name="plus-circle-outline" size={20} color={cores.accentLight} />
+                <TextInput
+                  style={styles.addInput}
+                  value={novo}
+                  onChangeText={setNovo}
+                  onSubmitEditing={addItem}
+                  returnKeyType="done"
+                  placeholder="Adicionar tarefa…"
+                  placeholderTextColor={cores.onSurfaceMuted}
+                />
+                {novo.trim() ? (
+                  <OlliPressable onPress={addItem} haptic={false} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityLabel="Adicionar tarefa">
+                    <MaterialCommunityIcons name="arrow-up-circle" size={24} color={cores.accentLight} />
+                  </OlliPressable>
+                ) : null}
+              </View>
+
+              {checklist.length === 0 ? (
+                <View style={styles.checklistEmptyWrap}>
+                  <MaterialCommunityIcons name="checkbox-marked-circle-outline" size={26} color={cores.onSurfaceMuted} />
+                  <Text style={styles.checklistEmpty}>Sem tarefas por aqui. Anote o que precisa fazer hoje.</Text>
+                </View>
+              ) : (
+                checklist.map(item => (
+                  <CheckRow key={item.id} item={item} onToggle={toggle} onRemove={remove} />
+                ))
+              )}
+
+              {/* Nota discreta: checklist agora sincroniza com a nuvem (extras_sync) */}
+              <View style={styles.checklistNota}>
+                <MaterialCommunityIcons name="cloud-check-outline" size={12} color={cores.onSurfaceMuted} />
+                <Text style={styles.checklistNotaText}>Sua lista fica salva na nuvem e acompanha você em qualquer aparelho.</Text>
+              </View>
+            </View>
+          </NoLinhaDoTempo>
+        </Aparecer>
+
+        {/* 4. FIM DO DIA — "Como foi seu dia?" (relatório falado é Pro; KPIs seguem grátis dentro da tela) */}
+        <Aparecer indice={ordem++}>
+          <NoLinhaDoTempo marcador={{ tipo: 'secao', icone: 'weather-night' }} ultimo>
+            <OlliPressable
+              style={styles.relatorioCard}
+              haptic="light"
+              accessibilityLabel="Como foi seu dia? Abrir relatório do dia"
+              onPress={() => {
+                if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
+                nav.navigate('RelatorioDia');
+              }}
+            >
+              <View style={styles.relatorioIcon}>
+                <MaterialCommunityIcons name="volume-high" size={20} color={cores.accentLight} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
+                <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
+              </View>
+              {relatorioLiberado ? (
+                <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
+              ) : (
+                <View style={styles.relatorioProBadge}>
+                  <MaterialCommunityIcons name="lock-outline" size={11} color={cores.plan} />
+                  <Text style={styles.relatorioProBadgeText}>Pro</Text>
+                </View>
+              )}
+            </OlliPressable>
+          </NoLinhaDoTempo>
+        </Aparecer>
 
         {/* PULSO DA SEMANA — micro-feedback discreto, pulável, no máximo 1x/14 dias */}
         {pulsoVisivel && (
-          <AnimatedEntrance index={2} from="scale">
+          <Aparecer indice={1}>
             <PulsoSemana onFechar={fecharPulso} />
-          </AnimatedEntrance>
-        )}
-
-        {/* RELATÓRIO DO DIA FALADO — recurso Pro; KPIs continuam grátis dentro da tela */}
-        <AnimatedEntrance index={2}>
-          <OlliPressable
-            style={styles.relatorioCard}
-            haptic={false}
-            accessibilityLabel="Abrir relatório do dia"
-            onPress={() => {
-              vibrar('selecao');
-              if (!relatorioLiberado) track(Eventos.gateVisto, { recurso: 'relatorio_dia', plano: 'pro', origem: 'hoje_card' });
-              nav.navigate('RelatorioDia');
-            }}
-          >
-            <View style={styles.relatorioIcon}>
-              <MaterialCommunityIcons name="volume-high" size={20} color={cores.accentLight} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.relatorioTitle}>Como foi seu dia?</Text>
-              <Text style={styles.relatorioSub}>Ver e ouvir o relatório do dia</Text>
-            </View>
-            {relatorioLiberado ? (
-              <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceMuted} />
-            ) : (
-              <View style={styles.relatorioProBadge}>
-                <MaterialCommunityIcons name="lock-outline" size={11} color={cores.plan} />
-                <Text style={styles.relatorioProBadgeText}>Pro</Text>
-              </View>
-            )}
-          </OlliPressable>
-        </AnimatedEntrance>
-
-        {/* ESTADO 100% VAZIO E ELEGANTE */}
-        {!carregando && !carregandoErro && !followUpCarregando && !followUpErro && semNada && checklist.length === 0 && (
-          <AnimatedEntrance index={1} from="scale" delay={120}>
-            <View style={styles.allClear}>
-              <OlliMascot size={48} onDark />
-              <Text style={styles.allClearTitle}>Tudo em dia!</Text>
-              <Text style={styles.allClearSub}>Nenhuma pendência por agora. A OLLI te avisa quando algo precisar de atenção.</Text>
-            </View>
-          </AnimatedEntrance>
+          </Aparecer>
         )}
       </ScrollView>
     </View>
@@ -831,14 +1189,19 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
-  head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: Spacing.base },
+  head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: Spacing.lg },
+  headAcoes: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
   title: { fontSize: 24, fontWeight: '800', color: c.onBackground, marginTop: 3 },
   date: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
+  resumoDia: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginTop: 6 },
 
-  lembretes: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...sombrasDe(c).sm },
-  lembretesHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
-  lembretesTitle: { fontSize: 14, fontWeight: '800', color: c.onSurface },
+  // Cabeçalho de cada nó da linha do tempo (alinha com o centro do marcador).
+  noTituloRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44, marginTop: -2 },
+  noTitulo: { fontSize: 15, fontWeight: '800', color: c.onBackground, lineHeight: 44 },
+  noSub: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 18 },
+
+  lembretes: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, ...sombrasDe(c).sm },
   lembreteRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
   lembreteIcon: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   lembreteText: { fontSize: 14, fontWeight: '700', color: c.onSurface },
@@ -854,29 +1217,43 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   lembreteAcao: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     backgroundColor: c.whatsapp, borderRadius: BorderRadius.full,
-    minHeight: 44, paddingHorizontal: 14, marginTop: 4,
+    minHeight: 44, paddingHorizontal: 14, marginTop: 4, marginBottom: 4,
   },
   lembreteAcaoTexto: { flexShrink: 1, fontSize: 13, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
 
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
-  sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground },
   seeAll: { fontSize: 12.5, color: c.accentLight, fontWeight: '700' },
   checkCount: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '700' },
 
-  emptyDay: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, marginHorizontal: Spacing.base, minHeight: 220 },
+  estadoCard: {
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline,
+    padding: Spacing.md, gap: 4, ...sombrasDe(c).sm,
+  },
+  estadoTitulo: { fontSize: 14, fontWeight: '800', color: c.onSurface, marginTop: 2 },
+  estadoSub: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 17 },
 
-  agendaCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
-  agendaTime: { width: 46, marginRight: 10 },
-  agendaHour: { fontSize: 15, fontWeight: '800', color: c.onSurface },
-  agendaHourEnd: { fontSize: 11, color: c.onSurfaceMuted, marginTop: 1 },
-  agendaBar: { width: 4, alignSelf: 'stretch', borderRadius: 4, marginRight: 12 },
-  agendaTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
-  agendaClient: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
-  tipoChip: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2, marginTop: 6 },
+  visitaCard: {
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline,
+    padding: Spacing.md, ...sombrasDe(c).sm,
+  },
+  // AGORA: borda e véu no acento — é o card que o olho tem de achar primeiro.
+  visitaCardAgora: { borderColor: comAlfa(c.accentLight, 0.6), backgroundColor: c.surfaceElevated },
+  visitaCardSemBaixa: { borderColor: comAlfa(c.warning, 0.5) },
+  // FEITA: recua visualmente (o dia já passou por ela), sem sumir.
+  visitaCardFeita: { opacity: 0.72 },
+  visitaTopo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  visitaHora: { fontSize: 16, fontWeight: '800', color: c.onSurface },
+  visitaDetalhe: { flexShrink: 1, fontSize: 12, fontWeight: '700', color: c.onSurfaceVariant },
+  faseChip: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2 },
+  faseChipTexto: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3 },
+  visitaTitulo: { fontSize: 15, fontWeight: '700', color: c.onSurface, marginTop: 6 },
+  visitaCliente: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
+  textoFeito: { color: c.onSurfaceMuted },
+  tipoChip: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2, marginTop: 8 },
   tipoChipText: { fontSize: 11, fontWeight: '800' },
-  rotaBtn: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: c.accentContainer, marginLeft: 6 },
+  visitaClima: { marginTop: 10 },
+  acoesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
 
-  checklistCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, marginHorizontal: Spacing.base, padding: Spacing.md, ...sombrasDe(c).sm },
+  checklistCard: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: c.outline },
   addInput: { flex: 1, fontSize: 14, color: c.onSurface, paddingVertical: 6 },
   checklistEmptyWrap: { alignItems: 'center', gap: 6, paddingVertical: 16 },
@@ -891,7 +1268,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   pulsoCard: {
     backgroundColor: c.surface, borderRadius: BorderRadius.lg,
     borderWidth: 1, borderColor: c.outline,
-    marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.md, ...sombrasDe(c).sm,
+    marginHorizontal: Spacing.base, marginTop: Spacing.lg, padding: Spacing.md, ...sombrasDe(c).sm,
   },
   pulsoFechar: { position: 'absolute', top: 10, right: 10, zIndex: 1, padding: 4 },
   pulsoTitulo: { fontSize: 14, fontWeight: '800', color: c.onSurface, marginRight: 22 },
@@ -906,7 +1283,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: c.surface, borderRadius: BorderRadius.lg,
     borderWidth: 1, borderColor: c.outline,
-    marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.md, ...sombrasDe(c).sm,
+    padding: Spacing.md, ...sombrasDe(c).sm,
   },
   relatorioIcon: {
     width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center',
@@ -918,8 +1295,4 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // tema): decorativo, sem chave semântica exata (ver rule 7).
   relatorioProBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(124,58,237,0.14)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.36)', borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 4 },
   relatorioProBadgeText: { fontSize: 11, fontWeight: '800', color: c.plan },
-
-  allClear: { alignItems: 'center', marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.lg },
-  allClearTitle: { fontSize: 17, fontWeight: '800', color: c.onBackground, marginTop: 10 },
-  allClearSub: { fontSize: 13, color: c.onSurfaceVariant, textAlign: 'center', marginTop: 4, lineHeight: 19, paddingHorizontal: 12 },
 });

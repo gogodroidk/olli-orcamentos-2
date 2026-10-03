@@ -2,7 +2,7 @@ import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity,
-  TextInput, Alert, RefreshControl, ActivityIndicator, Modal, Image, Platform, Linking,
+  TextInput, Alert, RefreshControl, ActivityIndicator, Modal, Image, Platform, Linking, AppState,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -45,13 +45,30 @@ import { abrirRotaGoogleMaps } from '../services/rotas';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { mensagemEstouACaminho } from '../services/eta';
 import { listarMembros, rotuloPapel, type MembroEquipe } from '../services/equipe';
-import { getCurrentUser } from '../services/supabase';
+import { usuarioDaSessaoLocal } from '../services/supabase';
 import {
   adicionarFotoCamera,
   adicionarFotoGaleria,
   abrirConfiguracoesPermissao,
 } from '../utils/fotosOrcamento';
 import { generateId } from '../utils/id';
+// Onda I0 (confiança offline): retomada da câmera, fila/selo das fotos e
+// rascunho por campo. Peças isoladas; a tela só as liga.
+import { limparCapturaOS, marcarCapturaOS } from '../services/capturaFotoOSNativa';
+import { enviarFotosPendentes, garantirFotosNaFila, registrarFotoParaEnvio } from '../services/filaFotosNativa';
+import { SeloFoto, SeloSync, useEstadosFotos } from '../components/SeloSync';
+import { BlocoGarantiaOS } from '../components/garantia/BlocoGarantiaOS';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
+import { useRascunhoCampo } from '../hooks/useRascunhoCampo';
+import { chaveRascunho } from '../services/rascunhoCampo';
+// Encerramento em 60 s: fluxo único de fim de atendimento (regra pura em utils/encerramentoOS).
+import { EncerrarAtendimentoModal } from '../components/encerramento/EncerrarAtendimentoModal';
+import { DicaContextual } from '../components/DicaContextual';
+import { rotuloBotaoEncerrar } from '../utils/encerramentoOS';
+// Onda I4 (dinheiro e rotina): baixa leve de material e lucro real da visita.
+import { MaterialUsadoBloco } from '../components/dinheiro/MaterialUsadoBloco';
+import { LucroVisitaFaixa } from '../components/dinheiro/LucroVisitaFaixa';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -122,7 +139,11 @@ export default function OrdemServicoScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filtro, setFiltro] = useState<StatusOS | 'todas'>('todas');
   const [busca, setBusca] = useState('');
-  const [userId, setUserId] = useState<string | null>(null);
+  // Três estados: undefined = ainda lendo a sessão; null = não deu para saber
+  // quem está no aparelho; string = id. `usuarioDaSessaoLocal` responde mesmo
+  // offline com o token vencido (I0 · 30 dias offline) — o técnico sem sinal
+  // continua vendo as OS dele em vez de uma lista vazia.
+  const [userId, setUserId] = useState<string | null | undefined>(undefined);
 
   // Detalhe (modal full-screen) — mantém a OS aberta.
   const [detalheId, setDetalheId] = useState<string | null>(null);
@@ -134,18 +155,26 @@ export default function OrdemServicoScreen() {
 
   useEffect(() => {
     let ativo = true;
-    getCurrentUser()
+    usuarioDaSessaoLocal()
       .then((u) => { if (ativo) setUserId(u?.id ?? null); })
-      .catch(() => {});
+      .catch(() => { if (ativo) setUserId(null); });
     return () => { ativo = false; };
   }, []);
 
   const load = useCallback(async () => {
     setOrdensErro(false);
     try {
-      // Técnico só vê as próprias OS; sem id ainda, mostra vazio (não vaza tudo).
-      const lista = ehTecnico
-        ? (userId ? await getMinhasOrdens(userId) : [])
+      // Técnico só vê as próprias OS. Sem id ainda: continua carregando (não
+      // vaza tudo). Sem id DEFINITIVO: é erro ("não sei quem é você"), nunca a
+      // lista vazia "Nenhuma OS para você" — erro não vira vazio.
+      if (ehTecnico && userId === undefined) return;
+      if (ehTecnico && userId === null) {
+        setOrdensErro(true);
+        setCarregando(false);
+        return;
+      }
+      const lista = ehTecnico && userId
+        ? await getMinhasOrdens(userId)
         : await getOrdens();
       // Mais recentes primeiro (atualizadoEm desc).
       lista.sort((a, b) => (b.atualizadoEm || '').localeCompare(a.atualizadoEm || ''));
@@ -160,7 +189,7 @@ export default function OrdemServicoScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
   // Recarrega quando o id do técnico chega depois do primeiro foco.
-  useEffect(() => { if (ehTecnico && userId) load(); }, [ehTecnico, userId, load]);
+  useEffect(() => { if (ehTecnico && userId !== undefined) load(); }, [ehTecnico, userId, load]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -258,6 +287,7 @@ export default function OrdemServicoScreen() {
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
         title={ehTecnico ? 'Minhas OS' : 'Ordens de serviço'}
+        comoFunciona="os"
         subtitle={ehTecnico ? 'Suas ordens em campo' : org?.nome}
         right={
           ehGestao ? (
@@ -288,6 +318,10 @@ export default function OrdemServicoScreen() {
           ) : null}
         </View>
       </GradientHeader>
+
+      {/* Nuvem honesta (I0): "N fotos aguardando sinal" / alerta >24h. Some
+          quando está tudo enviado. */}
+      <SeloSync variante="barra" style={{ marginHorizontal: Spacing.base, marginTop: 8 }} />
 
       {/* Filtro por status — só na gestão (o técnico vê a fila enxuta dele). */}
       {ehGestao && (
@@ -359,6 +393,7 @@ export default function OrdemServicoScreen() {
           ordemId={detalheId}
           ehGestao={ehGestao}
           podeAtribuir={ehGestao && pode('ver_agenda_equipe')}
+          podeFaturar={pode('gerenciar_faturamento')}
           orgId={org?.id}
           onFechar={() => setDetalheId(null)}
           onMudou={() => load()}
@@ -384,11 +419,13 @@ export default function OrdemServicoScreen() {
 // Detalhe da OS — ações de campo (técnico) / gestão completa.
 // ─────────────────────────────────────────────────────────────
 function DetalheOS({
-  ordemId, ehGestao, podeAtribuir, orgId, onFechar, onMudou,
+  ordemId, ehGestao, podeAtribuir, podeFaturar, orgId, onFechar, onMudou,
 }: {
   ordemId: string;
   ehGestao: boolean;
   podeAtribuir: boolean;
+  /** Registrar pagamento e emitir recibo no "Encerrar atendimento". */
+  podeFaturar: boolean;
   orgId?: string;
   onFechar: () => void;
   onMudou: () => void;
@@ -396,6 +433,8 @@ function DetalheOS({
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<Nav>();
+  const [showEncerrar, setShowEncerrar] = useState(false);
   const [ordem, setOrdem] = useState<OrdemServico | null>(null);
   // Contato/endereço do cliente para Ligar/WhatsApp/Ir até lá — a OS não os
   // carrega (só clienteId), então buscamos o Cliente à parte quando há id.
@@ -404,15 +443,33 @@ function DetalheOS({
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
   const [addingFoto, setAddingFoto] = useState(false);
   const [showAtribuir, setShowAtribuir] = useState(false);
+  // Dinheiro (custo do material, lucro) só para quem vê valores — o técnico da
+  // equipe registra o que saiu, mas não vê custo nem lucro.
+  const { pode: podeAcao } = usePermissao();
+  const podeVerValores = podeAcao('ver_valores_agregados');
+  const navDetalhe = useNavigation<Nav>();
+  const abrirMeuNegocio = useCallback(() => {
+    onFechar();
+    navDetalhe.navigate('MeuNegocio');
+  }, [onFechar, navDetalhe]);
 
   // Debounce do autosave do checklist para não gravar a cada toque.
   const checklistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A gravação que o debounce está segurando (I0): se o app for para o segundo
+  // plano (câmera!) antes dos 500 ms, ela é feita NA HORA — o Android pode matar
+  // o app enquanto a pessoa fotografa e o último toque no checklist não pode ir junto.
+  const checklistPendente = useRef<(() => Promise<void>) | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     const o = await getOrdem(ordemId);
     setOrdem(o);
     setCarregando(false);
+    // Fotos anexadas antes do selo existir entram na fila de envio (só as que
+    // estão NESTE aparelho; as de outro celular viram "Não está neste aparelho").
+    if (o?.fotos?.length) {
+      void garantirFotosNaFila(o.id, o.fotos).then(() => enviarFotosPendentes());
+    }
     // Busca o contato/endereço do cliente (não bloqueia a OS já exibida).
     if (o?.clienteId) {
       try { setCliente(await getCliente(o.clienteId)); } catch { setCliente(null); }
@@ -440,10 +497,27 @@ function DetalheOS({
   const { verticais } = useVerticais();
   const modeloOficio = modeloChecklistVertical(verticais?.[0]);
 
-  // Limpa o timer do checklist ao desmontar (evita gravar em componente morto).
-  useEffect(() => () => {
+  /** Grava agora o checklist que o debounce estava segurando (se houver). */
+  const descarregarChecklist = useCallback(async () => {
     if (checklistTimer.current) clearTimeout(checklistTimer.current);
+    checklistTimer.current = null;
+    const pendente = checklistPendente.current;
+    checklistPendente.current = null;
+    if (pendente) await pendente();
   }, []);
+
+  // App indo para o segundo plano (câmera, bolso): descarrega na hora.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (estado) => {
+      if (estado !== 'active') void descarregarChecklist();
+    });
+    return () => sub.remove();
+  }, [descarregarChecklist]);
+
+  // Ao desmontar: em vez de jogar fora o toque pendente, grava.
+  useEffect(() => () => {
+    void descarregarChecklist();
+  }, [descarregarChecklist]);
 
   async function mudarStatus(status: StatusOS) {
     if (!ordem || ordem.status === status) return;
@@ -479,9 +553,12 @@ function DetalheOS({
     if (!listaParaSalvar) return;
     const paraSalvar = listaParaSalvar;
     // Autosave com debounce (offline-first: o service persiste local e sincroniza).
+    const id = ordem.id;
+    checklistPendente.current = () =>
+      atualizarChecklist(id, paraSalvar).then(onMudou).catch(() => Alert.alert('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
     if (checklistTimer.current) clearTimeout(checklistTimer.current);
     checklistTimer.current = setTimeout(() => {
-      atualizarChecklist(ordem.id, paraSalvar).then(onMudou).catch(() => Alert.alert('Não deu', 'Não consegui salvar a alteração do checklist. Tente de novo.'));
+      void descarregarChecklist();
     }, 500);
   }
 
@@ -540,6 +617,11 @@ function DetalheOS({
   async function tirarFoto(origem: 'camera' | 'galeria') {
     if (!ordem) return;
     setAddingFoto(true);
+    // I0 · "a câmera mata o app e a OS volta igual": antes de sair para a câmera,
+    // grava o checklist pendente e deixa o marcador "fotografando para esta OS".
+    // Se o Android matar o app, o boot (App.tsx) recupera a foto e reabre aqui.
+    await descarregarChecklist();
+    await marcarCapturaOS(ordem.id, origem);
     try {
       const res = origem === 'camera'
         ? await adicionarFotoCamera(ordem.fotos)
@@ -562,10 +644,14 @@ function DetalheOS({
       }
       if (!res.uris.length) return; // usuário cancelou
 
-      // Persiste cada foto via o contrato; atualiza o estado ao final.
+      // Persiste cada foto via o contrato; atualiza o estado ao final. A foto
+      // já está na pasta permanente do aparelho (fotosOrcamento) — a fila só
+      // registra que ainda falta subir a cópia para a nuvem.
       for (const uri of res.uris) {
         await adicionarFotoOS(ordem.id, uri);
+        await registrarFotoParaEnvio(ordem.id, uri);
       }
+      void enviarFotosPendentes();
       vibrar('sucesso');
       const atualizado = await getOrdem(ordem.id);
       if (atualizado) setOrdem(atualizado);
@@ -573,6 +659,7 @@ function DetalheOS({
     } catch (e: any) {
       Alert.alert('Não deu', e?.message ?? 'Não consegui salvar a foto agora.');
     } finally {
+      await limparCapturaOS();
       setAddingFoto(false);
     }
   }
@@ -580,6 +667,16 @@ function DetalheOS({
   const feitos = ordem?.checklist?.filter((c) => c.feito).length ?? 0;
   const total = ordem?.checklist?.length ?? 0;
   const concluida = ordem?.status === 'concluida';
+  const estadosFotos = useEstadosFotos(ordem?.fotos ?? []);
+
+  // Roteiro de dicas (I5): a 1ª OS aberta (fotos sem sinal) e a 1ª concluída
+  // (registrar o pagamento e mandar o recibo).
+  const temOrdem = !!ordem;
+  useEffect(() => {
+    if (!temOrdem) return;
+    registrarEventoDica('primeira_os_aberta');
+    if (concluida) registrarEventoDica('primeira_os_concluida');
+  }, [temOrdem, concluida]);
 
   return (
     <Modal visible animationType="slide" onRequestClose={onFechar} presentationStyle="fullScreen">
@@ -606,6 +703,11 @@ function DetalheOS({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            {/* Nuvem honesta (I0): pendências de envio + alerta >24h com [Tentar agora]. */}
+            <SeloSync variante="cartao" />
+
+            <DicaDoRoteiro local="os" contexto={concluida ? ['primeira_os_concluida'] : ['primeira_os_aberta']} />
+
             {/* Resumo */}
             <View style={styles.bloco}>
               <LinhaInfo icon="account-outline" label="Cliente" valor={ordem.clienteNome || '—'} />
@@ -760,7 +862,7 @@ function DetalheOS({
                   </View>
                 ))
               )}
-              <AdicionarItemChecklist onAdicionar={adicionarItem} />
+              <AdicionarItemChecklist ordemId={ordem.id} onAdicionar={adicionarItem} />
             </View>
 
             {/* Fotos */}
@@ -770,7 +872,11 @@ function DetalheOS({
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     {ordem.fotos.map((uri) => (
-                      <Image key={uri} source={{ uri }} style={styles.foto} />
+                      <View key={uri}>
+                        <Image source={{ uri }} style={styles.foto} />
+                        {/* "No aparelho" / "Enviada": de onde a foto está agora. */}
+                        <SeloFoto estado={estadosFotos ? estadosFotos[uri] : null} />
+                      </View>
                     ))}
                   </View>
                 </ScrollView>
@@ -795,6 +901,22 @@ function DetalheOS({
               </View>
             </View>
 
+            {/* Material usado — baixa leve (Onda I4): alimenta o lucro real. */}
+            <MaterialUsadoBloco
+              ordem={ordem}
+              podeVerCusto={podeVerValores}
+              ehRefrigeracao={(verticais ?? []).includes('refrigeracao')}
+              onSalvo={(atualizada) => {
+                setOrdem((prev) => (prev ? { ...prev, materiais: atualizada.materiais, atualizadoEm: atualizada.atualizadoEm } : prev));
+                onMudou();
+              }}
+            />
+
+            {/* Lucro real da visita — só com a OS concluída e para quem vê valores. */}
+            {concluida && podeVerValores ? (
+              <LucroVisitaFaixa ordem={ordem} onAbrirMeuNegocio={abrirMeuNegocio} />
+            ) : null}
+
             {/* Observações — só leitura (registradas na criação da OS) */}
             {ordem.observacoes ? (
               <View style={styles.bloco}>
@@ -803,21 +925,66 @@ function DetalheOS({
               </View>
             ) : null}
 
-            {/* Concluir — grande, para o técnico fechar em 1 toque */}
-            <OlliButton
-              label={concluida ? 'Serviço concluído' : 'Concluir serviço'}
-              variant={concluida ? 'success' : 'gradient'}
-              size="lg"
-              fullWidth
-              loading={salvandoStatus === 'concluida'}
-              disabled={concluida}
-              onPress={() => mudarStatus('concluida')}
-              icon={<MaterialCommunityIcons name="check-circle-outline" size={22} color="#fff" />}
-              style={{ marginTop: Spacing.sm }}
-            />
+            {/* Garantia da OS (Onda I3): prazo, até quando vale e retorno de garantia. */}
+            <BlocoGarantiaOS ordem={ordem} onAtualizada={(o) => { setOrdem(o); onMudou(); }} />
+
+            {/* Encerrar atendimento — o fluxo de 60 s (fotos, assinatura, cobrança,
+                recibo, próxima visita, avaliação), cada passo pulável e salvo no aparelho. */}
+            {ordem.status !== 'cancelada' ? (
+              <View style={{ gap: Spacing.sm, marginTop: Spacing.sm }}>
+                <DicaContextual
+                  id="os.encerrar.botao"
+                  texto="No fim do serviço, toque aqui: fotos, assinatura, Pix, recibo e próxima visita num fluxo só. Pode pular o que não precisar."
+                />
+                <OlliButton
+                  label={rotuloBotaoEncerrar(ordem.encerramento)}
+                  variant={ordem.encerramento?.finalizadoEm ? 'success' : 'gradient'}
+                  size="lg"
+                  fullWidth
+                  onPress={() => {
+                    vibrar('selecao');
+                    // Grava o checklist pendente ANTES: o fluxo devolve a OS do banco
+                    // (onAtualizada) e um toque ainda no debounce sumiria da tela.
+                    void descarregarChecklist().catch(() => {}).finally(() => setShowEncerrar(true));
+                  }}
+                  icon={<MaterialCommunityIcons name={ordem.encerramento?.finalizadoEm ? 'check-decagram-outline' : 'flag-checkered'} size={22} color="#fff" />}
+                />
+                {/* Atalho antigo de 1 toque: conclui sem o passo a passo. */}
+                {!concluida ? (
+                  <OlliButton
+                    label="Só concluir, sem o passo a passo"
+                    variant="ghost"
+                    size="md"
+                    fullWidth
+                    loading={salvandoStatus === 'concluida'}
+                    onPress={() => mudarStatus('concluida')}
+                  />
+                ) : null}
+              </View>
+            ) : null}
           </ScrollView>
         )}
       </View>
+
+      {/* Encerrar atendimento (fluxo de 60 s) */}
+      {showEncerrar && ordem && (
+        <EncerrarAtendimentoModal
+          visivel
+          ordem={ordem}
+          cliente={cliente}
+          podeFaturar={podeFaturar}
+          onTirarFoto={tirarFoto}
+          onAtualizada={(o) => { setOrdem(o); onMudou(); }}
+          onFechar={() => setShowEncerrar(false)}
+          onNavegar={(rota) => {
+            // O progresso já está gravado na OS: sair e voltar retoma do mesmo passo.
+            setShowEncerrar(false);
+            onFechar();
+            if (rota === 'EmitirRecibo') nav.navigate('EmitirRecibo', {});
+            else nav.navigate('MeuNegocio');
+          }}
+        />
+      )}
 
       {/* Modal atribuir técnico */}
       {showAtribuir && ordem && (
@@ -884,14 +1051,15 @@ function AcaoRapida({
 }
 
 /** Campo inline para adicionar um item ao checklist. */
-function AdicionarItemChecklist({ onAdicionar }: { onAdicionar: (texto: string) => void }) {
+function AdicionarItemChecklist({ ordemId, onAdicionar }: { ordemId: string; onAdicionar: (texto: string) => void }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const [texto, setTexto] = useState('');
+  // Rascunho por campo (I0): o texto meio digitado sobrevive à câmera matar o app.
+  const [texto, setTexto, rascunho] = useRascunhoCampo(chaveRascunho(`os.${ordemId}`, 'novo-item'));
   function confirmar() {
     if (!texto.trim()) return;
     onAdicionar(texto);
-    setTexto('');
+    rascunho.limpar();
   }
   return (
     <View style={styles.addItemRow}>
@@ -1079,10 +1247,11 @@ function NovaOS({ onFechar, onCriada }: { onFechar: () => void; onCriada: (id: s
         {modo === 'manual' && (
           <NovaOSManual
             criando={criando}
-            onCriar={async (parcial) => {
+            onCriar={async (parcial, limparRascunho) => {
               setCriando(true);
               try {
                 const os = await criarOSManual(parcial);
+                limparRascunho(); // criada de verdade: o rascunho já não é necessário
                 vibrar('sucesso');
                 onCriada(os.id);
               } catch (e: any) {
@@ -1231,13 +1400,23 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
 }
 
 /** Passo "manual" — form mínimo (cliente + título; descrição opcional). */
-function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcial: Partial<OrdemServico>) => void }) {
+function NovaOSManual({ criando, onCriar }: {
+  criando: boolean;
+  /** `limparRascunho` deve ser chamado só quando a OS foi criada de verdade. */
+  onCriar: (parcial: Partial<OrdemServico>, limparRascunho: () => void) => void;
+}) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
-  const [clienteNome, setClienteNome] = useState('');
-  const [titulo, setTitulo] = useState('');
-  const [descricao, setDescricao] = useState('');
+  // Rascunho por campo (I0): a OS manual meio preenchida volta se o app morrer.
+  const [clienteNome, setClienteNome, rascCliente] = useRascunhoCampo(chaveRascunho('os-nova', 'cliente'));
+  const [titulo, setTitulo, rascTitulo] = useRascunhoCampo(chaveRascunho('os-nova', 'titulo'));
+  const [descricao, setDescricao, rascDescricao] = useRascunhoCampo(chaveRascunho('os-nova', 'descricao'));
+  const limparRascunho = () => {
+    rascCliente.limpar();
+    rascTitulo.limpar();
+    rascDescricao.limpar();
+  };
 
   const valido = clienteNome.trim().length > 0 && titulo.trim().length > 0;
 
@@ -1285,7 +1464,7 @@ function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcia
           clienteNome: clienteNome.trim(),
           titulo: titulo.trim(),
           descricao: descricao.trim() || undefined,
-        })}
+        }, limparRascunho)}
         icon={<MaterialCommunityIcons name="clipboard-check-outline" size={20} color="#fff" />}
         style={{ marginTop: Spacing.base }}
       />

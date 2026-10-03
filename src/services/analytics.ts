@@ -40,6 +40,12 @@ export const Eventos = {
   ajudaArtigoAberto: 'ajuda_artigo_aberto',
   ajudaBuscou: 'ajuda_buscou',
   ajudaSuporteContato: 'ajuda_suporte_contato',
+  // Roteiro de dicas por evento (services/dicasRoteiro.ts) e a folha "Como funciona".
+  // Só o id da dica/tela vai junto (nunca dado de cliente): mede se a dica muda o uso.
+  dicaMostrada: 'dica_mostrada',
+  dicaEntendida: 'dica_entendida',
+  dicasDesligadas: 'dicas_desligadas',
+  comoFuncionaAberto: 'como_funciona_aberto',
   // Pulso da semana (HojeScreen) — micro-feedback proativo, pulável, nunca bloqueia.
   pulsoMostrado: 'pulso_mostrado',
   pulsoRespondido: 'pulso_respondido',

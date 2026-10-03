@@ -25,6 +25,7 @@ import {
   handleClima,
   lerMet,
   montarResposta,
+  resumirDias,
   urlMet,
   validarCoordenadas,
 } from '../src/clima.js';
@@ -274,6 +275,36 @@ await caso('resposta quebrada vira null (indisponível)', () => {
   assert.equal(lerMet(horaRuim), null);
   const semFuso = metFalso(); semFuso.properties.timeseries[3].time = '2026-10-01T20:00:00';
   assert.equal(lerMet(semFuso), null, 'horário sem Z não é UTC garantido');
+});
+
+console.log('\n3b) resumo por dia (Radar do Tempo, Onda I4)');
+await caso('dias: máx/mín por dia LOCAL e chuva somada só com cobertura suficiente', () => {
+  const b = lerMet(metFalso());
+  assert.ok(Array.isArray(b.dias));
+  // 01/10 começa às 14h local: só 10 h de chuva conhecidas → "não sei", nunca 0.
+  assert.deepEqual(b.dias[0], { data: '2026-10-01', max: 31.2, min: 18.6, chuvaMm: null });
+  // 02/10: 24 h horárias conhecidas → soma 1,8 + 0,2.
+  assert.equal(b.dias[1].data, '2026-10-02');
+  assert.equal(b.dias[1].max, 25);
+  assert.equal(b.dias[1].min, 17.1);
+  assert.equal(b.dias[1].chuvaMm, 2);
+  // Trecho de 6 em 6 h (sem next_1_hours) também conta.
+  const ultimo = b.dias[b.dias.length - 1];
+  assert.ok(ultimo.data > '2026-10-03');
+});
+await caso('dias: resumirDias aguenta lixo e nunca inventa', () => {
+  assert.deepEqual(resumirDias(null), []);
+  assert.deepEqual(resumirDias([{ time: 'ontem' }]), []);
+  const r = resumirDias([{ time: '2026-10-05T15:00:00Z', data: { instant: { details: { air_temperature: 30 } } } }]);
+  assert.deepEqual(r, [{ data: '2026-10-05', max: null, min: null, chuvaMm: null }]);
+});
+await caso('dias na resposta: de hoje em diante; previsão antiga sem o campo → ausente', () => {
+  const b = lerMet(metFalso());
+  const r = montarResposta(b, Date.UTC(2026, 9, 2, 12, 0), { geohash: 'x', lat: 1, lon: 1 });
+  assert.equal(r.dias[0].data, '2026-10-02');
+  const semDias = { ...b };
+  delete semDias.dias;
+  assert.equal('dias' in montarResposta(semDias, AGORA, { geohash: 'x', lat: 1, lon: 1 }), false);
 });
 
 console.log('\n4) handler: cache, Expires/If-Modified-Since, rate limit e erros');

@@ -86,3 +86,6 @@ dump*.sql
 # Gerados localmente (grafo do graphify, cache do Supabase CLI)
 graphify-out/
 supabase/.temp/
+
+# Logs do CI local (scripts/ci-local.sh)
+.ci-local/

@@ -6,9 +6,9 @@
  *
  * Tranca duas regressões da onda 1 (item 1.2):
  * 1. O TabsComPerfilGuard voltava para 'verificando' a CADA foco da rota 'Tabs',
- *    desmontando o TabNavigator (a aba atual se perdia e tudo recarregava). O guard
- *    só pode mostrar 'verificando' na 1ª checagem ou depois de um erro, e erro de
- *    leitura não fecha a porta de quem já foi liberado.
+ *    desmontando o TabNavigator (a aba atual se perdia e tudo recarregava). Desde
+ *    02/10/2026 o guard nem fecha mais as abas: ele só mede o cadastro para o
+ *    banner do Início, e erro de leitura nunca vira "falta preencher".
  * 2. A notificação "Visita em 1h" fazia `navigate('Agenda')` pelo ref raiz. Agenda é
  *    ABA (dentro de 'Tabs'), então o toque morria quando as abas ainda não estavam
  *    montadas. O destino precisa ser 'Tabs' > 'Agenda' com `abrirAgendamentoId`.
@@ -40,21 +40,24 @@ const fimGuard = nav.indexOf('\nfunction ', iniGuard + 10);
 const guard = nav.slice(iniGuard, fimGuard === -1 ? undefined : fimGuard);
 checar(iniGuard !== -1, 'TabsComPerfilGuard existe');
 
+// Desde 02/10/2026 o guard não fecha mais as abas (rejeição da Play): ele só
+// mede o cadastro e publica para o banner do Início. As regressões da onda 1
+// continuam trancadas: o foco nunca desmonta o TabNavigator e erro de leitura
+// nunca vira "falta preencher" nem "completo".
 const iniVerificar = guard.indexOf('const verificar');
 const corpoVerificar = guard.slice(iniVerificar, guard.indexOf('useFocusEffect', iniVerificar));
-const setsVerificando = corpoVerificar.match(/mudarEstado\('verificando'\)|setEstado\('verificando'\)/g) ?? [];
 checar(iniVerificar !== -1, 'checagem do perfil está num callback próprio (verificar)');
 checar(
-  setsVerificando.length === 1 && /if \(estadoRef\.current === 'erro'\) mudarEstado\('verificando'\)/.test(corpoVerificar),
-  "foco só volta a 'verificando' a partir de 'erro' (nunca depois de liberado)",
+  /return \(\s*<CadastroNegocioProvider value=\{contexto\}>\s*<TabNavigator \/>\s*<\/CadastroNegocioProvider>\s*\);/.test(guard),
+  'o TabNavigator SEMPRE renderiza (foco não desmonta a aba atual; cadastro incompleto não fecha o app)',
 );
-checar(
-  /\.catch\([\s\S]*?if \(estadoRef\.current === 'liberado'\) return;[\s\S]*?mudarEstado\('erro'\)/.test(corpoVerificar),
-  'erro de leitura mantém liberado quem já entrou; na 1ª checagem vira estado de erro',
-);
+checar(!/'verificando'|'liberado'/.test(guard), "o guard não tem mais estado que esconda as abas ('verificando'/'liberado')");
 const blocoCatch = corpoVerificar.split('.catch')[1] ?? '';
-checar(blocoCatch !== '' && !blocoCatch.includes("'incompleto'"), "erro não vira 'incompleto' (\"não sei\" ≠ \"falta preencher\")");
-checar(!/TouchableOpacity/.test(guard) && /<OlliButton/.test(guard), 'botões do guard usam OlliButton (sem #FFFFFF cravado)');
+checar(
+  /estadoCadastroDaLeitura\(\{ ok: false \}, estadoRef\.current\)/.test(blocoCatch),
+  'erro de leitura passa pela regra pura de 3 estados (mantém o último conhecido; sem ele, "erro")',
+);
+checar(blocoCatch !== '' && !blocoCatch.includes("'incompleto'") && !blocoCatch.includes("'completo'"), 'erro não vira incompleto nem completo ("não sei" ≠ "falta preencher")');
 checar(!/#FFFFFF/i.test(guard), 'guard sem cor cravada');
 
 // ── Notificação ──────────────────────────────────────────────────────────────

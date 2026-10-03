@@ -15,7 +15,7 @@ const whatsappUrl = `https://wa.me/${whatsapp}?text=${mensagem}`;
   descricao="Como excluir sua conta do OLLI Orçamentos e solicitar a remoção dos dados associados."
 >
   <Header>
-    <a href="/" class="text-sm font-medium text-slate transition hover:text-ink">← Voltar pra home</a>
+    <a href="/legal/privacidade/" class="text-sm font-medium text-slate transition hover:text-ink">Política de Privacidade</a>
   </Header>
 
   <main class="mx-auto max-w-3xl px-6 py-14 sm:py-20">
@@ -82,7 +82,8 @@ const whatsappUrl = `https://wa.me/${whatsapp}?text=${mensagem}`;
       <p class="leading-relaxed text-slate">
         Depois da confirmação bem-sucedida, o OLLI exclui permanentemente a conta e os dados do
         aplicativo mantidos na nuvem. O OLLI não mantém uma cópia ativa desses dados após a
-        conclusão da exclusão.
+        conclusão da exclusão. Se a conta tiver uma assinatura ativa pela Google Play, ela é
+        cancelada junto, para não haver nova cobrança.
       </p>
       <p class="leading-relaxed text-slate">
         Os dados locais do aplicativo também são removidos durante esse processo. Antes de excluir,
@@ -96,5 +97,5 @@ const whatsappUrl = `https://wa.me/${whatsapp}?text=${mensagem}`;
     </section>
   </main>
 
-  <Footer class="max-w-3xl" />
+  <Footer variante="minimal" class="max-w-3xl" />
 </Layout>

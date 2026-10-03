@@ -248,6 +248,15 @@ export function recarregarTipoConta(): Promise<void> {
   return revalidar();
 }
 
+/**
+ * Leitura SÍNCRONA do tipo de conta/papel atual, fora de componente (ex.: a porta
+ * do envio em services/exigirCadastro.ts decide o texto do aviso pelo papel).
+ * `resolvido:false` = não sei o papel ainda.
+ */
+export function lerTipoContaAtual(): Pick<UseTipoConta, 'tipo' | 'org' | 'resolvido'> {
+  return { tipo: estado.tipo, org: estado.org, resolvido: estado.resolvido };
+}
+
 /** Retrato do papel para quem roda FORA de componente (serviços, ritual diário). */
 export interface TipoContaAtual {
   tipo: TipoConta;
@@ -257,13 +266,14 @@ export interface TipoContaAtual {
 }
 
 /**
- * O papel atual sem React (mesmo store do hook). Se ninguém resolveu ainda — o
+ * O papel atual sem React, ESPERANDO resolver (mesmo store do hook; a versão
+ * síncrona é `lerTipoContaAtual`). Se ninguém resolveu ainda — o
  * ritual diário roda no sync de login, às vezes antes de qualquer tela montar —,
  * faz o mesmo caminho do hook: cache do último login (amarrado ao usuário) e
  * depois a rede, reaproveitando a leitura em voo. Nunca inventa papel: falhou
  * tudo, volta `resolvido: false`. NUNCA lança.
  */
-export async function lerTipoContaAtual(): Promise<TipoContaAtual> {
+export async function resolverTipoContaAtual(): Promise<TipoContaAtual> {
   if (!estado.resolvido) {
     try {
       if (estado.atualizadoEm === 0) await hidratarDoCache();

@@ -15,8 +15,10 @@
  * e `ok` (lista, que pode estar vazia de verdade). A coordenada crua só aparece ao
  * tocar e segurar o cartão; o padrão é "há X min" + "Abrir no mapa".
  *
- * Mapa EMBUTIDO (Google Maps SDK) depende de `mapaEmbutidoDisponivel()`
- * (EXPO_PUBLIC_MAPS_KEY) e nenhum componente de mapa existe ainda — hoje é só lista.
+ * Mapa EMBUTIDO (Onda I2): o MESMO mapa grátis do Mapa do dia (MapLibre +
+ * OpenFreeMap, `components/mapa/MapaBase`), com um pin por técnico na última
+ * posição já existente em `localizacoes_equipe`. Só aparece quando há posição
+ * lida de verdade; sem ninguém, continua o aviso honesto de localização desligada.
  *
  * Gate de plano: recurso 'mapa_equipe' é do plano Empresa. O <GatePro> é aplicado
  * AQUI MESMO, no componente exportado (ver o comentário dele), com o <GuardaPapel>
@@ -39,13 +41,22 @@ import { EmptyState } from '../components/EmptyState';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import {
   localizacoesEquipe, enviarMinhaLocalizacao, tempoRelativo,
-  mapaEmbutidoDisponivel, type LocalizacaoMembro, type LeituraLocalizacoesEquipe,
+  type LocalizacaoMembro, type LeituraLocalizacoesEquipe,
 } from '../services/localizacaoEquipe';
 import { PAPEL_LABEL } from '../services/equipe';
 import { abrirRotaGoogleMaps } from '../services/rotas';
 import { GuardaPapel } from '../components/GuardaPapel';
 import { goBackOrHome } from '../navigation/safeBack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { MapaBase } from '../components/mapa/MapaBase';
+import type { PinMapa } from '../components/mapa/tipos';
+
+/** "Igor Souza" → "IS"; vazio → "?". */
+function iniciais(nome: string): string {
+  const partes = nome.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return '?';
+  return ((partes[0][0] ?? '') + (partes.length > 1 ? partes[partes.length - 1][0] ?? '' : '')).toUpperCase();
+}
 
 /** "recente" (<=15min) vs "desatualizado" — só um sinal visual, não filtra ninguém. */
 function estaRecente(iso: string): boolean {
@@ -149,11 +160,18 @@ function EquipeAoVivoConteudo() {
         : leitura.estado === 'sem_org' ? 'Você ainda não tem equipe'
           : itens.length === 0 ? 'Localização desligada no app'
             : `${itens.length} ${itens.length === 1 ? 'pessoa' : 'pessoas'} com localização`;
-  // Decide lista+deep-link (hoje, sempre) vs mapa embutido (quando billing
-  // existir — EXPO_PUBLIC_MAPS_KEY). O dia que existir um
-  // <MapaEquipeEmbutido>, ele substitui a ScrollView de cards abaixo,
-  // condicionado a este mesmo booleano — por ora só troca o ícone do header.
-  const temMapaEmbutido = mapaEmbutidoDisponivel();
+  // Pins da equipe no mesmo mapa grátis do Mapa do dia. Só posição lida de
+  // verdade e coordenada válida vira pin (nada de ponto inventado).
+  const pinsEquipe: PinMapa[] = itens
+    .filter((m) => Number.isFinite(m.lat) && Number.isFinite(m.lng) && !(m.lat === 0 && m.lng === 0))
+    .map((m) => ({
+      id: m.userId,
+      lat: m.lat,
+      lon: m.lng,
+      rotulo: iniciais(m.nome),
+      tom: 'equipe',
+      acessibilidade: `${m.nome}, última localização ${tempoRelativo(m.capturadoEm)}`,
+    }));
 
   return (
     <View style={styles.container}>
@@ -164,7 +182,7 @@ function EquipeAoVivoConteudo() {
         right={
           <View style={styles.headerIconWrap}>
             <MaterialCommunityIcons
-              name={temMapaEmbutido ? 'map' : 'map-marker-radius-outline'}
+              name={pinsEquipe.length > 0 ? 'map' : 'map-marker-radius-outline'}
               size={20}
               color="#fff"
             />
@@ -250,11 +268,18 @@ function EquipeAoVivoConteudo() {
               : 'A localização da equipe está desligada no app. Quando ela chegar, cada técnico aparece aqui com a última posição.'}
           />
         ) : (
-          itens.map((m, i) => (
+          <>
+            {pinsEquipe.length > 0 ? (
+              <View style={styles.mapaCaixa}>
+                <MapaBase pins={pinsEquipe} style={styles.mapa} margens={{ topo: 40, base: 40, lados: 40 }} />
+              </View>
+            ) : null}
+            {itens.map((m, i) => (
             <AnimatedEntrance key={m.userId} index={i}>
               <MembroCard membro={m} />
             </AnimatedEntrance>
-          ))
+            ))}
+          </>
         )}
       </ScrollView>
     </View>
@@ -345,6 +370,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   shareTitle: { fontSize: 14, fontWeight: '700', color: c.onSurface },
   shareHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2, lineHeight: 16 },
+
+  mapaCaixa: { borderRadius: BorderRadius.lg, overflow: 'hidden', borderWidth: 1, borderColor: c.outline, marginBottom: Spacing.md },
+  mapa: { height: 240 },
 
   item: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, marginBottom: 10 },
 

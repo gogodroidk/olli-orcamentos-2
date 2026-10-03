@@ -27,7 +27,7 @@
  * encontrado | conteúdo. Erro NUNCA vira "sem histórico"; a falha só dos
  * equipamentos aparece como aviso na seção dela, sem derrubar a página.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking,
   RefreshControl, ActivityIndicator, Image,
@@ -46,6 +46,7 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { getCliente, getOrcamentos, getRecibos, getEmpresa } from '../database/database';
 import { getOrdens } from '../services/ordemServico';
+import { exigirCadastroParaEnviar } from '../services/exigirCadastro';
 import { getAgendamentos, getAgendamentosExpandidos } from '../services/agenda';
 import { getEquipamentosDoCliente } from '../services/equipamentos';
 import { marcarReciboComoPdfEmitido } from '../services/pagamentos';
@@ -283,6 +284,9 @@ export default function ClienteDetalheScreen() {
   }
 
   // ─── ABRIR DOCUMENTO DA TIMELINE ───────────────────────────────────────────
+  // Trava SÍNCRONA de toque duplo: o `await` da porta do cadastro abre uma janela
+  // antes de `abrindoReciboId` valer (o estado só muda no próximo render).
+  const abrindoReciboRef = useRef(false);
   async function abrirRecibo(id: string) {
     const recibo = dados?.recibos.get(id);
     const empresa = dados?.empresa;
@@ -291,11 +295,22 @@ export default function ClienteDetalheScreen() {
       Alert.alert('Não deu para abrir', 'Não conseguimos ler os dados da sua empresa agora. Puxe a tela para atualizar e tente de novo.');
       return;
     }
-    if (!empresa) {
-      Alert.alert('Cadastre sua empresa antes', 'Para abrir o PDF do recibo, cadastre os dados da sua empresa em Meu Negócio.');
-      return;
+    if (abrindoReciboId || abrindoReciboRef.current) return;
+    abrindoReciboRef.current = true;
+    try {
+      // Porta única do envio de documento (cadastro incompleto segura só o PDF).
+      if (!(await exigirCadastroParaEnviar('recibo'))) return;
+      if (!empresa) {
+        Alert.alert('Cadastre sua empresa antes', 'Para abrir o PDF do recibo, cadastre os dados da sua empresa em Meu Negócio.');
+        return;
+      }
+      await gerarPdfDoRecibo(id, recibo, empresa);
+    } finally {
+      abrindoReciboRef.current = false;
     }
-    if (abrindoReciboId) return;
+  }
+
+  async function gerarPdfDoRecibo(id: string, recibo: Recibo, empresa: Empresa) {
     setAbrindoReciboId(id);
     try {
       // Mesmo HTML da tela de recibos (modelo e cor de marca da empresa).

@@ -25,7 +25,9 @@ import { verticaisEfetivos } from './verticalSegmento';
 import { generateId } from '../utils/id';
 import { concluidoEmDaTransicao } from '../utils/ordemServicoStatus';
 import { montarOSDoOrcamento, proximoNumeroOSDasFontes } from '../utils/ordemServicoDoOrcamento';
-import type { OrdemServico, StatusOS, ItemChecklist } from '../types';
+import type { OrdemServico, StatusOS, ItemChecklist, MaterialUsado } from '../types';
+import type { EncerramentoOS } from '../utils/encerramentoOS';
+import { lerMateriais } from '../utils/materiaisOS';
 
 /** Todas as OS visíveis (o SELECT local já reflete o tenant/org via sync). */
 export async function getOrdens(): Promise<OrdemServico[]> {
@@ -175,6 +177,9 @@ export async function criarOSManual(parcial: Partial<OrdemServico>): Promise<Ord
     fotos: Array.isArray(parcial.fotos) ? parcial.fotos : [],
     observacoes: parcial.observacoes,
     valor: parcial.valor,
+    equipamentoId: parcial.equipamentoId,
+    ...(parcial.garantia?.trim() ? { garantia: parcial.garantia.trim().slice(0, 200) } : {}),
+    ...(parcial.garantiaDeOsId ? { garantiaDeOsId: parcial.garantiaDeOsId } : {}),
     criadoEm: parcial.criadoEm ?? agora,
     atualizadoEm: agora,
   };
@@ -214,7 +219,23 @@ async function patchOrdem(id: string, patch: Partial<OrdemServico>): Promise<Ord
  * nunca pode travar a mudança de status.
  */
 export async function atualizarStatusOS(id: string, status: StatusOS): Promise<void> {
-  const atualizada = await patchOrdem(id, { status });
+  // Garantia que se cuida sozinha (I3): ao concluir uma OS que ainda não tem prazo
+  // próprio, ela herda o prazo escrito no orçamento de origem — é o que leva o
+  // "vale até" para a nuvem (garantia_ate) e para a etiqueta QR. Falha de leitura
+  // do orçamento não impede a conclusão.
+  const patch: Partial<OrdemServico> = { status };
+  if (status === 'concluida') {
+    try {
+      const atual = await getOrdemServicoDb(id);
+      if (atual && !atual.garantia?.trim() && atual.orcamentoId) {
+        const garantiaOrc = (await getOrcamento(atual.orcamentoId))?.garantia?.trim();
+        if (garantiaOrc) patch.garantia = garantiaOrc.slice(0, 200);
+      }
+    } catch {
+      // segue sem herdar: a garantia do orçamento continua valendo na leitura local
+    }
+  }
+  const atualizada = await patchOrdem(id, patch);
   if (status === 'concluida') {
     // Registro documental é best-effort: a conclusão da OS não pode falhar por
     // uma indisponibilidade transitória da biblioteca local.
@@ -227,6 +248,15 @@ export async function atualizarStatusOS(id: string, status: StatusOS): Promise<v
   }
 }
 
+/**
+ * Define (ou limpa, com texto vazio) o prazo de garantia DESTA OS ("90 dias").
+ * Vazio = a OS deixa de declarar garantia própria (vale a do orçamento, se houver).
+ */
+export async function definirGarantiaOS(id: string, texto: string): Promise<OrdemServico> {
+  const limpo = texto.trim().slice(0, 200);
+  return patchOrdem(id, { garantia: limpo || undefined });
+}
+
 /** Atribui (ou reatribui) o técnico executor da OS. */
 export async function atribuirTecnico(id: string, tecnicoId: string, tecnicoNome: string): Promise<void> {
   await patchOrdem(id, { tecnicoId, tecnicoNome });
@@ -235,6 +265,43 @@ export async function atribuirTecnico(id: string, tecnicoId: string, tecnicoNome
 /** Substitui o checklist inteiro da OS (o app envia a lista completa já mutada). */
 export async function atualizarChecklist(id: string, checklist: ItemChecklist[]): Promise<void> {
   await patchOrdem(id, { checklist: Array.isArray(checklist) ? checklist : [] });
+}
+
+/**
+ * Grava o progresso do "Encerrar atendimento" na própria OS (SQLite primeiro; a
+ * nuvem recebe pelo espelho do saveOrdemServico). LANÇA se não gravou — a tela
+ * mantém o passo como estava e mostra "não salvei", nunca finge que salvou.
+ */
+export async function salvarEncerramentoOS(id: string, encerramento: EncerramentoOS): Promise<OrdemServico> {
+  return patchOrdem(id, { encerramento });
+}
+
+/**
+ * "Concluir atendimento": carimba o fim do encerramento e conclui a OS (que fecha
+ * também a visita ligada na agenda — ver saveOrdemServico). Uma escrita só, para
+ * a OS nunca ficar "encerrada" e "em execução" ao mesmo tempo.
+ */
+export async function finalizarEncerramentoOS(id: string, encerramento: EncerramentoOS): Promise<OrdemServico> {
+  const atual = await getOrdemServicoDb(id);
+  if (!atual) throw new Error('Ordem de serviço não encontrada.');
+  const status: StatusOS = atual.status === 'cancelada' ? 'cancelada' : 'concluida';
+  const atualizada = await patchOrdem(id, { encerramento, status });
+  if (status === 'concluida' && atual.status !== 'concluida') {
+    void import('./documentosBiblioteca').then(({ garantirDocumentoOrdemServico }) =>
+      garantirDocumentoOrdemServico(atualizada).catch(() => {}),
+    ).catch(() => {});
+    void cancelarLembretesPmoc(id).catch(() => {});
+  }
+  return atualizada;
+}
+
+/**
+ * Baixa leve de material (Onda I4): grava a lista do que SAIU nesta OS. `[]` é
+ * "não usei material" (afirmação), diferente de nunca ter informado. Itens sem
+ * nome/quantidade são descartados pela mesma regra do banco (`lerMateriais`).
+ */
+export async function atualizarMateriaisOS(id: string, materiais: MaterialUsado[]): Promise<OrdemServico> {
+  return patchOrdem(id, { materiais: lerMateriais(Array.isArray(materiais) ? materiais : []) ?? [] });
 }
 
 /** Anexa uma foto (uri) à OS, preservando as existentes e sem duplicar. */

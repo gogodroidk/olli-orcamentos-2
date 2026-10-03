@@ -9,7 +9,7 @@
  * nada do prestador entra no HTML sem escape.
  */
 import assert from 'node:assert/strict';
-import { pixDaPagina, renderLinkPage, responderLink, validadeVencida, valorDoPix } from '../src/link.js';
+import { pixDaPagina, regrasDaPagina, renderLinkPage, responderLink, validadeVencida, valorDoPix } from '../src/link.js';
 import { pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
 import { cobrancaDoLink, prepararCobranca } from '../../src/utils/cobrancaCliente.ts';
 
@@ -31,13 +31,22 @@ async function caso(nome, fn) {
  * chamada. `semColuna` simula o banco antes da migration (PostgREST 400 quando o
  * select/patch cita pagamento_informado_em).
  */
-function supabaseFalso(linha, { semColuna = false } = {}) {
+/**
+ * `plano` = o que a RPC `plano_comercial_para_usuario` devolve para o DONO do link.
+ * Padrão 'pro' (o Pix no link é recurso do Pro — `link_pagamento`); `null` simula
+ * a RPC falhando (500), que é o terceiro estado da página.
+ */
+function supabaseFalso(linha, { semColuna = false, plano = 'pro' } = {}) {
   const chamadas = [];
   const eventos = [];
   globalThis.fetch = async (url, init = {}) => {
     const u = String(url);
     const metodo = init.method || 'GET';
     chamadas.push({ metodo, url: u, body: init.body });
+    if (u.endsWith('/rest/v1/rpc/plano_comercial_para_usuario')) {
+      if (plano === null) return new Response('{"message":"erro"}', { status: 500 });
+      return Response.json(plano);
+    }
     const citaColuna = u.includes('pagamento_informado_em') || String(init.body || '').includes('pagamento_informado_em');
     if (semColuna && citaColuna) return new Response('{"code":"42703"}', { status: 400 });
     if (u.includes('/eventos_orcamento_publico')) {
@@ -82,6 +91,7 @@ function supabaseFalso(linha, { semColuna = false } = {}) {
 function linhaBase(extra = {}) {
   return {
     token: TOKEN,
+    user_id: '11111111-2222-4333-8444-555555555555',
     status: 'aprovado',
     cliente_nome: 'Maria',
     prestador_nome: 'Frio Bom',
@@ -466,6 +476,65 @@ await caso('app: republicar o link NÃO volta o status para "enviado" (leitura d
   }
   // Erro ao ler o token existente não vira "não tem" (senão nasce um 2º link).
   assert.match(fonte, /if \(error\) throw error;\r?\n {2}return \(data as any\)\?\.token \?\? null;/);
+});
+
+
+// ─── Grátis ilimitado (01/10/2026): o plano do DONO decide selo e Pix ──────────
+await caso('regra pura: Grátis = selo + sem Pix; Pro/Empresa = sem selo + Pix; "não sei" = selo + 3º estado', async () => {
+  assert.deepEqual(regrasDaPagina({ confirmado: true, plano: 'gratis' }), { mostrarSelo: true, pagamento: 'bloqueado' });
+  assert.deepEqual(regrasDaPagina({ confirmado: true, plano: 'pro' }), { mostrarSelo: false, pagamento: 'liberado' });
+  assert.deepEqual(regrasDaPagina({ confirmado: true, plano: 'empresa' }), { mostrarSelo: false, pagamento: 'liberado' });
+  assert.deepEqual(regrasDaPagina({ confirmado: false }), { mostrarSelo: true, pagamento: 'indeterminado' });
+  assert.deepEqual(regrasDaPagina({ confirmado: true, plano: 'trial' }), { mostrarSelo: true, pagamento: 'indeterminado' });
+  assert.deepEqual(regrasDaPagina(null), { mostrarSelo: true, pagamento: 'indeterminado' });
+});
+
+await caso('dono no Grátis: selo "Feito com OLLI" com UTM e SEM Pix (cliente nunca vê paywall)', async () => {
+  const { status, html } = await pagina(linhaBase(), { plano: 'gratis' });
+  assert.equal(status, 200);
+  assert.doesNotMatch(html, /Pagar com Pix/);
+  assert.equal(codigoDaPagina(html), null);
+  assert.match(html, /Combine a forma de pagamento diretamente com Frio Bom/);
+  assert.doesNotMatch(html, /Disponível no Pro|plano Pro|assine/i, 'o cliente final não vê oferta de plano');
+  assert.match(html, /Feito com <span[^>]*>OLLI<\/span>/);
+  assert.match(html, /utm_source=link_orcamento&amp;utm_medium=selo&amp;utm_campaign=feito_com_olli|utm_source=link_orcamento&utm_medium=selo&utm_campaign=feito_com_olli/);
+});
+
+await caso('dono no Pro: Pix aparece e o selo some', async () => {
+  const { html } = await pagina(linhaBase(), { plano: 'pro' });
+  assert.match(html, />Pagar com Pix</);
+  assert.doesNotMatch(html, /Feito com <span/);
+  assert.doesNotMatch(html, /utm_medium=selo/);
+});
+
+await caso('dono no Empresa: Pix aparece e o selo some', async () => {
+  const { html } = await pagina(linhaBase(), { plano: 'empresa' });
+  assert.match(html, />Pagar com Pix</);
+  assert.doesNotMatch(html, /utm_medium=selo/);
+});
+
+await caso('plano ilegível (RPC 500): selo FICA e o Pix vira "não carregou" — nunca Pix sem confirmar', async () => {
+  const { status, html } = await pagina(linhaBase(), { plano: null });
+  assert.equal(status, 200, 'falha do plano não derruba a página do cliente');
+  assert.doesNotMatch(html, /Pagar com Pix/);
+  assert.match(html, /Não consegui carregar a forma de pagamento agora/);
+  assert.match(html, /utm_medium=selo/);
+});
+
+await caso('linha sem dono (user_id ausente/torto): nem chama a RPC, trata como "não sei"', async () => {
+  const linha = linhaBase({ user_id: 'nao-e-uuid' });
+  const { chamadas } = supabaseFalso(linha);
+  const html = await (await renderLinkPage(TOKEN, ENV, req())).text();
+  assert.equal(chamadas.some((c) => c.url.includes('plano_comercial_para_usuario')), false);
+  assert.match(html, /Não consegui carregar a forma de pagamento agora/);
+  assert.match(html, /utm_medium=selo/);
+});
+
+await caso('a página pede o user_id do dono (sem ele não há como ler o plano)', async () => {
+  const { chamadas } = supabaseFalso(linhaBase());
+  await renderLinkPage(TOKEN, ENV, req());
+  const get = chamadas.find((c) => c.metodo === 'GET' && c.url.includes('/orcamentos_publicos?'));
+  assert.ok(get && /select=[^&]*user_id/.test(get.url));
 });
 
 console.log(`\nteste-link-pix: ${ok} casos OK`);

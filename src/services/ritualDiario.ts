@@ -4,8 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAgendamentosDoDia, getProximaSaida, temPermissaoNotificacao } from './agenda';
 import { getClientes, getEmpresa } from '../database/database';
 import { reagendarAvisoSaida } from './avisoSaida';
-import { calcularSaida } from './etaSaida';
-import { enderecoDoAgendamento, linhaBomDiaSaida, origemParaVisita } from './saidaCalculo';
+import { acessoRecursoAgora } from './planos';
+import { calcularSaida, pontoDaBase } from './etaSaida';
+import { linhaBomDiaSaida } from './saidaCalculo';
 import { orcamentosParaCobrar } from './radarCobranca';
 import { clientesParaReconquistar } from './radarClientes';
 import { gerarRelatorioDia, relatorioParaTexto } from './relatorioDia';
@@ -13,7 +14,7 @@ import { escopoAgendaAtual } from './escopoAgendaAtual';
 import { aplicarEscopo, escopoConhecido, type EscopoConhecido } from '../utils/agendaDominio';
 import { semMovimentosConhecidos } from '../utils/relatorioDiaTexto';
 import { formatCurrency } from '../utils/currency';
-import type { Agendamento, Cliente } from '../types';
+import type { Agendamento } from '../types';
 import {
   RITUAL_NOTIF_MAP_KEY,
   RITUAL_BOM_DIA_TOGGLE_KEY,
@@ -157,16 +158,11 @@ function avancarSeDomingoMudo(d: Date, domingoAtivo: boolean): Date {
 }
 
 /**
- * "saia às 08h25 (32 min, sem trânsito)" para a primeira visita do dia — o
- * Toque 1 da seção 2 de docs/ENXAME/IDEIA_ETA_TRANSITO.md. `null` sempre que
- * não houver número REAL: sem endereço, sem rede, worker fora, cota estourada.
- *
- * Usa `modo:'planejamento'` (TRAFFIC_UNAWARE → SKU Essentials: metade do preço
- * e o dobro da franquia grátis) e o rótulo "sem trânsito" vai junto na frase,
- * escrito por `linhaBomDiaSaida`. É uma troca deliberada: às 7h da manhã isto é
- * panorama do dia, não a ordem de sair — a ordem de sair é o Toque 2, que paga
- * o SKU Pro para olhar o trânsito de verdade perto da hora. Dizer "sem
- * trânsito" na cara do usuário é o que torna a troca honesta em vez de barata.
+ * "saia às 08:25 (~32 min, estimativa, sem trânsito)" para a primeira visita do
+ * dia — o Toque 1 de docs/ENXAME/IDEIA_ETA_TRANSITO.md, agora ESTIMADO no
+ * aparelho (Onda I2: sem Google, sem custo). `null` sempre que não houver
+ * número: visita sem local no mapa, base da empresa desconhecida, horário ruim.
+ * O rótulo "estimativa, sem trânsito" vai junto na frase (`linhaBomDiaSaida`).
  *
  * NUNCA lança: qualquer falha vira `null` e o "Bom dia" sai como antes.
  */
@@ -174,23 +170,25 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento, escopo: EscopoConhec
   try {
     const inicio = new Date(proxima.inicio);
     if (isNaN(inicio.getTime())) return null;
+    // "Hora de sair" é do Pro (`hora_de_sair`): no Grátis (ou plano não
+    // confirmado) o "Bom dia" sai exatamente como antes, sem a linha.
+    if ((await acessoRecursoAgora('hora_de_sair')) !== 'liberado') return null;
     const [empresa, clientes, doDia] = await Promise.all([
       getEmpresa().catch(() => null),
-      getClientes().catch(() => [] as Cliente[]),
+      getClientes().catch(() => null),
       getAgendamentosDoDia(inicio).catch(() => [] as Agendamento[]),
     ]);
-    // A origem é a visita anterior DESTA pessoa no dia, nunca a do colega.
-    const origem = origemParaVisita(proxima, aplicarEscopo(doDia, escopo), empresa, clientes);
-    // Sem origem ou sem destino não há chamada nenhuma: reprovar de graça é
-    // metade do controle de custo desta feature.
-    if (!origem) return null;
-    const destino = enderecoDoAgendamento(proxima, clientes);
-    if (!destino) return null;
-    const r = await calcularSaida({
-      origem: origem.endereco,
-      destino,
-      chegarEm: inicio,
-      modo: 'planejamento',
+    // Sem conseguir ler os clientes não há como saber o local: "não sei", nunca
+    // "sem local no mapa".
+    if (!clientes) return null;
+    const base = await pontoDaBase(empresa);
+    const r = calcularSaida({
+      proxima,
+      // A origem é a visita anterior DESTA pessoa no dia, nunca a do colega.
+      doDia: aplicarEscopo(doDia, escopo),
+      base: base.estado === 'ok' ? base.ponto : null,
+      baseIndisponivel: base.estado === 'indisponivel',
+      clientes,
     });
     return linhaBomDiaSaida(r, new Date());
   } catch {
@@ -206,8 +204,8 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento, escopo: EscopoConhec
  * Roda dentro do reagendamento do ritual, que já é o gatilho certo: acorda com
  * o app aberto e sessão válida, é cancela-e-recria, e não inventa mecanismo
  * novo. Também é exportada para a Home poder pedir um recálculo sob TOQUE do
- * prestador (`forcar`) — o único caminho que ignora o throttle de 4h, porque aí
- * quem pediu a chamada paga foi ele.
+ * prestador (`forcar`) — o único caminho que ignora o throttle, porque aí
+ * quem pediu foi ele.
  *
  * Papel desconhecido: não mexe em nada (nem cria, nem cancela). Trocar o aviso
  * pela visita de outra pessoa, ou apagá-lo como se não houvesse visita, seria
@@ -217,6 +215,12 @@ async function linhaDeSaidaParaBomDia(proxima: Agendamento, escopo: EscopoConhec
  */
 export async function reagendarAvisoSaidaDoDia(forcar = false, escopoPronto?: EscopoConhecido): Promise<void> {
   try {
+    // "Hora de sair" é inteligência do Pro (`hora_de_sair`). Sem o recurso
+    // confirmado não calcula; e plano
+    // ilegível ou Grátis NÃO cancelam o que já está agendado: o aviso calculado
+    // substituiu o lembrete fixo de 1h daquela visita, e apagá-lo deixaria o
+    // prestador sem aviso nenhum. As próximas visitas seguem com o lembrete fixo.
+    if ((await acessoRecursoAgora('hora_de_sair')) !== 'liberado') return;
     const escopo = escopoPronto ?? (await escopoAgendaAtual());
     if (!escopoConhecido(escopo)) return;
     // Próxima SAÍDA, não Próxima parada: a visita em andamento (14h–16h) é a
@@ -225,13 +229,25 @@ export async function reagendarAvisoSaidaDoDia(forcar = false, escopoPronto?: Es
     const inicio = proxima ? new Date(proxima.inicio) : null;
     const [empresa, clientes, doDia, temPermissao] = await Promise.all([
       getEmpresa().catch(() => null),
-      getClientes().catch(() => [] as Cliente[]),
+      getClientes().catch(() => null),
       inicio && !isNaN(inicio.getTime())
         ? getAgendamentosDoDia(inicio).then(d => aplicarEscopo(d, escopo)).catch(() => [] as Agendamento[])
         : Promise.resolve([] as Agendamento[]),
       temPermissaoNotificacao().catch(() => false),
     ]);
-    await reagendarAvisoSaida({ proxima, doDia, empresa, clientes, temPermissao, forcar });
+    // Banco ilegível NÃO é "cliente sem local no mapa": sem os clientes, não
+    // recalcula e o aviso que já está agendado continua valendo.
+    if (!clientes) return;
+    const base = await pontoDaBase(empresa);
+    await reagendarAvisoSaida({
+      proxima,
+      doDia,
+      base: base.estado === 'ok' ? base.ponto : null,
+      baseIndisponivel: base.estado === 'indisponivel',
+      clientes,
+      temPermissao,
+      forcar,
+    });
   } catch {
     // best-effort: o lembrete fixo de 1h da agenda continua valendo.
   }

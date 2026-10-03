@@ -16,7 +16,7 @@ import {
 // Preço só da FONTE (Stripe live). Nenhum literal de R$ nesta página.
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { ORCAMENTOS_ENVIADOS_GRATIS_MES } from "../data/recursos";
+import { FRASE_GRATIS } from "../data/recursos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -113,7 +113,7 @@ const CALCULADORAS_POR_OFICIO = OFICIOS.filter((o) => o.calculadoras > 0)
 const faq = [
 	{
 		q: "Preciso pagar para testar?",
-		a: `Não. O plano Grátis é permanente: rascunhos, recibos, clientes e histórico ficam sem limite, com até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês. Depois do primeiro envio, você pode ativar 14 dias de Pro sem cartão e sem cobrança automática.`,
+		a: `Não. O plano Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, recibos, clientes e histórico também ficam sem limite. Depois do primeiro envio, você pode ativar 14 dias de Pro sem cartão e sem cobrança automática.`,
 	},
 	{
 		q: "Funciona no celular e no computador?",

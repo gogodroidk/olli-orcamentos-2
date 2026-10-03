@@ -64,13 +64,16 @@ const corpoSinalizar = (() => {
   return semComentarios(sinalizarSrc.slice(inicio, sinalizarSrc.indexOf('\n  }, [', inicio)));
 })();
 
-console.log('\n1) as TRÊS superfícies generativas montam o MESMO componente');
+console.log('\n1) as superfícies generativas montam o MESMO componente');
 // Denúncia em uma superfície de três não é conformidade, é a aparência dela.
 // Cada tela precisa IMPORTAR e MONTAR — importar sem montar passa no tsc.
 for (const [nome, caminho] of [
   ['OlliChatScreen (chat)', '../src/screens/OlliChatScreen.tsx'],
   ['DiagnosticoIAScreen (diagnóstico)', '../src/screens/DiagnosticoIAScreen.tsx'],
   ['OlliVozScreen (voz, modo conversa)', '../src/screens/OlliVozScreen.tsx'],
+  // Autopilot gera cadastro, itens e documentos por IA a partir de arquivo/conversa: é
+  // superfície generativa também (a política de IA da Google Play pede denúncia em todas).
+  ['AutopilotScreen (prévia do Autopilot)', '../src/screens/AutopilotScreen.tsx'],
 ] as const) {
   const telaSrc = semComentarios(ler(caminho));
   checar(`${nome} importa SinalizarIA`, telaSrc.includes("import { SinalizarIA } from"), true);

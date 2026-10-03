@@ -4,30 +4,34 @@ import {
   interpretarEstadoOferta,
   interpretarInicioTrial,
   reservaAmbienteLocal,
-  reservaIndisponivel,
+  envioSemRegistro,
   type CanalEnvioOrcamento,
   type ReservaEnvioOrcamento,
   type EstadoOfertaComercial,
   type InicioTrialPro,
 } from './limitesComerciais';
 
-/** Reserva um orçamento mensal; repetir o mesmo id no mês é idempotente. */
+/**
+ * REGISTRA o envio de um orçamento (não é mais um portão: o Grátis é ilimitado —
+ * ver `limitesComerciais.ts`). Repetir o mesmo id no mês é idempotente. Nunca
+ * lança e nunca barra: falha de registro vira `motivo: 'sem_registro'`.
+ */
 export async function reservarEnvioOrcamento(
   orcamentoId: string,
   canal: CanalEnvioOrcamento,
 ): Promise<ReservaEnvioOrcamento> {
   const referencia = orcamentoId.trim();
-  if (!referencia || referencia.length > 160) return reservaIndisponivel();
+  if (!referencia || referencia.length > 160) return envioSemRegistro();
   if (!supabase) return reservaAmbienteLocal();
   try {
     const { data, error } = await supabase.rpc('reservar_envio_orcamento_gratis', {
       p_orcamento_id: referencia,
       p_canal: canal,
     });
-    if (error) return reservaIndisponivel();
+    if (error) return envioSemRegistro();
     return interpretarReservaEnvio(data);
   } catch {
-    return reservaIndisponivel();
+    return envioSemRegistro();
   }
 }
 

@@ -25,9 +25,21 @@
  * `valorACobrar: null` (o app não soube quanto já foi pago) = sem Pix, nunca o total.
  * `#pagar` no fim do link rola até o bloco de pagamento. Proposta vencida não aceita
  * aprovação (409) e a página diz que venceu.
+ *
+ * PLANO DO DONO (Grátis ilimitado, 01/10/2026): a página lê o plano EFETIVO de quem
+ * publicou o link (`plano_comercial_para_usuario`, a mesma RPC que a IA usa) e
+ * decide duas coisas pela tabela única `src/services/entitlements.ts`:
+ *  - o selo "Feito com OLLI" no rodapé — fica no Grátis e quando não deu para
+ *    confirmar o plano (o lado seguro do "não sei" é o selo FICAR); some no Pro/Empresa;
+ *  - o "Pagar com Pix" — é recurso do Pro (`link_pagamento`). No Grátis a página
+ *    diz "combine a forma de pagamento" (o cliente final nunca vê paywall); quando a
+ *    leitura do plano FALHA, diz que o pagamento não carregou e pede para recarregar —
+ *    nunca mostra o Pix sem confirmar, nem finge que não existe.
  */
 import { gerarPixCopiaECola, normalizarChavePix, pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
 import { qrSvg } from '../../src/utils/qrcode.ts';
+import { seloOlliHtml } from '../../src/utils/marcaOlli.ts';
+import { RECURSO_REMOVE_MARCA, temAcessoRecurso } from '../../src/services/entitlements.ts';
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
 
 const ACCENT = '#0B6FCE';
@@ -118,7 +130,12 @@ function sbHeaders(env, extra = {}) {
 // aplicada quando o worker subir — pedir uma coluna inexistente derruba a query
 // inteira (PostgREST 400). O worker grava o motivo em AMBAS, então ler
 // resposta_cliente já basta para a página.
-const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente';
+// `user_id` (dono do link) entra para a página ler o PLANO de quem publicou: é ele
+// que decide o selo "Feito com OLLI" e o "Pagar com Pix" (ver o topo do arquivo).
+// A coluna existe desde o schema base (a RLS `orcamentos_publicos_owner` usa ela).
+// `orcamento_id` (schema base) entra para o sinal do termômetro saber de qual
+// orçamento do dono é a interação (POST /o/<token>/sinal); nunca vai para o HTML.
+const SELECT_COLS = 'token,status,cliente_nome,prestador_nome,prestador_whatsapp,numero,valor_total,dados,resposta_cliente,user_id,orcamento_id';
 // Coluna do "Já paguei" (migration 20260930120300_link_pagamento_informado.sql).
 // Pedida numa 1ª tentativa; se o banco ainda não tem a coluna (PostgREST 400), a
 // leitura cai para SELECT_COLS e a linha volta marcada `_semPagamentoInformado` —
@@ -427,6 +444,152 @@ async function registrarEvento(env, token, evento, extra = {}) {
   }
 }
 
+// ─── SINAIS DE INTERAÇÃO — o TERMÔMETRO do orçamento ─────────
+// POST /o/<token>/sinal  (navigator.sendBeacon da própria página do cliente)
+//
+// Só MÉTRICA de interação (migration 20261003102000_orcamento_eventos.sql): abriu,
+// tempo visível, viu o preço, tocou em aprovar/pagar. Nada de IP (nem hash), nada
+// de user-agent, nada de texto livre — o corpo aceito é {tipo, sessao, segundos}
+// e qualquer outro campo é ignorado. `sessao` é aleatória, gerada na aba e só
+// serve para "recarregar a página" não contar como nova abertura.
+//
+// Quem conta "abriu" é o JavaScript da página: o pré-visualizador do WhatsApp não
+// executa script, então a prévia do link na conversa não vira abertura falsa.
+//
+// Nunca derruba nada: a página do cliente não espera esta resposta (beacon) e a
+// gravação é best-effort. Resposta 204 quando aceitou; erros com código honesto.
+
+export const TIPOS_SINAL = Object.freeze(['abertura', 'tempo', 'preco_visto', 'clique_aprovar', 'clique_pagar']);
+const SESSAO_RE = /^[0-9a-f]{16}$/;
+/** Teto de segundos de UM envio de 'tempo' (aba esquecida aberta não vira 8 horas). */
+export const MAX_SEGUNDOS_POR_ENVIO = 1800;
+/** Teto de eventos por link por hora: acima disso é robô ou bug, não cliente. */
+export const TETO_SINAIS_POR_HORA = 120;
+/** Eventos mais velhos que isto são apagados pelo job diário (LGPD: retenção). */
+export const DIAS_RETENCAO_SINAIS = 180;
+
+/**
+ * Valida o corpo de um sinal. PURA. Devolve `{ tipo, sessao, segundos }` ou `null`
+ * (corpo inválido). `segundos` só existe em 'tempo' (inteiro 1..1800, arredondado
+ * e com teto); nos demais é sempre `null`, mesmo que o corpo mande outra coisa.
+ */
+export function lerSinal(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const tipo = typeof body.tipo === 'string' ? body.tipo : '';
+  if (!TIPOS_SINAL.includes(tipo)) return null;
+  const sessao = typeof body.sessao === 'string' && SESSAO_RE.test(body.sessao) ? body.sessao : null;
+  if (!sessao) return null;
+  let segundos = null;
+  if (tipo === 'tempo') {
+    const n = Number(body.segundos);
+    if (!Number.isFinite(n) || n < 1) return null;
+    segundos = Math.min(MAX_SEGUNDOS_POR_ENVIO, Math.round(n));
+  }
+  return { tipo, sessao, segundos };
+}
+
+/** Já passou do teto de eventos deste link na última hora? Falha de leitura = "sim" (não grava). */
+async function sinaisDemaisNaUltimaHora(env, token, agora = new Date()) {
+  try {
+    const desde = new Date(agora.getTime() - 3_600_000).toISOString();
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/orcamento_eventos` +
+        `?token=eq.${encodeURIComponent(token)}` +
+        `&criado_em=gte.${encodeURIComponent(desde)}` +
+        `&select=id&limit=${TETO_SINAIS_POR_HORA + 1}`,
+      { headers: sbHeaders(env) },
+    );
+    if (!r.ok) return { erro: true, status: r.status };
+    const arr = await r.json().catch(() => null);
+    if (!Array.isArray(arr)) return { erro: true, status: 502 };
+    return { erro: false, demais: arr.length > TETO_SINAIS_POR_HORA };
+  } catch {
+    return { erro: true, status: 503 };
+  }
+}
+
+export async function registrarSinal(token, request, env) {
+  if (!validToken(token)) return json({ ok: false, erro: 'token_invalido' }, 400);
+  // Rate limit PRÓPRIO por IP (SINAL_RL), separado do LINK_RL: o beacon não pode
+  // gastar a cota de quem vai tocar em "Aprovar" logo depois. Rota de métrica, não
+  // de dinheiro: limiter indisponível deixa passar (o teto por link abaixo segura).
+  if (env.SINAL_RL) {
+    const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+    try {
+      const { success } = await env.SINAL_RL.limit({ key: ip });
+      if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+    } catch {
+      // binding com problema: segue para o teto por link
+    }
+  }
+  let body = null;
+  try {
+    const raw = await request.text();
+    if (raw.length > 512) return json({ ok: false, erro: 'payload_grande' }, 413);
+    body = raw ? JSON.parse(raw) : null;
+  } catch {
+    body = null;
+  }
+  const sinal = lerSinal(body);
+  if (!sinal) return json({ ok: false, erro: 'sinal_invalido' }, 400);
+
+  const row = await getRow(env, token);
+  if (row && row.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (!row) return json({ ok: false, erro: 'nao_encontrado' }, 404);
+  if (!UUID_RE.test(String(row.user_id || '')) || !row.orcamento_id) {
+    return json({ ok: false, erro: 'indisponivel' }, 503);
+  }
+
+  const teto = await sinaisDemaisNaUltimaHora(env, token);
+  // Tabela ausente (migration não aplicada) ou backend fora: o termômetro está
+  // DESLIGADO e a resposta diz isso — nunca finge que gravou.
+  if (teto.erro) return json({ ok: false, erro: 'termometro_indisponivel' }, 503);
+  if (teto.demais) return json({ ok: false, erro: 'muitos_sinais' }, 429);
+
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/orcamento_eventos`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      body: JSON.stringify({
+        token,
+        user_id: row.user_id,
+        orcamento_id: row.orcamento_id,
+        tipo: sinal.tipo,
+        sessao: sinal.sessao,
+        segundos: sinal.segundos,
+      }),
+    });
+    if (!r.ok) return json({ ok: false, erro: 'termometro_indisponivel' }, 503);
+  } catch {
+    return json({ ok: false, erro: 'termometro_indisponivel' }, 503);
+  }
+  return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+}
+
+/**
+ * Retenção (LGPD): apaga eventos de interação com mais de 180 dias. Chamado pelo
+ * cron de minuto, mas só age às 06:17 UTC (uma vez por dia). Best-effort: tabela
+ * ausente ou backend fora = tenta no dia seguinte. Devolve se rodou.
+ */
+export function horaDeLimparSinais(agora) {
+  return agora.getUTCHours() === 6 && agora.getUTCMinutes() === 17;
+}
+
+export async function limparEventosAntigos(env, agora = new Date()) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return false;
+  if (!horaDeLimparSinais(agora)) return false;
+  try {
+    const limite = new Date(agora.getTime() - DIAS_RETENCAO_SINAIS * 86_400_000).toISOString();
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/orcamento_eventos?criado_em=lt.${encodeURIComponent(limite)}`,
+      { method: 'DELETE', headers: sbHeaders(env, { Prefer: 'return=minimal' }) },
+    );
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 // ─── POST /o/<token> — registra resposta do cliente ──────────
 export async function responderLink(token, request, env) {
   if (!validToken(token)) return json({ ok: false, erro: 'token_invalido' }, 400);
@@ -555,6 +718,70 @@ function acaoPreSelecionada(request) {
   }
 }
 
+// ─── plano do dono do link (selo + Pix) ──────────────────────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PLANOS = new Set(['gratis', 'pro', 'empresa']);
+
+/**
+ * Plano EFETIVO de quem publicou o link: `{ confirmado:true, plano }` ou
+ * `{ confirmado:false }`. A RPC só é executável por service_role e já resolve
+ * tenant (membro de equipe herda o plano do dono), assinatura, override do admin e
+ * teste do Pro. Qualquer falha (rede, 4xx/5xx, JSON estranho, linha sem dono) é
+ * "não sei" — NUNCA "grátis" e nunca "pago".
+ */
+export async function planoDoDonoDoLink(env, row) {
+  const userId = row && typeof row.user_id === 'string' ? row.user_id : '';
+  if (!UUID_RE.test(userId)) return { confirmado: false };
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/plano_comercial_para_usuario`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_user_id: userId }),
+    });
+    if (!r.ok) return { confirmado: false };
+    const plano = await r.json().catch(() => null);
+    return PLANOS.has(plano) ? { confirmado: true, plano } : { confirmado: false };
+  } catch {
+    return { confirmado: false };
+  }
+}
+
+/**
+ * O que a página mostra para este plano — regra PURA (testada em
+ * worker/scripts/teste-link-pix.js). Três estados no pagamento:
+ *  - `liberado`      → plano confirmado com `link_pagamento`: mostra o Pix;
+ *  - `bloqueado`     → plano confirmado sem o recurso (Grátis): "combine com o prestador";
+ *  - `indeterminado` → não deu para ler o plano: "o pagamento não carregou, recarregue".
+ * O selo some só com o plano CONFIRMADO com `remove_olli_brand`.
+ */
+export function regrasDaPagina(leitura) {
+  if (!leitura || leitura.confirmado !== true || !PLANOS.has(leitura.plano)) {
+    return { mostrarSelo: true, pagamento: 'indeterminado' };
+  }
+  return {
+    mostrarSelo: !temAcessoRecurso(leitura.plano, RECURSO_REMOVE_MARCA),
+    pagamento: temAcessoRecurso(leitura.plano, 'link_pagamento') ? 'liberado' : 'bloqueado',
+  };
+}
+
+/**
+ * O GET veio de um robô de PRÉVIA de link (WhatsApp, Facebook/Instagram, Telegram,
+ * Slack, X, Discord, LinkedIn, Skype, iMessage...)? PURA. Lista de assinaturas
+ * específicas (nada de /bot/i genérico: "CUBOT" é marca de celular). O navegador
+ * dentro do WhatsApp usa o user-agent do Chrome/Safari, não o "WhatsApp/x.y" do
+ * robô de prévia — então o cliente de verdade continua contando.
+ */
+const PRE_VISUALIZADORES_RE =
+  /^WhatsApp\/|facebookexternalhit|Facebot|meta-externalagent|TelegramBot|Slackbot|Slack-ImgProxy|Twitterbot|Discordbot|LinkedInBot|SkypeUriPreview|Googlebot|bingbot|Applebot|Pinterestbot|redditbot|Embedly|Iframely|vkShare/i;
+export function ehPreVisualizadorDeLink(request) {
+  try {
+    const ua = request && request.headers ? String(request.headers.get('User-Agent') || '') : '';
+    return PRE_VISUALIZADORES_RE.test(ua);
+  } catch {
+    return false;
+  }
+}
+
 export async function renderLinkPage(token, env, request) {
   const preSelecao = acaoPreSelecionada(request);
   if (!validToken(token)) return html(pageErro('Link inválido', 'Confira o endereço que você recebeu.'), 400);
@@ -565,8 +792,11 @@ export async function renderLinkPage(token, env, request) {
   // TRILHA: registra 'visualizado' na 1ª abertura do dia (dedupe por dia). É
   // best-effort e roda ANTES de responder — como é 1x/dia por token, o custo é
   // desprezível e evita depender de waitUntil (que exigiria mexer no router).
+  // Pré-visualizador de link (o WhatsApp do PRÓPRIO prestador busca a URL para
+  // montar a prévia ao colar o link) NÃO é o cliente abrindo: não vira
+  // 'visualizado' — senão o app e o termômetro diriam "abriu" sem ninguém abrir.
   try {
-    if (!(await visualizadoHoje(env, token))) {
+    if (!ehPreVisualizadorDeLink(request) && !(await visualizadoHoje(env, token))) {
       const ctx = await contextoTrilha(token, request);
       await registrarEvento(env, token, 'visualizado', { ipHash: ctx.ipHash, uaCurto: ctx.uaCurto });
       // Carimba a 1ª visualização (idempotente por `visualizado_em=is.null`): é o
@@ -577,11 +807,14 @@ export async function renderLinkPage(token, env, request) {
     // nunca deixa a trilha atrapalhar a entrega da página
   }
 
-  return html(pageOrcamento(row, preSelecao));
+  // Plano do dono: decide o selo e o Pix. Lido DEPOIS da trilha, e a falha vira
+  // o terceiro estado (ver `regrasDaPagina`), nunca uma página quebrada.
+  const regras = regrasDaPagina(await planoDoDonoDoLink(env, row));
+  return html(pageOrcamento({ ...row, _regras: regras }, preSelecao));
 }
 
 // ─── páginas ─────────────────────────────────────────────────
-function shell(inner, accentRaw = ACCENT) {
+function shell(inner, accentRaw = ACCENT, mostrarSelo = true) {
   const accent = safeHexColor(accentRaw, ACCENT);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -674,13 +907,11 @@ function shell(inner, accentRaw = ACCENT) {
   .btn-paguei{width:100%;margin-top:10px;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
   .pix-nota{font-size:11.5px;color:#5A6575;margin-top:6px;line-height:1.4}
   .pix-avisado{margin-top:12px;font-size:12.5px;color:#1A7F4B;background:#E9F9F1;border:1px solid #BFE6CF;border-radius:11px;padding:10px;line-height:1.4}
-  .olli-cta{text-align:center;margin:22px auto 10px;font-size:12px}
-  .olli-cta a{color:#8A95A6;text-decoration:none;font-weight:600}
-  .olli-cta a b{color:#0B6FCE}
+  .olli-cta{text-align:center;margin:22px auto 10px}
 </style>
 </head>
 <body><div class="wrap">${inner}</div>
-<div class="olli-cta"><a href="https://olliorcamentos.online/?utm_source=portal_cliente&utm_medium=rodape&utm_campaign=feito_com_olli" target="_blank" rel="noopener">Feito com <b>OLLI</b> · crie seu orçamento grátis</a></div>
+${mostrarSelo ? `<div class="olli-cta">${seloOlliHtml('link_orcamento')}</div>` : ''}
 </body>
 </html>`;
 }
@@ -702,6 +933,15 @@ function pageErro(titulo, sub) {
  * "Já paguei" some quando o banco não tem a coluna (`_semPagamentoInformado`).
  */
 function blocoPagamento(row, d, total, numero, nomePrestador) {
+  // Recurso do Pro (`link_pagamento`), decidido pelo plano do dono em renderLinkPage.
+  // Linha sem regras (chamada antiga/teste) = "não sei": não mostra Pix.
+  const pagamento = row && row._regras ? row._regras.pagamento : 'indeterminado';
+  if (pagamento === 'indeterminado') {
+    return `<div class="pix-box" id="pagar"><div class="pix-t">Pagamento</div><div class="pix-sub">Não consegui carregar a forma de pagamento agora. Recarregue a página em instantes ou combine diretamente com ${esc(nomePrestador)}.</div></div>`;
+  }
+  if (pagamento !== 'liberado') {
+    return `<div class="pix-box" id="pagar"><div class="pix-t">Pagamento</div><div class="pix-sub">Combine a forma de pagamento diretamente com ${esc(nomePrestador)}.</div></div>`;
+  }
   const pix = pixDaPagina(d, total, numero);
   const informadoEm = row && typeof row[COL_PAGAMENTO] === 'string' ? formatData(row[COL_PAGAMENTO]) : '';
   const podeInformar = pix && !row._semPagamentoInformado && !informadoEm;
@@ -747,6 +987,70 @@ function blocoPagamento(row, d, total, numero, nomePrestador) {
       ${avisado}
       ${botaoInformar}
     </div>`;
+}
+
+/**
+ * Script dos SINAIS do termômetro (ver `registrarSinal`). Exportado para o teste.
+ * Só métrica: abriu (1x por aba), segundos com a página visível, o total ficou na
+ * tela por 1,5 s, tocou em aprovar/pagar. Beacon para o mesmo domínio (o CSP já
+ * restringe a `connect-src 'self'`); sem cookie, sem armazenamento além do
+ * sessionStorage da aba. Qualquer falha é silenciosa: a página nunca depende disso.
+ */
+export function scriptSinais() {
+  return `
+    (function(){
+      var destino = location.pathname.replace(/\\/+$/, '') + '/sinal';
+      var chave = 'olli_sessao_' + location.pathname;
+      var sessao = '';
+      try { sessao = sessionStorage.getItem(chave) || ''; } catch(e){}
+      var nova = !/^[0-9a-f]{16}$/.test(sessao);
+      if (nova) {
+        try {
+          var bytes = new Uint8Array(8);
+          crypto.getRandomValues(bytes);
+          sessao = '';
+          for (var i = 0; i < bytes.length; i++) { sessao += ('0' + bytes[i].toString(16)).slice(-2); }
+          try { sessionStorage.setItem(chave, sessao); } catch(e){}
+        } catch(e){ return; }
+      }
+      function sinal(tipo, segundos){
+        var corpo = JSON.stringify(segundos ? { tipo: tipo, sessao: sessao, segundos: segundos } : { tipo: tipo, sessao: sessao });
+        try { if (navigator.sendBeacon && navigator.sendBeacon(destino, corpo)) return; } catch(e){}
+        try { fetch(destino, { method: 'POST', body: corpo, keepalive: true, headers: { 'Content-Type': 'text/plain' } }).catch(function(){}); } catch(e){}
+      }
+      window.olliSinal = sinal;
+      if (nova) sinal('abertura');
+
+      var visivelDesde = document.visibilityState === 'visible' ? Date.now() : 0;
+      var acumulado = 0;
+      function fecharTempo(){
+        if (visivelDesde) { acumulado += (Date.now() - visivelDesde) / 1000; visivelDesde = 0; }
+        var s = Math.min(${MAX_SEGUNDOS_POR_ENVIO}, Math.round(acumulado));
+        acumulado = 0;
+        if (s >= 2) sinal('tempo', s);
+      }
+      document.addEventListener('visibilitychange', function(){
+        if (document.visibilityState === 'hidden') fecharTempo();
+        else if (!visivelDesde) visivelDesde = Date.now();
+      });
+      window.addEventListener('pagehide', fecharTempo);
+
+      var preco = document.getElementById('preco');
+      var vistas = 0;
+      var espera = null;
+      if (preco && 'IntersectionObserver' in window) {
+        new IntersectionObserver(function(entradas){
+          entradas.forEach(function(e){
+            if (e.isIntersecting && e.intersectionRatio >= 0.6) {
+              if (!espera) espera = setTimeout(function(){
+                espera = null;
+                if (vistas < 12) { vistas++; sinal('preco_visto'); }
+              }, 1500);
+            } else if (espera) { clearTimeout(espera); espera = null; }
+          });
+        }, { threshold: [0, 0.6, 1] }).observe(preco);
+      }
+    })();`;
 }
 
 function pageOrcamento(row, preSelecao = '') {
@@ -887,10 +1191,11 @@ function pageOrcamento(row, preSelecao = '') {
         ${validadePill}
       </div>
       ${itens.length ? `<div class="items">${itensHtml}</div>` : ''}
-      <div class="total"><span class="total-l">TOTAL</span><span class="total-v">${formatBRL(total)}</span></div>
+      <div class="total" id="preco"><span class="total-l">TOTAL</span><span class="total-v">${formatBRL(total)}</span></div>
       ${condsHtml}
       ${actionsHtml}
       <div class="foot">enviado com segurança pela OLLI</div>
+      <div class="foot" style="margin-top:6px;font-weight:500">O prestador vê quando esta página é aberta e por quanto tempo, sem saber quem abriu.</div>
     </div>
   </div>
   <script>
@@ -931,6 +1236,7 @@ function pageOrcamento(row, preSelecao = '') {
       alvos.forEach(function(b){ b.style.opacity='.5'; b.style.pointerEvents='none'; });
       var corpo = { acao: acao };
       if (acao === 'recusar' && motivo){ corpo.mensagem = motivo; }
+      if (acao === 'aprovar' && window.olliSinal){ window.olliSinal('clique_aprovar'); }
       try {
         var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpo) });
         var j = await r.json();
@@ -956,6 +1262,7 @@ function pageOrcamento(row, preSelecao = '') {
       var t = document.getElementById('pixCodigo');
       var b = document.getElementById('btnCopiar');
       if (!t) return;
+      if (window.olliSinal){ window.olliSinal('clique_pagar'); }
       var ok = function(){ if (b){ b.textContent = 'Código copiado ✓'; } };
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -971,6 +1278,7 @@ function pageOrcamento(row, preSelecao = '') {
     async function informarPagamento(){
       if (avisando) return;
       avisando = true;
+      if (window.olliSinal){ window.olliSinal('clique_pagar'); }
       var b = document.getElementById('btnPaguei');
       if (b){ b.style.opacity='.5'; b.style.pointerEvents='none'; }
       try {
@@ -1006,7 +1314,9 @@ function pageOrcamento(row, preSelecao = '') {
       var b = document.getElementById('btnAprovar');
       if (b) { b.classList.add('destacado'); if (b.focus) b.focus(); }
     })();
+${scriptSinais()}
   </script>`;
 
-  return shell(inner, accent);
+  // Selo: só some com plano CONFIRMADO sem selo. Linha sem regras = selo fica.
+  return shell(inner, accent, !(row._regras && row._regras.mostrarSelo === false));
 }

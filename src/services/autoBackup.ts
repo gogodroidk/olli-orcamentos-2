@@ -32,8 +32,10 @@ import {
   inserirBackupVersionado,
   podarBackupsVersionados,
   existeBackupDiarioRecente,
-  getUltimoBackupSemanalData,
+  getUltimoBackupData,
 } from './backup';
+import { agoraDoServidorMs } from './relogioServidor';
+import { decidirBackupSemanal, horasDesdeCarimboLocal } from './rotacaoBackup';
 
 const HORAS_ENTRE_DIARIOS = 24;
 const DIAS_ENTRE_SEMANAIS = 7;
@@ -69,6 +71,13 @@ async function autoBackupHabilitado(): Promise<boolean> {
  *  4) Se o último 'semanal' tem mais de 7 dias (ou nunca existiu), insere
  *     também um 'semanal' a partir do MESMO snapshot (evita gerar/serializar
  *     os dados duas vezes).
+ *
+ * RELÓGIO (02/10/2026): datas do servidor só se comparam com a hora do SERVIDOR.
+ * O passo 2 usa `agoraDoServidorMs()` (medida pelo cabeçalho `Date` das
+ * respostas); sem medida, o backup fica para a próxima abertura. O passo 4
+ * compara o `criado_em` do diário que acabou de entrar com o do último semanal.
+ * Um celular adiantado criava um semanal por abertura e a retenção apagava as
+ * cópias boas (ver services/rotacaoBackup.ts).
  *  5) Poda o excedente: mantém 7 'diario' + 4 'semanal' mais recentes (todos
  *     os 'manual' ficam intocados — não são gatilho nem alvo de poda aqui).
  * Nunca lança: qualquer falha em qualquer etapa é engolida (best-effort).
@@ -107,15 +116,21 @@ export async function maybeAutoBackup(): Promise<void> {
       return;
     }
 
+    // Carimbo local: as duas pontas no relógio do aparelho. Carimbo "no futuro"
+    // (a pessoa acertou a hora) não vale — senão travaria o backup por semanas.
     const ultimoLocal = await AsyncStorage.getItem(AUTO_BACKUP_ULTIMO_KEY).catch(() => null);
-    if (ultimoLocal) {
-      const horasDesde = (Date.now() - Date.parse(ultimoLocal)) / (1000 * 60 * 60);
-      if (Number.isFinite(horasDesde) && horasDesde < HORAS_ENTRE_DIARIOS) return;
-    }
+    const horasDesde = horasDesdeCarimboLocal(ultimoLocal, Date.now());
+    if (horasDesde !== null && horasDesde < HORAS_ENTRE_DIARIOS) return;
 
     // 2ª camada do throttle (fonte de verdade): cobre aparelho novo/reinstalado,
     // onde o carimbo local não existe mas já pode haver backup de hoje na nuvem.
-    if (await existeBackupDiarioRecente(HORAS_ENTRE_DIARIOS)) {
+    // A janela é medida na hora do SERVIDOR; sem saber essa hora, ou se a leitura
+    // falhar, não decide nada agora ("não sei" não vira backup extra).
+    const agoraServidor = agoraDoServidorMs();
+    if (agoraServidor === null) return;
+    const diarioRecente = await existeBackupDiarioRecente(HORAS_ENTRE_DIARIOS, agoraServidor);
+    if (diarioRecente === null) return;
+    if (diarioRecente) {
       await AsyncStorage.setItem(AUTO_BACKUP_ULTIMO_KEY, new Date().toISOString()).catch(() => {});
       return;
     }
@@ -125,12 +140,12 @@ export async function maybeAutoBackup(): Promise<void> {
     await AsyncStorage.setItem(AUTO_BACKUP_ULTIMO_KEY, new Date().toISOString()).catch(() => {});
 
     // Semanal: se o último tem mais de 7 dias (ou nunca houve), gera um a mais
-    // a partir do MESMO snapshot já em mãos — sem exportar os dados de novo.
-    const ultimoSemanal = await getUltimoBackupSemanalData();
-    const diasDesdeSemanal = ultimoSemanal
-      ? (Date.now() - Date.parse(ultimoSemanal)) / (1000 * 60 * 60 * 24)
-      : Infinity;
-    if (diasDesdeSemanal >= DIAS_ENTRE_SEMANAIS) {
+    // a partir do MESMO snapshot já em mãos — sem exportar os dados de novo. As
+    // duas datas são do servidor: o `criado_em` do diário que acabou de entrar
+    // é o "agora" e o do último semanal é a referência.
+    const agoraDoBackup = await getUltimoBackupData('diario');
+    const ultimoSemanal = await getUltimoBackupData('semanal');
+    if (decidirBackupSemanal(agoraDoBackup, ultimoSemanal, DIAS_ENTRE_SEMANAIS) === 'criar') {
       await inserirBackupVersionado('semanal', snapshot);
     }
 

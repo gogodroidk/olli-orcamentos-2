@@ -20,10 +20,11 @@ import {
   temAcessoRecurso,
   disponibilidadeRecurso,
   IA_USOS_GRATIS_MES,
-  ORCAMENTOS_ENVIADOS_GRATIS_MES,
+  RECURSOS_EM_ORDEM,
   TRIAL_PRO_DIAS,
   type Recurso,
 } from '../services/entitlements';
+import { FRASE_GRATIS, PLANOS_BASE as TABELA_PLANOS, ROTULO_RECURSO, frasePro, type BulletPlano } from '../services/planosBase';
 import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnvios';
 import type { EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
@@ -36,16 +37,18 @@ import {
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
+import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
 import {
   ESTADO_PLAY_BILLING,
   carregarOfertasPlay,
   comprarNaPlay,
+  gerenciarAssinaturaNaPlay,
   restaurarComprasPlay,
   type ResultadoOfertasPlay,
 } from '../services/playBilling';
-import { liberacaoPlayConfirmada, ofertaPara, type OfertaPlay, type PlanoPlay } from '../services/playBillingRegras';
-import { getAssinaturaNaPlay } from '../services/assinatura';
+import { idProdutoPlay, liberacaoPlayConfirmada, ofertaPara, produtoPlay, type OfertaPlay, type PlanoPlay } from '../services/playBillingRegras';
+import { getAssinaturaNaPlay, type AssinaturaNaPlay } from '../services/assinatura';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -92,14 +95,25 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 // bens digitais; só a web contrata) moram em config/loja.ts — flag única do app.
 
 /**
- * VENDA PELA PRÓPRIA GOOGLE PLAY (Play Billing via RevenueCat). Não é compra
+ * VENDA PELA PRÓPRIA GOOGLE PLAY (Play Billing direto, `expo-iap`). Não é compra
  * externa — é a loja cobrando —, então convive com `BUILD_PLAY_SEM_COMPRA_EXTERNA`:
  * o Android continua sem Stripe, Pix e WhatsApp comercial, e ganha só o botão que
- * abre a folha de pagamento da Play. Ligada apenas com a chave pública do RevenueCat
- * no build, fora do Expo Go (ver services/playBillingRegras.ts). Desligada = a tela
- * fica exatamente como antes: informa, não vende. iOS: sempre desligada.
+ * abre a folha de pagamento da Play.
+ *
+ * Duas travas, nesta ordem:
+ *  1. `VENDA_PELA_PLAY` — o BINÁRIO sabe vender (Android, fora do Expo Go, módulo
+ *     nativo presente; ver services/playBillingRegras.ts). iOS: sempre falso.
+ *  2. O SERVIDOR (`GET /play/config`, lido dentro de `carregarOfertasPlay`): com a
+ *     venda desligada lá, as ofertas voltam 'indisponivel' e a tela diz que a
+ *     assinatura pelo app está indisponível no momento — sem preço nenhum.
+ * NO ANDROID NUNCA APARECE O PREÇO DA WEB: só o que a loja devolver.
  */
 const VENDA_PELA_PLAY = ESTADO_PLAY_BILLING === 'ligado';
+
+/** O estado das ofertas permite mostrar a venda pela Play (abas, preço da loja, rodapé)? */
+function vendaPlayVisivel(estado: EstadoOfertasPlay['estado']): boolean {
+  return VENDA_PELA_PLAY && estado !== 'indisponivel' && estado !== 'desligado';
+}
 
 /** Ofertas da Play com o estado de carga explícito (nunca "não carregou" = "não há"). */
 type EstadoOfertasPlay = { estado: 'carregando' } | ResultadoOfertasPlay;
@@ -107,6 +121,8 @@ type EstadoOfertasPlay = { estado: 'carregando' } | ResultadoOfertasPlay;
 /** O que o card de um plano pago precisa para vender pela Play (`null` = venda desligada). */
 interface VendaPlayCard {
   estado: EstadoOfertasPlay['estado'];
+  /** Texto do erro de carga, quando a loja explicou (ex.: Play Store indisponível). */
+  mensagemErro: string | null;
   /** Oferta deste plano no período da aba, com o preço que a LOJA devolveu. */
   oferta: OfertaPlay | null;
   comprando: boolean;
@@ -133,63 +149,30 @@ interface Plano {
   icon: string;
   destaque?: boolean;
   atual?: boolean;
-  beneficios: string[];
+  /** Bullets da tabela única (`planosBase.ts`), com o "em breve" de cada um. */
+  bullets: readonly BulletPlano[];
   cta: string;
 }
 
-// Lista base dos planos. Preço NUNCA é literal aqui — vem de precosPlanos (a
-// fonte conferida contra a Stripe). `atual` é decidido em runtime (plano lido de
-// getPlanoAtual()), por isso não entra aqui como valor fixo.
-const PLANOS_BASE: Omit<Plano, 'atual'>[] = [
-  {
-    id: 'gratis',
-    nome: 'Grátis',
-    preco: null,
-    tagline: 'Tudo que você precisa pra começar a fechar negócio.',
-    icon: 'rocket-launch-outline',
-    cta: 'Seu plano atual',
-    beneficios: [
-      `Até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados ou PDFs por mês`,
-      'Rascunhos, recibos, clientes e histórico sem limite',
-      'Catálogo de serviços e produtos',
-      'Clientes e agenda',
-      'Diagnóstico por código de erro (offline)',
-      'Link do orçamento para o cliente',
-    ],
-  },
-  {
-    id: 'pro',
-    nome: 'Pro',
-    preco: PRECO_PRO,
-    tagline: 'Para o autônomo que quer vender mais e ganhar tempo.',
-    icon: 'crown-outline',
-    destaque: true,
-    cta: 'Assinar Pro',
-    beneficios: [
-      'Tudo do plano Grátis',
-      'IA incluída com uso justo diário (voz, chat e diagnóstico)',
-      'Relatórios de faturamento e conversão',
-      'Metas de vendas e acompanhamento por período',
-      'PDF sem a marca OLLI e modelos premium',
-      'Suporte prioritário por WhatsApp',
-    ],
-  },
-  {
-    id: 'empresa',
-    nome: 'Empresa',
-    preco: PRECO_EMPRESA,
-    tagline: 'Para equipes que atendem em campo todos os dias.',
-    icon: 'office-building-outline',
-    cta: 'Assinar Empresa',
-    beneficios: [
-      'Tudo do plano Pro',
-      'Vários técnicos e permissões por papel',
-      'Equipe ao vivo no mapa (em breve)',
-      'Painel de gestão da empresa (em breve)',
-      'Suporte prioritário',
-    ],
-  },
-];
+/** O que é só desta TELA (ícone, CTA, fonte de preço); o resto vem da tabela única. */
+const APRESENTACAO: Record<PlanoId, { preco: FontePreco | null; icon: string; cta: string }> = {
+  gratis: { preco: null, icon: 'rocket-launch-outline', cta: 'Seu plano atual' },
+  pro: { preco: PRECO_PRO, icon: 'crown-outline', cta: 'Assinar Pro' },
+  empresa: { preco: PRECO_EMPRESA, icon: 'office-building-outline', cta: 'Assinar Empresa' },
+};
+
+// Lista base dos planos. Nome, tagline e benefícios vêm de `planosBase.ts` (a tabela
+// ÚNICA que o painel, a landing e os e-mails também leem — Grátis ilimitado desde
+// 01/10/2026). Preço NUNCA é literal aqui: vem de precosPlanos (a fonte conferida
+// contra a Stripe). `atual` é decidido em runtime (plano lido de getPlanoAtual()).
+const PLANOS_BASE: Omit<Plano, 'atual'>[] = TABELA_PLANOS.map((p) => ({
+  id: p.id,
+  nome: p.nome,
+  tagline: p.tagline,
+  destaque: p.destaque,
+  bullets: p.bullets,
+  ...APRESENTACAO[p.id],
+}));
 
 // ─── Comparativo Grátis × Pro × Empresa ─────────────────────────────────────
 // A matriz é DERIVADA de `entitlements.ts` (temAcessoRecurso), não escrita à
@@ -206,42 +189,22 @@ interface LinhaComparativo {
 
 /** Recursos base (não gateados): livres em todos os planos — a alma do Grátis. */
 const LINHAS_BASE: LinhaComparativo[] = [
+  { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: 'Ilimitados', pro: 'Ilimitados', empresa: 'Ilimitados' },
   { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
-  { rotulo: 'Orçamentos enviados ou PDFs por mês', gratis: `${ORCAMENTOS_ENVIADOS_GRATIS_MES}/mês`, pro: 'Sem limite mensal', empresa: 'Sem limite mensal' },
   { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
   { rotulo: 'Diagnóstico por código de erro (offline)', gratis: true, pro: true, empresa: true },
   { rotulo: 'Link do orçamento para o cliente', gratis: true, pro: true, empresa: true },
 ];
 
-/** Rótulo humano de cada recurso gateado. Fiel às descrições em entitlements.ts —
- *  a leitura comercial do que o mapa RECURSOS_POR_PLANO já decide em código. */
-const RECURSO_LABEL: Record<Recurso, string> = {
-  ia_ilimitada: 'IA incluída com uso justo diário (voz, chat e diagnóstico)',
-  relatorios: 'Relatórios de faturamento e conversão',
-  metas: 'Metas de vendas e acompanhamento',
-  radar_clientes: 'Clientes para lembrar da manutenção (lista completa)',
-  relatorio_dia: 'Relatório do dia falado',
-  modelos_pdf_premium: 'Modelos premium de PDF',
-  remove_olli_brand: 'PDF sem a marca OLLI',
-  equipe: 'Vários técnicos e permissões por papel',
-  mapa_equipe: 'Equipe ao vivo no mapa',
-  dashboard_empresa: 'Painel de gestão da empresa',
-};
+/** Rótulo humano de cada recurso gateado — da tabela única `planosBase.ts`. */
+const RECURSO_LABEL: Record<Recurso, string> = Object.fromEntries(
+  (Object.keys(ROTULO_RECURSO) as Recurso[]).map((r) => [r, ROTULO_RECURSO[r].titulo]),
+) as Record<Recurso, string>;
 
-// Ordem de exibição: recursos do Pro primeiro, depois os exclusivos da Empresa.
-// `ia_ilimitada` sai do laço genérico porque a célula do Grátis não é ✗ e sim a
-// cota "3/mês" — a IA no grátis é gate por COTA, não por plano.
-const RECURSOS_GATEADOS: Recurso[] = [
-  'relatorios',
-  'metas',
-  'radar_clientes',
-  'relatorio_dia',
-  'modelos_pdf_premium',
-  'remove_olli_brand',
-  'equipe',
-  'mapa_equipe',
-  'dashboard_empresa',
-];
+// Ordem de exibição: a de entitlements (Pro primeiro, depois os exclusivos da
+// Empresa). `ia_ilimitada` sai do laço genérico porque a célula do Grátis não é ✗ e
+// sim a cota "3/mês" — a IA no grátis é gate por COTA, não por plano.
+const RECURSOS_GATEADOS: Recurso[] = RECURSOS_EM_ORDEM.filter((r) => r !== 'ia_ilimitada');
 
 /** Monta as linhas do comparativo a partir dos entitlements reais. */
 function montarLinhasComparativo(): LinhaComparativo[] {
@@ -288,6 +251,33 @@ function mensagemErroPagamento(status: number | null, offline: boolean): string 
   return 'Não foi possível continuar com o pagamento agora. Tente novamente.';
 }
 
+/**
+ * Termos que a política de assinaturas da Play exige ANTES da compra: preço (o da
+ * loja), periodicidade, renovação automática e como cancelar. Sem teste grátis na
+ * Play (decisão do dono), então não há texto de teste aqui.
+ */
+function termosAssinaturaPlay(nomePlano: string, oferta: OfertaPlay): string {
+  const unidade = oferta.periodo === 'anual' ? 'ano' : 'mês';
+  return (
+    `${nomePlano} ${oferta.periodo === 'anual' ? 'anual' : 'mensal'}: ${oferta.precoTexto} por ${unidade}, cobrado na sua conta Google. ` +
+    `A assinatura renova automaticamente a cada ${unidade} até você cancelar. ` +
+    'Cancele quando quiser em “Gerenciar na Google Play” (Play Store › Pagamentos e assinaturas); o plano continua até o fim do período já pago.'
+  );
+}
+
+/**
+ * Troca de plano pela Play (Pro ↔ Empresa, mensal ↔ anual) de quem JÁ assina pela
+ * Play. Derivado de `MODO_TROCA_PLAY` ('with-time-proration', playBillingRegras):
+ * a troca vale na hora e o tempo já pago do plano antigo vira crédito no novo.
+ */
+const TEXTO_TROCA_PLAY =
+  'A troca vale na hora: o tempo que ainda resta do plano atual vira crédito no novo plano, no cálculo da própria Google Play.';
+
+/** Rodapé da venda pela Play: como a assinatura funciona e como cancelar. */
+const RODAPE_PLAY =
+  'Pela Google Play, mensal e anual são assinaturas que renovam automaticamente e são cobradas na sua conta Google. ' +
+  'Cancele quando quiser em “Gerenciar na Google Play” (Play Store › Pagamentos e assinaturas); o plano continua até o fim do período já pago.';
+
 export default function PlanosScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<RouteProp<RootStackParamList, 'Planos'>>();
@@ -308,9 +298,9 @@ export default function PlanosScreen() {
     aplicarSeo({
       titulo: 'Planos e preços — OLLI Orçamentos',
       descricao:
-        `Comece grátis, com rascunhos, recibos, clientes e histórico sem limite e até ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. ` +
-        `O Pro (${reais(PRECO_PRO.mensalCentavos)}/mês, ou ${reais(PRECO_PRO.anualPorMesCentavos)}/mês no anual) ` +
-        `acrescenta IA com uso justo diário, relatórios de faturamento e conversão, metas de vendas e suporte prioritário.`,
+        `Comece grátis, com ${FRASE_GRATIS}. ` +
+        `O Pro (${reais(PRECO_PRO.mensalCentavos)}/mês, ou ${reais(PRECO_PRO.anualPorMesCentavos)}/mês no anual): ` +
+        `${frasePro()}, mais a inteligência de campo.`,
       caminho: '/planos',
     });
   }, []);
@@ -336,8 +326,15 @@ export default function PlanosScreen() {
   const [ofertasPlay, setOfertasPlay] = useState<EstadoOfertasPlay>(
     VENDA_PELA_PLAY ? { estado: 'carregando' } : { estado: 'desligado' },
   );
+  // A MOLDURA da venda pela Play (texto de abertura, abas, rodapé) segue a última
+  // resposta CONHECIDA, não o "carregando": senão ela aparece e some (ou some e
+  // reaparece) a cada foco da tela. `null` = ainda não houve resposta.
+  const [molduraPlay, setMolduraPlay] = useState<boolean | null>(VENDA_PELA_PLAY ? null : false);
   const [compraPlayEm, setCompraPlayEm] = useState<PlanoId | null>(null);
   const [restaurandoPlay, setRestaurandoPlay] = useState(false);
+  // De onde vem a assinatura de quem já paga (só com VENDA_PELA_PLAY): com produto
+  // da Play, a tela oferece a TROCA de plano pela própria Play. `null` = não lida.
+  const [assinaturaPlay, setAssinaturaPlay] = useState<AssinaturaNaPlay | null>(null);
 
   useEffect(() => {
     if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
@@ -379,7 +376,10 @@ export default function PlanosScreen() {
   const carregarPlay = useCallback(async () => {
     if (!VENDA_PELA_PLAY) return;
     setOfertasPlay({ estado: 'carregando' });
-    setOfertasPlay(await carregarOfertasPlay());
+    const [resultado, daPlay] = await Promise.all([carregarOfertasPlay(), getAssinaturaNaPlay()]);
+    setOfertasPlay(resultado);
+    setMolduraPlay(vendaPlayVisivel(resultado.estado));
+    setAssinaturaPlay(daPlay);
   }, []);
 
   useFocusEffect(
@@ -398,6 +398,15 @@ export default function PlanosScreen() {
   // trocar de plano/cartão e cancelar ficam lá, no portal seguro da Stripe).
   const ehTrial = origemPlano === 'trial';
   const ehPagante = planoAtualId !== 'gratis' && !ehTrial;
+  // Assinante PELA PLAY troca de plano pela própria Play (a Play Store não troca
+  // olli_pro por olli_empresa sozinha: são assinaturas diferentes). Quem paga por
+  // outro caminho segue sem oferta de compra aqui (evita cobrança dupla).
+  const produtoPlayAtual = assinaturaPlay?.estado === 'ok' ? produtoPlay(assinaturaPlay.produto) : null;
+  const trocaPelaPlay = VENDA_PELA_PLAY && ehPagante && molduraPlay === true && !!produtoPlayAtual?.periodoConhecido;
+  const idProdutoAtualPlay = produtoPlayAtual?.periodoConhecido ? idProdutoPlay(produtoPlayAtual.plano, produtoPlayAtual.periodo) : null;
+  // Venda desligada no servidor: nada se vende, mas "Restaurar" continua — quem já
+  // pagou precisa conseguir registrar a compra (o worker aceita com a venda off).
+  const restaurarSemVenda = VENDA_PELA_PLAY && molduraPlay === false;
   const nomePlanoAtual = planoAtualId === 'empresa' ? 'Empresa' : planoAtualId === 'pro' ? 'Pro' : 'Grátis';
   const contextoGate = route.params?.origem === 'gate'
     && Object.prototype.hasOwnProperty.call(RECURSO_LABEL, route.params.recurso)
@@ -575,18 +584,19 @@ export default function PlanosScreen() {
   }
 
   /**
-   * Depois que a Play confirma, quem liga o plano é o SERVIDOR (webhook do
-   * RevenueCat → worker). Aqui só relemos o plano do servidor por alguns segundos;
-   * "liberado" só é dito quando o servidor confirmar. Sem confirmação no prazo, a
-   * mensagem é honesta: pago na Play, liberação a caminho.
+   * Quem liga o plano é o SERVIDOR (`POST /play/verificar` confere o token na
+   * Google e grava a linha). Aqui relemos o plano do servidor — a 1ª leitura é
+   * imediata, as seguintes cobrem cache/réplica lentos — e "liberado" só é dito
+   * quando a linha trouxer o produto da Play. Sem confirmação no prazo, a mensagem
+   * é honesta: pago na Play, liberação a caminho.
    */
   async function aguardarLiberacaoPlay(esperado: PlanoPlay | null) {
     for (let tentativa = 0; tentativa < 8; tentativa++) {
-      await esperar(2500);
+      if (tentativa > 0) await esperar(2500);
       try {
         // Plano pago no servidor NÃO basta (quem já pagava por Pix/Stripe, ou sobe do
         // Pro para o Empresa pela Play, já tem plano pago): só confirma quando a linha
-        // traz o produto da Play gravado pelo webhook — ver liberacaoPlayConfirmada.
+        // traz o produto da Play gravado pelo worker — ver liberacaoPlayConfirmada.
         const [r, play] = await Promise.all([getPlanoAtual(), getAssinaturaNaPlay()]);
         const produtoNoServidor = play.estado === 'ok' ? play.produto : null;
         if (liberacaoPlayConfirmada(r, produtoNoServidor, esperado)) {
@@ -605,9 +615,14 @@ export default function PlanosScreen() {
     );
   }
 
-  async function assinarPelaPlay(p: Plano) {
+  function assinarPelaPlay(p: Plano) {
     if (!VENDA_PELA_PLAY) return;
     if (p.id !== 'pro' && p.id !== 'empresa') return;
+    // Quem já tem plano pago (Stripe, Pix ou concessão) não recebe oferta de compra
+    // aqui: evita cobrança dupla. Os cards nem aparecem para pagante; a guarda fica
+    // também na ação. Exceção: assinante PELA PLAY troca de plano pela Play
+    // (`comprarNaPlay` monta a substituição, nunca uma 2ª assinatura).
+    if (ehPagante && !trocaPelaPlay) return;
     if (!acoesPlanoDisponiveis) {
       Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
       return;
@@ -615,7 +630,21 @@ export default function PlanosScreen() {
     if (ofertasPlay.estado !== 'ok') return;
     const oferta = ofertaPara(ofertasPlay.ofertas, p.id, periodo);
     if (!oferta) return;
+    if (ehPagante && oferta.produtoId === idProdutoAtualPlay) return; // já é o plano atual
     vibrar('selecao');
+    // Política de assinaturas da Play: ANTES de comprar, dizer preço, periodicidade,
+    // renovação automática e como cancelar. O preço é o da loja (oferta.precoTexto).
+    Alert.alert(
+      ehPagante ? `Trocar para o ${p.nome} pela Google Play` : `Assinar o ${p.nome} pela Google Play`,
+      ehPagante ? `${termosAssinaturaPlay(p.nome, oferta)} ${TEXTO_TROCA_PLAY}` : termosAssinaturaPlay(p.nome, oferta),
+      [
+        { text: 'Agora não', style: 'cancel' },
+        { text: 'Continuar', onPress: () => { void concluirAssinaturaPlay(p, oferta); } },
+      ],
+    );
+  }
+
+  async function concluirAssinaturaPlay(p: Plano, oferta: OfertaPlay) {
     setCompraPlayEm(p.id);
     try {
       const r = await comprarNaPlay(oferta);
@@ -627,6 +656,9 @@ export default function PlanosScreen() {
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
         ]);
+      } else if (r.estado === 'indisponivel') {
+        Alert.alert('Google Play', 'A assinatura pelo app está indisponível no momento.');
+        void carregarPlay();
       } else if (r.estado === 'erro' || r.estado === 'outra_conta') {
         Alert.alert('Google Play', r.mensagem);
       }
@@ -634,6 +666,12 @@ export default function PlanosScreen() {
     } finally {
       setCompraPlayEm(null);
     }
+  }
+
+  async function abrirGerenciarNaPlay() {
+    vibrar('selecao');
+    const ok = await gerenciarAssinaturaNaPlay(null);
+    if (!ok) Alert.alert('Google Play', 'Não consegui abrir a Play Store. Abra a Play Store › Pagamentos e assinaturas.');
   }
 
   async function restaurarPlay() {
@@ -649,6 +687,10 @@ export default function PlanosScreen() {
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
         ]);
+      } else if (r.estado === 'indisponivel') {
+        // Venda desligada no servidor E nenhuma assinatura na conta Google.
+        Alert.alert('Nada para restaurar', 'Não encontramos assinatura do OLLI na conta Google deste aparelho.');
+        void carregarPlay();
       } else if (r.estado === 'erro' || r.estado === 'outra_conta') {
         Alert.alert('Google Play', r.mensagem);
       }
@@ -660,8 +702,14 @@ export default function PlanosScreen() {
   /** Props de venda pela Play de um card, ou `null` quando a venda está desligada. */
   function vendaPlayDoCard(p: Plano): VendaPlayCard | null {
     if (!VENDA_PELA_PLAY || (p.id !== 'pro' && p.id !== 'empresa')) return null;
+    // Servidor desligou a venda (ou binário sem venda): o card não vende nem mostra preço.
+    if (!vendaPlayVisivel(ofertasPlay.estado)) return null;
+    // Relendo com a última resposta = venda desligada: segue sem venda até a nova
+    // resposta (o card não pisca "carregando" a cada foco).
+    if (ofertasPlay.estado === 'carregando' && molduraPlay === false) return null;
     return {
       estado: ofertasPlay.estado,
+      mensagemErro: ofertasPlay.estado === 'erro' ? ofertasPlay.mensagem ?? null : null,
       oferta: ofertasPlay.estado === 'ok' ? ofertaPara(ofertasPlay.ofertas, p.id, periodo) : null,
       comprando: compraPlayEm === p.id,
       onAssinar: () => { void assinarPelaPlay(p); },
@@ -699,6 +747,61 @@ export default function PlanosScreen() {
     await carregarPlano();
     setIniciandoTrial(false);
     Alert.alert('Pro liberado', `Seu teste vai até ${new Date(inicio.terminaEm).toLocaleDateString('pt-BR')}. Não haverá cobrança automática.`);
+  }
+
+  const abasPeriodo = (
+    <View style={styles.toggle} accessibilityRole="tablist">
+      <TouchableOpacity
+        style={[styles.toggleOpt, periodo === 'mensal' && styles.toggleOptActive]}
+        onPress={() => { vibrar('selecao'); setPeriodo('mensal'); }}
+        activeOpacity={0.85}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: periodo === 'mensal' }}
+      >
+        <Text style={[styles.toggleText, periodo === 'mensal' && styles.toggleTextActive]}>Mensal</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.toggleOpt, periodo === 'anual' && styles.toggleOptActive]}
+        onPress={() => { vibrar('selecao'); setPeriodo('anual'); }}
+        activeOpacity={0.85}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: periodo === 'anual' }}
+      >
+        <Text style={[styles.toggleText, periodo === 'anual' && styles.toggleTextActive]}>Anual</Text>
+        {/* O desconto é o da fonte (Stripe). Na Play quem define o preço é o
+            Play Console, então o selo não aparece — o card mostra o da loja. */}
+        {BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
+          <View style={styles.toggleBadge}><Text style={styles.toggleBadgeText}>-{DESCONTO_ANUAL_ROTULO}</Text></View>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+
+  /** "Restaurar compras da Google Play" — com ou sem a venda ligada no servidor. */
+  const botaoRestaurarPlay = (
+    <TouchableOpacity
+      style={styles.ctaSecundario}
+      onPress={() => { void restaurarPlay(); }}
+      disabled={restaurandoPlay}
+      activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: restaurandoPlay }}
+    >
+      {restaurandoPlay ? (
+        <ActivityIndicator size="small" color={cores.onSurfaceVariant} />
+      ) : (
+        <>
+          <MaterialCommunityIcons name="restore" size={16} color={cores.onSurfaceVariant} />
+          <Text style={styles.ctaSecundarioText}>Restaurar compras da Google Play</Text>
+        </>
+      )}
+    </TouchableOpacity>
+  );
+
+  /** Card de um plano na TROCA pela Play: o plano+período atual aparece como "atual". */
+  function planoNaTroca(p: Plano): Plano {
+    const ehOAtual = !!produtoPlayAtual && produtoPlayAtual.plano === p.id && produtoPlayAtual.periodo === periodo;
+    return { ...p, atual: ehOAtual, cta: ehOAtual ? 'Seu plano atual' : `Trocar para o ${p.nome}` };
   }
 
   return (
@@ -753,6 +856,10 @@ export default function PlanosScreen() {
           </View>
         ) : null}
 
+        {/* Crédito de troca ("Vim de outro app"): concessão conferida à mão, não venda —
+            aparece igual em todas as plataformas. Pagante só vê se já tiver pedido. */}
+        <CreditoTrocaAtalho ocultarSemPedido={ehPagante} />
+
         {ehPagante ? (
           /* PAGANTE — sem propaganda: card discreto que leva à AssinaturaScreen. */
           <AnimatedEntrance index={0}>
@@ -778,6 +885,40 @@ export default function PlanosScreen() {
               <Text style={styles.assinaturaBtnText}>Sua assinatura</Text>
               <MaterialCommunityIcons name="chevron-right" size={20} color={cores.primaryLight} />
             </TouchableOpacity>
+            {trocaPelaPlay ? (
+              <View style={styles.trocaPlay}>
+                <Text style={styles.introTitle}>Trocar de plano pela Google Play</Text>
+                <Text style={styles.introSub}>{TEXTO_TROCA_PLAY}</Text>
+                {abasPeriodo}
+                <View style={ehDesktop ? styles.cardsRow : undefined}>
+                  {planos.filter((p) => p.id === 'pro' || p.id === 'empresa').map((p) => (
+                    <View key={p.id} style={ehDesktop ? styles.cardCell : undefined}>
+                      <PlanoCard
+                        plano={planoNaTroca(p)}
+                        periodo={periodo}
+                        ehDesktop={ehDesktop}
+                        carregandoPlano={carregandoPlano}
+                        acoesDisponiveis={acoesPlanoDisponiveis}
+                        carregandoAcao={false}
+                        onPress={() => {}}
+                        onFalarSuporte={() => {}}
+                        onPagar12x={() => {}}
+                        pixLigado={false}
+                        carregandoPix={false}
+                        onPagarPix={() => {}}
+                        vendaPlay={vendaPlayDoCard(p)}
+                      />
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.playRodape}>
+                  <Text style={styles.rodape}>{RODAPE_PLAY}</Text>
+                  {botaoRestaurarPlay}
+                </View>
+              </View>
+            ) : restaurarSemVenda ? (
+              <View style={styles.playRodape}>{botaoRestaurarPlay}</View>
+            ) : null}
           </AnimatedEntrance>
         ) : (
         <>
@@ -788,12 +929,14 @@ export default function PlanosScreen() {
             <Text style={styles.introTitle}>Comece grátis. Cresça quando quiser.</Text>
             <Text style={styles.introSub}>
               {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA
-                ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
-                : VENDA_PELA_PLAY
-                  ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Pro e Empresa podem ser assinados aqui pela Google Play, mensal ou anual — a cobrança e o cancelamento ficam na sua conta Google.`
+                ? `O Grátis tem ${FRASE_GRATIS}. Pro e Empresa podem ser assinados direto no app: mensal ou anual com desconto.`
+                : molduraPlay === true
+                  ? `O Grátis tem ${FRASE_GRATIS}. Pro e Empresa podem ser assinados aqui pela Google Play, mensal ou anual — a cobrança e o cancelamento ficam na sua conta Google.`
+                : molduraPlay === null
+                  ? `O Grátis tem ${FRASE_GRATIS}. Veja abaixo o que cada plano libera.`
                 : Platform.OS === 'android'
-                  ? `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. Neste aplicativo Android você pode consultar os recursos dos planos, mas não contratar ou alterar um plano.`
-                  : `O Grátis mantém rascunhos, recibos, clientes e histórico sem limite e permite ${ORCAMENTOS_ENVIADOS_GRATIS_MES} orçamentos enviados por mês. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
+                  ? `O Grátis tem ${FRASE_GRATIS}. A assinatura pelo app está indisponível no momento; aqui você confere o que cada plano libera.`
+                  : `O Grátis tem ${FRASE_GRATIS}. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
             </Text>
           </View>
         </AnimatedEntrance>
@@ -803,33 +946,9 @@ export default function PlanosScreen() {
             uma compra que este aparelho não faz) — mas o preço anual continua
             visível como INFORMAÇÃO na linha "no anual…" dentro de cada card. */}
         {COMPRA_NO_APP && (
-        BUILD_PLAY_SEM_COMPRA_EXTERNA && !VENDA_PELA_PLAY ? null : (
+        BUILD_PLAY_SEM_COMPRA_EXTERNA && molduraPlay !== true ? null : (
         <AnimatedEntrance index={1}>
-          <View style={styles.toggle} accessibilityRole="tablist">
-            <TouchableOpacity
-              style={[styles.toggleOpt, periodo === 'mensal' && styles.toggleOptActive]}
-              onPress={() => { vibrar('selecao'); setPeriodo('mensal'); }}
-              activeOpacity={0.85}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: periodo === 'mensal' }}
-            >
-              <Text style={[styles.toggleText, periodo === 'mensal' && styles.toggleTextActive]}>Mensal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleOpt, periodo === 'anual' && styles.toggleOptActive]}
-              onPress={() => { vibrar('selecao'); setPeriodo('anual'); }}
-              activeOpacity={0.85}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: periodo === 'anual' }}
-            >
-              <Text style={[styles.toggleText, periodo === 'anual' && styles.toggleTextActive]}>Anual</Text>
-              {/* O desconto é o da fonte (Stripe). Na Play quem define o preço é o
-                  Play Console, então o selo não aparece — o card mostra o da loja. */}
-              {BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
-                <View style={styles.toggleBadge}><Text style={styles.toggleBadgeText}>-{DESCONTO_ANUAL_ROTULO}</Text></View>
-              )}
-            </TouchableOpacity>
-          </View>
+          {abasPeriodo}
         </AnimatedEntrance>
         )
         )}
@@ -870,29 +989,24 @@ export default function PlanosScreen() {
             mantido sem alteração no Android/web, onde a compra é real. */}
         {/* Google Play: como a assinatura funciona + "Restaurar compras" (exigência
             prática de loja: quem trocou de aparelho recupera sem pagar de novo). */}
-        {VENDA_PELA_PLAY ? (
+        {molduraPlay === true ? (
           <View style={styles.playRodape}>
-            <Text style={styles.rodape}>
-              Pela Google Play, mensal e anual são assinaturas que renovam automaticamente e são cobradas na sua conta Google. Cancele quando quiser em Play Store › Pagamentos e assinaturas.
-            </Text>
+            <Text style={styles.rodape}>{RODAPE_PLAY}</Text>
             <TouchableOpacity
               style={styles.ctaSecundario}
-              onPress={() => { void restaurarPlay(); }}
-              disabled={restaurandoPlay}
+              onPress={() => { void abrirGerenciarNaPlay(); }}
               activeOpacity={0.8}
               accessibilityRole="button"
-              accessibilityState={{ disabled: restaurandoPlay }}
             >
-              {restaurandoPlay ? (
-                <ActivityIndicator size="small" color={cores.onSurfaceVariant} />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="restore" size={16} color={cores.onSurfaceVariant} />
-                  <Text style={styles.ctaSecundarioText}>Restaurar compras da Google Play</Text>
-                </>
-              )}
+              <MaterialCommunityIcons name="google-play" size={16} color={cores.onSurfaceVariant} />
+              <Text style={styles.ctaSecundarioText}>Gerenciar na Google Play</Text>
             </TouchableOpacity>
+            {botaoRestaurarPlay}
           </View>
+        ) : restaurarSemVenda ? (
+          // Venda desligada no servidor: sem rodapé de venda, mas quem já pagou
+          // ainda registra a compra (sem isso a Play estorna em 3 dias).
+          <View style={styles.playRodape}>{botaoRestaurarPlay}</View>
         ) : null}
 
         {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
@@ -905,7 +1019,7 @@ export default function PlanosScreen() {
 
         {/* COMPARATIVO — sempre visível (info, não venda): deixa óbvio o que cada
             plano dá e destaca o que o usuário JÁ tem. Sem CTA aqui. */}
-        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={!VENDA_PELA_PLAY} />
+        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={!BUILD_PLAY_SEM_COMPRA_EXTERNA} />
       </ScrollView>
       <PixPlanoModal
         cobranca={cobrancaPix}
@@ -959,8 +1073,13 @@ function PlanoCard({
   // Na Google Play o preço é o que a LOJA devolveu (cadastrado no Play Console) —
   // nunca o da Stripe. Sem oferta carregada, nenhum número aparece ('—').
   const precoLoja = vendaPlay?.oferta?.precoTexto ?? null;
+  // Android sem venda pela Play (servidor desligado): NENHUM preço — o da web
+  // seria um convite a pagar por fora (Payments policy). Só nome e recursos.
+  const semPrecoNoAndroid = BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlay;
   const exibido = !preco
     ? { valor: 'Grátis', sufixo: '', nota: null }
+    : semPrecoNoAndroid
+      ? null
     : vendaPlay
       ? { valor: precoLoja ?? '—', sufixo: precoLoja ? (periodo === 'anual' ? '/ano' : '/mês') : '', nota: null }
       : precoNoPeriodo(preco, periodo);
@@ -968,7 +1087,7 @@ function PlanoCard({
   //  - aba anual (Android/web): o total do ano + a economia;
   //  - caso contrário: o anual como informação (equivalente /mês, total, −20%).
   const notaAnual =
-    !preco
+    !preco || !exibido
       ? null
       : vendaPlay
         ? (precoLoja ? 'Preço da Google Play, cobrado na sua conta Google.' : null)
@@ -977,10 +1096,10 @@ function PlanoCard({
         : `No anual: ${reais(preco.anualPorMesCentavos)}/mês (${reais(preco.anualCentavos)}/ano, −${DESCONTO_ANUAL_ROTULO})`;
   // A linha honesta do 12× só faz sentido no Pro e só onde há compra.
   const linha12x = plano.id === 'pro' ? texto12xPro() : null;
-  // NB: este card só renderiza quando `!ehPagante` (ver PlanosScreen acima), ou
-  // seja, `plano.atual` só é true para o card Grátis — nunca há aqui um card
-  // "atual" de plano pago. Gerenciar uma assinatura paga já existente é a
-  // AssinaturaScreen, não este card.
+  // NB: fora da troca pela Play, este card só renderiza quando `!ehPagante`, e
+  // `plano.atual` só é true para o card Grátis. Na troca pela Play (assinante da
+  // Play), `atual` marca o plano+período que ele já tem. Gerenciar a assinatura
+  // em si é a AssinaturaScreen, não este card.
 
   // Rótulo do CTA coerente com o período — nunca dizer "/mês" cobrando o ano
   // inteiro (evita cobrança-surpresa/estorno). Tudo derivado da fonte.
@@ -1011,7 +1130,8 @@ function PlanoCard({
         </View>
       </View>
 
-      {/* PREÇO */}
+      {/* PREÇO — some no Android quando a loja não vende (sem preço da web lá). */}
+      {exibido ? (
       <View style={styles.priceRow}>
         <Text style={[styles.price, plano.destaque && styles.priceDestaque]}>{exibido.valor}</Text>
         {exibido.sufixo ? <Text style={styles.pricePeriod}>{exibido.sufixo}</Text> : null}
@@ -1019,18 +1139,20 @@ function PlanoCard({
           <View style={styles.priceSaveBadge}><Text style={styles.priceSaveBadgeText}>-{DESCONTO_ANUAL_ROTULO}</Text></View>
         ) : null}
       </View>
+      ) : null}
       {notaAnual ? <Text style={styles.notaAnual}>{notaAnual}</Text> : null}
 
       {/* BENEFÍCIOS */}
       <View style={styles.beneficios}>
-        {plano.beneficios.map((b, i) => (
+        {plano.bullets.map((b, i) => (
           <View key={i} style={styles.beneficioRow}>
+            {/* "Em breve" sem o ✓ de quem já funciona — três estados, nunca dois. */}
             <MaterialCommunityIcons
-              name="check-circle"
+              name={b.emBreve ? 'clock-outline' : 'check-circle'}
               size={17}
-              color={plano.destaque ? cores.accentLight : cores.success}
+              color={b.emBreve ? cores.onSurfaceVariant : plano.destaque ? cores.accentLight : cores.success}
             />
-            <Text style={styles.beneficioText}>{b}</Text>
+            <Text style={styles.beneficioText}>{b.emBreve ? `${b.texto} (em breve)` : b.texto}</Text>
           </View>
         ))}
       </View>
@@ -1070,7 +1192,7 @@ function PlanoCard({
           <CtaPlay plano={plano} periodo={periodo} venda={vendaPlay} carregandoPlano={carregandoPlano} acoesDisponiveis={acoesDisponiveis} />
         ) : (
           <View style={styles.ctaIndisponivel}>
-            <Text style={styles.ctaIndisponivelText}>Contratação não disponível neste aplicativo Android</Text>
+            <Text style={styles.ctaIndisponivelText}>Assinatura pelo app indisponível no momento</Text>
           </View>
         )
       ) : plano.destaque ? (
@@ -1195,7 +1317,7 @@ function CtaPlay({
   if (venda.estado === 'erro') {
     return (
       <View style={styles.ctaIndisponivel}>
-        <Text style={styles.ctaIndisponivelText}>Não deu para carregar os preços da Google Play.</Text>
+        <Text style={styles.ctaIndisponivelText}>{venda.mensagemErro ?? 'Não deu para carregar os preços da Google Play.'}</Text>
         <TouchableOpacity onPress={venda.onTentarDeNovo} activeOpacity={0.8} style={styles.avisoAcaoHit} accessibilityRole="button">
           <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
         </TouchableOpacity>
@@ -1450,6 +1572,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   rodape: { fontSize: 12.5, color: c.onSurfaceMuted, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 18, paddingHorizontal: 12 },
   // Rodapé da venda pela Google Play: explicação + "Restaurar compras".
   playRodape: { alignItems: 'center', marginTop: Spacing.xs },
+  trocaPlay: { marginTop: Spacing.lg },
 
   // ─── Comparativo ──────────────────────────────────────────────────────────
   compWrap: { marginTop: Spacing.lg },

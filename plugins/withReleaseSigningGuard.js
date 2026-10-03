@@ -158,8 +158,11 @@ function withReleaseSigningGuard(config) {
     const releaseTypeEnd = buildTypes.openIndex + 1 + releaseType.end + 1;
     let releaseBody = contents.slice(releaseTypeStart, releaseTypeEnd);
     releaseBody = releaseBody.replace(/\n\s*if\s*\(!olliReleaseSigningReady\)\s*\{[\s\S]*?\}\s*/m, '\n');
-    releaseBody = releaseBody.replace(/\n\s*signingConfig\s+signingConfigs\.debug\s*/g, '\n');
-    if (!/signingConfig\s+signingConfigs\.release/.test(releaseBody)) {
+    // O template do Expo alterna entre `signingConfig signingConfigs.debug` e
+    // `signingConfig = signingConfigs.debug`; a segunda forma escapava e, por vir
+    // depois, voltava a assinar o release com a chave de debug.
+    releaseBody = releaseBody.replace(/\n\s*signingConfig\s*=?\s*signingConfigs\.debug\s*/g, '\n');
+    if (!/signingConfig\s*=?\s*signingConfigs\.release/.test(releaseBody)) {
       releaseBody = releaseBody.replace(/(\brelease\s*\{)/, '$1\n            signingConfig signingConfigs.release');
     }
     contents = `${contents.slice(0, releaseTypeStart)}${releaseBody}${contents.slice(releaseTypeEnd)}`;

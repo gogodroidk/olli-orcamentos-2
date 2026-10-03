@@ -28,6 +28,9 @@
  * `radarCobranca.ts` (`dataAprovacao`). Cai para `criadoEm` só quando
  * `atualizadoEm` estiver ausente (registro legado).
  *
+ * TEXTO PELO SINAL (termômetro, Pro): quando o plano libera, a mensagem do
+ * "Chamar no WhatsApp" acompanha o que o cliente fez no link (ver `mensagemFollowUp`).
+ *
  * GATE DE PLANO: nenhum. Mesmo padrão de `radarCobranca.ts` — a regra de
  * follow-up é livre em todos os planos; se um dia precisar gatear quantos
  * itens aparecem de graça, isso é decisão da TELA que consome
@@ -38,7 +41,9 @@ import { montarMensagemFollowUpOrcamento } from '../utils/mensagensOrcamento';
 import { formatCurrency } from '../utils/currency';
 import type { Empresa } from '../types';
 import { LIMIAR_PROPOSTA_PARADA_DIAS } from './radarDinheiro';
-import { montarMensagemPropostaVencida, selecionarFollowUp, type OrcamentoParaFollowUp } from './radarFollowUpRegra';
+import { montarMensagemPropostaVencida, selecionarFollowUp, validaAteYmd, type OrcamentoParaFollowUp } from './radarFollowUpRegra';
+import { termometrosSeLiberado } from './termometro';
+import { mensagemDaAcao, type EstadoTermometro } from './termometroRegra';
 
 export type { OrcamentoParaFollowUp } from './radarFollowUpRegra';
 
@@ -54,6 +59,11 @@ const DIAS_LIMIAR = LIMIAR_PROPOSTA_PARADA_DIAS;
 // `radarClientes.ts` (`nomePrestadorCache`).
 let empresaCache: Empresa | null = null;
 
+// Termômetro (Pro) dos orçamentos do radar, preenchido EM SEGUNDO PLANO: a lista
+// do Início/Hoje não espera a rede. Quando o botão "Chamar no WhatsApp" é tocado,
+// a mensagem usa o sinal se ele já chegou; senão, a de sempre.
+let sinaisCache: ReadonlyMap<string, EstadoTermometro> = new Map();
+
 /**
  * Propostas enviadas (status em `STATUS_PROPOSTA_ENVIADA`) sem resposta do
  * cliente há >= 3 dias e SEM pagamento registrado — ordenadas por prioridade
@@ -67,7 +77,11 @@ export async function orcamentosParaFollowUp(): Promise<OrcamentoParaFollowUp[]>
     getOrcamentos(), getClientes(), getEmpresa(), getRecibos(),
   ]);
   empresaCache = empresa;
-  return selecionarFollowUp(orcamentos, recibos, clientes, DIAS_LIMIAR);
+  const lista = selecionarFollowUp(orcamentos, recibos, clientes, DIAS_LIMIAR);
+  void termometrosSeLiberado(lista.map((i) => i.orcamento)).then((mapa) => {
+    sinaisCache = mapa ?? new Map();
+  });
+  return lista;
 }
 
 /**
@@ -86,6 +100,17 @@ export function mensagemFollowUp(item: OrcamentoParaFollowUp): string {
       formatCurrency(item.orcamento.valorTotal),
       empresaCache?.telefone || empresaCache?.whatsapp || null,
     );
+  }
+  // Termômetro (Pro): vence amanhã → lembrar a validade; voltou ao preço →
+  // oferecer parcelar; não abriu → confirmar se chegou. O texto nunca conta ao
+  // cliente que ele foi medido.
+  const sinal = sinaisCache.get(item.orcamento.id);
+  if (sinal?.tipo === 'medido') {
+    const texto = mensagemDaAcao(sinal.acao.tipo, item.orcamento, {
+      validaAte: validaAteYmd(item.orcamento),
+      contato: empresaCache?.telefone || empresaCache?.whatsapp || null,
+    });
+    if (texto) return texto;
   }
   return montarMensagemFollowUpOrcamento(item.orcamento, empresaCache);
 }

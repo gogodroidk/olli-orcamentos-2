@@ -37,7 +37,7 @@ export async function estadoBackupNuvem(): Promise<MotivoBackupNuvem> {
 }
 
 /**
- * Mensagens de recusa. São o texto que o usuário lê no Alert do botão manual,
+ * Mensagens de recusa. São o texto que o usuário lê no toast de erro do botão manual,
  * então dizem o que aconteceu e o que fazer — sem culpar quem apertou e sem
  * jargão de tenant/RLS.
  */
@@ -175,7 +175,7 @@ export async function getCloudBackupDate(): Promise<string | null> {
 // `backups_versionados` guarda VÁRIAS cópias datadas (diário/semanal/manual).
 // Este é o histórico que alimenta o backup automático (services/autoBackup.ts)
 // e a tela "Ver cópias de segurança" do ContaScreen. Nunca lança: quem chama
-// decide como tratar erro (autoBackup engole tudo; a UI mostra Alert).
+// decide como tratar erro (autoBackup engole tudo; a UI mostra toast).
 
 /**
  * Insere um snapshot versionado na nuvem. Uso interno de autoBackup.ts (tipo
@@ -314,29 +314,45 @@ export async function getUltimoBackupVersionadoData(): Promise<string | null> {
   return data?.criado_em ?? null;
 }
 
-/** Data do backup versionado 'semanal' mais recente, ou null. Usado por autoBackup.ts para decidir se cria um novo. */
-export async function getUltimoBackupSemanalData(): Promise<string | null> {
-  if (!supabase) return null;
+/**
+ * `criado_em` (hora do SERVIDOR) do backup versionado mais recente do tipo, em
+ * três estados: a data; `null` = não existe nenhum; `undefined` = a leitura
+ * falhou (não sei). Usado por autoBackup.ts para decidir se cria um novo.
+ */
+export async function getUltimoBackupData(tipo: TipoBackupVersionado): Promise<string | null | undefined> {
+  if (!supabase) return undefined;
   const user = await getCurrentUser();
-  if (!user) return null;
-  const { data } = await supabase
+  if (!user) return undefined;
+  const { data, error } = await supabase
     .from(TABLE_VERSIONADO)
     .select('criado_em')
     .eq('user_id', user.id)
-    .eq('tipo', 'semanal')
+    .eq('tipo', tipo)
     .order('criado_em', { ascending: false })
     .limit(1)
     .maybeSingle();
-  return data?.criado_em ?? null;
+  if (error) return undefined;
+  return typeof data?.criado_em === 'string' ? data.criado_em : null;
 }
 
-/** true se já existe backup 'diario' nas últimas `horas` horas. Usado por autoBackup.ts para o throttle diário. */
-export async function existeBackupDiarioRecente(horas: number): Promise<boolean> {
-  if (!supabase) return false;
+/** Data do backup versionado 'semanal' mais recente, ou null (inclusive se a leitura falhar). */
+export async function getUltimoBackupSemanalData(): Promise<string | null> {
+  return (await getUltimoBackupData('semanal')) ?? null;
+}
+
+/**
+ * Já existe backup 'diario' nas últimas `horas` horas? `agoraServidorMs` é o
+ * "agora" no relógio do SERVIDOR (services/relogioServidor.ts): o `criado_em` é
+ * do servidor, e compará-lo com o relógio do celular fazia um aparelho 21 dias
+ * adiantado nunca achar o backup de hoje (a consulta pedia `criado_em >= dia 22`
+ * no dia 1º). Três estados: `true`, `false`, `null` = a leitura falhou.
+ */
+export async function existeBackupDiarioRecente(horas: number, agoraServidorMs: number): Promise<boolean | null> {
+  if (!supabase) return null;
   const user = await getCurrentUser();
-  if (!user) return false;
-  const desde = new Date(Date.now() - horas * 60 * 60 * 1000).toISOString();
-  const { data } = await supabase
+  if (!user) return null;
+  const desde = new Date(agoraServidorMs - horas * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
     .from(TABLE_VERSIONADO)
     .select('id')
     .eq('user_id', user.id)
@@ -344,5 +360,6 @@ export async function existeBackupDiarioRecente(horas: number): Promise<boolean>
     .gte('criado_em', desde)
     .limit(1)
     .maybeSingle();
+  if (error) return null;
   return !!data;
 }

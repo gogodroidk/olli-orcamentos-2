@@ -20,6 +20,8 @@ import {
   type PlanoEdicaoRecorrente,
 } from '../utils/contratoRecorrente';
 import { generateId } from '../utils/id';
+import { aplicarExtrasAoPlano, type ExtrasEdicaoSerie } from '../utils/agendaVisual';
+import { externaParaSqlite, lerExterna } from './verticais';
 
 // Conflito por técnico (com duração por tipo): função pura, reexportada para as telas.
 export { encontrarConflitosPorTecnico, type CandidatoConflito } from '../utils/contratoRecorrente';
@@ -28,6 +30,7 @@ import {
   JANELA_EM_ANDAMENTO_DIAS, JANELA_PROXIMA_PARADA_DIAS, JANELA_SEM_BAIXA_DIAS,
 } from '../utils/agendaDia';
 import { aplicarEscopo, type EscopoConhecido } from '../utils/agendaDominio';
+import { alcanceDaBaixa } from '../utils/linhaDoTempoHoje';
 
 const MS_DIA = 24 * 60 * 60 * 1000;
 
@@ -310,6 +313,8 @@ function rowToAgendamento(r: any): Agendamento {
     // Lança se ilegível: "não sei o que foi cancelado" não vira "nada foi".
     excecoes: lerExcecoes(r.excecoes),
     ordemServicoId: r.ordem_servico_id ?? undefined,
+    // 1/0/NULL → boolean | undefined. NULL é "não informado", nunca "interna".
+    externa: lerExterna(r.externa),
   };
 }
 
@@ -426,22 +431,33 @@ export async function getAgendamento(id: string): Promise<Agendamento | null> {
  */
 const SQL_SALVAR_AGENDAMENTO = `INSERT OR REPLACE INTO agendamentos
        (id, cliente_id, cliente_nome, titulo, tipo, inicio, fim, endereco, status, orcamento_id, observacao, criado_em, atualizado_em, excluido_em,
-        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+        responsavel_id, responsavel_nome, recorrencia, recorrencia_ate, contrato_id, excecoes, ordem_servico_id, externa)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
-function valoresDoAgendamento(a: Agendamento): (string | null)[] {
+function valoresDoAgendamento(a: Agendamento): (string | number | null)[] {
   return [a.id, a.clienteId ?? null, a.clienteNome, a.titulo, a.tipo, a.inicio,
     a.fim ?? null, a.endereco ?? null, a.status, a.orcamentoId ?? null,
     a.observacao ?? null, a.criadoEm, a.atualizadoEm, a.excluidoEm ?? null,
     a.responsavelId ?? null, a.responsavelId ? (a.responsavelNome ?? null) : null,
     a.recorrencia ?? null, a.recorrencia ? (a.recorrenciaAte ?? null) : null, a.contratoId ?? null,
     // Exceção só existe em série: tirar a repetição apaga as exceções junto.
-    a.recorrencia ? excecoesParaTexto(a.excecoes) : null, a.ordemServicoId ?? null];
+    a.recorrencia ? excecoesParaTexto(a.excecoes) : null, a.ordemServicoId ?? null,
+    externaParaSqlite(a.externa)];
 }
 
 /** Cria ou atualiza (upsert) um agendamento. */
-export async function saveAgendamento(a: Agendamento): Promise<void> {
+export async function saveAgendamento(entrada: Agendamento): Promise<void> {
   const db = await getDb();
+  // `externa` (Onda I1): os formulários remontam o agendamento campo a campo e
+  // ainda não conhecem este campo. Objeto SEM a chave = "o formulário não sabe" →
+  // mantém o gravado (senão editar o horário apagaria o "externa" marcado em outro
+  // lugar). Com a chave, mesmo `undefined`, é escolha explícita ("Não sei").
+  let a = entrada;
+  if (!('externa' in entrada)) {
+    const gravado = await db.getFirstAsync<{ externa: number | null }>('SELECT externa FROM agendamentos WHERE id = ?', [entrada.id]);
+    const externa = lerExterna(gravado?.externa);
+    if (externa !== undefined) a = { ...entrada, externa };
+  }
   await db.runAsync(SQL_SALVAR_AGENDAMENTO, valoresDoAgendamento(a));
   // Espelha na nuvem em background (fire-and-forget; no-op se offline/deslogado).
   try { void pushRow('agendamentos', a).catch(() => {}); } catch {}
@@ -488,14 +504,44 @@ export async function editarRecorrente(
   idOcorrencia: string,
   alcance: AlcanceEdicaoRecorrente,
   mudanca: MudancaOcorrencia,
+  extras?: ExtrasEdicaoSerie,
 ): Promise<PlanoEdicaoRecorrente> {
   const baseId = idOcorrencia.split('@')[0];
   const base = await getAgendamento(baseId);
   if (!base) throw new Error('Agendamento não encontrado neste aparelho.');
-  const plano = planejarEdicaoRecorrente(base, idOcorrencia, alcance, mudanca, { agora: new Date(), novoId: generateId() });
+  // Cliente/tipo/endereço/regra vão para a linha certa (série nova ou base); lança
+  // antes de gravar se o alcance não comporta a mudança.
+  const plano = aplicarExtrasAoPlano(
+    planejarEdicaoRecorrente(base, idOcorrencia, alcance, mudanca, { agora: new Date(), novoId: generateId() }),
+    alcance,
+    extras,
+  );
   if (plano.novaSerie) await saveAgendamento(plano.novaSerie);
   await saveAgendamento(plano.base);
   return plano;
+}
+
+// ─── Baixa rápida (linha do tempo do Hoje) ───────────────────────────────────
+
+/**
+ * Dá baixa (ou desfaz a baixa) numa visita do dia direto do Hoje. Visita de série
+ * muda SÓ esta ocorrência (exceção da série, via `editarRecorrente`), nunca a série
+ * inteira; visita avulsa muda a própria linha. Ver `alcanceDaBaixa`.
+ *
+ * LANÇA se não conseguir gravar (visita sumiu do aparelho, foi para a lixeira,
+ * erro de banco): a tela mostra o erro e o estado anterior continua valendo.
+ */
+export async function mudarStatusVisitaDoDia(
+  v: OcorrenciaAgendamento,
+  status: 'concluido' | 'agendado',
+): Promise<void> {
+  if (alcanceDaBaixa(v) === 'so_esta_da_serie') {
+    await editarRecorrente(v.id, 'so_esta', { status });
+    return;
+  }
+  const atual = await getAgendamento(v.id);
+  if (!atual || atual.excluidoEm) throw new Error('Esta visita não está mais na sua agenda.');
+  await saveAgendamento({ ...atual, status, atualizadoEm: new Date().toISOString() });
 }
 
 // ─── OS concluída → visita concluída ──────────────────────────────────────────

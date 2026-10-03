@@ -10,6 +10,19 @@
  *                        zelador, cliente) — NÃO é o dono autenticado.
  * GET /q/<token>.svg  → o QR code (do próprio link /q/<token>) como imagem SVG.
  *                        Gerador de QR puro em JS (sem lib nativa/npm) — ver §QR.
+ * POST /q/<token>     → "Pedir orçamento": grava o pedido em
+ *                        public.pedidos_orcamento_qr (service_role) para o
+ *                        prestador ver no app. O primeiro contato continua humano.
+ * /e/<token>          → APELIDO das três rotas acima (mesmo handler). As etiquetas
+ *                        já impressas apontam para /q/ e continuam valendo.
+ *
+ * ETIQUETA QUE VENDE: além do mínimo operacional, a página mostra a MARCA do
+ * prestador (logo + cor), a "última manutenção" e a "próxima recomendada" (só
+ * DATAS, vindas da RPC resumo_manutencao_equipamento) e os botões "Chamar no
+ * WhatsApp" e "Pedir orçamento". O selo "Feito com OLLI" sai só quando o dono é
+ * comprovadamente Grátis (plano_comercial_para_usuario) — Pro/Empresa não levam
+ * selo, e na dúvida (erro ao ler o plano) o selo NÃO sai: quem paga nunca vê a
+ * marca por falha nossa.
  *
  * SEGURANÇA / LGPD (inegociável):
  *  - Resolve o ativo por `qr_token` via SERVICE_ROLE (a tabela public.assets tem
@@ -33,6 +46,7 @@
  */
 
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
+import { lerCorpoLimitado } from './bodyLimit.js';
 
 const ACCENT = '#0B6FCE';
 const SUPORTE_WHATSAPP_FALLBACK = ''; // sem contato do prestador → não inventa número
@@ -104,9 +118,10 @@ function htmlResp(body, status = 200) {
       'Referrer-Policy': 'no-referrer',
       // Defesa em profundidade: mesmo com todo dado escapado, o CSP barra
       // exfiltração externa. Página estática (sem <script>): não precisa de
-      // script-src. Google Fonts para tipografia; img-src data: para o QR inline.
+      // script-src. Google Fonts para tipografia; img-src data: para o QR e a
+      // logo do prestador inline; form-action 'self' só para o "Pedir orçamento".
       'Content-Security-Policy':
-        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: https://link.olliorcamentos.online; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: https://link.olliorcamentos.online; base-uri 'none'; form-action 'self'",
     },
   });
 }
@@ -187,6 +202,88 @@ async function getPrestador(env, userId) {
     return dados || {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * "Última manutenção" e "próxima recomendada" do equipamento, numa chamada só
+ * (RPC SECURITY DEFINER, só service_role — devolve apenas DATAS). Três estados:
+ *  - { estado:'ok', ultima, proxima, proximaOrigem } — campos podem vir null
+ *    (= sem registro), e a página diz isso;
+ *  - { estado:'indisponivel' } — RPC ausente (migration não aplicada) ou falha:
+ *    a página OMITE o bloco. Nunca diz "sem manutenção" por causa de um erro.
+ */
+export async function getResumoManutencao(env, assetId) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/resumo_manutencao_equipamento`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_asset_id: assetId }),
+    });
+    if (!r.ok) return { estado: 'indisponivel' };
+    const arr = await r.json().catch(() => null);
+    const row = Array.isArray(arr) ? arr[0] : arr;
+    if (!row || typeof row !== 'object') return { estado: 'indisponivel' };
+    return {
+      estado: 'ok',
+      ultima: typeof row.ultima_manutencao === 'string' ? row.ultima_manutencao : null,
+      proxima: typeof row.proxima_manutencao === 'string' ? row.proxima_manutencao : null,
+      proximaOrigem: row.proxima_origem === 'pmoc' || row.proxima_origem === 'agendada' ? row.proxima_origem : null,
+    };
+  } catch {
+    return { estado: 'indisponivel' };
+  }
+}
+
+/**
+ * Último dia de garantia VIGENTE do equipamento (RPC SECURITY DEFINER, só
+ * service_role — devolve uma DATA). Três estados, como o resumo:
+ *  - { estado:'ok', ate:'YYYY-MM-DD' } — em garantia até esse dia;
+ *  - { estado:'ok', ate:null } — o banco respondeu: nenhuma garantia vigente;
+ *  - { estado:'indisponivel' } — RPC ausente (migration 20261003103100 não
+ *    aplicada) ou falha: a página não fala de garantia e o chamado de garantia
+ *    não aparece. Nunca afirma garantia que não conseguiu conferir.
+ */
+export async function getGarantiaVigente(env, assetId) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/garantia_vigente_equipamento`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_asset_id: assetId }),
+    });
+    if (!r.ok) return { estado: 'indisponivel' };
+    const v = await r.json().catch(() => undefined);
+    if (v === null) return { estado: 'ok', ate: null };
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return { estado: 'ok', ate: v };
+    return { estado: 'indisponivel' };
+  } catch {
+    return { estado: 'indisponivel' };
+  }
+}
+
+/** true só quando o banco CONFIRMOU uma garantia vigente. */
+export function garantiaVigente(garantia) {
+  return !!(garantia && garantia.estado === 'ok' && typeof garantia.ate === 'string' && garantia.ate);
+}
+
+/**
+ * Plano comercial EFETIVO do dono (assinatura + trial), pela mesma RPC que a cota
+ * de orçamentos usa. 'gratis' | 'pro' | 'empresa', ou 'erro' (na dúvida o selo
+ * não sai — ver cabeçalho).
+ */
+export async function getPlanoComercial(env, userId) {
+  if (!userId) return 'erro';
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/plano_comercial_para_usuario`, {
+      method: 'POST',
+      headers: sbHeaders(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ p_user_id: userId }),
+    });
+    if (!r.ok) return 'erro';
+    const plano = await r.json().catch(() => null);
+    return plano === 'gratis' || plano === 'pro' || plano === 'empresa' ? plano : 'erro';
+  } catch {
+    return 'erro';
   }
 }
 
@@ -348,8 +445,197 @@ export async function renderEtiqueta(token, env, request) {
     userAgent: ua,
   });
 
-  const prestador = await getPrestador(env, asset.user_id);
-  return htmlResp(pageEtiqueta(asset, prestador, token));
+  const extras = await dadosDaPagina(env, asset);
+  return htmlResp(pageEtiqueta(asset, extras.prestador, token, extras));
+}
+
+/** Prestador + resumo de manutenção + plano, em paralelo (cada um falha sozinho). */
+async function dadosDaPagina(env, asset) {
+  const [prestador, manutencao, plano, garantia] = await Promise.all([
+    getPrestador(env, asset.user_id),
+    getResumoManutencao(env, asset.id),
+    getPlanoComercial(env, asset.user_id),
+    getGarantiaVigente(env, asset.id),
+  ]);
+  return { prestador, manutencao, mostrarSelo: plano === 'gratis', garantia };
+}
+
+// ─── porta pública: POST /q/<token> ("Pedir orçamento") ─────
+// Teto de pedidos por equipamento por hora: uma etiqueta num corredor não pode
+// virar canhão de spam na caixa do prestador. O LINK_RL (por IP, no roteador) é
+// a 1ª barreira; este é o teto por equipamento.
+export const PEDIDOS_POR_HORA_POR_EQUIPAMENTO = 5;
+const PEDIDO_MAX_BYTES = 4096;
+
+/** Troca caractere de controle por espaço (mantém tab, \n e \r). Sem regex de controle. */
+function semControle(v) {
+  let out = '';
+  for (const ch of v) {
+    const c = ch.charCodeAt(0);
+    out += (c < 32 && c !== 9 && c !== 10 && c !== 13) || c === 127 ? ' ' : ch;
+  }
+  return out;
+}
+
+/** Remove controle/HTML e espaços repetidos (texto plano, limitado). */
+function textoPlano(v, limite) {
+  if (typeof v !== 'string') return '';
+  return semControle(v)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, limite);
+}
+
+/**
+ * Valida o formulário do pedido. Puro (testado em worker/scripts/teste-etiqueta-qr.js).
+ * Retorna { ok:true, pedido:{nome,telefone,mensagem} } | { ok:false, erro, valores } |
+ * { ok:true, robo:true } quando o campo-isca veio preenchido (descarta em silêncio).
+ */
+export function validarPedido(campos) {
+  const valores = {
+    nome: textoPlano(campos && campos.nome, 80),
+    whatsapp: textoPlano(campos && campos.whatsapp, 30),
+    mensagem: textoPlano(campos && campos.mensagem, 500),
+    // Só para devolver o formulário com a mesma escolha marcada em caso de erro.
+    motivo: campos && campos.motivo === 'garantia' ? 'garantia' : '',
+  };
+  if (campos && typeof campos.site === 'string' && campos.site.trim()) return { ok: true, robo: true };
+  if (valores.nome.replace(/\s/g, '').length < 2) {
+    return { ok: false, erro: 'Escreva seu nome para o prestador saber com quem falar.', valores };
+  }
+  const telefone = numeroWhatsAppBR(valores.whatsapp);
+  if (!telefone) {
+    return { ok: false, erro: 'Confira o WhatsApp: use DDD + número, por exemplo (11) 98765-4321.', valores };
+  }
+  if (!(campos && (campos.aceite === 'sim' || campos.aceite === 'on'))) {
+    return { ok: false, erro: 'Marque a autorização para o prestador te chamar no WhatsApp.', valores };
+  }
+  const pedido = { nome: valores.nome, telefone, mensagem: valores.mensagem || null };
+  // Chamado de garantia: só a marcação; quem decide se vale é o worker, conferindo
+  // a garantia vigente no banco (receberPedidoEtiqueta).
+  if (campos && campos.motivo === 'garantia') pedido.motivo = 'garantia';
+  return { ok: true, pedido };
+}
+
+/** Pedidos do equipamento na última hora (fail-open: 0 em erro; o LINK_RL segura). */
+async function pedidosRecentes(env, assetId) {
+  try {
+    const desde = new Date(Date.now() - 3600_000).toISOString();
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/pedidos_orcamento_qr` +
+        `?asset_id=eq.${encodeURIComponent(assetId)}` +
+        `&criado_em=gte.${encodeURIComponent(desde)}&select=id`,
+      { headers: sbHeaders(env, { Prefer: 'count=exact', Range: '0-0' }) },
+    );
+    if (!r.ok) return 0;
+    const m = /\/(\d+)$/.exec(r.headers.get('content-range') || '');
+    return m ? Number(m[1]) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Grava o pedido (service_role). true = gravou; false = falhou (tabela ausente, rede…). */
+async function inserirPedido(env, asset, pedido) {
+  const linha = {
+    user_id: asset.user_id,
+    asset_id: asset.id,
+    nome: pedido.nome,
+    telefone: pedido.telefone,
+    mensagem: pedido.mensagem,
+  };
+  // `motivo` só vai quando é garantia: o pedido comum continua idêntico ao de antes.
+  if (pedido.motivo === 'garantia') linha.motivo = 'garantia';
+  const enviar = (corpo) => fetch(`${env.SUPABASE_URL}/rest/v1/pedidos_orcamento_qr`, {
+    method: 'POST',
+    headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+    body: JSON.stringify(corpo),
+  });
+  try {
+    const r = await enviar(linha);
+    if (r.ok) return true;
+    // Servidor sem a coluna `motivo` (migration 20261003103100 ainda não aplicada):
+    // grava sem ela e marca a mensagem, para o chamado não virar pedido comum calado.
+    if (linha.motivo && (r.status === 400 || r.status === 404)) {
+      const { motivo: _motivo, ...semMotivo } = linha;
+      const texto = `Chamado de garantia: ${linha.mensagem || 'voltou o problema'}`.slice(0, 500);
+      const r2 = await enviar({ ...semMotivo, mensagem: texto });
+      return r2.ok;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export async function receberPedidoEtiqueta(token, env, request) {
+  // Mesmo reforço anti-enumeração do GET: o POST responde 404 (token inexistente)
+  // x 400/200 (token válido), então sem isto ele virava uma porta de varredura de
+  // tokens que contorna o ENUM_TETO. Toda falha de resolução vira uma tentativa
+  // NÃO-resolvida em qr_scan_events (a mesma trilha que o teto conta).
+  const ip = request && request.headers ? request.headers.get('CF-Connecting-IP') || '' : '';
+  const ua = request && request.headers ? request.headers.get('User-Agent') || '' : '';
+  const ipHash = await hashIp(env, ip);
+  const falhou = () => registrarScan(env, {
+    assetId: null,
+    userId: null,
+    tokenTentado: String(token || '').slice(0, 80),
+    resolvido: false,
+    ipHash,
+    userAgent: ua,
+  });
+
+  if (!validToken(token)) {
+    await falhou();
+    return htmlResp(pageEtiquetaInvalida(), 404);
+  }
+  if ((await tentativasFalhasRecentes(env, ipHash)) >= ENUM_TETO) {
+    await falhou();
+    return htmlResp(pageEtiquetaInvalida(), 429);
+  }
+
+  const { grande, raw } = await lerCorpoLimitado(request, PEDIDO_MAX_BYTES);
+  if (grande) return htmlResp(pageEtiquetaInvalida(), 413);
+  const campos = Object.fromEntries(new URLSearchParams(raw || ''));
+  const v = validarPedido(campos);
+
+  const asset = await getAsset(env, token);
+  if (asset && asset.error) return htmlResp(pageErroTemporario(), 503);
+  if (!asset) {
+    await falhou();
+    return htmlResp(pageEtiquetaInvalida(), 404);
+  }
+
+  const extras = await dadosDaPagina(env, asset);
+  const nomePrestador = nomeDoPrestador(extras.prestador);
+
+  // Robô (campo-isca preenchido): responde como sucesso e não grava nada.
+  if (v.ok && v.robo) return htmlResp(pagePedidoEnviado(nomePrestador, extras.prestador));
+  if (!v.ok) {
+    return htmlResp(pageEtiqueta(asset, extras.prestador, token, { ...extras, pedido: { erro: v.erro, valores: v.valores } }), 400);
+  }
+  if ((await pedidosRecentes(env, asset.id)) >= PEDIDOS_POR_HORA_POR_EQUIPAMENTO) {
+    return htmlResp(pageEtiqueta(asset, extras.prestador, token, {
+      ...extras,
+      pedido: { erro: `Este equipamento já recebeu vários pedidos agora há pouco. Fale direto com ${nomePrestador} pelo WhatsApp.`, valores: v.pedido && { nome: v.pedido.nome, whatsapp: '', mensagem: v.pedido.mensagem || '', motivo: v.pedido.motivo || '' } },
+    }), 429);
+  }
+  // Chamado de garantia só com garantia CONFIRMADA no banco. Sem ela (ou sem
+  // conseguir conferir), o pedido entra como orçamento: a etiqueta nunca promete
+  // garantia que o prestador não registrou.
+  const pedidoFinal = v.pedido.motivo === 'garantia' && !garantiaVigente(extras.garantia)
+    ? { nome: v.pedido.nome, telefone: v.pedido.telefone, mensagem: v.pedido.mensagem }
+    : v.pedido;
+  const gravou = await inserirPedido(env, asset, pedidoFinal);
+  if (!gravou) {
+    return htmlResp(pageEtiqueta(asset, extras.prestador, token, {
+      ...extras,
+      pedido: { erro: 'Não consegui registrar o pedido agora. Tente de novo em instantes ou chame pelo WhatsApp.', valores: { nome: v.pedido.nome, whatsapp: campos.whatsapp || '', mensagem: v.pedido.mensagem || '', motivo: v.pedido.motivo || '' } },
+    }), 503);
+  }
+  return htmlResp(pagePedidoEnviado(nomePrestador, extras.prestador, pedidoFinal.motivo === 'garantia'));
 }
 
 // ─── porta pública: GET /q/<token>.svg (imagem QR) ───────────
@@ -413,6 +699,35 @@ function shell(inner, accentRaw = ACCENT) {
   .err-title{font-size:18px;font-weight:800;margin-top:12px}
   .err-sub{font-size:13.5px;color:#6B7686;margin-top:7px;line-height:1.55}
   .robot{width:26px;height:26px}
+  .hd-logo{max-width:46px;max-height:46px;border-radius:12px;background:#fff;object-fit:contain;padding:4px}
+  .manut{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .manut-c{background:#F6F8FB;border:1px solid #EDEFF2;border-radius:14px;padding:12px 13px}
+  .manut-l{font-size:11.5px;color:#6B7686;font-weight:700}
+  .manut-v{font-size:15px;font-weight:800;margin-top:4px}
+  .manut-s{font-size:11.5px;color:#8A93A2;margin-top:2px;line-height:1.35}
+  .btn-orc{background:#fff;color:#1A2230;border:1.5px solid #D5DBE3}
+  details.pedido{margin:0}
+  details.pedido>summary{list-style:none}
+  details.pedido>summary::-webkit-details-marker{display:none}
+  details.pedido[open]>summary{display:none}
+  .form{margin-top:4px;background:#F6F8FB;border:1px solid #EDEFF2;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+  .form-t{font-size:15px;font-weight:800}
+  .form label{font-size:12px;font-weight:700;color:#5A6575}
+  .form input[type=text],.form input[type=tel],.form textarea{width:100%;font-family:inherit;font-size:15px;border:1.5px solid #D5DBE3;border-radius:12px;padding:12px;background:#fff;color:#1A2230}
+  .form textarea{min-height:84px;resize:vertical}
+  .aceite{display:flex;gap:9px;align-items:flex-start;font-size:12px;color:#5A6575;line-height:1.45;font-weight:500}
+  .aceite input{margin-top:2px;width:18px;height:18px;flex-shrink:0}
+  .isca{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .form-erro{background:#FDECEA;color:#A93226;border-radius:11px;padding:10px 12px;font-size:13px;font-weight:600;line-height:1.4}
+  .btn-enviar{background:#0B6FCE;color:#fff}
+  .ok-box{background:#fff;border-radius:22px;padding:40px 24px;text-align:center;box-shadow:0 18px 50px rgba(10,37,64,.14)}
+  .garantia{margin-top:12px;display:flex;gap:10px;align-items:flex-start;background:#E9F7F0;border:1px solid #CDEBDD;border-radius:14px;padding:12px 13px;font-size:12.5px;color:#0B6B47;line-height:1.45}
+  .motivos{display:flex;flex-direction:column;gap:8px}
+  .motivo{display:flex;gap:9px;align-items:center;font-size:13.5px;font-weight:600;color:#1A2230;background:#fff;border:1.5px solid #D5DBE3;border-radius:12px;padding:11px 12px}
+  .motivo input{width:18px;height:18px;flex-shrink:0}
+  .selo{text-align:center;margin-top:18px;font-size:12px}
+  .selo a{color:#8A95A6;text-decoration:none;font-weight:600}
+  .selo a b{color:#0B6FCE}
 </style>
 </head>
 <body><div class="wrap">${inner}</div></body>
@@ -453,22 +768,116 @@ function qrPlaceholderSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200" role="img" aria-label="QR indisponível"><rect width="200" height="200" fill="#fff"/><rect x="0.5" y="0.5" width="199" height="199" fill="none" stroke="#E0E5EC"/><text x="100" y="104" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#9AA3B2">QR indisponível</text></svg>`;
 }
 
-/**
- * Página da etiqueta resolvida. Mostra SÓ o mínimo não-sensível:
- *  - prestador responsável (nome + tagline) + aviso "sob manutenção por…"
- *  - código do equipamento (codigo_interno — nunca patrimônio do cliente/série)
- *  - categoria HVAC
- *  - situação operacional básica (com caveat de que NÃO é conformidade legal)
- *  - canal de contato do prestador (WhatsApp preferencial; senão telefone)
- */
-function pageEtiqueta(asset, prestador, token) {
-  const nomePrestador = (prestador && typeof prestador.nome === 'string' && prestador.nome.trim())
+/** Nome do prestador para exibir (fallback neutro). */
+function nomeDoPrestador(prestador) {
+  return (prestador && typeof prestador.nome === 'string' && prestador.nome.trim())
     ? prestador.nome.trim()
     : 'Prestador de manutenção';
+}
+
+/**
+ * Logo do prestador SÓ como data URI de imagem raster (é como o app guarda:
+ * `empresa.logoUri`). URL remota/SVG/qualquer outra coisa é ignorada — o CSP
+ * também só permite img-src data:. Teto de tamanho para a página não pesar.
+ */
+export function logoPublica(prestador) {
+  const uri = prestador && typeof prestador.logoUri === 'string' ? prestador.logoUri : '';
+  if (!uri || uri.length > 350_000) return '';
+  return /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(uri) ? uri : '';
+}
+
+/** Dia em pt-BR. 'YYYY-MM-DD' é dia civil; ISO com hora vira o dia em Brasília. */
+export function diaPtBr(valor) {
+  if (typeof valor !== 'string' || !valor) return '';
+  const civil = /^(\d{4})-(\d{2})-(\d{2})$/.exec(valor);
+  if (civil) return `${civil[3]}/${civil[2]}/${civil[1]}`;
+  const t = Date.parse(valor);
+  if (!Number.isFinite(t)) return '';
+  try {
+    return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(t));
+  } catch {
+    return '';
+  }
+}
+
+/** Contato do prestador: WhatsApp preferencial; senão telefone (regra única). */
+function contatoDoPrestador(prestador) {
+  return numeroWhatsAppBR((prestador && prestador.whatsapp) || SUPORTE_WHATSAPP_FALLBACK) ||
+    numeroWhatsAppBR((prestador && prestador.telefone) || '');
+}
+
+function seloOlli() {
+  return `<div class="selo"><a href="https://olliorcamentos.online/?utm_source=etiqueta_qr&utm_medium=rodape&utm_campaign=feito_com_olli" target="_blank" rel="noopener">Feito com <b>OLLI</b> · crie seu orçamento grátis</a></div>`;
+}
+
+/** Bloco "última manutenção / próxima recomendada" (omitido se indisponível). */
+function blocoManutencao(manutencao, nomePrestador) {
+  if (!manutencao || manutencao.estado !== 'ok') return '';
+  const ultima = diaPtBr(manutencao.ultima);
+  const proxima = diaPtBr(manutencao.proxima);
+  const origem = manutencao.proximaOrigem === 'pmoc' ? 'Plano de manutenção' : 'Visita agendada';
+  return `<div class="manut">
+    <div class="manut-c"><div class="manut-l">Última manutenção</div>${ultima
+      ? `<div class="manut-v">${esc(ultima)}</div><div class="manut-s">registrada por ${esc(nomePrestador)}</div>`
+      : `<div class="manut-v">—</div><div class="manut-s">Ainda sem registro nesta etiqueta</div>`}</div>
+    <div class="manut-c"><div class="manut-l">Próxima recomendada</div>${proxima
+      ? `<div class="manut-v">${esc(proxima)}</div><div class="manut-s">${esc(origem)}</div>`
+      : `<div class="manut-v">A combinar</div><div class="manut-s">Peça um orçamento ou chame no WhatsApp</div>`}</div>
+  </div>`;
+}
+
+/** "Em garantia até dd/mm/aaaa" — só quando o banco confirmou (senão, nada). */
+function blocoGarantia(garantia, nomePrestador) {
+  if (!garantiaVigente(garantia)) return '';
+  const ate = diaPtBr(garantia.ate);
+  if (!ate) return '';
+  return `<div class="garantia">🛡️ <span><strong>Em garantia até ${esc(ate)}</strong><br/>Serviço feito por ${esc(nomePrestador)}. Se o problema voltou, chame a garantia abaixo.</span></div>`;
+}
+
+/** Formulário "Pedir orçamento" (sem JS: <details> abre o formulário). */
+function blocoPedido(token, nomePrestador, pedido, comGarantia = false) {
+  const val = (pedido && pedido.valores) || {};
+  const aberto = pedido && pedido.erro ? ' open' : '';
+  const motivoGarantia = comGarantia && val.motivo === 'garantia';
+  const escolhaMotivo = comGarantia
+    ? `<div class="motivos" role="radiogroup" aria-label="O que você precisa?">
+        <label class="motivo"><input type="radio" name="motivo" value="orcamento"${motivoGarantia ? '' : ' checked'}/> Orçamento ou manutenção</label>
+        <label class="motivo"><input type="radio" name="motivo" value="garantia"${motivoGarantia ? ' checked' : ''}/> Voltou o problema: chamar a garantia</label>
+      </div>`
+    : '';
+  return `<details class="pedido"${aberto}>
+    <summary class="btn btn-orc">${comGarantia ? '📝 Pedir orçamento ou chamar a garantia' : '📝 Pedir orçamento'}</summary>
+    <form class="form" method="post" action="/q/${esc(encodeURIComponent(token))}">
+      <div class="form-t">${comGarantia ? `Falar com ${esc(nomePrestador)}` : `Pedir orçamento a ${esc(nomePrestador)}`}</div>
+      ${pedido && pedido.erro ? `<div class="form-erro" role="alert">${esc(pedido.erro)}</div>` : ''}
+      ${escolhaMotivo}
+      <label for="f-nome">Seu nome</label>
+      <input id="f-nome" type="text" name="nome" maxlength="80" required autocomplete="name" value="${esc(val.nome || '')}"/>
+      <label for="f-zap">Seu WhatsApp (com DDD)</label>
+      <input id="f-zap" type="tel" name="whatsapp" maxlength="30" required autocomplete="tel" inputmode="tel" placeholder="(11) 98765-4321" value="${esc(val.whatsapp || '')}"/>
+      <label for="f-msg">O que você precisa? (opcional)</label>
+      <textarea id="f-msg" name="mensagem" maxlength="500" placeholder="Ex.: o aparelho está pingando / quero agendar a limpeza">${esc(val.mensagem || '')}</textarea>
+      <div class="isca" aria-hidden="true"><label for="f-site">Não preencha</label><input id="f-site" type="text" name="site" tabindex="-1" autocomplete="off"/></div>
+      <label class="aceite"><input type="checkbox" name="aceite" value="sim" required/> Autorizo ${esc(nomePrestador)} a me chamar no WhatsApp sobre este pedido. Meus dados vão só para este prestador.</label>
+      <button class="btn btn-enviar" type="submit">Enviar pedido</button>
+    </form>
+  </details>`;
+}
+
+/**
+ * Página da etiqueta resolvida. Mostra SÓ o que não é dado pessoal:
+ *  - marca do prestador (nome, tagline, logo e cor) — nunca o cliente final;
+ *  - código, tipo e situação operacional do equipamento (caveat PMOC no rodapé);
+ *  - última manutenção / próxima recomendada (só datas; omitido se indisponível);
+ *  - "Chamar no WhatsApp" (contato do PRESTADOR) e "Pedir orçamento".
+ */
+function pageEtiqueta(asset, prestador, token, extras = {}) {
+  const nomePrestador = nomeDoPrestador(prestador);
   const tagline = (prestador && typeof prestador.especialidade === 'string' && prestador.especialidade.trim())
     ? prestador.especialidade.trim()
     : (prestador && typeof prestador.slogan === 'string' ? prestador.slogan.trim() : '');
   const accent = safeHexColor(prestador && prestador.corMarca, ACCENT);
+  const logo = logoPublica(prestador);
 
   const codigo = (asset && typeof asset.codigo_interno === 'string') ? asset.codigo_interno.trim() : '';
   const categoriaId = (asset && typeof asset.categoria === 'string') ? asset.categoria.trim() : '';
@@ -490,12 +899,10 @@ function pageEtiqueta(asset, prestador, token) {
   };
   const [sbg, sfg] = situacaoCores[situacaoId] || situacaoCores.ativo;
 
-  // Contato: WhatsApp preferencial; senão telefone. O número passa pela regra única
-  // (`numeroWhatsAppBR`): DDD 55 certo, e número que não é brasileiro plausível
-  // vira "sem contato" — nunca um wa.me para um desconhecido.
-  const contatoNum =
-    numeroWhatsAppBR((prestador && prestador.whatsapp) || SUPORTE_WHATSAPP_FALLBACK) ||
-    numeroWhatsAppBR((prestador && prestador.telefone) || '');
+  // Contato: o número passa pela regra única (`numeroWhatsAppBR`): DDD 55 certo, e
+  // número que não é brasileiro plausível vira "sem contato" — nunca um wa.me para
+  // um desconhecido.
+  const contatoNum = contatoDoPrestador(prestador);
   const msg = `Olá! Escaneei a etiqueta de um equipamento sob manutenção${codigo ? ` (código ${codigo})` : ''}. Preciso falar sobre ele.`;
   const zapHref = contatoNum ? linkWaMe(contatoNum, msg) : '';
 
@@ -506,27 +913,45 @@ function pageEtiqueta(asset, prestador, token) {
     `<div class="row"><span class="row-l">Situação</span><span class="row-v"><span class="badge" style="background:${sbg};color:${sfg}">${esc(situacaoLabel)}</span></span></div>`,
   );
 
-  const contatoBloco = zapHref
-    ? `<div class="actions"><a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener noreferrer">💬 Falar com ${esc(nomePrestador)}</a></div>`
-    : `<div class="nocontato">Este equipamento está sob manutenção de <strong>${esc(nomePrestador)}</strong>. Procure o responsável pela manutenção local para mais informações.</div>`;
+  const botoes = [];
+  if (zapHref) botoes.push(`<a class="btn btn-zap" href="${esc(zapHref)}" target="_blank" rel="noopener noreferrer">💬 Chamar no WhatsApp</a>`);
+  botoes.push(blocoPedido(token, nomePrestador, extras.pedido, garantiaVigente(extras.garantia)));
+
+  const marca = logo
+    ? `<img class="hd-logo" src="${logo}" alt="${esc(nomePrestador)}"/>`
+    : `<div class="hd-mark">${olliRobot()}</div>`;
 
   const inner = `<div class="card">
     <div class="hd">
-      <div class="hd-mark">${olliRobot()}</div>
+      ${marca}
       <div><div class="hd-name">${esc(nomePrestador)}</div>${tagline ? `<div class="hd-tag">${esc(tagline)}</div>` : ''}</div>
     </div>
     <div class="body">
       <div class="eyebrow">EQUIPAMENTO IDENTIFICADO</div>
       <div class="title">Equipamento sob manutenção</div>
-      <div class="sob">Este equipamento é acompanhado por <strong>${esc(nomePrestador)}</strong>. Abaixo, as informações básicas da etiqueta.</div>
+      <div class="sob">Este equipamento é acompanhado por <strong>${esc(nomePrestador)}</strong>.</div>
+      ${blocoManutencao(extras.manutencao, nomePrestador)}
+      ${blocoGarantia(extras.garantia, nomePrestador)}
       <div class="grid">${linhas.join('')}</div>
-      ${contatoBloco}
+      <div class="actions">${botoes.join('')}</div>
       <div class="caveat">A situação exibida é o estado operacional registrado pelo prestador — não representa, por si só, declaração de conformidade legal do equipamento. Nenhum dado pessoal ou contratual é exibido nesta página.</div>
-      <div class="foot">identificação de equipamentos por OLLI</div>
     </div>
-  </div>`;
+  </div>${extras.mostrarSelo ? seloOlli() : ''}`;
 
   return shell(inner, accent);
+}
+
+/** Confirmação do pedido (sem eco dos dados digitados além do essencial). */
+function pagePedidoEnviado(nomePrestador, prestador, garantia = false) {
+  const accent = safeHexColor(prestador && prestador.corMarca, ACCENT);
+  return shell(
+    `<div class="ok-box">
+      <div class="err-emoji">${garantia ? '🛡️' : '✅'}</div>
+      <div class="err-title">${garantia ? 'Chamado de garantia enviado' : 'Pedido enviado'}</div>
+      <div class="err-sub"><strong>${esc(nomePrestador)}</strong> recebeu seu ${garantia ? 'chamado' : 'pedido'} e vai te chamar no WhatsApp que você informou.</div>
+    </div>`,
+    accent,
+  );
 }
 
 // ============================================================================

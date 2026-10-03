@@ -1,0 +1,2 @@
+# Scripts de shell precisam de LF mesmo com core.autocrlf=true (o bash do Windows quebra com CR no fim da linha).
+*.sh text eol=lf

@@ -65,14 +65,27 @@ export function temCobranca(r: ResumoParaTela): boolean {
   return r.origem !== 'admin' && r.origem !== 'trial';
 }
 
-/** Método de pagamento exibido. O cartão da Stripe, quando lido, sempre vence. */
-export function rotuloMetodo(r: ResumoParaTela, cartao: string | null): string {
+/**
+ * Onde a tela está. `ios`: não cita outra loja (App Store 2.3.10). `semCompraExterna`
+ * (Android da Play): não cita Pix nem outro meio de pagar por fora.
+ */
+export interface ContextoMetodo {
+  ios?: boolean;
+  semCompraExterna?: boolean;
+}
+
+/**
+ * Método de pagamento exibido. A assinatura VIVA da Play vence (a renovação é
+ * dela, mesmo que a pessoa tenha um cartão antigo na Stripe); depois, o cartão da
+ * Stripe, quando lido.
+ */
+export function rotuloMetodo(r: ResumoParaTela, cartao: string | null, ctx: ContextoMetodo = {}): string {
+  if (r.renovaPelaPlay === true) return ctx.ios ? 'Assinatura do app (outro aparelho)' : 'Google Play';
   if (cartao) return cartao;
-  if (r.renovaPelaPlay === true) return 'Google Play';
   // Pago sem renovação e sem nunca ter passado pela Stripe: só pode ser o Pix do
   // plano. Com cliente na Stripe pode ser o 12x avulso no cartão — aí não chutamos.
   if (r.origem === 'pagamento' && r.renovaSozinho === false && r.temClienteStripe !== true) {
-    return 'Pix (renovação manual)';
+    return ctx.semCompraExterna ? 'Pagamento avulso (sem renovação automática)' : 'Pix (renovação manual)';
   }
   return 'Não informado';
 }

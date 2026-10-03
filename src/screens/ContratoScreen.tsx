@@ -27,6 +27,7 @@ import {
 import { formatCurrency } from '../utils/currency';
 import { resumoDaGeracao } from '../utils/contratoRecorrenteGeracao';
 import type { AtivoContrato, Cliente, ContratoRecorrente, Equipamento, ModoCobrancaContrato, SituacaoContrato } from '../types';
+import { TelaRecursoPlano } from '../components/RecursoPlano';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rota = RouteProp<RootStackParamList, 'Contrato'>;
@@ -38,7 +39,7 @@ type Rota = RouteProp<RootStackParamList, 'Contrato'>;
  * a próxima visita (OS + agenda) e diz o que fez — nada acontece em silêncio.
  * Ativo pode ser equipamento do inventário OU texto livre (piscina, caixa d'água…).
  */
-export default function ContratoScreen() {
+function ContratoScreenConteudo() {
   return (
     <GuardaPapel acao="ver_valores_agregados" area="Contratos recorrentes">
       <ContratoConteudo />
@@ -493,3 +494,18 @@ const criarEstilos = (c: Cores) =>
     excluir: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: Spacing.base },
     excluirTexto: { fontSize: 14, fontWeight: '700', color: c.danger },
   });
+
+/**
+ * PMOC e contratos são do plano Empresa (`pmoc_contratos`, decisão do dono em
+ * 01/10/2026). Com o plano confirmado sem o recurso, a tela mostra "Disponível no
+ * Empresa"; com o plano ilegível, "não consegui confirmar seu plano" — os dados já
+ * cadastrados não são tocados, só ficam fora de alcance até o plano voltar.
+ * Membro de equipe vale pelo plano da EMPRESA (ver `RECURSOS_DO_TENANT`).
+ */
+export default function ContratoScreen() {
+  return (
+    <TelaRecursoPlano recurso="pmoc_contratos" titulo="Contrato">
+      <ContratoScreenConteudo />
+    </TelaRecursoPlano>
+  );
+}

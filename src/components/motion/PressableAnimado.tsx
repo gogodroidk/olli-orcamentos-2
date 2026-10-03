@@ -27,6 +27,8 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   children?: React.ReactNode;
   accessibilityLabel?: string;
+  /** O que acontece ao tocar, lido depois do rótulo (o rótulo cobre os filhos). */
+  accessibilityHint?: string;
   /** Padrão `'button'`. */
   accessibilityRole?: AccessibilityRole;
   /** Estado anunciado ao leitor de tela (`busy`, `selected`…). `disabled` entra sozinho. */
@@ -58,6 +60,7 @@ export function PressableAnimado({
   style,
   children,
   accessibilityLabel,
+  accessibilityHint,
   accessibilityRole = 'button',
   accessibilityState,
   hitSlop,
@@ -115,6 +118,7 @@ export function PressableAnimado({
       disabled={disabled}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       // O leitor de tela lê o ESTADO, não a prop `disabled`.
       accessibilityState={{ disabled, ...accessibilityState }}
       hitSlop={hitSlop}

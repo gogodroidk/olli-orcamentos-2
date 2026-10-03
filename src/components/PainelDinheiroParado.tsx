@@ -35,7 +35,7 @@ import {
   achatarVeu, ajustarParaContraste, comAlfa, type Cores,
 } from '../theme';
 import { formatCurrency } from '../utils/currency';
-import { formatDate } from '../utils/date';
+import { formatDate, haQuantosDias } from '../utils/date';
 import { avisoPix, type SituacaoPix } from '../utils/cobrancaCliente';
 import { OlliPressable } from './OlliPressable';
 import { OlliSkeleton } from './OlliSkeleton';
@@ -57,10 +57,6 @@ function estadoDe(carregando: boolean, erro: boolean): Estado {
   if (carregando) return 'carregando';
   if (erro) return 'erro';
   return 'ok';
-}
-
-function dias(n: number): string {
-  return `${n} ${n === 1 ? 'dia' : 'dias'}`;
 }
 
 /**
@@ -213,14 +209,14 @@ function LinhaAcao({
     <View style={styles.linha}>
       <View style={styles.linhaInfo}>
         <Text style={styles.linhaNome} numberOfLines={1}>{nome}</Text>
-        <Text style={styles.linhaMeta}>{formatCurrency(valor)} · parado há {dias(diasParado)}</Text>
+        <Text style={styles.linhaMeta}>{formatCurrency(valor)} · parado {haQuantosDias(diasParado)}</Text>
         {nota ? <Text style={styles.linhaNota} numberOfLines={2}>{nota}</Text> : null}
       </View>
       <OlliPressable
         style={[styles.linhaBtn, jaFeito && styles.linhaBtnFeito]}
         onPress={onPress}
         haptic={false}
-        accessibilityLabel={`${rotuloBotao} — ${nome}, ${formatCurrency(valor)} parado há ${dias(diasParado)}`}
+        accessibilityLabel={`${rotuloBotao} — ${nome}, ${formatCurrency(valor)} parado ${haQuantosDias(diasParado)}`}
       >
         <MaterialCommunityIcons
           name="whatsapp"
@@ -388,8 +384,8 @@ export function PainelDinheiroParado({
           <CountUp value={totalCobranca} format="currency" style={[styles.numerao, { color: tons.forte }]} duration={700} />
           <Text style={[styles.subtitulo, { color: tons.secundario }]}>
             {cobranca.length === 1
-              ? `1 orçamento aprovado, sem pagamento há ${dias(maisAntigoCobranca)}`
-              : `em ${cobranca.length} orçamentos aprovados · o mais antigo há ${dias(maisAntigoCobranca)}`}
+              ? `1 orçamento aprovado, sem pagamento ${haQuantosDias(maisAntigoCobranca)}`
+              : `em ${cobranca.length} orçamentos aprovados · o mais antigo ${haQuantosDias(maisAntigoCobranca)}`}
           </Text>
 
           <View style={styles.linhas}>
@@ -441,8 +437,8 @@ export function PainelDinheiroParado({
               <Text style={[styles.secundarioTitulo, { color: tons.forte }]}>
                 {formatCurrency(totalFollowUp)} esperando resposta
                 {followUp.length === 1
-                  ? ` · 1 proposta parada há ${dias(maisAntigoFollowUp)}`
-                  : ` · ${followUp.length} propostas, a mais antiga há ${dias(maisAntigoFollowUp)}`}
+                  ? ` · 1 proposta parada ${haQuantosDias(maisAntigoFollowUp)}`
+                  : ` · ${followUp.length} propostas, a mais antiga ${haQuantosDias(maisAntigoFollowUp)}`}
               </Text>
               <View style={styles.linhas}>
                 {followUp.slice(0, limiteFollowUp).map(item => (
@@ -480,8 +476,8 @@ export function PainelDinheiroParado({
           <ContadorAnimado valor={totalFollowUp} formato="brl" style={[styles.numerao, { color: tons.forte }]} />
           <Text style={[styles.subtitulo, { color: tons.secundario }]}>
             {followUp.length === 1
-              ? `1 proposta enviada, sem resposta há ${dias(maisAntigoFollowUp)}`
-              : `em ${followUp.length} propostas enviadas · a mais antiga há ${dias(maisAntigoFollowUp)}`}
+              ? `1 proposta enviada, sem resposta ${haQuantosDias(maisAntigoFollowUp)}`
+              : `em ${followUp.length} propostas enviadas · a mais antiga ${haQuantosDias(maisAntigoFollowUp)}`}
           </Text>
 
           <View style={styles.linhas}>

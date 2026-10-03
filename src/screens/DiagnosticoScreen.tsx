@@ -3,7 +3,7 @@ import {
   View, Text, FlatList, StyleSheet, TextInput, ScrollView,
   TouchableOpacity, Modal, Linking, Alert,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { vibrar } from '../utils/haptico';
@@ -17,9 +17,19 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { EstadoIA } from '../components/EstadoIA';
 import {
   getMarcasErro, countCodigosErro, searchCodigosErro, saveCasoErro,
-  countCodigosErroPorSeveridade,
+  countCodigosErroPorSeveridade, getServicos, getProdutos, getEquipamentoDb, getCliente,
 } from '../database/database';
-import { CodigoErro, CasoErro } from '../types';
+import { CodigoErro, CasoErro, type Equipamento, type ServicoItem, type ProdutoItem } from '../types';
+import { DicaContextual } from '../components/DicaContextual';
+import { Aparecer, ContadorAnimado } from '../components/motion';
+import { formatCurrency } from '../utils/currency';
+import {
+  itensParaPrefill,
+  linhaDoEquipamento,
+  montarRascunhoDoDefeito,
+  totalSugerido,
+  type RascunhoDoDefeito,
+} from '../utils/orcamentoDoDefeito';
 import { track, Eventos } from '../services/analytics';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
@@ -37,6 +47,23 @@ import {
 } from '../services/diagnosticoContexto';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/**
+ * Catálogo do prestador para o orçamento do defeito — 3 estados de verdade: falha
+ * de leitura NÃO vira "catálogo vazio" (os itens iriam sem preço e a tela diria
+ * que ele não cadastrou nada). Com erro, a tela avisa e oferece tentar de novo.
+ */
+type CatalogoDefeito =
+  | { estado: 'carregando' }
+  | { estado: 'erro' }
+  | { estado: 'pronto'; servicos: ServicoItem[]; produtos: ProdutoItem[] };
+
+/** Equipamento vindo do QR (ficha → "Código de erro deste equipamento"). */
+type EquipamentoDoAtendimento =
+  | { estado: 'nenhum' }
+  | { estado: 'carregando' }
+  | { estado: 'erro' }
+  | { estado: 'pronto'; equipamento: Equipamento; clienteNome?: string };
 
 /** Cor da severidade da falha — rampa de 4 níveis distintos (ver tokens sev* no tema). */
 function sevColor(s: string, c: Cores): string {
@@ -103,6 +130,14 @@ export default function DiagnosticoScreen() {
   // da Regra de ouro. Também se autocorrige a cada foco na tela.
   const [headerErro, setHeaderErro] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const route = useRoute<RouteProp<RootStackParamList, 'Diagnostico'>>();
+  const equipamentoId = route.params?.equipamentoId;
+  const [catalogo, setCatalogo] = useState<CatalogoDefeito>({ estado: 'carregando' });
+  const [atendimento, setAtendimento] = useState<EquipamentoDoAtendimento>(
+    equipamentoId ? { estado: 'carregando' } : { estado: 'nenhum' },
+  );
+  // A marca do equipamento só pré-seleciona o filtro UMA vez (depois é do usuário).
+  const marcaDoEquipAplicada = useRef(false);
 
   const carregarHeader = useCallback(async () => {
     setHeaderErro(false);
@@ -115,7 +150,48 @@ export default function DiagnosticoScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { carregarHeader(); }, [carregarHeader]));
+  // Catálogo do prestador: base do "orçamento sugerido" (nome e preço DELE).
+  const carregarCatalogo = useCallback(async () => {
+    setCatalogo((c) => (c.estado === 'pronto' ? c : { estado: 'carregando' }));
+    try {
+      const [servicos, produtos] = await Promise.all([getServicos(), getProdutos()]);
+      setCatalogo({ estado: 'pronto', servicos, produtos });
+    } catch {
+      setCatalogo({ estado: 'erro' });
+    }
+  }, []);
+
+  const carregarEquipamento = useCallback(async () => {
+    if (!equipamentoId) { setAtendimento({ estado: 'nenhum' }); return; }
+    setAtendimento({ estado: 'carregando' });
+    try {
+      const eq = await getEquipamentoDb(equipamentoId);
+      if (!eq) { setAtendimento({ estado: 'erro' }); return; }
+      let clienteNome: string | undefined;
+      if (eq.clienteId) {
+        try { clienteNome = (await getCliente(eq.clienteId))?.nome || undefined; } catch { clienteNome = undefined; }
+      }
+      setAtendimento({ estado: 'pronto', equipamento: eq, clienteNome });
+    } catch {
+      setAtendimento({ estado: 'erro' });
+    }
+  }, [equipamentoId]);
+
+  useFocusEffect(useCallback(() => {
+    carregarHeader();
+    void carregarCatalogo();
+  }, [carregarHeader, carregarCatalogo]));
+
+  useEffect(() => { void carregarEquipamento(); }, [carregarEquipamento]);
+
+  // Veio pelo QR: a marca do equipamento já filtra a base (se a base conhece a marca).
+  useEffect(() => {
+    if (marcaDoEquipAplicada.current || atendimento.estado !== 'pronto' || marcas.length === 0) return;
+    const fab = (atendimento.equipamento.fabricante ?? '').trim().toLowerCase();
+    const achada = fab ? marcas.find((m) => m.toLowerCase() === fab) : undefined;
+    marcaDoEquipAplicada.current = true;
+    if (achada) setMarca(achada);
+  }, [atendimento, marcas]);
 
   const executarBusca = useCallback(async () => {
     const id = sequencia.proxima();
@@ -196,19 +272,39 @@ export default function DiagnosticoScreen() {
     perguntarOlli({ codigos: results, marca, codigoBuscado: query.trim() });
   }
 
-  // Cria um orçamento já com um item-serviço descrevendo o reparo do código aberto.
-  function criarOrcamentoDoCodigo(c: CodigoErro) {
+  /**
+   * O rascunho do orçamento do código aberto: itens comuns para o defeito, ligados
+   * ao catálogo do prestador, e a descrição técnica (com o equipamento do QR).
+   * Catálogo com erro → sugestões sem preço (a tela avisa); nunca inventa preço.
+   */
+  function rascunhoDe(c: CodigoErro): RascunhoDoDefeito {
+    return montarRascunhoDoDefeito({
+      codigo: c,
+      servicos: catalogo.estado === 'pronto' ? catalogo.servicos : [],
+      produtos: catalogo.estado === 'pronto' ? catalogo.produtos : [],
+      equipamento: atendimento.estado === 'pronto' ? atendimento.equipamento : null,
+    });
+  }
+
+  /**
+   * "Gerar orçamento deste defeito" (1 toque): abre o Orçar com o cliente do
+   * equipamento (se veio do QR), os itens sugeridos e o laudo do defeito. Nada é
+   * salvo aqui — o prestador confere preço e texto no editor antes de enviar.
+   */
+  function gerarOrcamentoDoDefeito(c: CodigoErro) {
     vibrar('selecao');
     setSelected(null);
-    const ctx = [c.marca, c.familia].filter(Boolean).join(' ');
-    const nome = [
-      'Diagnóstico e reparo',
-      ctx ? `— ${ctx}` : '',
-      c.codigo ? `(código ${c.codigo})` : '',
-    ].filter(Boolean).join(' ').trim() || 'Serviço de diagnóstico e reparo';
-    const descricao = [c.falha, c.acao].filter(Boolean).join('. ') || undefined;
+    const r = rascunhoDe(c);
+    track('orcamento_do_defeito', {
+      marca: c.marca, codigo: c.codigo, itens: r.itens.length,
+      comPreco: r.comPrecoDoCatalogo, doQr: atendimento.estado === 'pronto',
+    });
     nav.navigate('NovoOrcamento', {
-      prefillItem: { tipo: 'servico', nome, descricao },
+      ...(atendimento.estado === 'pronto' && atendimento.equipamento.clienteId
+        ? { clienteId: atendimento.equipamento.clienteId }
+        : {}),
+      prefillItems: itensParaPrefill(r.itens),
+      laudoTecnico: r.laudoTecnico,
     });
   }
 
@@ -291,6 +387,25 @@ export default function DiagnosticoScreen() {
           <Text style={styles.ouroBold}> nunca troque a placa sem testar</Text>. Código genérico não é diagnóstico.
         </Text>
       </View>
+
+      {/* EQUIPAMENTO DO QR — o orçamento do defeito já sai com cliente e equipamento. */}
+      {atendimento.estado === 'pronto' ? (
+        <View style={styles.equipFaixa} accessibilityRole="text">
+          <MaterialCommunityIcons name="qrcode-scan" size={16} color={cores.accentLight} />
+          <Text style={styles.equipFaixaTxt} numberOfLines={2}>
+            Atendendo: <Text style={styles.ouroBold}>{linhaDoEquipamento(atendimento.equipamento) || 'equipamento do QR'}</Text>
+            {atendimento.clienteNome ? ` · ${atendimento.clienteNome}` : ''}
+          </Text>
+        </View>
+      ) : atendimento.estado === 'erro' ? (
+        <View style={styles.ouro}>
+          <MaterialCommunityIcons name="alert-circle-outline" size={16} color={cores.warning} />
+          <Text style={styles.ouroText}>
+            Não consegui abrir o equipamento do QR. A busca funciona igual, mas o orçamento sai sem o cliente.{' '}
+            <Text style={styles.ouroLink} onPress={() => void carregarEquipamento()}>Tentar de novo</Text>
+          </Text>
+        </View>
+      ) : null}
 
       {/* MARCAS/TOTAL DO CABEÇALHO — falha real (não colapsa em silêncio): a
           busca principal segue funcionando sem isso, mas oferece retry. */}
@@ -563,15 +678,21 @@ export default function DiagnosticoScreen() {
                 <MaterialCommunityIcons name="chevron-right" size={22} color={cores.accentLight} />
               </TouchableOpacity>
 
-              {/* CTA — transforma o diagnóstico em orçamento (ciclo do dinheiro) */}
+              {/* CÓDIGO VIRA ORÇAMENTO — itens do catálogo dele + laudo do defeito, 1 toque */}
+              <OrcamentoSugerido
+                rascunho={rascunhoDe(selected)}
+                catalogo={catalogo}
+                onTentarCatalogo={() => void carregarCatalogo()}
+              />
               <OlliButton
-                label="Criar orçamento com este reparo"
+                label="Gerar orçamento deste defeito"
                 variant="gradient"
                 size="lg"
                 fullWidth
-                onPress={() => criarOrcamentoDoCodigo(selected)}
+                onPress={() => gerarOrcamentoDoDefeito(selected)}
                 icon={<MaterialCommunityIcons name="file-plus-outline" size={20} color="#fff" />}
                 style={{ marginTop: 14 }}
+                accessibilityLabel="Gerar orçamento deste defeito. Abre o orçamento com o defeito descrito e os itens sugeridos; você confere antes de enviar."
               />
             </ScrollView>
           </View>
@@ -600,6 +721,79 @@ export default function DiagnosticoScreen() {
           </View>
         </View>
       </Modal>
+    </View>
+  );
+}
+
+/**
+ * "Orçamento sugerido" no detalhe do código: o que vai sair no orçamento, com a
+ * origem de cada item dita com todas as letras — "seu preço" (catálogo dele) ou
+ * "sem preço, você define" (a base sugere o item, o preço é decisão do prestador).
+ */
+function OrcamentoSugerido({ rascunho, catalogo, onTentarCatalogo }: {
+  rascunho: RascunhoDoDefeito;
+  catalogo: CatalogoDefeito;
+  onTentarCatalogo: () => void;
+}) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const total = totalSugerido(rascunho.itens);
+  const semPreco = rascunho.itens.filter((i) => i.preco <= 0).length;
+  return (
+    <View style={styles.sugBox}>
+      <View style={styles.sectionHead}>
+        <MaterialCommunityIcons name="file-document-edit-outline" size={16} color={cores.accentLight} />
+        <Text style={[styles.sectionTitle, { color: cores.accentLight }]}>Orçamento sugerido</Text>
+      </View>
+      <DicaContextual
+        id="diagnostico.orcamento-do-defeito"
+        texto="Um toque e o orçamento sai com o defeito descrito e as peças do seu catálogo. Você confere o preço antes de enviar."
+        style={{ marginBottom: 8 }}
+      />
+      {catalogo.estado === 'erro' ? (
+        <Text style={styles.sugAviso}>
+          Não consegui ler o seu catálogo agora: os itens vão sem preço.{' '}
+          <Text style={styles.ouroLink} onPress={onTentarCatalogo}>Tentar de novo</Text>
+        </Text>
+      ) : catalogo.estado === 'carregando' ? (
+        <Text style={styles.sugAviso}>Procurando os itens no seu catálogo…</Text>
+      ) : null}
+      {rascunho.itens.map((item, i) => (
+        <Aparecer key={item.chave} indice={i}>
+          <View style={styles.sugItem}>
+            <MaterialCommunityIcons
+              name={item.tipo === 'produto' ? 'package-variant-closed' : 'wrench-outline'}
+              size={16}
+              color={cores.onSurfaceVariant}
+              style={{ marginTop: 2 }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sugNome}>{item.nome}</Text>
+              <Text style={styles.sugMotivo}>{item.motivo}</Text>
+            </View>
+            {item.preco > 0 ? (
+              <View style={styles.sugPreco}>
+                <Text style={styles.sugPrecoValor}>{formatCurrency(item.preco)}</Text>
+                <Text style={styles.sugPrecoOrigem}>seu preço</Text>
+              </View>
+            ) : (
+              <View style={styles.sugPreco}>
+                <Text style={styles.sugSemPreco}>sem preço</Text>
+                <Text style={styles.sugPrecoOrigem}>você define</Text>
+              </View>
+            )}
+          </View>
+        </Aparecer>
+      ))}
+      <View style={styles.sugRodape}>
+        <Text style={styles.sugRodapeTxt}>
+          {semPreco > 0
+            ? `${semPreco} ${semPreco === 1 ? 'item fica' : 'itens ficam'} sem preço até você definir.`
+            : 'Todos os itens com o preço do seu catálogo.'}
+        </Text>
+        {total > 0 ? <ContadorAnimado valor={total} formato="brl" style={styles.sugTotal} numberOfLines={1} /> : null}
+      </View>
+      <Text style={styles.sugLaudo} numberOfLines={3}>{rascunho.laudoTecnico}</Text>
     </View>
   );
 }
@@ -720,6 +914,23 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   olliBox: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(127,233,245,0.08)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(127,233,245,0.22)', padding: Spacing.base, marginTop: 16 },
   olliTitle: { fontSize: 14.5, fontWeight: '800', color: c.onSurface, marginBottom: 2 },
+
+  // equipamento do QR + orçamento sugerido do defeito
+  equipFaixa: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline, paddingHorizontal: Spacing.base, paddingVertical: 9 },
+  equipFaixaTxt: { flex: 1, fontSize: 12.5, lineHeight: 17, color: c.onSurfaceVariant },
+  sugBox: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.base, marginTop: 16, ...sombrasDe(c).sm },
+  sugAviso: { fontSize: 12.5, lineHeight: 18, color: c.onSurfaceVariant, marginBottom: 6 },
+  sugItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.outline },
+  sugNome: { fontSize: 14, fontWeight: '700', color: c.onSurface },
+  sugMotivo: { fontSize: 12, lineHeight: 17, color: c.onSurfaceVariant, marginTop: 2 },
+  sugPreco: { alignItems: 'flex-end', minWidth: 78 },
+  sugPrecoValor: { fontSize: 14, fontWeight: '800', color: c.onSurface },
+  sugSemPreco: { fontSize: 12.5, fontWeight: '800', color: c.warning },
+  sugPrecoOrigem: { fontSize: 10.5, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 },
+  sugRodape: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.outline },
+  sugRodapeTxt: { flex: 1, fontSize: 12, lineHeight: 17, color: c.onSurfaceVariant },
+  sugTotal: { fontSize: 17, fontWeight: '800', color: c.onSurface },
+  sugLaudo: { fontSize: 12, lineHeight: 17, color: c.onSurfaceMuted, fontStyle: 'italic', marginTop: 8 },
   olliText: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
 
   // sheet "não achei"

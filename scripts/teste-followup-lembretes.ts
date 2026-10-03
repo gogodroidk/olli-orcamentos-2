@@ -27,6 +27,7 @@ import {
   lerEstadoRespostas,
   planejarAvisoRascunhos,
   planejarFollowUps,
+  followUpsDoPlano,
   reconciliarAgendadas,
   selecionarFollowUps,
   type AgendadaExistente,
@@ -238,6 +239,18 @@ console.log('\n6) "Cliente aprovou/recusou" uma vez por orçamento');
   ok(podado.novoEstado.ids.join() === 'A', 'conjunto podado aos orçamentos que ainda têm link');
 
   ok(lerEstadoRespostas(null) === null && lerEstadoRespostas({ ids: 'x' }) === null, 'estado ilegível = tratado como conta nova (com janela de 48h)');
+}
+
+console.log('\n6b) follow-up automático é do Pro (3 estados)');
+{
+  const planejados = planejarFollowUps([orc('p1', { status: 'enviado' })], [], AGORA, SEM_DOMINGO);
+  ok(followUpsDoPlano('liberado', planejados) === planejados, 'Pro/Empresa: os lembretes planejados');
+  ok(Array.isArray(followUpsDoPlano('bloqueado', planejados)) && followUpsDoPlano('bloqueado', planejados)!.length === 0,
+    'Grátis confirmado: nenhum D+2/D+5 (a reconciliação cancela os que houver)');
+  ok(followUpsDoPlano('indeterminado', planejados) === null, 'plano ilegível: null = não mexe em nada');
+  const servico = semComentarios(ler('../src/services/followUpLembretes.ts'));
+  ok(/followUpsDoPlano\(\s*await acessoRecursoAgora\('followup_automatico'\)/.test(servico), 'o serviço pergunta o plano pelo recurso');
+  ok(/if \(!plano\) return;/.test(servico), 'e não reconcilia nada quando não sabe');
 }
 
 console.log('\n7) fiação');

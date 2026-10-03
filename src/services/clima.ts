@@ -41,7 +41,7 @@ import {
   type FalhaClima,
 } from './climaTexto';
 
-export type { DadosClima, EstadoClima, FalhaClima, HoraChuva, MotivoFalhaClima } from './climaTexto';
+export type { DadosClima, DiaClima, EstadoClima, FalhaClima, HoraChuva, MotivoFalhaClima } from './climaTexto';
 export {
   textoClima,
   atribuicaoClima,
@@ -70,10 +70,18 @@ const TIMEOUT_MS = 8000;
  */
 const CACHE_MS = 15 * 60 * 1000;
 const memoria = new Map<string, { exp: number; dados: DadosClima }>();
+/**
+ * Pedidos EM VOO por coordenada: a Agenda monta um chip por visita, e várias
+ * visitas no mesmo bairro (ou do mesmo cliente) pediriam o mesmo /clima ao mesmo
+ * tempo — cada uma gastando o balde por IP do worker (30/min). Quem chega com o
+ * pedido já em voo espera a mesma promessa.
+ */
+const emVoo = new Map<string, Promise<DadosClima | FalhaClima>>();
 
 /** Só para teste. */
 export function limparCacheClima(): void {
   memoria.clear();
+  emVoo.clear();
 }
 
 function chave(lat: number, lon: number): string {
@@ -91,7 +99,17 @@ export async function buscarClima(lat: number, lon: number): Promise<DadosClima 
   const k = chave(lat, lon);
   const guardado = memoria.get(k);
   if (guardado && guardado.exp > Date.now()) return guardado.dados;
+  const pendente = emVoo.get(k);
+  if (pendente) return pendente;
 
+  const p = buscarClimaNaRede(lat, lon, k).finally(() => {
+    emVoo.delete(k);
+  });
+  emVoo.set(k, p);
+  return p;
+}
+
+async function buscarClimaNaRede(lat: number, lon: number, k: string): Promise<DadosClima | FalhaClima> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {

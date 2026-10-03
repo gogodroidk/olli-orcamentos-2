@@ -10,6 +10,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing, BorderRadius, useCores, useEstilos, sombrasDe, textoSobre, type Cores } from '../theme';
 import { GradientHeader } from '../components/GradientHeader';
+import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
+import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
@@ -31,6 +33,7 @@ import { garantirDocumentoRecibo, registrarArtefatoDocumentoBiblioteca } from '.
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
+import { exigirCadastroParaEnviar } from '../services/exigirCadastro';
 
 type Route = RouteProp<RootStackParamList, 'EmitirRecibo'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -93,6 +96,8 @@ function EmitirReciboConteudo() {
       if (orcamentoId) {
         const o = await getOrcamento(orcamentoId);
         if (o) {
+          // Roteiro de dicas: a 1ª vez no recibo, ANTES de marcar como pago.
+          registrarEventoDica('primeiro_recibo');
           setOrc(o);
           setClienteNome(o.clienteNome);
           setClienteTelefone(o.clienteTelefone);
@@ -181,6 +186,9 @@ function EmitirReciboConteudo() {
       Alert.alert('Aguarde', 'Ainda estamos carregando os dados da sua empresa.');
       return;
     }
+    // Recibo sai com nome, documento e contato do negócio: cadastro incompleto
+    // segura a emissão (com o caminho para completar), não o app inteiro.
+    if (!(await exigirCadastroParaEnviar('recibo'))) return;
     // Sem empresa cadastrada o PDF sairia em branco (sem nome, CNPJ, PIX,
     // assinatura) e seria entregue ao cliente assim mesmo, sem nenhum aviso —
     // bloqueamos aqui e orientamos o usuário a cadastrar a empresa primeiro.
@@ -280,6 +288,7 @@ function EmitirReciboConteudo() {
         return;
       }
       setNumero(numeroFinal);
+      registrarEventoDica('primeiro_recibo');
       setOverlayInfo({ titulo: 'Gerando seu recibo...', subtitulo: 'Deixando bonito para o cliente...' });
       try {
         const html = await buildHtml(recibo);
@@ -309,6 +318,7 @@ function EmitirReciboConteudo() {
   // Reconstrói o HTML de um recibo já emitido (aba "Emitidos") e compartilha
   // de novo — cenário comum: cliente perdeu o PDF e pede a segunda via.
   async function handleReenviar(r: Recibo) {
+    if (!(await exigirCadastroParaEnviar('recibo'))) return;
     if (!empresa) {
       Alert.alert(
         'Cadastre sua empresa antes',
@@ -405,6 +415,7 @@ function EmitirReciboConteudo() {
     <View style={styles.container}>
       <GradientHeader
         title="Emitir recibo"
+        comoFunciona="recibo"
         subtitle={numero ? `Nº ${formatarNumeroExibicao(numero)}` : reciboPendente ? `Nº ${formatarNumeroExibicao(reciboPendente.numero)} · pagamento registrado` : 'Número gerado ao emitir'}
         onBack={() => goBackOrHome(nav)}
       />
@@ -429,6 +440,8 @@ function EmitirReciboConteudo() {
           }}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Dica do momento (roteiro I5): só marcar como pago com o dinheiro na conta. */}
+          <DicaDoRoteiro local="recibo" style={{ marginTop: 0, marginBottom: Spacing.md }} />
           {carregandoEmpresa && (
             <View style={styles.avisoCard}>
               <ActivityIndicator color={cores.primary} size="small" />
