@@ -72,6 +72,7 @@ import { handleCep, handleFeriados } from './brasil.js';
 import { handleClima } from './clima.js';
 import { fonteDoCron, handleAlertas, processarAlertas } from './alertas.js';
 import { handleGeo, modoGeoBackfill, processarGeoClientes } from './geoClientes.js';
+import { processarConversoesAnuncios } from './anunciosConversoes.js';
 import { cobrarCreditoVoz, preautorizarUsoIa } from './creditos.js';
 import {
   aiConfigurada,
@@ -921,6 +922,10 @@ const handler = {
     // Termômetro do orçamento (LGPD): apaga eventos de interação com mais de 180
     // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
     ctx.waitUntil(limparEventosAntigos(env, agendado));
+    // Conversões de anúncio pelo servidor (Meta CAPI: cadastro e assinatura de quem
+    // aceitou o aviso de cookies). A cada 10 min, 3 subrequests. Sem META_CAPI_TOKEN,
+    // desligado (e diz isso no log). Ver anunciosConversoes.js.
+    ctx.waitUntil(processarConversoesAnuncios(env, { agora: agendado }));
     // A Google Play NÃO roda aqui (orçamento de subrequests): ver o ramo dos
     // alertas acima (`tarefaPlayDoCron`).
   },

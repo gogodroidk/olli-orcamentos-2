@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '2 de outubro de 2026',
+  atualizadoEm: '3 de outubro de 2026',
   aviso:
-    'Documento atualizado em 2 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 3 de outubro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -173,6 +173,16 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Legítimo interesse (art. 7º, IX).',
         },
         {
+          dado: 'Origem da visita (site e telas de entrada do painel web)',
+          finalidade: 'Saber de qual anúncio ou link veio cada cadastro e assinatura. Guardamos os parâmetros da campanha (UTM e identificadores de clique do Facebook e do Google) e os anexamos ao seu cadastro. Esse dado é nosso e não é enviado a terceiros.',
+          base: 'Legítimo interesse em medir a eficácia da nossa divulgação (art. 7º, IX).',
+        },
+        {
+          dado: 'Medição de anúncios no Meta e no Google (só se você aceitar)',
+          finalidade: 'Informar ao Meta (Facebook/Instagram) e ao Google Ads que uma visita, um cadastro ou uma assinatura veio de um anúncio deles, para medir e melhorar os anúncios do OLLI. No site e nas telas de entrada do painel web carregamos o Meta Pixel e a tag do Google; no cadastro e na assinatura o nosso servidor também avisa o Meta, com o identificador da sua conta e o seu e-mail transformados em código irreversível (hash SHA-256), os cookies de anúncio e o navegador usado. Nunca enviamos nome, telefone nem dados dos seus clientes.',
+          base: 'Consentimento (art. 7º, I), dado no aviso de cookies. Você pode recusar ali, apagar os cookies a qualquer momento ou ativar Do Not Track / Global Privacy Control no navegador: sem consentimento, nada disso é carregado ou enviado.',
+        },
+        {
           dado: 'Dados técnicos de falha (crash e erro do app)',
           finalidade: 'Diagnosticar travamentos e erros para corrigi-los rapidamente. Não inclui o seu IP nem outros dados pessoais identificáveis.',
           base: 'Legítimo interesse em manter o app estável e seguro (art. 7º, IX).',
@@ -245,6 +255,12 @@ export const PRIVACIDADE: LegalDoc = {
           'vem do MET Norway, consultado só com a coordenada. O mapa do aplicativo baixa as ' +
           'imagens da região exibida direto do OpenFreeMap (dados © OpenStreetMap), que recebe o ' +
           'endereço IP do aparelho e a área do mapa, nunca os dados dos seus clientes.',
+        'Meta (Facebook e Instagram) e Google Ads — só se você aceitar o aviso de cookies: ' +
+          'Meta Pixel e tag do Google no site e nas telas de entrada do painel web, e aviso do ' +
+          'nosso servidor ao Meta quando a conta é criada ou a assinatura é paga, para medir os ' +
+          'anúncios do OLLI. Recebem dados de navegação, identificadores do navegador e, no caso ' +
+          'do Meta, o e-mail e o identificador da conta em hash, nunca o conteúdo da sua conta. ' +
+          'O aplicativo instalado no celular não usa Pixel nem tag do Google.',
       ],
     },
     {
@@ -326,8 +342,16 @@ export const PRIVACIDADE: LegalDoc = {
       paragrafos: [
         'O OLLI guarda dados no próprio aparelho para funcionar offline (banco local SQLite) e, ' +
           'na versão web, usa armazenamento local do navegador para manter você conectado e ' +
-          'lembrar preferências. Não usamos cookies de publicidade nem rastreamento de terceiros ' +
-          'para anúncios.',
+          'lembrar preferências.',
+        'No site e nas telas de entrada do painel web também usamos cookies de marketing. O ' +
+          'olli_attr é nosso e guarda por até 90 dias de qual campanha você veio (só é criado ' +
+          'quando o link traz parâmetros de campanha); o olli_consent guarda a sua resposta ao ' +
+          'aviso de cookies. Só se você clicar em "Aceitar", carregamos o Meta Pixel (cookies ' +
+          '_fbp e _fbc) e a tag do Google Ads (cookies _gcl_*), para medir anúncios. Se você ' +
+          'recusar, ou se o seu navegador enviar Do Not Track ou Global Privacy Control, nenhum ' +
+          'deles é carregado. Você pode apagar esses cookies a qualquer momento nas ' +
+          'configurações do navegador, o que também faz o aviso aparecer de novo. Não usamos ' +
+          'outros cookies de publicidade nem rastreamento de terceiros para anúncios.',
       ],
     },
     {

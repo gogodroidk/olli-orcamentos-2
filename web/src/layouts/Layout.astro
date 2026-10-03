@@ -186,5 +186,8 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
   </head>
   <body>
     <slot />
+    {/* Origem da visita (UTM) + Meta Pixel. Bundle próprio: não é <script> inline,
+        então não entra no hash do CSP. Páginas noindex se excluem sozinhas. */}
+    <script src="../scripts/marketing.ts"></script>
   </body>
 </html>
