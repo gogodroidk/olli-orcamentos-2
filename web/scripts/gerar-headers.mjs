@@ -31,13 +31,17 @@ function arquivosHtml(dir) {
 }
 
 // Pega só <script> SEM src (os inline). O (?![^>]*\ssrc=) é o que exclui os externos.
-const REGEX_INLINE = /<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<\/script>/g;
+// Blocos de DADOS (`type="application/ld+json"`, o JSON-LD de SEO) ficam de fora: o
+// navegador não os executa e o CSP não se aplica a eles. Hasheá-los só engordava a
+// linha do CSP — que a Cloudflare recusa acima de 2000 caracteres (erro 100324).
+const REGEX_INLINE = /<script(?![^>]*\ssrc=)([^>]*)>([\s\S]*?)<\/script>/g;
+const TIPO_DADOS = /\stype=["']?application\/(ld\+)?json/i;
 
 const hashes = new Set();
 for (const arquivo of arquivosHtml(DIST)) {
 	const html = readFileSync(arquivo, "utf8");
-	for (const [, corpo] of html.matchAll(REGEX_INLINE)) {
-		if (!corpo.trim()) continue;
+	for (const [, atributos, corpo] of html.matchAll(REGEX_INLINE)) {
+		if (!corpo.trim() || TIPO_DADOS.test(atributos)) continue;
 		hashes.add(`'sha256-${createHash("sha256").update(corpo, "utf8").digest("base64")}'`);
 	}
 }
@@ -95,6 +99,17 @@ const csp = [
 	"frame-ancestors 'none'",
 	"upgrade-insecure-requests",
 ].join("; ");
+
+// A Cloudflare recusa o deploy se uma linha do _headers passar de 2000 caracteres.
+// Falhar AQUI (no build) é melhor que descobrir no `wrangler deploy`.
+const LIMITE_LINHA_CLOUDFLARE = 2000;
+const linhaCsp = `  Content-Security-Policy: ${csp}`;
+if (linhaCsp.length > LIMITE_LINHA_CLOUDFLARE) {
+	throw new Error(
+		`[gerar-headers] linha do CSP com ${linhaCsp.length} caracteres (limite da Cloudflare: ${LIMITE_LINHA_CLOUDFLARE}). ` +
+			"Reduza hosts ou scripts inline.",
+	);
+}
 
 const conteudo = `# GERADO POR scripts/gerar-headers.mjs no build — NÃO EDITAR À MÃO.
 /*
