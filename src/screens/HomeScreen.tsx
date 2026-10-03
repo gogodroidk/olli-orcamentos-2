@@ -33,6 +33,7 @@ import { EtaChip } from '../components/EtaChip';
 import { AvisoSaidaCard } from '../components/AvisoSaidaCard';
 import { lerAvisoSaida, type AvisoSaida } from '../services/avisoSaida';
 import { reagendarAvisoSaidaDoDia } from '../services/ritualDiario';
+import { ACAO_SINAL } from '../utils/bomDiaSinais';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { OlliPressable } from '../components/OlliPressable';
@@ -139,6 +140,15 @@ export default function HomeScreen() {
   // O cartão "Seu primeiro orçamento" da AtivacaoInicio é do DONO (mesma régua
   // que ela usa). Para ele, o StarterCard seria um 2º convite igual na mesma tela.
   const ativacaoDoDono = !papelCarregando && pode('gerenciar_faturamento');
+  // SINAIS COMERCIAIS POR PAPEL — o palco do dinheiro parado (cobrança +
+  // follow-up), os KPIs e o radar de clientes leem a base local INTEIRA da
+  // empresa, e o `Orcamento` não tem dono: não dá para recortar "os do técnico".
+  // Então quem não tem a permissão nem LÊ o radar (os loaders saem antes). A
+  // régua é a mesma do "Bom dia" (`ACAO_SINAL`, utils/bomDiaSinais.ts) e do
+  // Início desktop. Papel desconhecido (`papelCarregando`) = não mostra; nunca
+  // vira dono.
+  const veDinheiro = !papelCarregando && pode(ACAO_SINAL.cobranca);
+  const vePosVenda = !papelCarregando && pode(ACAO_SINAL.posVenda);
   // Cards e atalhos de ar-condicionado (códigos de erro, diagnóstico) só para
   // quem é do ofício — sem ofício definido, vê tudo (regra de useVerticais).
   const { mostraHvac } = useVerticais();
@@ -298,6 +308,7 @@ export default function HomeScreen() {
   }, []);
 
   const loadRadar = useCallback(async () => {
+    if (!vePosVenda) return; // fora da régua do papel: nem lê
     setRadarErro(false);
     try {
       const lista = await clientesParaReconquistar();
@@ -310,9 +321,10 @@ export default function HomeScreen() {
     } finally {
       setRadarCarregando(false);
     }
-  }, []);
+  }, [vePosVenda]);
 
   const loadCobranca = useCallback(async () => {
+    if (!veDinheiro) return; // fora da régua do papel: nem lê
     setCobrancaErro(false);
     try {
       const lista = await orcamentosParaCobrar();
@@ -323,9 +335,10 @@ export default function HomeScreen() {
     } finally {
       setCobrancaCarregando(false);
     }
-  }, []);
+  }, [veDinheiro]);
 
   const loadFollowUp = useCallback(async () => {
+    if (!veDinheiro) return; // fora da régua do papel: nem lê
     setFollowUpErro(false);
     try {
       const lista = await orcamentosParaFollowUp();
@@ -336,9 +349,12 @@ export default function HomeScreen() {
     } finally {
       setFollowUpCarregando(false);
     }
-  }, []);
+  }, [veDinheiro]);
 
-  useFocusEffect(useCallback(() => { load(); loadRadar(); loadCobranca(); loadFollowUp(); }, [load, loadRadar, loadCobranca, loadFollowUp]));
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Radares separados do load(): os loaders mudam quando o papel resolve (régua
+  // acima), e com a tela já focada isto relê só eles — não a Home inteira.
+  useFocusEffect(useCallback(() => { loadRadar(); loadCobranca(); loadFollowUp(); }, [loadRadar, loadCobranca, loadFollowUp]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo orçamentos/agendamentos que ainda não existiam localmente).
@@ -453,11 +469,11 @@ export default function HomeScreen() {
   }, [nav]);
 
   useEffect(() => {
-    if (!radarCarregando && radarBloqueados > 0) {
+    if (vePosVenda && !radarCarregando && radarBloqueados > 0) {
       track(Eventos.gateVisto, { recurso: 'radar_clientes', plano: 'pro', bloqueados: radarBloqueados });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [radarCarregando, radarBloqueados]);
+  }, [vePosVenda, radarCarregando, radarBloqueados]);
 
   // ── métricas reais (já agregadas em SQL — ver load()) ──
   const valorAprovadoMes = aprovadosResumo.valorTotal;
@@ -488,9 +504,10 @@ export default function HomeScreen() {
    * "Pedem follow-up" = o MESMO radar do palco (`orcamentosParaFollowUp`: 3+ dias
    * sem resposta, sem pagamento). Antes o KPI e o selo do robô contavam outra
    * regra (5 dias desde a criação) e podiam discordar do palco na mesma tela.
-   * `null` = o radar ainda carrega ou falhou (não sei ≠ zero).
+   * `null` = o radar ainda carrega, falhou (não sei ≠ zero) ou o papel não o
+   * vê (`veDinheiro`): sem número, sem selo no robô, sem item no menu.
    */
-  const pedemFollowUp = followUpCarregando || followUpErro ? null : followUp.length;
+  const pedemFollowUp = !veDinheiro || followUpCarregando || followUpErro ? null : followUp.length;
   const primeiroNome = empresa?.nomePrestador?.split(' ')[0] || 'prestador';
 
   const abrirOlli = () => {
@@ -569,8 +586,8 @@ export default function HomeScreen() {
             distância até a ação (cobrar no WhatsApp sem navegar).
             Os 3 estados de cada radar vão INTEIROS para o componente: é ele que
             garante que "não deu para verificar" nunca vire "você não tem nada a
-            receber". */}
-        {!esperandoDownload && (
+            receber". Só para quem vê os valores da empresa (`veDinheiro`). */}
+        {veDinheiro && !esperandoDownload && (
         <AnimatedEntrance index={0}>
           <PainelDinheiroParado
             cobranca={cobranca}
@@ -728,8 +745,10 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* KPIs */}
-        {carregando || (esperandoDownload && download === 'baixando') ? (
+        {/* KPIs — totais da empresa: mesma régua do palco (`veDinheiro`), como os
+            totais do Início desktop. O erro de leitura continua visível em
+            "Orçamentos recentes", abaixo, para quem não vê os KPIs. */}
+        {!veDinheiro ? null : carregando || (esperandoDownload && download === 'baixando') ? (
           <View style={styles.kpis}>
             {[0, 1, 2, 3].map(i => (
               <View key={i} style={[styles.kpi, { height: 96, justifyContent: 'center', gap: 8 }]}>
@@ -791,8 +810,10 @@ export default function HomeScreen() {
         )}
 
         {/* CLIENTES PARA LEMBRAR (pós-venda) — serviço concluído há o intervalo do
-            ofício (ex.: ar-condicionado 6 meses). Regra em utils/posVenda.ts. */}
-        {radarCarregando ? (
+            ofício (ex.: ar-condicionado 6 meses). Regra em utils/posVenda.ts.
+            Cuidar da carteira = `gerenciar_clientes` (`vePosVenda`), a mesma régua
+            do pós-venda no "Bom dia". */}
+        {!vePosVenda ? null : radarCarregando ? (
           <View style={{ paddingHorizontal: Spacing.base, marginTop: Spacing.xl, gap: 10 }}>
             <OlliSkeleton width="45%" height={16} />
             <View style={styles.radarCard}>

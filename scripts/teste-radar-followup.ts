@@ -143,7 +143,7 @@ assert.doesNotMatch(montarMensagemPropostaVencida({ ...vencida, validaAte: null 
 const home = ler('../src/screens/HomeScreen.tsx');
 assert.doesNotMatch(home, /getOrcamentosParadosAgregado/, 'Início não tem mais a 2ª regra de "parado" (5 dias da criação)');
 assert.doesNotMatch(home, /paradosResumo/, 'KPI e selo não leem mais o agregado antigo');
-assert.match(home, /const pedemFollowUp = followUpCarregando \|\| followUpErro \? null : followUp\.length/, 'KPI e selo = lista do palco, com 3 estados');
+assert.match(home, /const pedemFollowUp = !veDinheiro \|\| followUpCarregando \|\| followUpErro \? null : followUp\.length/, 'KPI e selo = lista do palco, com 3 estados (e só para quem vê os valores)');
 assert.match(home, /useVerticais\(\)/, 'Início respeita o ofício');
 assert.match(home, /\{mostraHvac && \(\s*<AnimatedEntrance index=\{2\}>/, 'anzol de ar-condicionado só para HVAC');
 assert.match(home, /\{mostraHvac && \(\s*<ShortcutTile\s+icon="card-search-outline"/, 'atalho do diagnóstico só para HVAC');
