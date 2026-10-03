@@ -1,4 +1,4 @@
-import { podeComPapel } from './permissoesPapel.ts';
+import { podeComPapel, type Acao } from './permissoesPapel.ts';
 import { formatCurrency } from './currency.ts';
 
 /**
@@ -17,11 +17,21 @@ import { formatCurrency } from './currency.ts';
  *    é cuidar da carteira de clientes → exige `gerenciar_clientes`. O técnico
  *    só tem `ver_clientes`, e o painel do técnico no desktop não mostra nenhum
  *    dos dois radares.
- * Papel desconhecido nega os dois (`podeComPapel` nunca promove "não sei" a
- * dono): o "Bom dia" fica com a visita do dia, ou em silêncio.
+ * Papel desconhecido nega os dois (`podeComPapel` devolve `null` = "não sei", e
+ * só `true` libera — nunca promove "não sei" a dono): o "Bom dia" fica com a
+ * visita do dia, ou em silêncio.
+ *
+ * A Home do celular (`screens/HomeScreen.tsx`) mostra os MESMOS radares e usa
+ * esta mesma régua (`ACAO_SINAL`) — o ritual e a tela nunca discordam.
  */
 
 type Conta = Parameters<typeof podeComPapel>[1];
+
+/** A permissão que libera cada sinal comercial. Uma régua só: ritual e Home. */
+export const ACAO_SINAL = {
+  cobranca: 'ver_valores_agregados',
+  posVenda: 'gerenciar_clientes',
+} as const satisfies Record<string, Acao>;
 
 export interface SinaisComerciaisPermitidos {
   cobranca: boolean;
@@ -30,8 +40,8 @@ export interface SinaisComerciaisPermitidos {
 
 export function sinaisComerciaisPermitidos(conta: Conta): SinaisComerciaisPermitidos {
   return {
-    cobranca: podeComPapel('ver_valores_agregados', conta),
-    posVenda: podeComPapel('gerenciar_clientes', conta),
+    cobranca: podeComPapel(ACAO_SINAL.cobranca, conta) === true,
+    posVenda: podeComPapel(ACAO_SINAL.posVenda, conta) === true,
   };
 }
 
