@@ -40,7 +40,7 @@
   // LIMITE DA CONTA FREE: 5 Cron Triggers no TOTAL, somando todas as workers
   // (olli-diagnostico 2 + olli-diagnostico-staging 1 + genesis-v2-api 1 + o que
   // o fonteia tiver). Antes de acrescentar um cron, conte os da conta.
-  "triggers": { "crons": ["* * * * *", "7,27,47 * * * *"] },
+  "triggers": { "crons": ["* * * * *", "7,27,47 * * * *", "3,23,43 * * * *"] },
   // Variáveis PÚBLICAS (não-secretas). Chaves ficam como secret:
   //   npx wrangler secret put OPENROUTER_API_KEY
   //   npx wrangler secret put STRIPE_SECRET_KEY       (sk_live_...)

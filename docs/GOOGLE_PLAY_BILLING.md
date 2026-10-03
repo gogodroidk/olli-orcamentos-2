@@ -26,7 +26,7 @@ worker/src/play.js ── subscriptionsv2.get (Google Play Developer API, conta 
 409 { ok:false, erro: 'token_de_outra_conta' }  ──▶  "Esta assinatura já está ligada a outra conta OLLI"
 
 Renovação, cancelamento, carência, suspensão, estorno:
-Google ──RTDN──▶ Pub/Sub (tópico olli-play-rtdn) ──pull pelo cron 7,27,47 (:07/:47)──▶ worker ──▶ subscriptionsv2.get ──▶ assinaturas
+Google ──RTDN──▶ Pub/Sub (tópico olli-play-rtdn) ──pull pelo cron próprio 3,23,43 (:03/:43)──▶ worker ──▶ subscriptionsv2.get ──▶ assinaturas
 ```
 
 - **Quem libera é o servidor.** O app nunca libera plano sozinho. Se o servidor não confirmar, a compra
@@ -168,7 +168,7 @@ Contrato que o app usa (`src/services/playBillingWorker.ts`):
 3. Deploy do worker com `PLAY_BILLING_MODE=off` (avisar antes: o deploy cobra 1 crédito extra;
    usar `env -u CLOUDFLARE_API_TOKEN`).
 4. "Enviar notificação de teste" do RTDN e conferir que chega pelo pull (o pull roda no cron
-   `7,27,47`: minutos :07 e :47; a reconciliação roda no :27 e, às 05:27 UTC, a varredura de
+   próprio `3,23,43`: minutos :03 e :43; a reconciliação roda no :23 e, às 05:23 UTC, a varredura de
    anuladas no lugar dela). Na assinatura `olli-play-rtdn-worker` do GCP, `ackDeadlineSeconds` ≥ 60.
    Pré-requisito: a migration `20261004110200_empresa_carimbo_servidor.sql` também entra nesta leva.
 5. `PLAY_BILLING_MODE=on` e confirmar com os testadores de licença.
@@ -202,8 +202,9 @@ registrada e reconhecida (senão a Play estornaria e o cliente ficaria sem o pla
   3 são cortados).
 - Varredura de anuladas: orçamento de 40 subrequests; uma anulada nossa só é reivindicada se couber
   tratá-la na mesma rodada.
-- **Medir o CPU** depois do deploy (`wrangler tail`, campo `cpuTime`) na invocação `7,27,47` (alertas
-  + Play juntos). Passando de ~8 ms, mover a Play para um cron próprio.
+- **Cron próprio (03/10/2026):** medido com `wrangler tail`, a invocação `7,27,47` (alertas + Play)
+  batia 10 ms de CPU — o teto do plano Free — e o RTDN nunca era lido. A Play passou para o cron
+  `3,23,43` (CRON_PLAY), invocação só dela. Usa 3 dos 5 crons da conta Free.
 
 ## Limites conhecidos
 
