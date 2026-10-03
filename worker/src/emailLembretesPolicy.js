@@ -25,7 +25,7 @@ import { avaliarLembreteAtivacao } from './onboardingReminderPolicy.js';
 import { lembreteAssinatura } from '../../src/services/lembreteAssinatura.ts';
 import { derivarPlanoEfetivo } from '../../src/services/planoEfetivo.ts';
 
-export const EMAIL_LEMBRETES_POLICY_VERSION = '2026-10-01.v2';
+export const EMAIL_LEMBRETES_POLICY_VERSION = '2026-10-05.v3';
 /** Consentimento educativo = opt-out: todo lembrete leva o link de descadastro. */
 export const LEMBRETES_CONSENTIMENTO_VERSAO = 'opt_out_link.2026-09-29';
 
@@ -39,6 +39,22 @@ export const LEMBRETE_ASSINATURA = Object.freeze({
   templateVersion: 'lembrete_assinatura.v1',
   purpose: 'billing_reminder',
 });
+/**
+ * Régua de reengajamento (03/10/2026), para quem as duas regras acima não cobrem:
+ *   - ativacao_ultima: zero orçamento e conta mais velha que a janela de ativação
+ *     (até 120 dias) — UM e-mail na vida;
+ *   - parou: já orçou e não faz orçamento novo há 7 (d7) e 14 dias (d14) — no
+ *     máximo 2 por "episódio" (a data do último orçamento); depois de 30 dias para;
+ *   - trial_acabando: teste do Pro ativo terminando em 24–72 h — 1 por teste.
+ */
+export const LEMBRETE_REENGAJAMENTO = Object.freeze({
+  template: 'lembrete_reengajamento',
+  templateVersion: 'lembrete_reengajamento.v1',
+  purpose: 'reengagement_reminder',
+});
+export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando']);
+const DIA_MS = 24 * 60 * 60 * 1000;
+const ATIVACAO_ULTIMA_MAX_DIAS = 120;
 
 /** Brasília não tem horário de verão desde 2019: UTC−3 fixo. */
 const OFFSET_BRASILIA_MS = -3 * 60 * 60 * 1000;
@@ -278,16 +294,104 @@ function decidirAssinatura(c, agora, precoProMensal) {
   return decisao(lembrete.tipo, pedido(LEMBRETE_ASSINATURA, { userId: c.userId, idempotencyKey: chave, dados }));
 }
 
+// ─── Reengajamento ───────────────────────────────────────────────────────────
+
 /**
- * No máximo UM pedido por conta por rodada. Ativação e cobrança são exclusivas
- * por construção: uma exige zero orçamento, a outra pelo menos um.
+ * Histórico de reengajamento. Campo AUSENTE (banco antigo, antes da migration
+ * 20261005090000) devolve null e a régua nova não decide nada — nunca "não tem
+ * histórico, então manda".
+ */
+function historicoReengajamento(c) {
+  const lista = c.historico.reengajamento;
+  if (!Array.isArray(lista)) return null;
+  for (const e of lista) {
+    if (!objeto(e) || typeof e.chave !== 'string' || typeof e.tipo !== 'string' || !data(e.em)) return null;
+  }
+  return lista;
+}
+
+function pedidoReengajamento(c, historico, chave, dados) {
+  if (historico.some((e) => e.chave === chave)) return decisao('reengajamento_ja_enfileirado');
+  return decisao(`reengajamento_${dados.tipo}`, pedido(LEMBRETE_REENGAJAMENTO, {
+    userId: c.userId,
+    idempotencyKey: chave,
+    dados,
+  }));
+}
+
+function decidirAtivacaoUltima(c, agora, ativacaoMaxDias, historico) {
+  if (c.membroDeEquipe) return decisao('membro_de_equipe');
+  const idadeDias = (agora.getTime() - data(c.confirmadoEm).getTime()) / DIA_MS;
+  if (idadeDias <= ativacaoMaxDias) return decisao('ativacao_ultima_cedo');
+  if (idadeDias > ATIVACAO_ULTIMA_MAX_DIAS) return decisao('ativacao_ultima_tarde');
+  if (historico.some((e) => e.tipo === 'ativacao_ultima')) return decisao('ativacao_ultima_ja_enviada');
+  return pedidoReengajamento(c, historico, `reengajamento:${c.userId}:ativacao_ultima`, { tipo: 'ativacao_ultima' });
+}
+
+function decidirTrialAcabando(c, agora, historico) {
+  if (!c.donoDoTenant || !objeto(c.oferta) || c.oferta.trial_estado !== 'active') return null;
+  const termina = data(c.oferta.trial_termina_em);
+  if (!termina) return null;
+  const horas = (termina.getTime() - agora.getTime()) / HORA_MS;
+  if (!(horas > 24 && horas <= 72)) return null;
+  const terminaEm = termina.toISOString();
+  return pedidoReengajamento(c, historico, `reengajamento:${c.userId}:trial:${terminaEm}`, {
+    tipo: 'trial_acabando',
+    terminaEm,
+  });
+}
+
+function decidirParou(c, agora, historico) {
+  if (c.membroDeEquipe || !c.donoDoTenant) return decisao('parou_nao_e_dono');
+  const ultimo = data(c.ultimoOrcamentoEm);
+  if (!ultimo) return decisao('parou_sem_data');
+  const dias = (agora.getTime() - ultimo.getTime()) / DIA_MS;
+  let etapa = null;
+  if (dias >= 7 && dias < 14) etapa = 'd7';
+  else if (dias >= 14 && dias < 30) etapa = 'd14';
+  if (!etapa) return decisao('parou_fora_da_janela');
+  const episodio = ultimo.toISOString();
+  // d14 sem d7 (o d7 caiu no teto do dia, por exemplo) ainda sai: são no máximo 2.
+  return pedidoReengajamento(c, historico, `reengajamento:${c.userId}:parou:${episodio}:${etapa}`, {
+    tipo: 'parou',
+    etapa,
+    ultimoOrcamentoEm: episodio,
+  });
+}
+
+/**
+ * Teto de frequência: no máximo 1 e-mail por pessoa a cada 24 h, somando TODOS
+ * os tipos (boas-vindas, lembretes, cobrança, resumo). Campo ausente = banco
+ * antigo: não bloqueia aqui, o banco reconfere sob trava.
+ */
+function recebeuNasUltimas24h(c, agora) {
+  const ultimo = data(c.ultimoEmailEm);
+  return ultimo !== null && agora.getTime() - ultimo.getTime() < DIA_MS;
+}
+
+/**
+ * No máximo UM pedido por conta por rodada, nesta ordem: cobrança de renovação,
+ * ativação (D+3/D+7), teste do Pro acabando, última chamada de ativação e
+ * "orçou e parou". O primeiro que se aplica vence.
  */
 export function decidirLembreteEmail(candidato, { agora, precoProMensal, ativacaoMaxDias = 30 } = {}) {
   if (!(agora instanceof Date) || Number.isNaN(agora.getTime())) return decisao('agora_invalido');
   if (typeof precoProMensal !== 'string' || !/^R\$ \d/.test(precoProMensal)) return decisao('preco_invalido');
   if (!candidatoValido(candidato)) return decisao('candidato_invalido');
-  if (candidato.orcamentos === 0) return decidirAtivacao(candidato, agora, ativacaoMaxDias);
-  return decidirAssinatura(candidato, agora, precoProMensal);
+  if (recebeuNasUltimas24h(candidato, agora)) return decisao('teto_pessoa_dia');
+
+  const historico = historicoReengajamento(candidato);
+  if (candidato.orcamentos === 0) {
+    const ativacao = decidirAtivacao(candidato, agora, ativacaoMaxDias);
+    if (ativacao.enfileirar || ativacao.motivo !== 'ativacao_fora_da_janela' || !historico) return ativacao;
+    return decidirAtivacaoUltima(candidato, agora, ativacaoMaxDias, historico);
+  }
+
+  const cobranca = decidirAssinatura(candidato, agora, precoProMensal);
+  if (cobranca.enfileirar || !historico) return cobranca;
+  const trial = decidirTrialAcabando(candidato, agora, historico);
+  if (trial) return trial;
+  return decidirParou(candidato, agora, historico);
 }
 
 /**
