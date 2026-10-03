@@ -58,7 +58,7 @@ import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
-import { handlePlay, tarefaPlayDoCron } from './play.js';
+import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
 import { handleResendWebhook } from './resendWebhook.js';
 import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
@@ -890,11 +890,15 @@ const handler = {
     if (fonteAlertas) {
       const quando = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
       ctx.waitUntil(processarAlertas(env, { fonte: fonteAlertas, now: () => quando }));
-      // Google Play (assinatura direta) mora NESTA invocação, não na de minuto: lá
-      // os jobs abaixo já dividem o teto de 50 subrequests do plano Free. :07 e :47
-      // o RTDN por PULL da assinatura Pub/Sub (sem endpoint público e sem cron novo
-      // — a conta Free tem 5); :27 a reconciliação (05:27 UTC: anuladas). Um só por
-      // minuto. Sem PLAY_SA_JSON sai sem fazer nada. Ver worker/src/play.js.
+      return;
+    }
+    // Google Play (assinatura direta): cron PRÓPRIO (CRON_PLAY = 3,23,43), invocação
+    // só dela. Em 03/10/2026 ela morava na dos alertas e o feed do INMET levava a
+    // invocação ao teto de 10 ms de CPU do plano Free: o RTDN nunca era lido. :03 e
+    // :43 o RTDN por PULL; :23 a reconciliação (05:23 UTC: anuladas). Sem
+    // PLAY_SA_JSON sai sem fazer nada. Ver worker/src/play.js.
+    if (controller?.cron === CRON_PLAY) {
+      const quando = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
       ctx.waitUntil(tarefaPlayDoCron(env, { agora: quando }));
       return;
     }
@@ -921,8 +925,8 @@ const handler = {
     // Termômetro do orçamento (LGPD): apaga eventos de interação com mais de 180
     // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
     ctx.waitUntil(limparEventosAntigos(env, agendado));
-    // A Google Play NÃO roda aqui (orçamento de subrequests): ver o ramo dos
-    // alertas acima (`tarefaPlayDoCron`).
+    // A Google Play NÃO roda aqui (orçamento de subrequests): tem cron próprio
+    // (`CRON_PLAY`, ramo acima).
   },
 
   async fetch(request, env) {
@@ -997,7 +1001,7 @@ const handler = {
     // ── ASSINATURA PELA GOOGLE PLAY — Play Billing direto (sem RevenueCat) ──
     // GET /play/config (kill switch PLAY_BILLING_MODE) e POST /play/verificar (JWT
     // do Supabase; o estado vem SEMPRE da Google Play Developer API). O RTDN não
-    // tem rota pública: chega por PULL no cron 7,27,47 (scheduled acima). Fora do
+    // tem rota pública: chega por PULL no cron próprio 3,23,43 (scheduled acima). Fora do
     // gate da IA, mesmo perfil das rotas de pagamento acima. Ver worker/src/play.js.
     if (url.pathname.startsWith('/play/')) {
       return handlePlay(request, env, url);

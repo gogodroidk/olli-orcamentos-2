@@ -10,9 +10,9 @@
  *                            resposta 200 { ok:true, estado, plano, vigenteAte }
  *                                     409 { ok:false, erro:'token_de_outra_conta' }
  *                          → consulta a Play → public.play_compras + public.assinaturas
- *   tarefaPlayDoCron(env) → cron `7,27,47` (invocação PRÓPRIA, fora do cron de
- *                          minuto e do orçamento de subrequests dele): :07 e :47 o
- *                          RTDN por PULL; :27 a reconciliação (05:27 UTC: a
+ *   tarefaPlayDoCron(env) → cron PRÓPRIO `3,23,43` (CRON_PLAY: invocação só da Play,
+ *                          fora do cron de minuto e do cron dos alertas): :03 e :43 o
+ *                          RTDN por PULL; :23 a reconciliação (05:23 UTC: a
  *                          varredura de anuladas NO LUGAR dela). Nunca os dois juntos.
  *   cancelarPlayDoUsuario(env, userId) → exclusão de conta (conta.js/admin.js)
  *
@@ -1201,17 +1201,19 @@ export async function processarRtdn(env, { agora = new Date(), max } = {}) {
   return { estado: 'ok', recebidas: recebidas.length, confirmadas: ackIds.length, mantidas };
 }
 
-// ─── reconciliação (cron 7,27,47, horários fixos) ────────────
+// ─── reconciliação (cron próprio 3,23,43, horários fixos) ─────
 
 /**
- * Minutos UTC do cron `7,27,47 * * * *` (o mesmo dos alertas, invocação própria):
- * :07 e :47 o RTDN; :27 a reconciliação. Nunca os dois no mesmo minuto — cada um
- * gasta até ~30 subrequests e o teto da invocação no plano Free é 50.
+ * Cron PRÓPRIO da Play (`3,23,43 * * * *`): invocação só dela, com o orçamento inteiro
+ * de CPU e de subrequests do plano Free. Em 03/10/2026 a Play dividia a invocação dos
+ * alertas (`7,27,47`) e o feed do INMET a levava ao teto de 10 ms de CPU — o RTDN nunca
+ * era lido. :03 e :43 o RTDN; :23 a reconciliação. Nunca os dois no mesmo minuto.
  */
-export const MINUTOS_RTDN = new Set([7, 47]);
-const MINUTOS_RECONCILIAR = new Set([27]);
-/** Varredura diária de compras anuladas: 05:27 UTC (02:27 de Brasília), NO LUGAR da reconciliação. */
-const HORA_ANULADAS = { h: 5, m: 27 };
+export const CRON_PLAY = '3,23,43 * * * *';
+export const MINUTOS_RTDN = new Set([3, 43]);
+const MINUTOS_RECONCILIAR = new Set([23]);
+/** Varredura diária de compras anuladas: 05:23 UTC (02:23 de Brasília), NO LUGAR da reconciliação. */
+const HORA_ANULADAS = { h: 5, m: 23 };
 
 async function linhasParaReconciliar(env, agoraMs, limite) {
   const ate48h = iso(agoraMs + 2 * DIA_MS);
@@ -1325,11 +1327,9 @@ export async function reconciliarPlay(env, { agora = new Date(), limite } = {}) 
 }
 
 /**
- * O que a Play faz no cron `7,27,47 * * * *` — invocação PRÓPRIA (a dos alertas
- * oficiais), fora do cron de minuto: lá welcome, lembretes, resumo do dinheiro,
- * contratos, geo e limpeza já dividem o teto de 50 subrequests do plano Free.
- * :07 e :47 → RTDN por pull; :27 → reconciliação (05:27 UTC → anuladas). Um só
- * por minuto.
+ * O que a Play faz no cron PRÓPRIO `3,23,43 * * * *` (CRON_PLAY), fora do cron de
+ * minuto e fora do cron dos alertas: :03 e :43 → RTDN por pull; :23 → reconciliação
+ * (05:23 UTC → anuladas). Um só por minuto.
  */
 export async function tarefaPlayDoCron(env, { agora = new Date() } = {}) {
   const quando = agora instanceof Date ? agora : new Date(agora);
