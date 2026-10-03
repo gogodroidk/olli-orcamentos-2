@@ -919,7 +919,7 @@ function abaNotas(c,u,d){
  (d.notas||[]).forEach(n=>box.append(el('div',{className:'notaItem'},el('div',{className:'q'},fmtDH(n.criado_em)+' · '+n.actor_role),el('div',{className:'fbMsg'},n.motivo))));
  c.append(box);
 }
-function fc(titulo,texto,botao,acao,cls){return el('div',{className:'fc'+(cls?' '+cls:'')},el('b',{},titulo),el('p',{},texto),el('button',{className:'btn '+(cls==='perigo'?'danger':'sec'),onclick:acao},botao));}
+function fc(titulo,texto,botao,acao,cls,desligado){return el('div',{className:'fc'+(cls?' '+cls:'')},el('b',{},titulo),el('p',{},texto),el('button',{className:'btn '+(cls==='perigo'?'danger':'sec'),onclick:acao,disabled:!!desligado},botao));}
 function abaFerramentas(c,u,d){
  const ass=d.assinatura;
  const grupo=(t,cards)=>{const v=cards.filter(Boolean);if(!v.length)return;c.append(secTit(t),el('div',{className:'ferr'},v));};
@@ -940,7 +940,7 @@ function abaFerramentas(c,u,d){
  const fe=(d.funil&&d.funil.estado)||'indisponivel';
  grupo('Relatórios e funil',[
   pode('admin')&&fc('Relatório da conta (TXT)','Baixa um resumo da conta e da atividade recente. Fica na auditoria.','Baixar',()=>baixarRelatorio(u)),
-  pode('admin')&&(fe==='indisponivel'?fc('Funil: estado desconhecido','Não consegui ler se esta conta é interna. Tente atualizar.','Indisponível',()=>{}):fe==='interna'?fc('Devolver ao funil','Esta conta está marcada como interna (teste). Devolva se for cliente real.','Devolver',()=>acaoFunil(u,false)):fc('Marcar como conta interna','Tira do funil de receita contas de teste ou da equipe.','Tirar do funil',()=>acaoFunil(u,true)))
+  pode('admin')&&(fe==='indisponivel'?fc('Funil: estado desconhecido','Não consegui ler se esta conta é interna. Tente atualizar — o botão fica travado até saber.','Indisponível',()=>{},'',true):fe==='interna'?fc('Devolver ao funil','Esta conta está marcada como interna (teste). Devolva se for cliente real.','Devolver',()=>acaoFunil(u,false)):fc('Marcar como conta interna','Tira do funil de receita contas de teste ou da equipe.','Tirar do funil',()=>acaoFunil(u,true)))
  ]);
  grupo('Zona de perigo',[pode('owner')&&fc('Excluir conta e todos os dados','Cancela assinaturas, apaga arquivos e a conta. Não tem volta. Pede o código do autenticador.','Excluir conta',()=>acaoExcluir(u),'perigo')]);
  if(!c.childNodes.length)c.append(el('div',{className:'card'},estado('','Seu papel não tem ferramentas para esta conta.')));

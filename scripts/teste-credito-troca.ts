@@ -209,8 +209,9 @@ try {
   checar('meses fora do teto barra antes da RPC', invalido.status === 400 && !chamadas.some((c) => c.url.includes('admin_decidir_credito_troca')));
 
   const html = await (await handleAdmin(new Request('https://api.exemplo/admin'), baseEnv, new URL('https://api.exemplo/admin'))).text();
-  checar('painel tem a seção de crédito de troca', html.includes('id="trocaBox"') && html.includes('carregarTroca()'));
-  checar('painel deriva o teto do worker', html.includes(`TROCA_MAX=${CREDITO_TROCA_MESES_MAX}`) && html.includes(`até ${CREDITO_TROCA_MESES_MAX} meses`));
+  checar('painel tem a seção de crédito de troca', html.includes('id="v-troca"') && html.includes('function renderTroca()') && html.includes("api('creditos-troca'"));
+  // O teto chega pelo CFG (vindo de CREDITO_TROCA_MESES_MAX) e é atualizado pela resposta da API.
+  checar('painel deriva o teto do worker', html.includes(`"trocaMax":${CREDITO_TROCA_MESES_MAX}`) && html.includes('TROCA_MAX=CFG.trocaMax') && html.includes('TROCA_MAX=j.mesesMax||TROCA_MAX'));
 } finally {
   globalThis.fetch = originalFetch;
 }
