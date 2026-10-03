@@ -397,9 +397,9 @@ const naMinuto = (minuto, hora = new Date(AGORA).getUTCHours()) => {
   d.setUTCHours(hora, minuto, 0, 0);
   return d;
 };
-/** Hora UTC dos testes de cron: a atual, menos 05h (05:27 é a varredura de anuladas). */
+/** Hora UTC dos testes de cron: a atual, menos 05h (05:23 é a varredura de anuladas). */
 const HORA_TESTE = new Date(AGORA).getUTCHours() === 5 ? 6 : new Date(AGORA).getUTCHours();
-const R27 = naMinuto(27, HORA_TESTE);
+const R27 = naMinuto(23, HORA_TESTE);
 
 try {
   console.log('\n1) KILL SWITCH — desligado diz que está desligado');
@@ -646,9 +646,9 @@ try {
     checar('cron :27 → reconciliação: relida e reconhecida', [r.tarefa, r.estado, r.relidas, google.acks.length, compraDe(t)?.ack], ['reconciliar', 'ok', 1, 1, true]);
     const pullsAntes = pubsub.pulls;
     checar('cron :27 NÃO puxa o RTDN no mesmo minuto', pubsub.pulls, pullsAntes);
-    const rtdn = await tarefaPlayDoCron(envBase, { agora: naMinuto(7, HORA_TESTE) });
-    checar('cron :07 → RTDN (e não a reconciliação)', [rtdn.tarefa, pubsub.pulls - pullsAntes], ['rtdn', 1]);
-    checar('cron :47 → RTDN', (await tarefaPlayDoCron(envBase, { agora: naMinuto(47, HORA_TESTE) })).tarefa, 'rtdn');
+    const rtdn = await tarefaPlayDoCron(envBase, { agora: naMinuto(3, HORA_TESTE) });
+    checar('cron :03 → RTDN (e não a reconciliação)', [rtdn.tarefa, pubsub.pulls - pullsAntes], ['rtdn', 1]);
+    checar('cron :43 → RTDN', (await tarefaPlayDoCron(envBase, { agora: naMinuto(43, HORA_TESTE) })).tarefa, 'rtdn');
 
     // Google fora na reconciliação: nada muda.
     c.verificado_em = new Date(R27.getTime() - 2 * 3600e3).toISOString();
@@ -665,10 +665,10 @@ try {
     s.subscriptionState = 'SUBSCRIPTION_STATE_EXPIRED';
     s.lineItems[0].expiryTime = new Date(AGORA - 60e3).toISOString();
     google.voided = [{ purchaseToken: t, orderId: 'GPA.3311-2222-3333-44444..2', voidedReason: 1, voidedSource: 0 }];
-    const v = await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
-    checar('05:27 UTC → anuladas encontrada e aplicada', [v.anuladas?.tratadas, linhaDe()?.status], [1, 'canceled']);
+    const v = await reconciliarPlay(envBase, { agora: naMinuto(23, 5) });
+    checar('05:23 UTC → anuladas encontrada e aplicada', [v.anuladas?.tratadas, linhaDe()?.status], [1, 'canceled']);
     checar('...e a reconciliação de linhas NÃO roda no mesmo minuto', v.relidas, undefined);
-    const v2 = await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
+    const v2 = await reconciliarPlay(envBase, { agora: naMinuto(23, 5) });
     checar('a mesma anulada não é reprocessada no dia seguinte', v2.anuladas?.tratadas, 0);
   }
 
@@ -782,7 +782,7 @@ try {
     let chamadas = 0;
     globalThis.fetch = (url, init) => { chamadas++; return fetchReal(url, init); };
     try {
-      await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
+      await reconciliarPlay(envBase, { agora: naMinuto(23, 5) });
     } finally {
       globalThis.fetch = fetchReal;
     }
@@ -796,7 +796,7 @@ try {
       ...Array.from({ length: 36 }, () => ({ purchaseToken: novoToken(), orderId: 'GPA.alheia' })),
       { purchaseToken: nova, orderId: 'GPA.nova' },
     ];
-    const v = await reconciliarPlay(envBase, { agora: naMinuto(27, 5) });
+    const v = await reconciliarPlay(envBase, { agora: naMinuto(23, 5) });
     checar('anulada que não cabe no orçamento NÃO é reivindicada (fica para amanhã)', [v.anuladas?.tratadas, db.eventos.size], [0, 0]);
   }
 
