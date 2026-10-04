@@ -43,6 +43,7 @@ import { apagarArquivosDoUsuario, cancelarAssinaturaStripe, excluirFeedbackDoUsu
 import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
+import { assinaturaPagante } from './assinaturasPagantes.js';
 import {
   ADMIN_DATA_POLICY_VERSION,
   camposAdmin,
@@ -332,7 +333,7 @@ async function metrics(env) {
     rest(env, 'clientes?select=id'),
     rest(env, 'agendamentos?select=id'),
     listarAtividades(env),
-    lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
   ]);
   const now = Date.now();
   const DAY = 86400000;
@@ -379,13 +380,15 @@ async function metrics(env) {
       if (!idsUsuarios.has(a.user_id)) continue;
       const ent = derivarEntitlement(a, now);
       if (ent.plano === 'gratis') continue;
-      if (ent.origem === 'pagamento') {
-        pagantes++;
-        porPlano[ent.plano] = (porPlano[ent.plano] || 0) + 1;
-        mrr += PRECO_MENSAL[ent.plano] || 0;
-      } else if (ent.origem === 'admin') {
+      // Cortesia (comp_*), demo (sub_demo_*) e override do painel têm acesso,
+      // mas não pagam: ficam fora de pagantes, MRR e "assinantes sumidos".
+      if (!assinaturaPagante(a, now)) {
         manuais++;
+        continue;
       }
+      pagantes++;
+      porPlano[a.plano] = (porPlano[a.plano] || 0) + 1;
+      mrr += PRECO_MENSAL[a.plano] || 0;
       const uso = ultimoUso.get(a.user_id);
       if (!uso || now - Date.parse(uso) > 14 * DAY) emRisco++;
     }
@@ -415,7 +418,7 @@ async function users(env) {
     listAuthUsers(env),
     rest(env, 'empresa?select=user_id,dados'),
     rest(env, 'orcamentos?select=user_id,status,valor_total'),
-    rest(env, 'assinaturas?select=user_id,plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    rest(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
     listarAtividades(env),
   ]);
   const empByUser = new Map();
@@ -423,7 +426,13 @@ async function users(env) {
   const cnt = new Map();
   const fat = new Map();
   const plano = new Map();
-  for (const a of assinaturas) plano.set(a.user_id, derivarEntitlement(a));
+  for (const a of assinaturas) {
+    const ent = derivarEntitlement(a);
+    // Só a origem exibida muda: cortesia/demo com status 'active' aparece como
+    // liberada, não como pagante. O plano (acesso) segue o entitlement.
+    const origem = ent.plano !== 'gratis' && !assinaturaPagante(a) ? 'admin' : ent.origem;
+    plano.set(a.user_id, { plano: ent.plano, origem });
+  }
   const apr = new Map();
   for (const o of orcs) {
     cnt.set(o.user_id, (cnt.get(o.user_id) || 0) + 1);
