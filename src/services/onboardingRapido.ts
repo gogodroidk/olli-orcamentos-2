@@ -100,6 +100,22 @@ export function validarBase(d: DadosBase, cnpjValido: (digitos: string) => boole
 }
 
 /**
+ * Valida a tela 3 SEM exigir nada (T-006, 04/10/2026): o onboarding não trava
+ * mais por cadastro incompleto — igual ao painel (#139). Só barra o que foi
+ * preenchido errado; o que falta é cobrado ao gerar/enviar PDF, recibo ou
+ * contrato (services/exigirCadastro.ts).
+ */
+export function validarBaseFormato(d: DadosBase, cnpjValido: (digitos: string) => boolean): Partial<Record<CampoBase, string>> {
+  const e: Partial<Record<CampoBase, string>> = {};
+  const tel = telefoneNormalizado(d.whatsapp);
+  if (tel.length > 0 && (tel.length < 10 || tel.length > 11)) e.whatsapp = 'Informe um WhatsApp com DDD.';
+  const cnpj = d.cnpj.replace(/\D/g, '');
+  if (cnpj.length > 0 && !cnpjValido(cnpj)) e.cnpj = 'CNPJ inválido.';
+  if (d.estado.trim() && !/^[A-Z]{2}$/i.test(d.estado.trim())) e.estado = 'UF com duas letras.';
+  return e;
+}
+
+/**
  * O nome que sai no cabeçalho do orçamento. Autônomo pode deixar em branco: vale
  * o nome dele (é assim que o cliente o conhece). Empresa exige o nome (validado).
  */
