@@ -205,7 +205,8 @@ export const PRIVACIDADE: LegalDoc = {
         'Quando você usa voz, o áudio é transcrito pelo serviço Workers AI da Cloudflare. ' +
           'O áudio não é enviado ao OpenRouter; somente a transcrição em texto segue para o ' +
           'modelo quando você pede que a OLLI monte um orçamento. Esses provedores podem ' +
-          'manter o pedido por um curto período para segurança e prevenção de abuso, por isso evite nomes, telefones, ' +
+          'manter o pedido por prazo limitado para segurança e prevenção de abuso (a OpenAI informa até 30 dias) ' +
+          'e, por isso, evite nomes, telefones, ' +
           'endereços, documentos ou outros dados pessoais que não sejam necessários.',
         'A chave de acesso ao modelo fica somente no nosso servidor, nunca no aplicativo. ' +
           'Evite digitar ou ditar dados pessoais sensíveis desnecessários nos campos de IA. ' +
