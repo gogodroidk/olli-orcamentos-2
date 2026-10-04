@@ -5,6 +5,8 @@ import {
   classificarErroOAuth,
   criarRegistroFunilAuth,
   decidirRetornoNativo,
+  dismissEspurio,
+  JANELA_DISMISS_ESPURIO_MS,
   ErroOAuth,
   erroDeTabelaAusente,
   type LinhaFunilAuth,
@@ -133,6 +135,15 @@ igual(
   'negou no Google = cancelado',
 );
 
+// Android 03/10: dismiss a 0,16 s NÃO é cancelamento humano; `locked` não é cancelamento.
+igual(dismissEspurio({ type: 'dismiss' }, 160, null), true, 'dismiss a 0,16 s é espúrio');
+igual(dismissEspurio({ type: 'cancel' }, 1500, null), true, 'cancel a 1,5 s ainda é espúrio');
+igual(dismissEspurio({ type: 'dismiss' }, JANELA_DISMISS_ESPURIO_MS + 1, null), false, 'dismiss a 11 s é humano');
+igual(dismissEspurio({ type: 'dismiss' }, 160, `${cb}?code=${CODE}`), false, 'com deep link capturado não espera');
+igual(dismissEspurio({ type: 'success', url: cb }, 100, null), false, 'success nunca é espúrio');
+igual(decidirRetornoNativo({ type: 'locked' }, null), { tipo: 'erro', motivo: 'navegador_falhou' }, 'locked = navegador não abriu');
+igual(mensagemErroOAuth('navegador_falhou').includes('abrir o navegador'), true, 'mensagem navegador_falhou');
+
 // ─── 6. Intenção de plano atravessa o redirect pelo sessionStorage ─────────────
 function armazenamentoFalso() {
   const m = new Map<string, string>();
@@ -220,6 +231,9 @@ ok(!/cancel' \/ 'dismiss' → usuário fechou o navegador; silêncio/.test(nativ
 ok(/decidirRetornoNativo\(res, urlCapturada\)/.test(nativo), 'nativo usa a decisão testada');
 ok(/Linking\.addEventListener\('url'/.test(nativo), 'nativo escuta o deep link durante a aba');
 ok(/oauth_sessao_criada/.test(nativo) && /oauth_iniciado/.test(nativo), 'nativo registra o funil');
+ok(/dismissEspurio\(res,/.test(nativo), 'nativo espera o deep link após dismiss espúrio');
+ok(/oauthNativoEmAndamento/.test(nativo) && /'em_andamento'/.test(nativo), 'nativo trava sessão concorrente');
+ok(/falhar\('navegador_falhou'\)/.test(nativo), 'falha ao abrir navegador não vira cancelado');
 const entrar = ler('../src/screens/EntrarScreen.tsx');
 ok(/res === 'cancelado'[\s\S]{0,80}Alert\.alert/.test(entrar), 'app avisa quando o login não conclui');
 const traduz = ler('../src/utils/authErrors.ts');
@@ -241,6 +255,10 @@ const migration = ler('../supabase/migrations/20260929210000_auth_funil_eventos.
 ok(/grant insert \(evento, plataforma, provedor, motivo, tentativa\)/.test(migration), 'migration: INSERT só nas colunas sem PII');
 ok(!/grant select/i.test(migration), 'migration: anon não lê o funil');
 ok(/force row level security/.test(migration), 'migration: RLS forçada');
-for (const motivo of MOTIVOS_ERRO_OAUTH) ok(migration.includes(`'${motivo}'`), `migration aceita o motivo ${motivo}`);
+const migracaoMotivos = ler('../supabase/migrations/20261004130000_auth_funil_motivos_navegador.sql');
+for (const motivo of MOTIVOS_ERRO_OAUTH) {
+  ok(migration.includes(`'${motivo}'`) || migracaoMotivos.includes(`'${motivo}'`), `migrations aceitam o motivo ${motivo}`);
+  ok(migracaoMotivos.includes(`'${motivo}'`), `migration 20261004 lista ${motivo} no CHECK`);
+}
 
 console.log(`PASSOU: ${checks} verificações — redirect fixo, erro visível, code resgatado, funil sem PII.`);

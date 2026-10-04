@@ -7,6 +7,8 @@ import {
   classificarErroOAuth,
   criarRegistroFunilAuth,
   decidirRetornoNativo,
+  dismissEspurio,
+  ESPERA_RETORNO_TARDIO_MS,
   ErroOAuth,
   type MotivoErroOAuth,
   normalizarPlataforma,
@@ -299,7 +301,7 @@ export async function temDadosLocais(): Promise<boolean> {
  * Import dinâmico de expo-web-browser/expo-linking para o bundle não carregá-los à
  * toa fora do fluxo.
  */
-export type ResultadoOAuth = 'ok' | 'cancelado';
+export type ResultadoOAuth = 'ok' | 'cancelado' | 'em_andamento';
 
 // A tabela `auth_funil_eventos` aceita INSERT de anon (sem SELECT). Sem a
 // migration aplicada, o registrador se desliga no primeiro erro.
@@ -307,7 +309,25 @@ const registrarFunilAuth = criarRegistroFunilAuth(
   supabase ? (linha) => supabase!.from('auth_funil_eventos').insert(linha) : null,
 );
 
+// Uma sessão nativa por vez: toque duplo / chamada concorrente não abre duas Custom
+// Tabs (a 2ª cancelaria a 1ª e o "cancelado" seria mentira). Sempre liberada no finally.
+let oauthNativoEmAndamento = false;
+
 export async function signInWithGoogle(): Promise<ResultadoOAuth> {
+  if (!supabase) throw new Error('Backup na nuvem não configurado.');
+  if (Platform.OS !== 'web') {
+    if (oauthNativoEmAndamento) return 'em_andamento';
+    oauthNativoEmAndamento = true;
+    try {
+      return await signInWithGoogleCore();
+    } finally {
+      oauthNativoEmAndamento = false;
+    }
+  }
+  return signInWithGoogleCore();
+}
+
+async function signInWithGoogleCore(): Promise<ResultadoOAuth> {
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
   const plataforma = normalizarPlataforma(Platform.OS);
   const tentativa = novaTentativaOAuth();
@@ -346,14 +366,34 @@ export async function signInWithGoogle(): Promise<ResultadoOAuth> {
   // Rede de segurança do Android: guarda o deep link que chegar enquanto a aba
   // estiver aberta (a Custom Tab pode resolver `dismiss` mesmo tendo entregue o code).
   let urlCapturada: string | null = null;
+  let avisarUrl: (() => void) | null = null;
   const assinatura = Linking.addEventListener('url', ({ url }) => {
-    if (url.startsWith(redirectTo)) urlCapturada = url;
+    if (!url.startsWith(redirectTo)) return;
+    urlCapturada = url;
+    avisarUrl?.();
   });
   let res: { type: string; url?: string | null };
   try {
-    res = await WebBrowser.openAuthSessionAsync(data!.url, redirectTo);
-  } catch (e) {
-    return falhar(classificarErroOAuth(null, (e as Error)?.message));
+    const abriuEm = Date.now();
+    try {
+      res = await WebBrowser.openAuthSessionAsync(data!.url, redirectTo);
+    } catch {
+      // A aba nem abriu (sem Custom Tabs, outra sessão aberta, erro nativo): NÃO é cancelamento.
+      return falhar('navegador_falhou');
+    }
+    // Android: o polyfill resolve `dismiss` em qualquer AppState 'active', inclusive
+    // um espúrio logo após abrir (cancelado a 0,16 s em 03/10). Cedo demais para ser
+    // um gesto humano = a aba provavelmente segue aberta: espera o deep link.
+    if (dismissEspurio(res, Date.now() - abriuEm, urlCapturada)) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, ESPERA_RETORNO_TARDIO_MS);
+        avisarUrl = () => {
+          clearTimeout(t);
+          resolve();
+        };
+      });
+      if (!urlCapturada) return falhar('sem_retorno');
+    }
   } finally {
     assinatura.remove();
   }

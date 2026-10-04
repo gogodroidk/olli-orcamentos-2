@@ -33,11 +33,13 @@ export type MotivoErroOAuth =
   | 'sem_codigo' // voltou "sucesso" mas sem code nem erro
   | 'sem_sessao' // havia code e mesmo assim a sessão não apareceu
   | 'rede'
+  | 'navegador_falhou' // o navegador/Custom Tab nem abriu (sem navegador, aba já aberta, erro nativo)
+  | 'sem_retorno' // a aba fechou/resolveu cedo demais e nenhum retorno chegou no tempo de espera
   | 'desconhecido';
 
 export const MOTIVOS_ERRO_OAUTH: readonly MotivoErroOAuth[] = [
   'cancelado', 'provedor', 'codigo_expirado', 'navegador_trocado',
-  'sem_codigo', 'sem_sessao', 'rede', 'desconhecido',
+  'sem_codigo', 'sem_sessao', 'rede', 'navegador_falhou', 'sem_retorno', 'desconhecido',
 ];
 
 export type ProvedorOAuth = 'google' | 'apple';
@@ -71,6 +73,10 @@ export function mensagemErroOAuth(motivo: MotivoErroOAuth, provedor: ProvedorOAu
       return `O login com o ${nome} terminou em outro navegador. Abra o OLLI neste mesmo navegador e toque em ${nome} de novo.`;
     case 'rede':
       return 'Sem conexão para concluir o login. Verifique sua internet e tente de novo.';
+    case 'navegador_falhou':
+      return `Não conseguimos abrir o navegador para o login com o ${nome}. Tente de novo; se continuar, entre com e-mail e senha.`;
+    case 'sem_retorno':
+      return `O login com o ${nome} não voltou para o app. Toque em ${nome} para tentar de novo.`;
     case 'sem_codigo':
     case 'sem_sessao':
     case 'desconhecido':
@@ -169,6 +175,24 @@ export interface ResultadoSessaoNavegador {
   url?: string | null;
 }
 
+/**
+ * Janela (ms) em que um `dismiss`/`cancel` sem URL no Android NÃO é confiável.
+ * O polyfill Android do expo-web-browser resolve `dismiss` em QUALQUER AppState
+ * 'active' (WebBrowser.ts `_onAppStateChangeAndroid`), inclusive um 'active'
+ * espúrio logo após abrir a Custom Tab. Humano nenhum fecha a aba e desiste em
+ * menos de 2 s (incidente 03/10: `cancelado` 0,16 s após `oauth_iniciado`).
+ */
+export const JANELA_DISMISS_ESPURIO_MS = 2000;
+
+/** Quanto esperar o deep link tardio depois de um dismiss espúrio (a aba segue aberta). */
+export const ESPERA_RETORNO_TARDIO_MS = 180_000;
+
+/** `dismiss`/`cancel` sem URL, vindo cedo demais para ter sido um gesto humano? */
+export function dismissEspurio(res: ResultadoSessaoNavegador, decorridoMs: number, urlCapturada: string | null): boolean {
+  if (urlCapturada || res.type === 'success' || res.type === 'locked') return false;
+  return decorridoMs < JANELA_DISMISS_ESPURIO_MS;
+}
+
 export type DecisaoRetornoNativo =
   | { tipo: 'codigo'; codigo: string }
   | { tipo: 'cancelado' }
@@ -188,6 +212,8 @@ export function decidirRetornoNativo(
   urlCapturada: string | null,
 ): DecisaoRetornoNativo {
   const url = res.type === 'success' && res.url ? res.url : urlCapturada;
+  // `locked` = já existe outra sessão de navegador aberta: o nosso NÃO abriu, ninguém cancelou.
+  if (!url && res.type === 'locked') return { tipo: 'erro', motivo: 'navegador_falhou' };
   if (!url) return res.type === 'success' ? { tipo: 'erro', motivo: 'sem_codigo' } : { tipo: 'cancelado' };
   const retorno = lerRetornoOAuth(url);
   if (retorno.tipo === 'codigo') return retorno;
