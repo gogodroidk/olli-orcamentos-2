@@ -34,6 +34,54 @@ async function registrarAtividade(
 	if (!error) atividadeRegistrada.add(chave);
 }
 
+/** Eventos do funil de ativação (allowlist do RPC `registrar_atividade_usuario`). */
+export type EtapaAtivacao =
+	| "ativacao_card_visto"
+	| "ativacao_card_clicado"
+	| "oficio_escolhido"
+	| "orcamento_novo_aberto"
+	| "empresa_salva"
+	| "orcamento_enviado"
+	| "client_create"
+	| "quote_create";
+
+/** Podem repetir, no máximo 1 vez por minuto por evento. */
+const ETAPAS_REPETIVEIS: ReadonlySet<EtapaAtivacao> = new Set(["client_create", "quote_create", "orcamento_enviado"]);
+const etapasEnviadas = new Set<string>();
+const etapasUltimoEnvio = new Map<string, number>();
+
+/**
+ * Registra uma etapa do funil de ativação (1ª sessão até o 1º orçamento).
+ * Best-effort: nunca lança e nunca bloqueia a UI (chamar com `void`). Dedup por
+ * (usuário, evento) na vida da página; os repetíveis, no máximo 1 por minuto.
+ */
+export async function registrarEtapaAtivacao(evento: EtapaAtivacao): Promise<void> {
+	try {
+		const { data } = await supabase.auth.getSession();
+		const userId = data.session?.user?.id;
+		if (!userId) return;
+		const chave = `${userId}:${evento}`;
+		if (ETAPAS_REPETIVEIS.has(evento)) {
+			const ultimo = etapasUltimoEnvio.get(chave);
+			if (ultimo !== undefined && Date.now() - ultimo < 60_000) return;
+			etapasUltimoEnvio.set(chave, Date.now());
+		} else {
+			if (etapasEnviadas.has(chave)) return;
+			etapasEnviadas.add(chave);
+		}
+		const { error } = await supabase.rpc("registrar_atividade_usuario", {
+			p_evento: evento,
+			p_plataforma: "web",
+		});
+		if (error) {
+			etapasEnviadas.delete(chave);
+			etapasUltimoEnvio.delete(chave);
+		}
+	} catch {
+		// best-effort: telemetria nunca bloqueia o uso do painel.
+	}
+}
+
 /**
  * Traduz os códigos de erro do Supabase Auth (AuthApiError.code) para pt-BR.
  * Sem isto o usuário via a mensagem crua em inglês do GoTrue

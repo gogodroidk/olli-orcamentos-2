@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { registrarAtividadeUsuario } from '../services/equipe';
 import { View, Text, StyleSheet, TouchableOpacity, type ViewStyle } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -168,6 +169,13 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
     else nav.navigate('MeuNegocio');
   }, [nav, abrirExemplo]);
 
+  // Telemetria do funil: o cartão "Seu primeiro orçamento" foi de fato desenhado.
+  const cartaoVisivel = ehDono && leitura.estado === 'pronto' && download === 'pronto'
+    && mostrarCartaoPrimeiroOrcamento(leitura.totalOrcamentos, true);
+  useEffect(() => {
+    if (cartaoVisivel) void registrarAtividadeUsuario('ativacao_card_visto');
+  }, [cartaoVisivel]);
+
   if (!ehDono || leitura.estado !== 'pronto') return null;
   const { totalOrcamentos, temRecibo, vertical, checklist } = leitura;
   if (download !== 'pronto') {
@@ -212,7 +220,7 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
                   label="Abrir orçamento de exemplo"
                   variant="gradient"
                   size="md"
-                  onPress={() => abrirExemplo(vertical)}
+                  onPress={() => { void registrarAtividadeUsuario('ativacao_card_clicado'); abrirExemplo(vertical); }}
                   icon={<MaterialCommunityIcons name="file-document-edit-outline" size={18} color="#fff" />}
                   fullWidth
                 />
@@ -226,7 +234,11 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
                     style={styles.chip}
                     activeOpacity={0.8}
                     disabled={salvandoOficio}
-                    onPress={() => { void escolherOficio(o.id); }}
+                    onPress={() => {
+                      void registrarAtividadeUsuario('ativacao_card_clicado');
+                      void registrarAtividadeUsuario('oficio_escolhido');
+                      void escolherOficio(o.id);
+                    }}
                     accessibilityRole="button"
                     accessibilityLabel={`${o.label}. Abrir orçamento de exemplo`}
                   >

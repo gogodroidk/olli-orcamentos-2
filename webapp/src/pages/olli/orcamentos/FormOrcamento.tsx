@@ -53,6 +53,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Separator } from "@/ui/separator";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /* ═══════════════════════════════  A TRAVA  ═══════════════════════════════════ */
 
@@ -349,6 +350,11 @@ function Editor({
 	// navegador — mesmo padrão de meu-negocio. Cobre o Ctrl+W, que a guarda do
 	// diálogo (Esc/clique-fora) não alcança. `aberto` na dependência: diálogo
 	// fechado não pode segurar a aba.
+	// Telemetria do funil: editor de orçamento NOVO aberto (não edição).
+	useEffect(() => {
+		if (aberto && ehNovo) void registrarEtapaAtivacao("orcamento_novo_aberto");
+	}, [aberto, ehNovo]);
+
 	useEffect(() => {
 		if (!sujo || !aberto) return;
 		const aviso = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -586,6 +592,7 @@ function Editor({
 			}
 
 			await salvar.mutateAsync(final);
+			if (ehNovo) void registrarEtapaAtivacao("quote_create");
 			aoFechar();
 		} catch (err) {
 			setErro((err as Error)?.message ?? "Não foi possível salvar o orçamento.");

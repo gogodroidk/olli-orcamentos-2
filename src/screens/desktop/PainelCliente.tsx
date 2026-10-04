@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { registrarAtividadeUsuario } from '../../services/equipe';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../../utils/haptico';
@@ -93,6 +94,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
     setSalvando(true);
     try {
       await saveCliente(c);
+      if (!form.id) void registrarAtividadeUsuario('client_create');
       vibrar('sucesso');
       aoSalvar();
       aoFechar();
