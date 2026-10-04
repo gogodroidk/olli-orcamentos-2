@@ -111,8 +111,11 @@ async function estadoDoEvento(env, origem, eventId) {
  * Devolve `true` só quando o banco CONFIRMOU a escrita. Quem só quer a trilha
  * (Stripe, Resend) ignora o retorno; quem usa o 'processado' como "já consumido"
  * (Pix AbacatePay) precisa saber se ele ficou gravado — "não sei" não é "gravei".
+ *
+ * `payload` (opcional) SUBSTITUI o jsonb gravado na reivindicação — para quem só
+ * sabe o resultado no fim (webhook da AbacatePay). Sem ele, o payload fica intacto.
  */
-export async function marcarEvento(env, { origem, eventId, status, erro }) {
+export async function marcarEvento(env, { origem, eventId, status, erro, payload }) {
   if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return false;
   try {
     const url =
@@ -125,6 +128,7 @@ export async function marcarEvento(env, { origem, eventId, status, erro }) {
         status,
         erro: erro ? String(erro).slice(0, 500) : null,
         processado_em: new Date().toISOString(),
+        ...(payload !== undefined ? { payload } : {}),
       }),
     });
     return r.ok;

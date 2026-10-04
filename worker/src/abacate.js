@@ -40,6 +40,12 @@
  *    consumida em `webhook_events` (origem 'abacate', event_id = id da cobrança);
  *    depois de consumida ela responde "pago" mas não concede mais nada.
  *  - O webhook tem teto por IP (`ABACATEHOOK_RL`), conferido ANTES do segredo.
+ *  - TRILHA (T-012): toda chamada AUTENTICADA do webhook vira uma linha em
+ *    `webhook_events` (origem 'abacatepay', event_id = `log_…`), com tipo, cobrança,
+ *    desfecho (ok / ignorado / erro + motivo curto) e datas — para auditar Pix
+ *    recebido e falho. Mesmo evento 2x = uma linha, e o reenvio de um evento já
+ *    concluído responde 200 sem reprocessar. Falha ao gravar a trilha nunca
+ *    derruba o pagamento.
  *
  * O `?webhookSecret=` chega na URL. Nada aqui loga URL nem query (os logs cortam
  * no `?`, e o Sentry já tira query — `sentryScrub.ts`).
@@ -48,6 +54,7 @@
  * (`abc_dev_…`) gera QR falso. Em produção ela deixa a rota DESLIGADA, dizendo que
  * está desligada — só `ABACATE_PERMITIR_DEV=true` (staging/teste) a aceita.
  */
+import { sha256Hex } from './googleAuth.js';
 import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
 import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
@@ -55,6 +62,15 @@ import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
 const ORIGEM_CONSUMO = 'abacate';
+/**
+ * Origem da TRILHA do webhook em `webhook_events` (uma linha por evento `log_…`),
+ * como o Play RTDN faz com 'play_rtdn'. Separada do consumo ('abacate', uma linha
+ * por cobrança): o consumo diz "esta cobrança já liberou plano"; a trilha diz "a
+ * AbacatePay chamou, com isto, e deu nisto" — inclusive o que foi ignorado ou falhou.
+ */
+const ORIGEM_WEBHOOK = 'abacatepay';
+/** id de evento da AbacatePay (`log_…`) aceito como chave; fora disso, hash do corpo. */
+const EVENTO_ID_RE = /^[A-Za-z0-9_-]{1,120}$/;
 
 const ABACATE_API = 'https://api.abacatepay.com/v2';
 
@@ -235,7 +251,9 @@ function lerVinculo(cobranca) {
  * responde 503 para a AbacatePay reenviar e a marca ser gravada (o reprocesso dá
  * a mesma vigência, então não soma nada).
  *
- * Retorno: { estado: 'liberado' | 'pendente' | 'invalida' | 'alheia' | 'indisponivel', registrado? }
+ * Retorno: { estado: 'liberado' | 'pendente' | 'invalida' | 'alheia' | 'indisponivel',
+ *            registrado?, jaConsumida?, motivo? } — `jaConsumida` e `motivo` só
+ * alimentam a trilha do webhook; nenhuma decisão depende deles.
  */
 async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const idEnc = encodeURIComponent(idCobranca);
@@ -243,17 +261,17 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   if (!cobranca) return { estado: 'indisponivel' };
 
   const vinculo = lerVinculo(cobranca);
-  if (!vinculo) return { estado: 'invalida' };
+  if (!vinculo) return { estado: 'invalida', motivo: 'sem_vinculo' };
   if (userIdEsperado && vinculo.userId !== userIdEsperado) return { estado: 'alheia' };
 
   // Cobrança devMode só libera onde o modo teste foi permitido: um QR de mentira
   // não pode virar plano pago em produção.
-  if (cobranca.devMode === true && modoAbacate(env) !== 'teste') return { estado: 'invalida' };
+  if (cobranca.devMode === true && modoAbacate(env) !== 'teste') return { estado: 'invalida', motivo: 'dev_mode' };
 
   const plano = PLANO_PIX[vinculo.planoKey];
   if (Number(cobranca.amount) !== centavos(plano)) {
     console.error('[olli-abacate] valor da cobrança difere do catálogo — não libera', vinculo.planoKey);
-    return { estado: 'invalida' };
+    return { estado: 'invalida', motivo: 'valor_divergente' };
   }
 
   const situacao = await abacateFetch(env, `/transparents/check?id=${idEnc}`);
@@ -268,7 +286,7 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
     payload: { user_id: vinculo.userId, plano: vinculo.planoKey, valor_centavos: Number(cobranca.amount) },
   });
   if (!claim.ok) return { estado: 'indisponivel' };
-  if (claim.duplicado) return { estado: 'liberado', registrado: true };
+  if (claim.duplicado) return { estado: 'liberado', registrado: true, jaConsumida: true };
 
   // Vigência a partir de uma data GRAVADA na cobrança (o início do período, ou a
   // criação) — nunca de "agora" nem do `updatedAt` (que vem em cache). Data fixa =
@@ -373,23 +391,123 @@ async function webhook(request, env, url) {
   if (!secret || !compararConstante(url.searchParams.get('webhookSecret') || '', secret)) {
     return json({ erro: 'nao_autorizado' }, 401);
   }
-  if (modoAbacate(env) === 'desligado') return json({ erro: 'pix_desligado' }, 503);
 
-  const evt = await request.json().catch(() => null);
-  if (!evt || typeof evt !== 'object') return json({ erro: 'payload_invalido' }, 400);
+  // Daqui em diante a chamada é AUTENTICADA, e toda ela vira trilha em
+  // `webhook_events` (origem 'abacatepay'). Antes do segredo não grava nada: a URL
+  // é pública, e cada 401 virando linha no banco seria um jeito barato de enchê-lo.
+  const bruto = await request.text().catch(() => '');
+  let evt = null;
+  try {
+    evt = bruto ? JSON.parse(bruto) : null;
+  } catch {
+    evt = null;
+  }
+  const trilha = await abrirTrilha(evt, bruto);
+  const reiv = await reivindicarEvento(env, {
+    origem: ORIGEM_WEBHOOK,
+    eventId: trilha.eventId,
+    tipo: trilha.tipo,
+    payload: trilha.payload('recebido'),
+  });
+  // Evento já concluído antes (reenvio da AbacatePay): 200 sem reprocessar.
+  // `reiv.ok === false` (banco fora) NÃO segura nada: a trilha nunca derruba
+  // pagamento — o processo segue, e o consumo único ('abacate') é quem protege
+  // o plano de ser liberado duas vezes.
+  if (reiv.ok && reiv.duplicado) return json({ ok: true, duplicado: true });
+
+  let fim;
+  try {
+    fim = await processarWebhook(env, evt);
+  } catch (e) {
+    await fecharTrilha(env, trilha, { http: 500, resultado: 'erro', motivo: 'excecao' });
+    throw e;
+  }
+  await fecharTrilha(env, trilha, fim);
+  return json(fim.corpo, fim.http);
+}
+
+/**
+ * Decide o webhook já autenticado. Devolve `{ http, corpo, resultado, motivo }`:
+ * `http`/`corpo` vão para a AbacatePay (o MESMO contrato de antes da trilha);
+ * `resultado` ('ok' | 'ignorado' | 'erro') e `motivo` vão para `webhook_events`.
+ */
+async function processarWebhook(env, evt) {
+  if (modoAbacate(env) === 'desligado') {
+    return { http: 503, corpo: { erro: 'pix_desligado' }, resultado: 'erro', motivo: 'pix_desligado' };
+  }
+  if (!evt || typeof evt !== 'object') {
+    return { http: 400, corpo: { erro: 'payload_invalido' }, resultado: 'erro', motivo: 'payload_invalido' };
+  }
 
   // Só o Pix direto pago interessa. Qualquer outro evento: 200 sem ação.
-  if (evt.event !== 'transparent.completed') return json({ ok: true });
+  if (evt.event !== 'transparent.completed') {
+    return { http: 200, corpo: { ok: true }, resultado: 'ignorado', motivo: 'evento_nao_tratado' };
+  }
 
-  const cobranca = (evt.data && (evt.data.transparent || evt.data)) || {};
-  const id = typeof cobranca.id === 'string' ? cobranca.id : '';
-  if (!id) return json({ ok: true, sem_vinculo: true });
+  const id = idDaCobranca(evt);
+  if (!id) return { http: 200, corpo: { ok: true, sem_vinculo: true }, resultado: 'ignorado', motivo: 'sem_cobranca' };
 
   const r = await liberarSePaga(env, id);
   // indisponível → 5xx para a AbacatePay reenviar; o resto não melhora com reenvio.
   // Liberado SEM o consumo gravado também reenvia: é o reenvio que grava a marca.
-  if (r.estado === 'indisponivel' || r.registrado === false) return json({ erro: 'indisponivel' }, 503);
-  return json({ ok: true, estado: r.estado });
+  if (r.estado === 'indisponivel') {
+    return { http: 503, corpo: { erro: 'indisponivel' }, resultado: 'erro', motivo: 'indisponivel' };
+  }
+  if (r.registrado === false) {
+    return { http: 503, corpo: { erro: 'indisponivel' }, resultado: 'erro', motivo: 'consumo_nao_gravado' };
+  }
+  const corpo = { ok: true, estado: r.estado };
+  if (r.estado === 'liberado') {
+    return { http: 200, corpo, resultado: r.jaConsumida ? 'ignorado' : 'ok', motivo: r.jaConsumida ? 'ja_consumida' : 'liberado' };
+  }
+  if (r.estado === 'pendente') return { http: 200, corpo, resultado: 'ignorado', motivo: 'pendente' };
+  // Paga com valor/vínculo/modo que não fecham: não libera, e na trilha é ERRO —
+  // é exatamente o "Pix falho" que alguém precisa enxergar.
+  return { http: 200, corpo, resultado: 'erro', motivo: `invalida_${r.motivo || 'cobranca'}` };
+}
+
+/** id da cobrança no corpo do evento (`data.transparent.id`, ou `data.id`). */
+function idDaCobranca(evt) {
+  const c = (evt && evt.data && (evt.data.transparent || evt.data)) || {};
+  return typeof c.id === 'string' ? c.id : '';
+}
+
+/**
+ * Monta a trilha do evento: chave, tipo e payload MÍNIMO. Chave = `id` do evento
+ * (`log_…`, a idempotência que a AbacatePay recomenda — docs/ABACATEPAY.md §5); sem
+ * id válido, o hash do corpo cru (o mesmo corpo reenviado cai na mesma linha).
+ * O payload NÃO leva o corpo: só tipo, cobrança, devMode e o desfecho — nada de
+ * cliente (nome, CPF, e-mail), e nunca a URL, onde mora o `webhookSecret`.
+ */
+async function abrirTrilha(evt, bruto) {
+  const obj = evt && typeof evt === 'object' ? evt : null;
+  const idEvt = obj && typeof obj.id === 'string' && EVENTO_ID_RE.test(obj.id) ? obj.id : '';
+  const eventId = idEvt || `sha256:${(await sha256Hex(bruto || '')).slice(0, 40)}`;
+  const tipo = obj && typeof obj.event === 'string' && obj.event ? obj.event.slice(0, 60) : obj ? 'sem_tipo' : 'payload_invalido';
+  const cobranca = obj ? idDaCobranca(obj).slice(0, 80) || null : null;
+  const devMode = obj ? obj.devMode === true : null;
+  return {
+    eventId,
+    tipo,
+    payload: (resultado, extra = {}) => ({ evento: tipo, cobranca, dev_mode: devMode, resultado, ...extra }),
+  };
+}
+
+/**
+ * Fecha a trilha: 'ok' e 'ignorado' viram status 'processado' (o reenvio pula),
+ * 'erro' vira 'falhou' com a mensagem curta (o reenvio reprocessa). O resultado
+ * fino fica no payload — o CHECK da coluna `status` só conhece
+ * recebido/processado/falhou, e isto não pede migration. Best-effort: marcarEvento
+ * não lança, e o retorno é ignorado de propósito.
+ */
+async function fecharTrilha(env, trilha, { http, resultado, motivo }) {
+  await marcarEvento(env, {
+    origem: ORIGEM_WEBHOOK,
+    eventId: trilha.eventId,
+    status: resultado === 'erro' ? 'falhou' : 'processado',
+    erro: resultado === 'erro' ? motivo : undefined,
+    payload: trilha.payload(resultado, { motivo, http }),
+  });
 }
 
 // ─── roteador /abacate/* ─────────────────────────────────────
