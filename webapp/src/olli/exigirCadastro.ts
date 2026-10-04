@@ -13,6 +13,7 @@
  *  - incompleto → segura e diz o que falta, com "Completar agora" (dono);
  *  - leitura falhou → segura com "não consegui conferir". Erro nunca libera.
  */
+import type { Empresa } from "@dominio";
 import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { useLocation, useNavigate } from "react-router";
@@ -21,6 +22,7 @@ import { opcoesMinhaEmpresa } from "@/olli/data";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
 import {
 	type DecisaoEnvioDocumento,
+	dadosDaEmpresa,
 	decidirEnvioComCadastro,
 	estadoCadastroDaLeitura,
 	juntarPendentes,
@@ -95,8 +97,10 @@ export function rotaCompletarCadastro(retorno: string): string {
 }
 
 /**
- * Hook da porta: `await exigir("orcamento")` devolve `true` quando pode gerar; senão
- * mostra o aviso certo (com "Completar agora" para o dono) e devolve `false`.
+ * Hook da porta: `await exigir("orcamento")` devolve a EMPRESA recém-lida quando pode
+ * gerar (o documento usa ela, não a da renderização — que pode ser de antes de a
+ * pessoa completar); senão mostra o aviso certo (com "Completar agora" para o dono)
+ * e devolve `null`. Enquanto relê, um toast de "conferindo" evita o clique mudo.
  * Papel ainda desconhecido mantém o caminho de completar (o Meu Negócio continua
  * protegido pela própria tela) — mesma escolha do app.
  */
@@ -109,11 +113,22 @@ export function usePortaDoCadastro() {
 	const papel = contexto.data?.papel;
 
 	return useCallback(
-		async (documento: DocumentoComCadastro): Promise<boolean> => {
+		async (documento: DocumentoComCadastro): Promise<Empresa | null> => {
+			const conferindo = toast.loading("Conferindo os dados do seu negócio…", { position: "top-center" });
 			const decisao = await conferirCadastroParaGerar(qc);
+			toast.dismiss(conferindo);
 			const podeCompletar = !papelConhecido || ehDonoDaConta(papel);
 			const aviso = avisoDaPortaCadastro(decisao, documento, podeCompletar);
-			if (!aviso) return true;
+			if (!aviso) {
+				const empresa = dadosDaEmpresa(qc.getQueryData(opcoesMinhaEmpresa.queryKey));
+				if (empresa) return empresa;
+				// Liberou mas o cache não tem a linha: não é para acontecer; nunca segue no escuro.
+				toast.error("Nada foi gerado", {
+					description: "Não consegui conferir os dados do seu negócio agora. Tente de novo em instantes.",
+					position: "top-center",
+				});
+				return null;
+			}
 			const retorno = `${local.pathname}${local.search}`;
 			toast.error(aviso.titulo, {
 				description: aviso.mensagem,
@@ -123,7 +138,7 @@ export function usePortaDoCadastro() {
 					? { label: "Completar agora", onClick: () => navigate(rotaCompletarCadastro(retorno)) }
 					: undefined,
 			});
-			return false;
+			return null;
 		},
 		[qc, navigate, local.pathname, local.search, papelConhecido, papel],
 	);

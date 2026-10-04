@@ -56,13 +56,12 @@ import {
 	obterEstadoOfertaComercial,
 	reservarEnvioOrcamento,
 } from "@/olli/cota-envios";
-import { opcoesMinhaEmpresa, useMinhaEmpresa, useOlliList } from "@/olli/data";
+import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { ymdParaBr } from "@/olli/datas";
 import { registrarDocumentoWeb } from "@/olli/documentos";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
 import { avisoDaMarca, resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
 import { useExcluir } from "@/olli/mutacoes";
-import { dadosDaEmpresa } from "@/olli/onboarding";
 import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -324,6 +323,8 @@ export default function OrcamentosPage() {
 	const [pdfEmCurso, setPdfEmCurso] = useState<string | null>(null);
 	/** O orçamento que virou contrato — o diálogo abre em cima do BLOB, nunca da linha. */
 	const [contratoDe, setContratoDe] = useState<Orcamento | null>(null);
+	const [empresaDoContrato, setEmpresaDoContrato] = useState<Empresa | null>(null);
+	const [conferindoContrato, setConferindoContrato] = useState(false);
 	const [excluindo, setExcluindo] = useState<Orcamento | null>(null);
 	const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
@@ -439,9 +440,8 @@ export default function OrcamentosPage() {
 		 * "Completar agora". A empresa usada no documento é a que a porta acabou de ler
 		 * — não a da renderização, que pode ser de antes de a pessoa completar.
 		 */
-		const liberado = await exigirCadastro("orcamento");
-		const empresa = dadosDaEmpresa(qc.getQueryData(opcoesMinhaEmpresa.queryKey));
-		if (!liberado || !empresa) {
+		const empresa = await exigirCadastro("orcamento");
+		if (!empresa) {
 			setPdfEmCurso(null);
 			return;
 		}
@@ -527,8 +527,14 @@ export default function OrcamentosPage() {
 			});
 			return;
 		}
-		// Mesma porta do PDF: o contrato sem CONTRATADA completa não sai.
-		if (!(await exigirCadastro("contrato"))) return;
+		// Mesma porta do PDF: o contrato sem CONTRATADA completa não sai. O diálogo
+		// recebe a empresa que a porta leu (não a da renderização, que pode ser velha).
+		if (conferindoContrato) return;
+		setConferindoContrato(true);
+		const empresaLida = await exigirCadastro("contrato");
+		setConferindoContrato(false);
+		if (!empresaLida) return;
+		setEmpresaDoContrato(empresaLida);
 		setContratoDe(blob);
 	};
 
@@ -857,8 +863,8 @@ export default function OrcamentosPage() {
 			    montagem. Sem a chave, abrir o contrato de um segundo orçamento reaproveitaria
 			    a instância e mostraria as cláusulas do PRIMEIRO — o prestador imprimiria o
 			    objeto e o prazo do cliente errado sem nada na tela denunciando.
-			    `empresa` já foi checada em `gerarContrato`; o `&&` é a garantia de tipo. */}
-			{contratoDe && empresa && (
+			    A empresa é a que a porta do cadastro leu em `gerarContrato`. */}
+			{contratoDe && empresaDoContrato && (
 				/* Se o pedaço do contrato não baixar, a fronteira diz isso em português
 				   e deixa fechar — em vez de diálogo em branco, que o usuário lê como
 				   "o sistema perdeu meu orçamento". */
@@ -867,7 +873,7 @@ export default function OrcamentosPage() {
 						<DialogoContrato
 							key={contratoDe.id}
 							orcamento={contratoDe}
-							empresa={empresa}
+							empresa={empresaDoContrato}
 							aoFechar={() => setContratoDe(null)}
 						/>
 					</Suspense>
