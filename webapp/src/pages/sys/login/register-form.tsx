@@ -1,3 +1,5 @@
+import { SENHA_MINIMA } from "@auth-policy";
+import { classificarErroCadastro, type MotivoCadastro, novaTentativaOAuth } from "@oauth-retorno";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -6,15 +8,13 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { origemUtmParaCadastro, registrarCadastroConcluido } from "@/lib/marketing";
+import { navegadorInAppAtual } from "@/lib/navegadorInApp";
 import { registrarFunilAuth, supabase } from "@/lib/supabase";
 import { mapAuthErrorMessage } from "@/store/userStore";
-import { SENHA_MINIMA } from "@auth-policy";
-import { classificarErroCadastro, type MotivoCadastro, novaTentativaOAuth } from "@oauth-retorno";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { EmailAutocompleteInput } from "./components/EmailAutocompleteInput";
-import { navegadorInAppAtual } from "@/lib/navegadorInApp";
 import { OAuthButtons } from "./components/OAuthButtons";
 import { ReturnButton } from "./components/ReturnButton";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
@@ -210,7 +210,12 @@ function RegisterForm() {
 						<FormItem>
 							<FormLabel>E-mail</FormLabel>
 							<FormControl>
-								<EmailAutocompleteInput type="email" autoComplete="email" placeholder={t("sys.login.email")} {...field} />
+								<EmailAutocompleteInput
+									type="email"
+									autoComplete="email"
+									placeholder={t("sys.login.email")}
+									{...field}
+								/>
 							</FormControl>
 							<FormMessage />
 						</FormItem>
