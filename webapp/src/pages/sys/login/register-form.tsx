@@ -1,14 +1,15 @@
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { origemUtmParaCadastro, registrarCadastroConcluido } from "@/lib/marketing";
-import { supabase } from "@/lib/supabase";
+import { registrarFunilAuth, supabase } from "@/lib/supabase";
 import { mapAuthErrorMessage } from "@/store/userStore";
 import { SENHA_MINIMA } from "@auth-policy";
+import { classificarErroCadastro, type MotivoCadastro, novaTentativaOAuth } from "@oauth-retorno";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
@@ -42,6 +43,29 @@ function RegisterForm() {
 	const { loginState, backToLogin, callbackAuthPath, destinoPosLogin } = useLoginStateContext();
 	const [loading, setLoading] = useState(false);
 
+	// Funil anônimo do pré-cadastro (public.auth_funil_eventos, sem PII): um id aleatório
+	// por montagem; cada evento 1x, exceto cadastro_erro (1x por motivo).
+	const funil = useRef<{ tentativa: string; vistos: Set<string> } | null>(null);
+	if (!funil.current) funil.current = { tentativa: novaTentativaOAuth(), vistos: new Set() };
+	const registrarEtapa = (evento: "cadastro_visto" | "cadastro_iniciado" | "cadastro_enviado" | "cadastro_ok") => {
+		const f = funil.current;
+		if (!f || f.vistos.has(evento)) return;
+		f.vistos.add(evento);
+		void registrarFunilAuth(evento, { plataforma: "web", provedor: "email", tentativa: f.tentativa });
+	};
+	const registrarErroCadastro = (motivo: MotivoCadastro) => {
+		const f = funil.current;
+		const chave = `cadastro_erro:${motivo}`;
+		if (!f || f.vistos.has(chave)) return;
+		f.vistos.add(chave);
+		void registrarFunilAuth("cadastro_erro", { plataforma: "web", provedor: "email", tentativa: f.tentativa, motivo });
+	};
+	const telaCadastro = loginState === LoginStateEnum.REGISTER;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: registrarEtapa só usa ref (estável)
+	useEffect(() => {
+		if (telaCadastro) registrarEtapa("cadastro_visto");
+	}, [telaCadastro]);
+
 	const form = useForm<RegisterFormValues>({
 		defaultValues: {
 			name: "",
@@ -54,6 +78,7 @@ function RegisterForm() {
 
 	const onFinish = async (values: RegisterFormValues) => {
 		if (loading) return;
+		registrarEtapa("cadastro_enviado");
 		setLoading(true);
 		try {
 			const phone = telefoneE164Brasil(values.phone);
@@ -74,7 +99,12 @@ function RegisterForm() {
 			if (error) throw error;
 			// E-mail já cadastrado volta "sucesso" sem identidades (o Supabase não revela
 			// que a conta existe): isso não é um cadastro novo e não vira conversão.
-			if (data.user?.identities?.length !== 0) registrarCadastroConcluido("email", data.user?.id);
+			if (data.user?.identities?.length !== 0) {
+				registrarCadastroConcluido("email", data.user?.id);
+				registrarEtapa("cadastro_ok");
+			} else {
+				registrarErroCadastro("email_existente");
+			}
 			if (data.session) {
 				toast.success("Conta criada. Seu espaço está pronto!", { position: "top-center" });
 				navigate(destinoPosLogin ?? GLOBAL_CONFIG.defaultRoute, { replace: true });
@@ -85,6 +115,7 @@ function RegisterForm() {
 			});
 			backToLogin();
 		} catch (err) {
+			registrarErroCadastro(classificarErroCadastro(err));
 			toast.error(mapAuthErrorMessage(err), { position: "top-center" });
 		} finally {
 			setLoading(false);
@@ -95,7 +126,13 @@ function RegisterForm() {
 
 	return (
 		<Form {...form}>
-			<form onSubmit={form.handleSubmit(onFinish)} className="space-y-4">
+			<form
+				onSubmit={form.handleSubmit(onFinish, () => registrarErroCadastro("validacao"))}
+				onFocusCapture={(e) => {
+					if (e.target instanceof HTMLInputElement) registrarEtapa("cadastro_iniciado");
+				}}
+				className="space-y-4"
+			>
 				<div className="flex flex-col items-center gap-2 text-center">
 					<h1 className="text-2xl font-bold">{t("sys.login.signUpFormTitle")}</h1>
 				</div>

@@ -9,7 +9,9 @@ import {
   erroDeTabelaAusente,
   type LinhaFunilAuth,
   lerRetornoOAuth,
+  MOTIVOS_ERRO_CADASTRO,
   MOTIVOS_ERRO_OAUTH,
+  classificarErroCadastro,
   mensagemErroOAuth,
   mensagemRetornoSemOrigem,
   normalizarPlataforma,
@@ -242,5 +244,43 @@ ok(/grant insert \(evento, plataforma, provedor, motivo, tentativa\)/.test(migra
 ok(!/grant select/i.test(migration), 'migration: anon não lê o funil');
 ok(/force row level security/.test(migration), 'migration: RLS forçada');
 for (const motivo of MOTIVOS_ERRO_OAUTH) ok(migration.includes(`'${motivo}'`), `migration aceita o motivo ${motivo}`);
+
+// ─── Funil do pré-cadastro (T-010) ───────────────────────────────────────────
+const preCadastro = ler('../supabase/migrations/20261004140000_funil_pre_cadastro.sql');
+for (const ev of ['cadastro_visto', 'cadastro_iniciado', 'cadastro_enviado', 'cadastro_erro', 'cadastro_ok', 'oauth_iniciado', 'oauth_sessao_criada', 'oauth_erro']) {
+  ok(preCadastro.includes(`'${ev}'`), `migration pré-cadastro aceita o evento ${ev}`);
+}
+ok(/provedor in \('google', 'apple', 'email'\)/.test(preCadastro), 'migration pré-cadastro aceita provedor email');
+for (const motivo of [...MOTIVOS_ERRO_OAUTH, ...MOTIVOS_ERRO_CADASTRO, 'navegador_falhou', 'sem_retorno']) {
+  ok(preCadastro.includes(`'${motivo}'`), `migration pré-cadastro aceita o motivo ${motivo}`);
+}
+ok(/evento in \('oauth_erro', 'cadastro_erro'\)\) = \(motivo is not null\)/.test(preCadastro), 'motivo só nos dois eventos de erro');
+ok(!/grant|create policy/i.test(preCadastro.replace(/--.*$/gm, '')), 'migration pré-cadastro não mexe em permissões');
+
+const caso = (e: unknown) => classificarErroCadastro(e);
+ok(caso({ code: 'user_already_exists' }) === 'email_existente' && caso({ code: 'email_exists' }) === 'email_existente', 'signUp: e-mail existente');
+ok(caso({ code: 'weak_password' }) === 'senha_fraca', 'signUp: senha fraca');
+ok(caso({ code: 'over_request_rate_limit' }) === 'rate_limit' && caso({ code: 'over_email_send_rate_limit' }) === 'rate_limit' && caso({ status: 429 }) === 'rate_limit', 'signUp: rate limit');
+ok(caso({ name: 'AuthRetryableFetchError', status: 0, message: 'Failed to fetch' }) === 'rede' && caso(new TypeError('Failed to fetch')) === 'rede', 'signUp: rede');
+ok(caso({ message: 'texto cru com a@b.com' }) === 'desconhecido' && caso(null) === 'desconhecido', 'signUp: desconhecido, sem texto cru');
+
+const linhasCad: LinhaFunilAuth[] = [];
+const regCad = criarRegistroFunilAuth(async (l) => { linhasCad.push(l); return { error: null }; });
+await regCad('cadastro_visto', { plataforma: 'web', tentativa: 't1', motivo: 'validacao' });
+await regCad('cadastro_erro', { plataforma: 'web', provedor: 'email', tentativa: 't1', motivo: 'senha_fraca' });
+await regCad('cadastro_erro', { plataforma: 'web', tentativa: 't1', motivo: 'inventado' as never });
+await regCad('oauth_erro', { plataforma: 'web', provedor: 'google', tentativa: 't2', motivo: 'senha_fraca' });
+ok(linhasCad[0].provedor === 'email' && linhasCad[0].motivo === null, 'cadastro_visto: provedor email, sem motivo');
+ok(linhasCad[1].motivo === 'senha_fraca' && linhasCad[2].motivo === 'desconhecido', 'cadastro_erro: motivo de lista fechada');
+ok(linhasCad[3].motivo === 'desconhecido', 'oauth_erro não aceita motivo exclusivo de cadastro');
+
+const formCad = ler('../webapp/src/pages/sys/login/register-form.tsx');
+for (const ev of ['cadastro_visto', 'cadastro_iniciado', 'cadastro_enviado', 'cadastro_ok']) {
+  ok(formCad.includes(`registrarEtapa("${ev}")`), `painel dispara ${ev}`);
+}
+ok(/registrarFunilAuth\("cadastro_erro"/.test(formCad) && /registrarErroCadastro\(classificarErroCadastro\(err\)\)/.test(formCad), 'painel dispara cadastro_erro classificado (signUp)');
+ok(/handleSubmit\(onFinish, \(\) => registrarErroCadastro\("validacao"\)\)/.test(formCad), 'painel dispara cadastro_erro validacao');
+ok(/onFocusCapture/.test(formCad), 'painel dispara cadastro_iniciado no 1º foco');
+ok(/registrarFunilAuth\("oauth_iniciado"/.test(botoes), 'oauth_iniciado continua disparando');
 
 console.log(`PASSOU: ${checks} verificações — redirect fixo, erro visível, code resgatado, funil sem PII.`);

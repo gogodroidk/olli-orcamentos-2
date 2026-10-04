@@ -197,15 +197,39 @@ export function decidirRetornoNativo(
 
 // ─── Funil de auth (telemetria mínima, sem PII) ───────────────────────────────
 
-export type EventoFunilAuth = 'oauth_iniciado' | 'oauth_sessao_criada' | 'oauth_erro';
+export type EventoFunilAuth =
+  | 'oauth_iniciado' | 'oauth_sessao_criada' | 'oauth_erro'
+  // Pré-cadastro por e-mail (painel web): mede onde o anúncio perde a pessoa.
+  | 'cadastro_visto' | 'cadastro_iniciado' | 'cadastro_enviado' | 'cadastro_erro' | 'cadastro_ok';
+/** `email` = cadastro pelo formulário; google/apple = OAuth. */
+export type ProvedorFunilAuth = ProvedorOAuth | 'email';
+
+/** Motivos fechados do `cadastro_erro` (nunca o texto cru do erro). */
+export type MotivoCadastro =
+  | 'validacao' | 'email_existente' | 'senha_fraca' | 'rate_limit' | 'rede' | 'desconhecido';
+export const MOTIVOS_ERRO_CADASTRO: readonly MotivoCadastro[] = [
+  'validacao', 'email_existente', 'senha_fraca', 'rate_limit', 'rede', 'desconhecido',
+];
+
+/** Classifica o erro do `supabase.auth.signUp` num motivo fechado. Nunca devolve texto cru. */
+export function classificarErroCadastro(err: unknown): MotivoCadastro {
+  const e = err as { code?: string; name?: string; status?: number; message?: string } | null | undefined;
+  const c = (e?.code ?? '').toLowerCase();
+  if (c === 'user_already_exists' || c === 'email_exists' || c === 'identity_already_exists') return 'email_existente';
+  if (c === 'weak_password') return 'senha_fraca';
+  if (c === 'over_request_rate_limit' || c === 'over_email_send_rate_limit' || e?.status === 429) return 'rate_limit';
+  if (c === 'validation_failed' || c === 'email_address_invalid' || c === 'bad_json') return 'validacao';
+  if (e?.name === 'AuthRetryableFetchError' || e?.status === 0 || /failed to fetch|networkerror|network request failed|load failed/i.test(e?.message ?? '')) return 'rede';
+  return 'desconhecido';
+}
 export type PlataformaFunilAuth = 'web' | 'android' | 'ios' | 'unknown';
 
 /** Linha gravada em `public.auth_funil_eventos`. Nada que identifique a pessoa. */
 export interface LinhaFunilAuth {
   evento: EventoFunilAuth;
   plataforma: PlataformaFunilAuth;
-  provedor: ProvedorOAuth;
-  motivo: MotivoErroOAuth | null;
+  provedor: ProvedorFunilAuth;
+  motivo: MotivoErroOAuth | MotivoCadastro | null;
   tentativa: string;
 }
 
@@ -244,15 +268,17 @@ export function criarRegistroFunilAuth(inserir: InserirFunilAuth | null) {
   let desligado = !inserir;
   return function registrar(
     evento: EventoFunilAuth,
-    dados: { plataforma: PlataformaFunilAuth; provedor?: ProvedorOAuth; tentativa: string; motivo?: MotivoErroOAuth | null },
+    dados: { plataforma: PlataformaFunilAuth; provedor?: ProvedorFunilAuth; tentativa: string; motivo?: MotivoErroOAuth | MotivoCadastro | null },
   ): Promise<void> {
     if (desligado || !inserir) return Promise.resolve();
-    const motivo = dados.motivo && MOTIVOS_ERRO_OAUTH.includes(dados.motivo) ? dados.motivo : null;
+    const ehCadastro = evento.startsWith('cadastro_');
+    const lista: readonly string[] = ehCadastro ? MOTIVOS_ERRO_CADASTRO : MOTIVOS_ERRO_OAUTH;
+    const motivo = dados.motivo && lista.includes(dados.motivo) ? dados.motivo : null;
     const linha: LinhaFunilAuth = {
       evento,
       plataforma: dados.plataforma,
-      provedor: dados.provedor ?? 'google',
-      motivo: evento === 'oauth_erro' ? (motivo ?? 'desconhecido') : null,
+      provedor: dados.provedor ?? (ehCadastro ? 'email' : 'google'),
+      motivo: evento === 'oauth_erro' || evento === 'cadastro_erro' ? (motivo ?? 'desconhecido') : null,
       tentativa: dados.tentativa,
     };
     try {
