@@ -66,6 +66,7 @@ import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from './verticais';
 import { empresaSemCadastro } from './perfilOperacional';
 import { decidirPushEmpresa, type EstadoEmpresaAntesDoPush } from './carimboEmpresa';
+import { opcoesUpsert } from './upsertAppendOnly';
 import { lerEncerramento } from '../utils/encerramentoOS';
 import {
   erroEhColisaoNumero,
@@ -1149,26 +1150,28 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
         if (tsMaisNovo(tsRemoto, (row as any).atualizado_em)) return;
       }
     }
+    // Append-only (documento_versoes) vai com ignoreDuplicates: sem grant de
+    // UPDATE, um ON CONFLICT DO UPDATE dá 42501 (ver upsertAppendOnly.ts).
     let { error } = await supabase
       .from(remoteNome(table))
-      .upsert(row, { onConflict: ON_CONFLICT[table] });
+      .upsert(row, opcoesUpsert(table, ON_CONFLICT[table]));
     if (error && table === 'clientes' && !clientesSemColunasGeo && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration de geo: reenvia sem as colunas (ver COLUNAS_CLIENTE_GEO).
       clientesSemColunasGeo = true;
       for (const c of COLUNAS_CLIENTE_GEO) delete (row as Record<string, unknown>)[c];
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
     }
     if (error && table === 'agendamentos' && !agendaSemColunaExterna && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration da visita externa: reenvia sem ela (ver COLUNA_AGENDA_EXTERNA).
       agendaSemColunaExterna = true;
       delete (row as Record<string, unknown>)[COLUNA_AGENDA_EXTERNA];
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
     }
     if (error && table === 'agendamentos' && !agendaSemColunasExcecoes && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration de exceções: reenvia sem elas (ver COLUNAS_AGENDA_EXCECOES).
       agendaSemColunasExcecoes = true;
       for (const c of COLUNAS_AGENDA_EXCECOES) delete (row as Record<string, unknown>)[c];
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
     }
     // A OS tem QUATRO degraus de recuo e a nuvem pode estar sem qualquer combinação
     // deles, na ordem que o PostgREST reclamar. Até 4 voltas, cada uma tirando só a(s)
@@ -1196,14 +1199,14 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       } else {
         break;
       }
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
     }
     if (error && table === 'agendamentos' && !agendaSemColunasEquipe && erroDeColunaDesconhecida(error)) {
       // Servidor ainda sem a migration da agenda por técnico: reenvia sem as colunas
       // novas e segue assim até o próximo boot (ver COLUNAS_AGENDA_EQUIPE).
       agendaSemColunasEquipe = true;
       for (const c of COLUNAS_AGENDA_EQUIPE) delete (row as Record<string, unknown>)[c];
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, { onConflict: ON_CONFLICT[table] }));
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
     }
     if (error) {
       if (tabelaDocumentoNumerado(table)) {
