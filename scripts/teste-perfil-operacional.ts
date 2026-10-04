@@ -209,8 +209,20 @@ const onboardingMobile = readFileSync(new URL('../src/screens/OnboardingScreen.t
 assert.doesNotMatch(onboardingMobile, /accessibilityLabel="Pular configuração"/, 'onboarding móvel não pode mais ser pulado');
 assert.match(onboardingMobile, /perfilOperacionalCompleto\(empresaFinal\)/, 'conclusão móvel deve validar o perfil inteiro');
 
-const guardWeb = readFileSync(new URL('../webapp/src/routes/components/onboarding-guard.tsx', import.meta.url), 'utf8');
-assert.match(guardWeb, /perfilOperacionalCompleto\(empresa\.data\)/, 'painel web deve fechar as rotas operacionais');
-assert.match(guardWeb, /<Navigate to=/, 'painel web deve conduzir ao cadastro em vez de falhar silenciosamente');
+// Painel web (04/10/2026, paridade com o app 1.2.0): o cadastro incompleto NÃO
+// fecha mais o painel — 38 de 61 contas pararam nessa trava antes de qualquer
+// orçamento. A guarda só espera saber QUAL empresa é (3 estados); o cadastro é
+// cobrado pela porta única na hora em que o documento SAI (PDF e contrato).
+const guardWeb = semComentarios(readFileSync(new URL('../webapp/src/routes/components/onboarding-guard.tsx', import.meta.url), 'utf8'));
+assert.doesNotMatch(guardWeb, /perfilOperacionalCompleto|<Navigate/, 'painel web não fecha as rotas por cadastro incompleto');
+assert.match(guardWeb, /empresa\.isError/, 'mas a leitura da empresa que falha continua segurando o painel (erro nunca vira vazio)');
+
+const portaWeb = semComentarios(readFileSync(new URL('../webapp/src/olli/exigirCadastro.ts', import.meta.url), 'utf8'));
+assert.match(portaWeb, /decidirEnvioComCadastro\(estadoCadastroDaLeitura\(\{ ok: false \}\)\)/, 'porta web: leitura que falha vira "não sei"');
+assert.match(portaWeb, /staleTime: 0/, 'porta web relê a empresa na hora, não confia no cache');
+
+const orcamentosWeb = semComentarios(readFileSync(new URL('../webapp/src/pages/olli/orcamentos/index.tsx', import.meta.url), 'utf8'));
+assert.match(orcamentosWeb, /await exigirCadastro\("orcamento"\)/, 'PDF do orçamento passa pela porta do cadastro');
+assert.match(orcamentosWeb, /await exigirCadastro\("contrato"\)/, 'contrato passa pela porta do cadastro');
 
 console.log('OK — contrato único de perfil obrigatório validado no app e no painel web.');

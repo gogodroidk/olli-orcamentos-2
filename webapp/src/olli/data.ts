@@ -1,4 +1,4 @@
-import { type UseQueryResult, useQuery } from "@tanstack/react-query";
+import { queryOptions, type UseQueryResult, useQuery } from "@tanstack/react-query";
 import { useRef } from "react";
 import { supabase } from "@/lib/supabase";
 
@@ -110,15 +110,21 @@ export function useOlliCount(table: string) {
 	});
 }
 
-/** A empresa (tenant) do usuário logado — para nome, logo e cor de marca (white-label). */
+/**
+ * A empresa (tenant) do usuário logado — para nome, logo e cor de marca (white-label).
+ * Exportada como `queryOptions` para a porta do envio (`olli/exigirCadastro.ts`)
+ * poder reler NA HORA com a mesma chave/consulta, sem duplicar o select.
+ */
+export const opcoesMinhaEmpresa = queryOptions({
+	queryKey: ["olli", "empresa", "me"],
+	queryFn: async () => {
+		const { data, error } = await supabase.from("empresa").select("*").limit(1).maybeSingle();
+		if (error) throw error;
+		return data as Record<string, unknown> | null;
+	},
+	staleTime: 60_000,
+});
+
 export function useMinhaEmpresa() {
-	return useQuery({
-		queryKey: ["olli", "empresa", "me"],
-		queryFn: async () => {
-			const { data, error } = await supabase.from("empresa").select("*").limit(1).maybeSingle();
-			if (error) throw error;
-			return data as Record<string, unknown> | null;
-		},
-		staleTime: 60_000,
-	});
+	return useQuery(opcoesMinhaEmpresa);
 }

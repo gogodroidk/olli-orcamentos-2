@@ -1,13 +1,17 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { Navigate, useLocation } from "react-router";
 import { useMinhaEmpresa } from "@/olli/data";
-import { camposPendentesPerfil, perfilOperacionalCompleto, ROTULO_CAMPO_PERFIL } from "@/olli/onboarding";
 import { Button } from "@/ui/button";
 
+/**
+ * Espera saber QUAL empresa é desta sessão antes de abrir o painel (3 estados: sem
+ * leitura confirmada, nada operacional abre). NÃO exige mais o cadastro completo:
+ * desde 04/10/2026 (paridade com o app 1.2.0) a pessoa entra, faz o primeiro
+ * orçamento, e o cadastro é cobrado só quando um documento vai SAIR com os dados do
+ * negócio — porta única em `olli/exigirCadastro.ts`. A trava antiga segurou 38 de 61
+ * contas antes de qualquer orçamento.
+ */
 export default function OnboardingGuard({ children }: { children: React.ReactNode }) {
-	const local = useLocation();
 	const empresa = useMinhaEmpresa();
-	const naConfiguracao = local.pathname === "/meu-negocio";
 
 	if (empresa.isLoading) {
 		return (
@@ -35,12 +39,6 @@ export default function OnboardingGuard({ children }: { children: React.ReactNod
 				</div>
 			</div>
 		);
-	}
-
-	if (!perfilOperacionalCompleto(empresa.data) && !naConfiguracao) {
-		const pendentes = camposPendentesPerfil(empresa.data).map((campo) => ROTULO_CAMPO_PERFIL[campo]).join(", ");
-		const retorno = encodeURIComponent(`${local.pathname}${local.search}`);
-		return <Navigate to={`/meu-negocio?onboarding=1&retorno=${retorno}&pendentes=${encodeURIComponent(pendentes)}`} replace />;
 	}
 
 	return <>{children}</>;
