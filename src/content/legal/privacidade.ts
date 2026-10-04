@@ -108,6 +108,11 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Execução de contrato (art. 7º, V).',
         },
         {
+          dado: 'Telefone (WhatsApp) informado no cadastro',
+          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: o número entra numa lista de "não contatar" que consultamos antes de cada mensagem.',
+          base: 'Legítimo interesse em ajudar quem criou a conta a usar o serviço (art. 7º, IX), com direito de oposição a qualquer momento.',
+        },
+        {
           dado: 'Login com o Google: nome, e-mail e foto do perfil da sua conta Google',
           finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google". Recebemos do Google apenas o que identifica a conta (nome, e-mail e foto do perfil); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
           base: 'Execução de contrato (art. 7º, V) e consentimento ao autorizar o login (art. 7º, I).',
@@ -229,6 +234,9 @@ export const PRIVACIDADE: LegalDoc = {
           '(processador de pagamento da loja), quando essa opção estiver disponível. A Google ' +
           'recebe os dados do pagamento, e o OLLI recebe da Google Play o histórico da compra ' +
           '(plano, estado e datas da assinatura), sem acesso ao número do seu cartão.',
+        'WhatsApp (Meta) — as conversas com o WhatsApp do OLLI passam pela infraestrutura do ' +
+          'WhatsApp, que trata as mensagens conforme a própria política de privacidade. Só falamos ' +
+          'pelo WhatsApp com quem não pediu para sair (ver a seção 3).',
         'Resend — envio de e-mails do serviço: confirmação de conta, recuperação de senha, ' +
           'convite de equipe, boas-vindas, avisos de assinatura e resumos. Recebe o seu e-mail ' +
           'e o conteúdo da mensagem enviada.',
@@ -328,6 +336,9 @@ export const PRIVACIDADE: LegalDoc = {
         'Boa parte você resolve dentro do próprio app: edite o seu cadastro e o seu negócio a ' +
           'qualquer momento e ative ou desative o ' +
           'rastreio de localização e as permissões de câmera e microfone no seu aparelho.',
+        'Para parar de receber mensagens nossas pelo WhatsApp, responda SAIR na conversa ou peça ' +
+          'pelo e-mail contato@olliorcamentos.online; para os lembretes por e-mail, use o link ' +
+          '"Parar de receber lembretes" no rodapé de cada mensagem.',
         'Quando o gerenciamento de assinatura estiver disponível no canal em que você contratou, ' +
           'ele será apresentado nessa conta; alguns builds nativos mostram apenas o status e os recibos.',
         'Para exportar os seus dados, excluir a sua conta ou fazer qualquer outro pedido ' +
