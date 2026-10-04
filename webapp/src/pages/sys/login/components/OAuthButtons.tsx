@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Icon } from "@/components/icon";
+import { linkAbrirNoNavegador, type NavegadorInApp, navegadorInAppAtual } from "@/lib/navegadorInApp";
 import { registrarFunilAuth, supabase } from "@/lib/supabase";
 import { guardarIntencaoOAuth } from "@/olli/plano-intent";
 import { Button } from "@/ui/button";
@@ -24,10 +25,41 @@ import { CHAVE_TENTATIVA_OAUTH } from "../use-retorno-oauth";
 type OAuthProvider = "google" | "apple";
 const OAUTH_PROVIDER_LABEL: Record<OAuthProvider, string> = { google: "Google", apple: "Apple" };
 
+const NOME_APP: Record<NavegadorInApp, string> = { instagram: "Instagram", facebook: "Facebook" };
+
+/**
+ * No navegador embutido do Instagram/Facebook o Google recusa o login
+ * (`disallowed_useragent`): no lugar dos botões, o caminho para o navegador do
+ * aparelho. O cadastro por e-mail funciona aqui mesmo.
+ */
+function AvisoNavegadorInApp({ app }: { app: NavegadorInApp }) {
+	const ua = typeof navigator === "undefined" ? "" : navigator.userAgent || "";
+	const link = typeof window === "undefined" ? null : linkAbrirNoNavegador(window.location.href, ua);
+	return (
+		<div className="space-y-2 rounded-md border border-border p-3 text-sm" role="note">
+			<p className="text-muted-foreground">
+				Quer entrar com Google ou Apple? Dentro do app do {NOME_APP[app]} o Google não permite. Abra esta página no
+				navegador do celular.
+			</p>
+			{link ? (
+				<Button asChild type="button" variant="outline" className="w-full">
+					<a href={link}>Abrir no navegador</a>
+				</Button>
+			) : (
+				<p className="text-muted-foreground">
+					Toque em <span aria-hidden="true">⋯</span>
+					<span className="sr-only">no menu de três pontos</span> no canto da tela e escolha “Abrir no navegador”.
+				</p>
+			)}
+		</div>
+	);
+}
+
 export function OAuthButtons() {
 	const { t } = useTranslation();
 	const { callbackAuthPath, intencaoPlano } = useLoginStateContext();
 	const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
+	const [inApp] = useState(navegadorInAppAtual);
 
 	// Espera a resposta e avisa em pt-BR se o provider falhar (ou não estiver
 	// configurado no Supabase) — sem isto a tela parecia travada. Em sucesso, o
@@ -67,6 +99,8 @@ export function OAuthButtons() {
 			setOauthLoading(null);
 		}
 	};
+
+	if (inApp) return <AvisoNavegadorInApp app={inApp} />;
 
 	return (
 		<>

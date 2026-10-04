@@ -14,6 +14,7 @@ import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { EmailAutocompleteInput } from "./components/EmailAutocompleteInput";
+import { navegadorInAppAtual } from "@/lib/navegadorInApp";
 import { OAuthButtons } from "./components/OAuthButtons";
 import { ReturnButton } from "./components/ReturnButton";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
@@ -42,6 +43,8 @@ function RegisterForm() {
 	const navigate = useNavigate();
 	const { loginState, backToLogin, callbackAuthPath, destinoPosLogin } = useLoginStateContext();
 	const [loading, setLoading] = useState(false);
+	// Navegador do Instagram/Facebook: e-mail primeiro, login social vira "abrir no navegador".
+	const [inApp] = useState(navegadorInAppAtual);
 
 	// Funil anônimo do pré-cadastro (public.auth_funil_eventos, sem PII): um id aleatório
 	// por montagem; cada evento 1x, exceto cadastro_erro (1x por motivo).
@@ -137,15 +140,16 @@ function RegisterForm() {
 					<h1 className="text-2xl font-bold">{t("sys.login.signUpFormTitle")}</h1>
 				</div>
 
-				{/* OAuth reduz a entrada a um clique. Nome, telefone e dados do negócio
-				    são exigidos pelo onboarding no primeiro acesso social. */}
-				<OAuthButtons />
-
-				<div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
-					<span className="relative z-10 bg-background px-2 text-muted-foreground">
-						ou crie com e-mail
-					</span>
-				</div>
+				{/* OAuth reduz a entrada a um clique — fora do navegador do Instagram/Facebook,
+				    onde o Google recusa o login: lá o e-mail vem primeiro (navegadorInApp.ts). */}
+				{!inApp && (
+					<>
+						<OAuthButtons />
+						<div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
+							<span className="relative z-10 bg-background px-2 text-muted-foreground">ou crie com e-mail</span>
+						</div>
+					</>
+				)}
 
 				<FormField
 					control={form.control}
@@ -258,6 +262,8 @@ function RegisterForm() {
 					{loading && <Loader2 className="animate-spin mr-2" />}
 					{t("sys.login.registerButton")}
 				</Button>
+
+				{inApp && <OAuthButtons />}
 
 				<div className="mb-2 text-xs text-gray">
 					<span>{t("sys.login.registerAndAgree")}</span>

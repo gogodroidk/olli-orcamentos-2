@@ -25,6 +25,7 @@ import {
   guardarIntencaoOAuth,
 } from '../webapp/src/olli/plano-intent.ts';
 import { DESTINO_RETORNO_OAUTH, destinoResgateOAuth } from '../web/src/scripts/oauth-resgate.ts';
+import { detectarNavegadorInApp, linkAbrirNoNavegador } from '../webapp/src/lib/navegadorInApp.ts';
 
 console.log('\nLogin social — retorno do OAuth nunca falha em silêncio (incidente 16–25/09)');
 
@@ -282,5 +283,20 @@ ok(/registrarFunilAuth\("cadastro_erro"/.test(formCad) && /registrarErroCadastro
 ok(/handleSubmit\(onFinish, \(\) => registrarErroCadastro\("validacao"\)\)/.test(formCad), 'painel dispara cadastro_erro validacao');
 ok(/onFocusCapture/.test(formCad), 'painel dispara cadastro_iniciado no 1º foco');
 ok(/registrarFunilAuth\("oauth_iniciado"/.test(botoes), 'oauth_iniciado continua disparando');
+
+// T-010: navegador do Instagram/Facebook — o Google recusa OAuth em webview embutida.
+const UA_IG_ANDROID = 'Mozilla/5.0 (Linux; Android 13; SM-A146M; wv) AppleWebKit/537.36 Chrome/129.0 Mobile Safari/537.36 Instagram 350.0.0.38.94 Android';
+const UA_FB_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 [FBAN/FBIOS;FBAV/470.0]';
+const UA_CHROME = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/129.0 Mobile Safari/537.36';
+ok(detectarNavegadorInApp(UA_IG_ANDROID) === 'instagram', 'detecta Instagram');
+ok(detectarNavegadorInApp(UA_FB_IOS) === 'facebook', 'detecta Facebook iOS');
+ok(detectarNavegadorInApp(UA_CHROME) === null, 'Chrome comum não é in-app');
+const intent = linkAbrirNoNavegador('https://app.olliorcamentos.online/auth/login?modo=cadastro&utm_source=instagram', UA_IG_ANDROID) ?? '';
+ok(intent.startsWith('intent://app.olliorcamentos.online/auth/login?modo=cadastro&utm_source=instagram#Intent;scheme=https;package=com.android.chrome;'), 'Android abre a MESMA URL (com UTM) no Chrome');
+ok(intent.includes('S.browser_fallback_url=https%3A%2F%2Fapp.olliorcamentos.online'), 'intent tem fallback para a própria página');
+ok(linkAbrirNoNavegador('https://app.olliorcamentos.online/auth/login', UA_FB_IOS) === null, 'iPhone não ganha link (ensina o menu)');
+ok(linkAbrirNoNavegador('javascript:alert(1)', UA_IG_ANDROID) === null, 'só https vira intent');
+ok(/if \(inApp\) return <AvisoNavegadorInApp/.test(botoes), 'in-app troca Google/Apple pelo aviso');
+ok(/\{!inApp && \(/.test(formCad) && /\{inApp && <OAuthButtons \/>\}/.test(formCad), 'cadastro in-app: e-mail primeiro, aviso depois');
 
 console.log(`PASSOU: ${checks} verificações — redirect fixo, erro visível, code resgatado, funil sem PII.`);
