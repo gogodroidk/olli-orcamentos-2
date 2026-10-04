@@ -117,7 +117,7 @@ export const FERRAMENTAS: Record<FerramentaId, Ferramenta> = {
   certificado_caixa_dagua: { id: 'certificado_caixa_dagua', label: "Certificado de limpeza de caixa d'água", descricao: 'Certificado de limpeza e desinfecção do reservatório, com lacre e data da próxima limpeza.', disponivel: true },
   // Ligado com o motor de contrato por ativo (migration 20260930130500). A landing
   // lista esta ferramenta como pronta: publique a landing DEPOIS da migration e do app.
-  contrato_recorrente: { id: 'contrato_recorrente', label: 'Contrato recorrente', descricao: 'Contrato por cliente e ativo: cada visita entra sozinha na agenda com o técnico, e a cobrança do mês sai com o seu Pix.', disponivel: true },
+  contrato_recorrente: { id: 'contrato_recorrente', label: 'Contrato recorrente', descricao: 'Contrato por cliente e ativo: as visitas entram na agenda ao salvar o contrato e sempre que você abre o OLLI, e a cobrança do mês sai com o seu Pix.', disponivel: true },
   calculadora_tinta: { id: 'calculadora_tinta', label: 'Calculadora de tinta', descricao: 'm² → litros e demãos, dentro do item do orçamento.', disponivel: false },
 };
 
