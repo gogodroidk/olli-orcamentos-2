@@ -208,6 +208,19 @@ function configurado(env) {
   return !!credencialPlay(env) && !!pacote(env) && !!env?.SUPABASE_URL && !!env?.SUPABASE_SERVICE_ROLE_KEY;
 }
 
+/**
+ * POR QUE o RTDN está desligado, em palavra de log (nunca o valor do segredo, só qual falta).
+ * Sem isso `processarRtdn` devolvia `{ estado: 'desligado' }` calado e ninguém sabia se faltava
+ * credencial, pacote, banco ou assinatura (T-RTDN: o canal ficou mudo sem uma linha de log).
+ */
+function motivoDesligado(env) {
+  if (!credencialPlay(env)) return 'sem_credencial';
+  if (!pacote(env)) return 'sem_pacote';
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return 'sem_banco';
+  if (!assinaturaPubSub(env)) return 'sem_assinatura';
+  return 'desligado';
+}
+
 /** A VENDA está ligada? (kill switch do servidor + configuração completa) */
 export function playLigado(env) {
   return env?.PLAY_BILLING_MODE === 'on' && configurado(env);
@@ -1162,7 +1175,7 @@ async function tratarMensagem(env, recebida, agora) {
  */
 export async function processarRtdn(env, { agora = new Date(), max } = {}) {
   const sub = assinaturaPubSub(env);
-  if (!configurado(env) || !sub) return { estado: 'desligado' };
+  if (!configurado(env) || !sub) return { estado: 'desligado', motivo: motivoDesligado(env) };
   // Teto 3: cada mensagem custa ~10 subrequests e a invocação do plano Free tem 50
   // (dividida com o feed do INMET). Mais que isso estoura e mata a invocação toda.
   const limite = Math.max(1, Math.min(TETO_POR_RODADA, Number.parseInt(String(max ?? env.PLAY_RTDN_MAX ?? '3'), 10) || 3));
@@ -1175,7 +1188,7 @@ export async function processarRtdn(env, { agora = new Date(), max } = {}) {
   });
   if (puxou.status !== 'ok') {
     console.error('[olli-play] pull do RTDN falhou —', puxou.motivo || puxou.status);
-    return { estado: 'erro' };
+    return { estado: 'erro', motivo: puxou.motivo || puxou.status };
   }
   const recebidas = Array.isArray(puxou.dados?.receivedMessages) ? puxou.dados.receivedMessages : [];
   const ackIds = [];
@@ -1333,8 +1346,29 @@ export async function reconciliarPlay(env, { agora = new Date(), limite } = {}) 
  */
 export async function tarefaPlayDoCron(env, { agora = new Date() } = {}) {
   const quando = agora instanceof Date ? agora : new Date(agora);
-  if (MINUTOS_RTDN.has(quando.getUTCMinutes())) return { tarefa: 'rtdn', ...(await processarRtdn(env, { agora: quando })) };
-  return { tarefa: 'reconciliar', ...(await reconciliarPlay(env, { agora: quando })) };
+  const rtdn = MINUTOS_RTDN.has(quando.getUTCMinutes());
+  let resultado;
+  try {
+    resultado = rtdn
+      ? { tarefa: 'rtdn', ...(await processarRtdn(env, { agora: quando })) }
+      : { tarefa: 'reconciliar', ...(await reconciliarPlay(env, { agora: quando })) };
+  } catch (e) {
+    resultado = { tarefa: rtdn ? 'rtdn' : 'reconciliar', estado: 'excecao', motivo: String(e?.name || 'Error') };
+    capturarExcecao(e, { origem: 'play', rota: 'cron' });
+  }
+  registrarTarefaPlay(resultado);
+  return resultado;
+}
+
+/**
+ * UMA linha por execução do cron da Play, sempre, com ou sem trabalho. Antes o resultado do
+ * `tarefaPlayDoCron` era jogado fora em `ctx.waitUntil` e um RTDN que não rodava era
+ * indistinguível de um RTDN sem mensagem. Só campos numéricos/rótulos: nada de token, e-mail
+ * nem id de compra.
+ */
+function registrarTarefaPlay(r) {
+  const { tarefa, estado, recebidas, confirmadas, mantidas, motivo } = r;
+  console.log(JSON.stringify({ evento: 'play_cron', tarefa, estado, recebidas, confirmadas, mantidas, motivo }));
 }
 
 // ─── exclusão de conta ───────────────────────────────────────

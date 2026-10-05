@@ -650,6 +650,28 @@ try {
     checar('cron :03 → RTDN (e não a reconciliação)', [rtdn.tarefa, pubsub.pulls - pullsAntes], ['rtdn', 1]);
     checar('cron :43 → RTDN', (await tarefaPlayDoCron(envBase, { agora: naMinuto(43, HORA_TESTE) })).tarefa, 'rtdn');
 
+    // RTDN mudo (05/10): o cron SEMPRE escreve uma linha de log, com ou sem mensagem, e diz POR QUE
+    // está desligado. Antes o resultado era jogado fora e "desligado" não explicava nada.
+    {
+      const linhas = [];
+      const logOriginal = console.log;
+      console.log = (...a) => linhas.push(a.join(' '));
+      let semAssinatura, semCredencial, comTrabalho;
+      try {
+        comTrabalho = await tarefaPlayDoCron(envBase, { agora: naMinuto(3, HORA_TESTE) });
+        semAssinatura = await tarefaPlayDoCron({ ...envBase, PLAY_PUBSUB_SUBSCRIPTION: '' }, { agora: naMinuto(3, HORA_TESTE) });
+        semCredencial = await tarefaPlayDoCron({ ...envBase, PLAY_SA_JSON: '' }, { agora: naMinuto(43, HORA_TESTE) });
+      } finally {
+        console.log = logOriginal;
+      }
+      const json = linhas.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((x) => x?.evento === 'play_cron');
+      checar('cron escreve UMA linha play_cron por execução', json.length, 3);
+      checar('linha com trabalho traz tarefa/estado/contagens', [json[0].tarefa, json[0].estado, typeof json[0].recebidas, typeof json[0].confirmadas, typeof json[0].mantidas], ['rtdn', comTrabalho.estado, 'number', 'number', 'number']);
+      checar('desligado por falta de assinatura diz o motivo', [semAssinatura.estado, semAssinatura.motivo, json[1].motivo], ['desligado', 'sem_assinatura', 'sem_assinatura']);
+      checar('desligado por falta de credencial diz o motivo', [semCredencial.estado, semCredencial.motivo, json[2].motivo], ['desligado', 'sem_credencial', 'sem_credencial']);
+      checar('a linha de log não leva segredo nem id de compra', linhas.some((l) => /eyJ|PRIVATE KEY|purchase_token|@/.test(l)), false);
+    }
+
     // Google fora na reconciliação: nada muda.
     c.verificado_em = new Date(R27.getTime() - 2 * 3600e3).toISOString();
     c.ack = false;
