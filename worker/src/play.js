@@ -103,6 +103,8 @@ const ORCAMENTO_ANULADAS = 40;
 
 /** Teto de espera por resposta do Google (Play Developer API e Pub/Sub). */
 const TIMEOUT_GOOGLE_MS = 15 * 1000;
+/** Espera máxima do pull do RTDN (long poll). Curto: o cron não pode ficar preso. */
+const TIMEOUT_PULL_RTDN_MS = 8 * 1000;
 
 /** Corpo do /play/verificar: token (até 4 KB) + produto. 8 KB é folga (R5). */
 const TETO_VERIFICAR = 8 * 1024;
@@ -248,7 +250,7 @@ async function getUser(request, env) {
  *   { status:'recusado' }       → 400 (token malformado para o Google)
  *   { status:'erro', motivo }   → 401/403/429/5xx/rede/credencial — NÃO SEI
  */
-async function chamarGoogle(env, url, { metodo = 'GET', corpo, jaRenovou = false } = {}) {
+async function chamarGoogle(env, url, { metodo = 'GET', corpo, jaRenovou = false, timeoutMs = TIMEOUT_GOOGLE_MS } = {}) {
   const t = await tokenGoogle(env);
   if (!t.ok) return { status: 'erro', motivo: t.motivo };
   let r;
@@ -262,10 +264,11 @@ async function chamarGoogle(env, url, { metodo = 'GET', corpo, jaRenovou = false
       },
       body: corpo !== undefined ? JSON.stringify(corpo) : undefined,
       // Google pendurado não pode prender a rota nem o cron: vira "não sei".
-      ...(typeof AbortSignal?.timeout === 'function' ? { signal: AbortSignal.timeout(TIMEOUT_GOOGLE_MS) } : {}),
+      ...(typeof AbortSignal?.timeout === 'function' ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
     });
-  } catch {
-    return { status: 'erro', motivo: 'rede' };
+  } catch (e) {
+    const nome = e && typeof e === 'object' && 'name' in e ? e.name : '';
+    return { status: 'erro', motivo: nome === 'TimeoutError' || nome === 'AbortError' ? 'timeout' : 'rede' };
   }
   if (r.ok) {
     const texto = await r.text().catch(() => '');
@@ -1112,7 +1115,11 @@ async function tratarMensagem(env, recebida, agora) {
     token: tokenHash ? curto(tokenHash) : null,
   };
   const reiv = await reivindicarEvento(env, { origem: ORIGEM_RTDN, eventId: messageId, tipo, payload });
-  if (!reiv.ok) return false; // não sei se é novo → deixa o Pub/Sub reentregar
+  if (!reiv.ok) {
+    // Antes era calado: a mensagem voltava para a fila sem ninguém saber por quê.
+    console.error('[olli-play] RTDN: não consegui registrar em webhook_events —', messageId);
+    return false; // não sei se é novo → deixa o Pub/Sub reentregar
+  }
   if (reiv.duplicado) return true;
 
   if (tipo === 'teste') {
@@ -1162,17 +1169,29 @@ async function tratarMensagem(env, recebida, agora) {
  */
 export async function processarRtdn(env, { agora = new Date(), max } = {}) {
   const sub = assinaturaPubSub(env);
-  if (!configurado(env) || !sub) return { estado: 'desligado' };
+  if (!configurado(env) || !sub) {
+    console.log('[olli-play] RTDN desligado —', !configurado(env) ? 'credencial/pacote/banco ausente' : 'PLAY_PUBSUB_SUBSCRIPTION inválida');
+    return { estado: 'desligado' };
+  }
   // Teto 3: cada mensagem custa ~10 subrequests e a invocação do plano Free tem 50
   // (dividida com o feed do INMET). Mais que isso estoura e mata a invocação toda.
   const limite = Math.max(1, Math.min(TETO_POR_RODADA, Number.parseInt(String(max ?? env.PLAY_RTDN_MAX ?? '3'), 10) || 3));
   const agoraMs = agora instanceof Date ? agora.getTime() : Number(agora);
 
+  // SEM returnImmediately (04/10/2026): o Google desaconselha a flag porque o pull
+  // pode voltar VAZIO mesmo com mensagem na fila — foi o que aconteceu: o cron rodava
+  // 'ok' em 7 ms e as notificações ficavam paradas na assinatura por mais de 20 h.
+  // Agora o pull espera um pouco (long poll) e o nosso timeout corta a espera: tempo
+  // de parede não conta como CPU no plano Free. Timeout = nada chegou nessa janela.
   const puxou = await chamarGoogle(env, `${API_PUBSUB}/${sub}:pull`, {
     metodo: 'POST',
-    // returnImmediately: sem ele o pull fica esperando mensagem e prende o cron.
-    corpo: { maxMessages: limite, returnImmediately: true },
+    corpo: { maxMessages: limite },
+    timeoutMs: TIMEOUT_PULL_RTDN_MS,
   });
+  if (puxou.status !== 'ok' && puxou.motivo === 'timeout') {
+    console.log('[olli-play] RTDN: fila vazia nesta rodada');
+    return { estado: 'ok', recebidas: 0, confirmadas: 0, mantidas: 0 };
+  }
   if (puxou.status !== 'ok') {
     console.error('[olli-play] pull do RTDN falhou —', puxou.motivo || puxou.status);
     return { estado: 'erro' };
@@ -1198,6 +1217,8 @@ export async function processarRtdn(env, { agora = new Date(), max } = {}) {
       console.error('[olli-play] ack do RTDN falhou —', ack.motivo || ack.status);
     }
   }
+  // Sempre um log por rodada: 'ok' calado escondeu a fila parada por um dia inteiro.
+  console.log('[olli-play] RTDN:', recebidas.length, 'recebidas,', ackIds.length, 'confirmadas,', mantidas, 'mantidas');
   return { estado: 'ok', recebidas: recebidas.length, confirmadas: ackIds.length, mantidas };
 }
 
