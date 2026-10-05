@@ -414,6 +414,9 @@ async function webhook(request, env, url) {
   // pagamento — o processo segue, e o consumo único ('abacate') é quem protege
   // o plano de ser liberado duas vezes.
   if (reiv.ok && reiv.duplicado) return json({ ok: true, duplicado: true });
+  // Erro não vira vazio: a trilha falhar não trava o pagamento, mas aparece no log
+  // (só o id do evento e o tipo — nada de URL, segredo ou dado do cliente).
+  if (!reiv.ok) console.error('[olli-abacate] trilha não gravou (reivindicar):', trilha.eventId, trilha.tipo);
 
   let fim;
   try {
@@ -498,16 +501,17 @@ async function abrirTrilha(evt, bruto) {
  * 'erro' vira 'falhou' com a mensagem curta (o reenvio reprocessa). O resultado
  * fino fica no payload — o CHECK da coluna `status` só conhece
  * recebido/processado/falhou, e isto não pede migration. Best-effort: marcarEvento
- * não lança, e o retorno é ignorado de propósito.
+ * não lança; se a escrita não for confirmada, só fica o aviso no log.
  */
 async function fecharTrilha(env, trilha, { http, resultado, motivo }) {
-  await marcarEvento(env, {
+  const gravou = await marcarEvento(env, {
     origem: ORIGEM_WEBHOOK,
     eventId: trilha.eventId,
     status: resultado === 'erro' ? 'falhou' : 'processado',
     erro: resultado === 'erro' ? motivo : undefined,
     payload: trilha.payload(resultado, { motivo, http }),
   });
+  if (!gravou) console.error('[olli-abacate] trilha não gravou (fechar):', trilha.eventId, resultado, motivo);
 }
 
 // ─── roteador /abacate/* ─────────────────────────────────────

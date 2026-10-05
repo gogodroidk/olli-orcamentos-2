@@ -185,6 +185,7 @@ reset();
 cobranca('pix_char_A');
 r = await chamar(evento('log_pago_1', 'pix_char_A'));
 checar('200 liberado', [r.status, r.corpo], [200, { ok: true, estado: 'liberado' }]);
+checar('trilha gravada não gera aviso no log', logs.some((l) => l.includes('trilha não gravou')), false);
 checar('trilha ok', resumo(trilha('log_pago_1')), {
   tipo: 'transparent.completed',
   status: 'processado',
@@ -296,6 +297,10 @@ trilhaQuebrada = 'http500';
 r = await chamar(evento('log_trilha_500', 'pix_char_T'));
 checar('200 liberado', [r.status, r.corpo], [200, { ok: true, estado: 'liberado' }]);
 checar('plano concedido', db.upserts, 1);
+checar('a falha da trilha aparece no log (reivindicar e fechar)', [
+  logs.some((l) => l.includes('trilha não gravou (reivindicar)') && l.includes('log_trilha_500')),
+  logs.some((l) => l.includes('trilha não gravou (fechar)') && l.includes('log_trilha_500')),
+], [true, true]);
 
 console.log('\n11) Trilha FORA (fetch lança): o pagamento passa mesmo assim');
 reset();
@@ -304,6 +309,7 @@ trilhaQuebrada = 'excecao';
 r = await chamar(evento('log_trilha_exc', 'pix_char_T'));
 checar('200 liberado', [r.status, r.corpo], [200, { ok: true, estado: 'liberado' }]);
 checar('plano concedido', db.upserts, 1);
+checar('a falha da trilha aparece no log', logs.some((l) => l.includes('trilha não gravou') && l.includes('log_trilha_exc')), true);
 
 console.log('\n12) JSON inválido: 400 e trilha pelo hash do corpo (idempotente)');
 reset();
