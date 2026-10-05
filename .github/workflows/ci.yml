@@ -28,6 +28,28 @@ jobs:
       - name: Segredos no histórico
         run: gitleaks git . --redact --no-banner --log-level warn --gitleaks-ignore-path .gitleaksignore
 
+  # 0b) CVE ALTA/CRÍTICA das dependências (Trivy, Apache-2.0) + SBOM. Linha de base
+  #     com vencimento em .trivyignore. Versão e SHA-256 fixos.
+  dependencias:
+    name: dependencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar trivy 0.75.0 (checksum conferido)
+        run: |
+          curl -sSfL -o tv.tgz https://github.com/aquasecurity/trivy/releases/download/v0.75.0/trivy_0.75.0_Linux-64bit.tar.gz
+          echo "c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  tv.tgz" | sha256sum -c -
+          tar -xzf tv.tgz trivy && sudo mv trivy /usr/local/bin/
+      - name: CVE ALTA/CRÍTICA nas dependências
+        run: trivy fs . --scanners vuln --skip-dirs "**/node_modules" --skip-dirs android --skip-dirs _arquivo-antigo --quiet --severity HIGH,CRITICAL --ignorefile .trivyignore --exit-code 1
+      - name: SBOM CycloneDX
+        run: trivy fs . --scanners vuln --skip-dirs "**/node_modules" --skip-dirs android --skip-dirs _arquivo-antigo --quiet --format cyclonedx --output sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
   # 1) App (raiz): o mesmo preflight que governa a release local.
   app-gate:
     name: app-gate

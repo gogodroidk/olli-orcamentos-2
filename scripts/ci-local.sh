@@ -10,7 +10,7 @@
 #   bash scripts/ci-local.sh worker lint     # só os jobs citados
 #   CI_LOCAL_SEM_INSTALAR=1 bash scripts/ci-local.sh   # pula npm ci / pnpm i
 #
-# Jobs (nomes iguais aos do ci.yml): segredos, app-gate, painel, landing, worker, lint.
+# Jobs (nomes iguais aos do ci.yml): segredos, dependencias, app-gate, painel, landing, worker, lint.
 # Sai com código != 0 se QUALQUER job falhar. Um job que falha não impede os
 # outros de rodar (igual ao Actions, onde os jobs são independentes).
 #
@@ -35,7 +35,7 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # O Actions não tem .env; o worker e o build não podem depender de segredo local.
 export FORCE_COLOR=0
 
-TODOS_JOBS=(segredos app-gate painel landing worker lint)
+TODOS_JOBS=(segredos dependencias app-gate painel landing worker lint)
 if [ "$#" -gt 0 ]; then
   JOBS=("$@")
 else
@@ -157,6 +157,24 @@ job_segredos() {
     return 1
   fi
   passo "Segredos no histórico (gitleaks $(gitleaks version))" . gitleaks git . --redact --no-banner --log-level warn --gitleaks-ignore-path .gitleaksignore
+}
+
+job_dependencias() {
+  # Trivy (Apache-2.0): CVE das dependências pelos lockfiles (raiz, worker, web,
+  # webapp), sem varrer node_modules. CRÍTICA sempre reprova; ALTA reprova se não
+  # estiver na linha de base do .trivyignore — e cada linha de lá VENCE (exp:), então
+  # o que ficou para depois volta a reprovar sozinho. Também gera o SBOM (CycloneDX)
+  # em $LOG_DIR/sbom.cdx.json. Binário: `trivy` no PATH ou TRIVY_BIN; cache em
+  # TRIVY_CACHE_DIR (o banco tem ~1 GB descompactado: use um disco com folga).
+  local bin="${TRIVY_BIN:-trivy}"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    echo "trivy não instalado — instale (Apache-2.0): https://github.com/aquasecurity/trivy/releases"
+    return 1
+  fi
+  local comuns=(--scanners vuln --skip-dirs "**/node_modules" --skip-dirs android --skip-dirs _arquivo-antigo --quiet)
+  [ -n "${TRIVY_CACHE_DIR:-}" ] && comuns+=(--cache-dir "$TRIVY_CACHE_DIR")
+  passo "CVE ALTA/CRÍTICA nas dependências (trivy)" . "$bin" fs . "${comuns[@]}"     --severity HIGH,CRITICAL --ignorefile .trivyignore --exit-code 1 || return 1
+  passo "SBOM CycloneDX" . "$bin" fs . "${comuns[@]}" --format cyclonedx --output "$LOG_DIR/sbom.cdx.json"
 }
 
 job_app_gate() {
