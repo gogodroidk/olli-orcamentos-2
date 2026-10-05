@@ -176,7 +176,7 @@ export interface ResultadoSessaoNavegador {
 }
 
 /**
- * Janela (ms) em que um `dismiss`/`cancel` sem URL no Android NÃO é confiável.
+ * Janela (ms) em que um `dismiss` sem URL no Android NÃO é confiável.
  * O polyfill Android do expo-web-browser resolve `dismiss` em QUALQUER AppState
  * 'active' (WebBrowser.ts `_onAppStateChangeAndroid`), inclusive um 'active'
  * espúrio logo após abrir a Custom Tab. Humano nenhum fecha a aba e desiste em
@@ -184,13 +184,91 @@ export interface ResultadoSessaoNavegador {
  */
 export const JANELA_DISMISS_ESPURIO_MS = 2000;
 
-/** Quanto esperar o deep link tardio depois de um dismiss espúrio (a aba segue aberta). */
-export const ESPERA_RETORNO_TARDIO_MS = 180_000;
+/** Quanto esperar o deep link tardio depois de um dismiss espúrio (a aba pode seguir aberta). */
+export const ESPERA_RETORNO_TARDIO_MS = 60_000;
 
-/** `dismiss`/`cancel` sem URL, vindo cedo demais para ter sido um gesto humano? */
-export function dismissEspurio(res: ResultadoSessaoNavegador, decorridoMs: number, urlCapturada: string | null): boolean {
-  if (urlCapturada || res.type === 'success' || res.type === 'locked') return false;
+/** Depois de um AppState 'active' (aba fechada de verdade?), quanto esperar um deep link atrasado. */
+export const CARENCIA_FECHAMENTO_MS = 1500;
+
+/**
+ * `dismiss` sem URL, só no Android, cedo demais para ter sido um gesto humano?
+ * No iOS o `ASWebAuthenticationSession` devolve `cancel` na hora quando a pessoa toca
+ * "Cancelar" no aviso do sistema: isso é humano e vira `cancelado` imediatamente.
+ * `cancel` no Android só vem quando a aba nem abriu — também não é espera.
+ */
+export function dismissEspurio(
+  res: ResultadoSessaoNavegador,
+  decorridoMs: number,
+  urlCapturada: string | null,
+  plataforma: string,
+): boolean {
+  if (plataforma !== 'android' || res.type !== 'dismiss') return false;
+  if (urlCapturada) return false;
   return decorridoMs < JANELA_DISMISS_ESPURIO_MS;
+}
+
+export type FimDaEspera = 'url' | 'fechou' | 'timeout';
+
+export interface DepsEsperaRetorno {
+  /** Assina mudanças de AppState; devolve o cancelamento da assinatura. */
+  observarAtivo: (aoFicarAtivo: () => void) => () => void;
+  agora: () => number;
+  setTimer?: (fn: () => void, ms: number) => unknown;
+  clearTimer?: (t: unknown) => void;
+  /** Só para teste: roda logo depois de o aviso ser instalado e antes da reconferência. */
+  aoInstalarAviso?: () => void;
+}
+
+/**
+ * Guarda o deep link do OAuth que chegar enquanto a aba está aberta e permite
+ * esperá-lo SEM corrida: o aviso é instalado dentro da Promise e `url` é reconferida
+ * logo depois — uma URL que chegue entre a leitura e a instalação não se perde.
+ * Termina em: 'url' (deep link chegou), 'fechou' (AppState 'active' > 2 s após abrir e
+ * sem URL por 1,5 s = a pessoa fechou a aba) ou 'timeout' (ESPERA_RETORNO_TARDIO_MS).
+ * Sempre limpa timers e assinatura ao terminar.
+ */
+export function criarCapturaRetorno(redirectTo: string, abriuEm: number) {
+  let url: string | null = null;
+  let aviso: (() => void) | null = null;
+  return {
+    aoReceberUrl(recebida: string) {
+      if (!recebida.startsWith(redirectTo)) return;
+      url = recebida;
+      aviso?.();
+    },
+    url: () => url,
+    esperar(deps: DepsEsperaRetorno, timeoutMs: number = ESPERA_RETORNO_TARDIO_MS, carenciaMs: number = CARENCIA_FECHAMENTO_MS) {
+      const setT = deps.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+      const clearT = deps.clearTimer ?? ((t: unknown) => clearTimeout(t as ReturnType<typeof setTimeout>));
+      return new Promise<FimDaEspera>((resolve) => {
+        let timerTotal: unknown = null;
+        let timerCarencia: unknown = null;
+        let desassinar: (() => void) | null = null;
+        let acabou = false;
+        const terminar = (fim: FimDaEspera) => {
+          if (acabou) return;
+          acabou = true;
+          if (timerTotal !== null) clearT(timerTotal);
+          if (timerCarencia !== null) clearT(timerCarencia);
+          desassinar?.();
+          aviso = null;
+          resolve(fim);
+        };
+        aviso = () => terminar('url');
+        deps.aoInstalarAviso?.();
+        if (url) return terminar('url');
+        timerTotal = setT(() => terminar('timeout'), timeoutMs);
+        desassinar = deps.observarAtivo(() => {
+          if (acabou || url || timerCarencia !== null) return;
+          if (deps.agora() - abriuEm <= JANELA_DISMISS_ESPURIO_MS) return;
+          timerCarencia = setT(() => {
+            timerCarencia = null;
+            terminar(url ? 'url' : 'fechou');
+          }, carenciaMs);
+        });
+      });
+    },
+  };
 }
 
 export type DecisaoRetornoNativo =

@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 import { authStorage } from './authStorage';
@@ -8,7 +8,7 @@ import {
   criarRegistroFunilAuth,
   decidirRetornoNativo,
   dismissEspurio,
-  ESPERA_RETORNO_TARDIO_MS,
+  criarCapturaRetorno,
   ErroOAuth,
   type MotivoErroOAuth,
   normalizarPlataforma,
@@ -365,16 +365,11 @@ async function signInWithGoogleCore(): Promise<ResultadoOAuth> {
 
   // Rede de segurança do Android: guarda o deep link que chegar enquanto a aba
   // estiver aberta (a Custom Tab pode resolver `dismiss` mesmo tendo entregue o code).
-  let urlCapturada: string | null = null;
-  let avisarUrl: (() => void) | null = null;
-  const assinatura = Linking.addEventListener('url', ({ url }) => {
-    if (!url.startsWith(redirectTo)) return;
-    urlCapturada = url;
-    avisarUrl?.();
-  });
+  const abriuEm = Date.now();
+  const captura = criarCapturaRetorno(redirectTo, abriuEm);
+  const assinatura = Linking.addEventListener('url', ({ url }) => captura.aoReceberUrl(url));
   let res: { type: string; url?: string | null };
   try {
-    const abriuEm = Date.now();
     try {
       res = await WebBrowser.openAuthSessionAsync(data!.url, redirectTo);
     } catch {
@@ -384,19 +379,27 @@ async function signInWithGoogleCore(): Promise<ResultadoOAuth> {
     // Android: o polyfill resolve `dismiss` em qualquer AppState 'active', inclusive
     // um espúrio logo após abrir (cancelado a 0,16 s em 03/10). Cedo demais para ser
     // um gesto humano = a aba provavelmente segue aberta: espera o deep link.
-    if (dismissEspurio(res, Date.now() - abriuEm, urlCapturada)) {
-      await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, ESPERA_RETORNO_TARDIO_MS);
-        avisarUrl = () => {
-          clearTimeout(t);
-          resolve();
-        };
+    // (iOS: `cancel` rápido é o toque em "Cancelar" do sistema — gesto humano, sem espera.)
+    if (dismissEspurio(res, Date.now() - abriuEm, captura.url(), Platform.OS)) {
+      const fim = await captura.esperar({
+        agora: Date.now,
+        observarAtivo: (cb) => {
+          const sub = AppState.addEventListener('change', (st) => {
+            if (st === 'active') cb();
+          });
+          return () => sub.remove();
+        },
       });
-      if (!urlCapturada) return falhar('sem_retorno');
+      if (fim === 'timeout') return falhar('sem_retorno');
+      if (fim === 'fechou') {
+        void registrarFunilAuth('oauth_erro', { plataforma, tentativa, motivo: 'cancelado' });
+        return 'cancelado';
+      }
     }
   } finally {
     assinatura.remove();
   }
+  const urlCapturada = captura.url();
 
   const decisao = decidirRetornoNativo(res, urlCapturada);
   if (decisao.tipo === 'cancelado') {

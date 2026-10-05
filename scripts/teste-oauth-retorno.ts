@@ -6,6 +6,10 @@ import {
   criarRegistroFunilAuth,
   decidirRetornoNativo,
   dismissEspurio,
+  criarCapturaRetorno,
+  CARENCIA_FECHAMENTO_MS,
+  ESPERA_RETORNO_TARDIO_MS,
+  type DepsEsperaRetorno,
   JANELA_DISMISS_ESPURIO_MS,
   ErroOAuth,
   erroDeTabelaAusente,
@@ -136,11 +140,129 @@ igual(
 );
 
 // Android 03/10: dismiss a 0,16 s NÃO é cancelamento humano; `locked` não é cancelamento.
-igual(dismissEspurio({ type: 'dismiss' }, 160, null), true, 'dismiss a 0,16 s é espúrio');
-igual(dismissEspurio({ type: 'cancel' }, 1500, null), true, 'cancel a 1,5 s ainda é espúrio');
-igual(dismissEspurio({ type: 'dismiss' }, JANELA_DISMISS_ESPURIO_MS + 1, null), false, 'dismiss a 11 s é humano');
-igual(dismissEspurio({ type: 'dismiss' }, 160, `${cb}?code=${CODE}`), false, 'com deep link capturado não espera');
-igual(dismissEspurio({ type: 'success', url: cb }, 100, null), false, 'success nunca é espúrio');
+igual(dismissEspurio({ type: 'dismiss' }, 160, null, 'android'), true, 'android: dismiss a 0,16 s é espúrio');
+igual(dismissEspurio({ type: 'cancel' }, 1500, null, 'android'), false, 'android: cancel a 1,5 s NÃO é espúrio (só dismiss)');
+igual(dismissEspurio({ type: 'cancel' }, 300, null, 'ios'), false, 'ios: cancel a 0,3 s é gesto humano → cancelado na hora');
+igual(dismissEspurio({ type: 'dismiss' }, 300, null, 'ios'), false, 'ios: nunca espera');
+igual(dismissEspurio({ type: 'dismiss' }, JANELA_DISMISS_ESPURIO_MS + 1, null, 'android'), false, 'android: dismiss depois da janela é humano');
+igual(dismissEspurio({ type: 'dismiss' }, 160, `${cb}?code=${CODE}`, 'android'), false, 'com deep link capturado não espera');
+igual(dismissEspurio({ type: 'success', url: cb }, 100, null, 'android'), false, 'success nunca é espúrio');
+igual(decidirRetornoNativo({ type: 'cancel' }, null), { tipo: 'cancelado' }, 'ios: cancel rápido decide cancelado');
+igual(ESPERA_RETORNO_TARDIO_MS, 60_000, 'espera tardia de 60 s');
+
+// Espera do retorno tardio: sem corrida e com saída (timers/AppState falsos, determinísticos).
+function relogio() {
+  let t = 0;
+  const timers: { id: number; em: number; fn: () => void }[] = [];
+  let n = 0;
+  return {
+    agora: () => t,
+    setTimer: (fn: () => void, ms: number) => { const id = ++n; timers.push({ id, em: t + ms, fn }); return id; },
+    clearTimer: (id: unknown) => { const i = timers.findIndex((x) => x.id === id); if (i >= 0) timers.splice(i, 1); },
+    avancar(ms: number) {
+      const alvo = t + ms;
+      for (;;) {
+        timers.sort((a, b) => a.em - b.em);
+        const prox = timers[0];
+        if (!prox || prox.em > alvo) break;
+        timers.shift(); t = prox.em; prox.fn();
+      }
+      t = alvo;
+    },
+    pendentes: () => timers.length,
+  };
+}
+function deps(r: ReturnType<typeof relogio>, extra: Partial<DepsEsperaRetorno> = {}) {
+  let ativo: (() => void) | null = null;
+  let assinaturas = 0;
+  return {
+    d: {
+      agora: r.agora, setTimer: r.setTimer, clearTimer: r.clearTimer,
+      observarAtivo: (cbk: () => void) => { ativo = cbk; assinaturas++; return () => { ativo = null; assinaturas--; }; },
+      ...extra,
+    } as DepsEsperaRetorno,
+    ficarAtivo: () => ativo?.(),
+    assinaturas: () => assinaturas,
+  };
+}
+const redir = 'olliorcamentos://auth/callback';
+const urlOk = `${redir}?code=${CODE}`;
+const sinal = async <T,>(p: Promise<T>) => p;
+
+// (a) a URL chega ENTRE a leitura de null e a instalação do aviso (a corrida do review).
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  igual(cap.url(), null, 'leitura: ainda sem URL');
+  const dp = deps(r, { aoInstalarAviso: () => cap.aoReceberUrl(urlOk) }); // chega na transição
+  igual(await sinal(cap.esperar(dp.d)), 'url', 'URL na transição não se perde (sem 60 s de espera)');
+  igual(cap.url(), urlOk, 'URL guardada');
+  igual(r.pendentes(), 0, 'sem timers vazando');
+  igual(dp.assinaturas(), 0, 'sem assinatura vazando');
+}
+// (b) a URL chegou antes de esperar() ser chamada.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  cap.aoReceberUrl(urlOk);
+  igual(await cap.esperar(deps(r).d), 'url', 'URL já capturada resolve na hora');
+}
+// (c) URL de outro esquema é ignorada.
+{
+  const cap = criarCapturaRetorno(redir, 0);
+  cap.aoReceberUrl('https://evil.test/?code=x');
+  igual(cap.url(), null, 'URL fora do redirect é ignorada');
+}
+// (d) URL chega durante a espera.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(5000);
+  cap.aoReceberUrl(urlOk);
+  igual(await p, 'url', 'URL durante a espera resolve');
+  igual(r.pendentes(), 0, 'timers limpos');
+}
+// (e) aba fechada de verdade: AppState active > 2 s depois, sem URL por 1,5 s → fechou.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(10_000);
+  dp.ficarAtivo();
+  r.avancar(CARENCIA_FECHAMENTO_MS);
+  igual(await p, 'fechou', 'AppState active tardio sem URL encerra como fechou');
+  igual(r.pendentes(), 0, 'timers limpos (fechou)');
+  igual(dp.assinaturas(), 0, 'assinatura liberada (fechou)');
+}
+// (f) deep link logo depois do active (dentro da carência) ganha do "fechou".
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(10_000);
+  dp.ficarAtivo();
+  r.avancar(500);
+  cap.aoReceberUrl(urlOk);
+  igual(await p, 'url', 'deep link na carência vira url, não fechou');
+}
+// (g) 'active' espúrio (≤ 2 s da abertura) não encerra.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(1000);
+  dp.ficarAtivo();
+  r.avancar(CARENCIA_FECHAMENTO_MS + 100);
+  igual(r.pendentes(), 1, 'só o timer total segue armado');
+  r.avancar(ESPERA_RETORNO_TARDIO_MS);
+  igual(await p, 'timeout', 'sem sinal nenhum, vence o timeout de 60 s');
+  igual(dp.assinaturas(), 0, 'assinatura liberada (timeout)');
+}
 igual(decidirRetornoNativo({ type: 'locked' }, null), { tipo: 'erro', motivo: 'navegador_falhou' }, 'locked = navegador não abriu');
 igual(mensagemErroOAuth('navegador_falhou').includes('abrir o navegador'), true, 'mensagem navegador_falhou');
 
@@ -231,7 +353,8 @@ ok(!/cancel' \/ 'dismiss' → usuário fechou o navegador; silêncio/.test(nativ
 ok(/decidirRetornoNativo\(res, urlCapturada\)/.test(nativo), 'nativo usa a decisão testada');
 ok(/Linking\.addEventListener\('url'/.test(nativo), 'nativo escuta o deep link durante a aba');
 ok(/oauth_sessao_criada/.test(nativo) && /oauth_iniciado/.test(nativo), 'nativo registra o funil');
-ok(/dismissEspurio\(res,/.test(nativo), 'nativo espera o deep link após dismiss espúrio');
+ok(/dismissEspurio\(res,[\s\S]{0,60}Platform\.OS\)/.test(nativo), 'nativo espera o deep link após dismiss espúrio (só Android)');
+ok(/criarCapturaRetorno\(/.test(nativo) && /captura\.esperar\(/.test(nativo), 'nativo usa a espera sem corrida');
 ok(/oauthNativoEmAndamento/.test(nativo) && /'em_andamento'/.test(nativo), 'nativo trava sessão concorrente');
 ok(/falhar\('navegador_falhou'\)/.test(nativo), 'falha ao abrir navegador não vira cancelado');
 const entrar = ler('../src/screens/EntrarScreen.tsx');
@@ -255,10 +378,16 @@ const migration = ler('../supabase/migrations/20260929210000_auth_funil_eventos.
 ok(/grant insert \(evento, plataforma, provedor, motivo, tentativa\)/.test(migration), 'migration: INSERT só nas colunas sem PII');
 ok(!/grant select/i.test(migration), 'migration: anon não lê o funil');
 ok(/force row level security/.test(migration), 'migration: RLS forçada');
-const migracaoMotivos = ler('../supabase/migrations/20261004130000_auth_funil_motivos_navegador.sql');
+const migracaoMotivos = ler('../supabase/migrations/20261007090000_auth_funil_motivos_navegador.sql');
 for (const motivo of MOTIVOS_ERRO_OAUTH) {
   ok(migration.includes(`'${motivo}'`) || migracaoMotivos.includes(`'${motivo}'`), `migrations aceitam o motivo ${motivo}`);
-  ok(migracaoMotivos.includes(`'${motivo}'`), `migration 20261004 lista ${motivo} no CHECK`);
+  ok(migracaoMotivos.includes(`'${motivo}'`), `migration 20261007 lista ${motivo} no CHECK`);
 }
+
+for (const motivo of ['validacao', 'email_existente', 'senha_fraca', 'rate_limit']) {
+  ok(migracaoMotivos.includes(`'${motivo}'`), `migration 20261007 preserva o motivo de cadastro ${motivo} (#149)`);
+}
+ok(/motivo_so_em_erro[\s\S]*'oauth_erro', 'cadastro_erro'/.test(migracaoMotivos), 'migration 20261007 mantém motivo_so_em_erro p/ oauth_erro e cadastro_erro');
+ok(/'cadastro_ok'/.test(migracaoMotivos) && /'email'/.test(migracaoMotivos), 'migration 20261007 mantém CHECKs de evento/provedor');
 
 console.log(`PASSOU: ${checks} verificações — redirect fixo, erro visível, code resgatado, funil sem PII.`);
