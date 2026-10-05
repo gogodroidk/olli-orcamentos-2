@@ -33,11 +33,13 @@ export type MotivoErroOAuth =
   | 'sem_codigo' // voltou "sucesso" mas sem code nem erro
   | 'sem_sessao' // havia code e mesmo assim a sessão não apareceu
   | 'rede'
+  | 'navegador_falhou' // o navegador/Custom Tab nem abriu (sem navegador, aba já aberta, erro nativo)
+  | 'sem_retorno' // a aba fechou/resolveu cedo demais e nenhum retorno chegou no tempo de espera
   | 'desconhecido';
 
 export const MOTIVOS_ERRO_OAUTH: readonly MotivoErroOAuth[] = [
   'cancelado', 'provedor', 'codigo_expirado', 'navegador_trocado',
-  'sem_codigo', 'sem_sessao', 'rede', 'desconhecido',
+  'sem_codigo', 'sem_sessao', 'rede', 'navegador_falhou', 'sem_retorno', 'desconhecido',
 ];
 
 export type ProvedorOAuth = 'google' | 'apple';
@@ -71,6 +73,10 @@ export function mensagemErroOAuth(motivo: MotivoErroOAuth, provedor: ProvedorOAu
       return `O login com o ${nome} terminou em outro navegador. Abra o OLLI neste mesmo navegador e toque em ${nome} de novo.`;
     case 'rede':
       return 'Sem conexão para concluir o login. Verifique sua internet e tente de novo.';
+    case 'navegador_falhou':
+      return `Não conseguimos abrir o navegador para o login com o ${nome}. Tente de novo; se continuar, entre com e-mail e senha.`;
+    case 'sem_retorno':
+      return `O login com o ${nome} não voltou para o app. Toque em ${nome} para tentar de novo.`;
     case 'sem_codigo':
     case 'sem_sessao':
     case 'desconhecido':
@@ -169,6 +175,102 @@ export interface ResultadoSessaoNavegador {
   url?: string | null;
 }
 
+/**
+ * Janela (ms) em que um `dismiss` sem URL no Android NÃO é confiável.
+ * O polyfill Android do expo-web-browser resolve `dismiss` em QUALQUER AppState
+ * 'active' (WebBrowser.ts `_onAppStateChangeAndroid`), inclusive um 'active'
+ * espúrio logo após abrir a Custom Tab. Humano nenhum fecha a aba e desiste em
+ * menos de 2 s (incidente 03/10: `cancelado` 0,16 s após `oauth_iniciado`).
+ */
+export const JANELA_DISMISS_ESPURIO_MS = 2000;
+
+/** Quanto esperar o deep link tardio depois de um dismiss espúrio (a aba pode seguir aberta). */
+export const ESPERA_RETORNO_TARDIO_MS = 60_000;
+
+/** Depois de um AppState 'active' (aba fechada de verdade?), quanto esperar um deep link atrasado. */
+export const CARENCIA_FECHAMENTO_MS = 1500;
+
+/**
+ * `dismiss` sem URL, só no Android, cedo demais para ter sido um gesto humano?
+ * No iOS o `ASWebAuthenticationSession` devolve `cancel` na hora quando a pessoa toca
+ * "Cancelar" no aviso do sistema: isso é humano e vira `cancelado` imediatamente.
+ * `cancel` no Android só vem quando a aba nem abriu — também não é espera.
+ */
+export function dismissEspurio(
+  res: ResultadoSessaoNavegador,
+  decorridoMs: number,
+  urlCapturada: string | null,
+  plataforma: string,
+): boolean {
+  if (plataforma !== 'android' || res.type !== 'dismiss') return false;
+  if (urlCapturada) return false;
+  return decorridoMs < JANELA_DISMISS_ESPURIO_MS;
+}
+
+export type FimDaEspera = 'url' | 'fechou' | 'timeout';
+
+export interface DepsEsperaRetorno {
+  /** Assina mudanças de AppState; devolve o cancelamento da assinatura. */
+  observarAtivo: (aoFicarAtivo: () => void) => () => void;
+  agora: () => number;
+  setTimer?: (fn: () => void, ms: number) => unknown;
+  clearTimer?: (t: unknown) => void;
+  /** Só para teste: roda logo depois de o aviso ser instalado e antes da reconferência. */
+  aoInstalarAviso?: () => void;
+}
+
+/**
+ * Guarda o deep link do OAuth que chegar enquanto a aba está aberta e permite
+ * esperá-lo SEM corrida: o aviso é instalado dentro da Promise e `url` é reconferida
+ * logo depois — uma URL que chegue entre a leitura e a instalação não se perde.
+ * Termina em: 'url' (deep link chegou), 'fechou' (AppState 'active' > 2 s após abrir e
+ * sem URL por 1,5 s = a pessoa fechou a aba) ou 'timeout' (ESPERA_RETORNO_TARDIO_MS).
+ * Sempre limpa timers e assinatura ao terminar.
+ */
+export function criarCapturaRetorno(redirectTo: string, abriuEm: number) {
+  let url: string | null = null;
+  let aviso: (() => void) | null = null;
+  return {
+    aoReceberUrl(recebida: string) {
+      if (!recebida.startsWith(redirectTo)) return;
+      url = recebida;
+      aviso?.();
+    },
+    url: () => url,
+    esperar(deps: DepsEsperaRetorno, timeoutMs: number = ESPERA_RETORNO_TARDIO_MS, carenciaMs: number = CARENCIA_FECHAMENTO_MS) {
+      const setT = deps.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
+      const clearT = deps.clearTimer ?? ((t: unknown) => clearTimeout(t as ReturnType<typeof setTimeout>));
+      return new Promise<FimDaEspera>((resolve) => {
+        let timerTotal: unknown = null;
+        let timerCarencia: unknown = null;
+        let desassinar: (() => void) | null = null;
+        let acabou = false;
+        const terminar = (fim: FimDaEspera) => {
+          if (acabou) return;
+          acabou = true;
+          if (timerTotal !== null) clearT(timerTotal);
+          if (timerCarencia !== null) clearT(timerCarencia);
+          desassinar?.();
+          aviso = null;
+          resolve(fim);
+        };
+        aviso = () => terminar('url');
+        deps.aoInstalarAviso?.();
+        if (url) return terminar('url');
+        timerTotal = setT(() => terminar('timeout'), timeoutMs);
+        desassinar = deps.observarAtivo(() => {
+          if (acabou || url || timerCarencia !== null) return;
+          if (deps.agora() - abriuEm <= JANELA_DISMISS_ESPURIO_MS) return;
+          timerCarencia = setT(() => {
+            timerCarencia = null;
+            terminar(url ? 'url' : 'fechou');
+          }, carenciaMs);
+        });
+      });
+    },
+  };
+}
+
 export type DecisaoRetornoNativo =
   | { tipo: 'codigo'; codigo: string }
   | { tipo: 'cancelado' }
@@ -188,6 +290,8 @@ export function decidirRetornoNativo(
   urlCapturada: string | null,
 ): DecisaoRetornoNativo {
   const url = res.type === 'success' && res.url ? res.url : urlCapturada;
+  // `locked` = já existe outra sessão de navegador aberta: o nosso NÃO abriu, ninguém cancelou.
+  if (!url && res.type === 'locked') return { tipo: 'erro', motivo: 'navegador_falhou' };
   if (!url) return res.type === 'success' ? { tipo: 'erro', motivo: 'sem_codigo' } : { tipo: 'cancelado' };
   const retorno = lerRetornoOAuth(url);
   if (retorno.tipo === 'codigo') return retorno;
