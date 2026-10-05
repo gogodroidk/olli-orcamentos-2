@@ -163,10 +163,10 @@
   "env": {
     "staging": {
       "name": "olli-diagnostico-staging",
-      // `triggers` é HERDADO pelo env: sem esta linha o staging ganharia o cron
-      // dos alertas (que lá estão desligados) e gastaria 1 dos 5 Cron Triggers
-      // da conta Free à toa. Fica só o cron de minuto que o staging já tinha.
-      "triggers": { "crons": ["* * * * *"] },
+      // Staging não executa jobs agendados. Array vazio é intencional: no
+      // Wrangler ele REMOVE os triggers já implantados; omitir `triggers` os
+      // deixaria ativos e manteria a conta Free acima do limite de 5 crons.
+      "triggers": { "crons": [] },
       "workers_dev": true,
       "preview_urls": false,
       "routes": [],
