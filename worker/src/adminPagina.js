@@ -678,7 +678,7 @@ function renderGeral(){
  if(den)att.push(['dng',den+(den===1?' denúncia':' denúncias')+' de conteúdo da IA sem resposta','Ver',()=>{FBFILTER='denuncia';location.hash='suporte';}]);
  const ab=fbAbertos().filter(f=>tipoFb(f)!=='denuncia').length;
  if(ab)att.push(['info',ab+(ab===1?' mensagem':' mensagens')+' de clientes sem resposta','Ler',()=>{FBFILTER='abertos';location.hash='suporte';}]);
- if(r.estado==='ok'&&r.emRisco)att.push(['warn',r.emRisco+(r.emRisco===1?' conta paga ou liberada está':' contas pagas ou liberadas estão')+' sem usar o app há 14 dias','Ver contas',()=>irSegmento('risco')]);
+ if(r.estado==='ok'&&r.emRisco)att.push(['warn',r.emRisco+(r.emRisco===1?' conta pagante está':' contas pagantes estão')+' sem usar o app há 14 dias','Ver contas',()=>irSegmento('risco')]);
  if(m.novosHoje)att.push(['ok',m.novosHoje+(m.novosHoje===1?' cadastro novo':' cadastros novos')+' nas últimas 24 h','Ver',()=>irSegmento('novos')]);
  if(m.nuncaOrcaram)att.push(['info',m.nuncaOrcaram+' de '+m.usuarios+' contas nunca criaram um orçamento — são as que mais precisam de um empurrão','Ver contas',()=>irSegmento('nunca')]);
  box.append(secTit('Precisa de você'));
@@ -707,12 +707,12 @@ function renderGeral(){
  if(m.atividadeLimitada)box.append(el('div',{className:'nota'},'A atividade passou de 10 mil eventos; os números de uso consideram só os mais recentes.'));
  // Receita
  box.append(secTit('Receita da OLLI'));
- if(r.estado!=='ok')box.append(el('div',{className:'card'},estado('erro','Não consegui ler as assinaturas.','Os números de receita ficam escondidos até a leitura funcionar — nada foi zerado.')));
+ if(r.estado!=='ok')box.append(el('div',{className:'card'},estado('erro','Não consegui ler as assinaturas ou a lista de contas internas.','Os números de receita ficam escondidos até a leitura funcionar — nada foi zerado.')));
  else box.append(el('div',{className:'kpis'},
   kpi({ico:'coin',l:'Pagantes',v:fmtNum(r.pagantes),h:r.pagantes?(r.porPlano.pro+' Pro · '+r.porPlano.empresa+' Empresa'):'Nenhum ainda. Aparecem aqui quando o 1º pagamento confirmar.',tom:r.pagantes?'ok':'',onclick:()=>irSegmento('pagantes')}),
   kpi({ico:'trend',l:'Receita mensal estimada',v:fmtBRL(r.mrrEstimado),h:'pagantes × preço mensal de tabela',dica:'MRR estimado: soma do preço mensal de tabela de cada pagante. Anuais entram pelo valor mensal.'}),
-  kpi({ico:'gift',l:'Plano liberado à mão',v:fmtNum(r.manuais),h:'cortesias e créditos de troca',onclick:()=>irSegmento('manual')}),
-  kpi({ico:'alert',l:'Assinantes sumidos',v:fmtNum(r.emRisco),h:'pagos ou liberados, sem uso há 14 dias',tom:r.emRisco?'warn':'',onclick:()=>irSegmento('risco')})
+  kpi({ico:'gift',l:'Plano liberado à mão',v:fmtNum(r.manuais),h:'cortesias, contas internas e créditos de troca',onclick:()=>irSegmento('manual')}),
+  kpi({ico:'alert',l:'Assinantes sumidos',v:fmtNum(r.emRisco),h:'pagantes sem uso há 14 dias',tom:r.emRisco?'warn':'',onclick:()=>irSegmento('risco')})
  ));
  // Movimento dos prestadores
  box.append(secTit('Movimento dos prestadores','dinheiro dos clientes deles — não é receita da OLLI'));
@@ -736,9 +736,9 @@ function renderGeral(){
  const dl=el('dl');[
   ['Ativação','Conta que já criou pelo menos 1 orçamento. É o primeiro sinal de que o OLLI serviu para alguma coisa.'],
   ['Usaram hoje / semana / mês','Contas diferentes com algum evento registrado (login, orçamento, envio…) no período. Em inglês: DAU, WAU, MAU.'],
-  ['Pagantes','Contas com pagamento ativo num gateway (Pix, cartão ou Google Play). Plano liberado à mão não conta.'],
-  ['Receita mensal estimada','Pagantes × preço mensal de tabela (Pro R$ 39, Empresa R$ 99). É estimativa: anuais e descontos não entram exatos.'],
-  ['Assinantes sumidos','Contas com plano pago ou liberado que não usam o app há 14 dias ou mais. Bom momento para mandar uma mensagem.'],
+  ['Pagantes','Contas com pagamento ativo num gateway (Pix, cartão ou Google Play). Plano liberado à mão, cortesia (comp_…), conta demo (sub_demo_…) e conta interna (dono, administradores, marcadas como internas) não contam.'],
+  ['Receita mensal estimada','Pagantes × preço mensal de tabela'+(r.precoMensal?' (Pro '+fmtBRL(r.precoMensal.pro)+', Empresa '+fmtBRL(r.precoMensal.empresa)+')':'')+'. É estimativa: anuais e descontos não entram exatos.'],
+  ['Assinantes sumidos','Contas pagantes que não usam o app há 14 dias ou mais. Bom momento para mandar uma mensagem. Cortesias e contas internas não entram.'],
   ['Valor aprovado','Soma dos orçamentos que os clientes dos prestadores aprovaram. Mostra o valor que o OLLI ajuda a movimentar, não o que a OLLI recebe.']
  ].forEach(x=>dl.append(el('dt',{},x[0]),el('dd',{},x[1])));
  g.append(dl);box.append(g);
@@ -756,7 +756,7 @@ const SEGS=[
  ['ativos','Ativos em 30 dias',u=>u.atividades30>0],
  ['nunca','Nunca orçaram',u=>!u.orcamentos],
  ['novos','Novos (7 dias)',u=>Date.now()-Date.parse(u.criadoEm)<7*DIA],
- ['risco','Pagos sem uso 14d',u=>u.plano!=='gratis'&&(!u.ultimoUso||Date.now()-Date.parse(u.ultimoUso)>14*DIA)],
+ ['risco','Pagos sem uso 14d',u=>u.planoOrigem==='pagamento'&&(!u.ultimoUso||Date.now()-Date.parse(u.ultimoUso)>14*DIA)],
  ['inativos','Inativos',u=>u.frequencia==='inativo'],
  ['bloqueados','Bloqueados',u=>u.bloqueado]
 ];

@@ -43,6 +43,7 @@ import { apagarArquivosDoUsuario, cancelarAssinaturaStripe, excluirFeedbackDoUsu
 import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
+import { contextoContasInternas, origemExibida, resumirReceita } from './assinaturasPagantes.js';
 import {
   ADMIN_DATA_POLICY_VERSION,
   camposAdmin,
@@ -326,13 +327,15 @@ const PRECO_MENSAL = {
 };
 
 async function metrics(env) {
-  const [users, orcs, clientes, agend, atividades, assinaturas] = await Promise.all([
+  const [users, orcs, clientes, agend, atividades, assinaturas, exclusoes, admins] = await Promise.all([
     listAuthUsers(env),
     rest(env, 'orcamentos?select=user_id,valor_total,status,criado_em'),
     rest(env, 'clientes?select=id'),
     rest(env, 'agendamentos?select=id'),
     listarAtividades(env),
-    lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    lerEstado(env, 'funil_exclusoes?select=user_id,email'),
+    lerEstado(env, 'admin_memberships?select=user_id'),
   ]);
   const now = Date.now();
   const DAY = 86400000;
@@ -366,30 +369,22 @@ async function metrics(env) {
   const idsUsuarios = new Set(users.map((u) => u.id));
   const ativados = [...comOrcamento].filter((id) => idsUsuarios.has(id)).length;
 
-  // Receita: só sai número quando a leitura de assinaturas deu certo (3 estados).
+  // Receita: só sai número quando as leituras deram certo (3 estados). Sem a
+  // lista de contas internas, um Pix de teste do dono viraria MRR — então
+  // falha de qualquer leitura esconde o número, nunca o infla.
   let receita = { estado: 'indisponivel' };
-  if (assinaturas.ok) {
-    let pagantes = 0;
-    let manuais = 0;
-    let mrr = 0;
-    let emRisco = 0;
-    const porPlano = { pro: 0, empresa: 0 };
-    const ultimoUso = new Map(users.map((u, i) => [u.id, resumos[i].ultimoUso]));
-    for (const a of assinaturas.dados) {
-      if (!idsUsuarios.has(a.user_id)) continue;
-      const ent = derivarEntitlement(a, now);
-      if (ent.plano === 'gratis') continue;
-      if (ent.origem === 'pagamento') {
-        pagantes++;
-        porPlano[ent.plano] = (porPlano[ent.plano] || 0) + 1;
-        mrr += PRECO_MENSAL[ent.plano] || 0;
-      } else if (ent.origem === 'admin') {
-        manuais++;
-      }
-      const uso = ultimoUso.get(a.user_id);
-      if (!uso || now - Date.parse(uso) > 14 * DAY) emRisco++;
-    }
-    receita = { estado: 'ok', pagantes, manuais, porPlano, mrrEstimado: mrr, emRisco };
+  if (assinaturas.ok && exclusoes.ok && admins.ok) {
+    receita = resumirReceita({
+      assinaturas: assinaturas.dados,
+      usuarios: users.map((u, i) => ({ id: u.id, email: u.email, ultimoUso: resumos[i].ultimoUso })),
+      contexto: contextoContasInternas({
+        emailsDono: emailsForaDoFunil(env),
+        exclusoes: exclusoes.dados,
+        admins: admins.dados,
+      }),
+      precoMensal: PRECO_MENSAL,
+      agoraMs: now,
+    });
   }
 
   return json({
@@ -411,19 +406,29 @@ async function metrics(env) {
 }
 
 async function users(env) {
-  const [auth, empresas, orcs, assinaturas, atividades] = await Promise.all([
+  const [auth, empresas, orcs, assinaturas, atividades, exclusoes, admins] = await Promise.all([
     listAuthUsers(env),
     rest(env, 'empresa?select=user_id,dados'),
     rest(env, 'orcamentos?select=user_id,status,valor_total'),
-    rest(env, 'assinaturas?select=user_id,plano,status,current_period_end,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    rest(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
     listarAtividades(env),
+    lerEstado(env, 'funil_exclusoes?select=user_id,email'),
+    lerEstado(env, 'admin_memberships?select=user_id'),
   ]);
   const empByUser = new Map();
   for (const e of empresas) empByUser.set(e.user_id, (e.dados && typeof e.dados === 'object') ? e.dados : {});
   const cnt = new Map();
   const fat = new Map();
   const plano = new Map();
-  for (const a of assinaturas) plano.set(a.user_id, derivarEntitlement(a));
+  // Rótulo só: cortesia, demo e conta interna aparecem como "liberado". Lista
+  // interna ilegível não esconde a lista de contas — só deixa de marcar.
+  const contexto = contextoContasInternas({
+    emailsDono: emailsForaDoFunil(env),
+    exclusoes: exclusoes.ok ? exclusoes.dados : [],
+    admins: admins.ok ? admins.dados : [],
+  });
+  const emailPorId = new Map(auth.map((u) => [u.id, u.email]));
+  for (const a of assinaturas) plano.set(a.user_id, origemExibida(a, emailPorId.get(a.user_id), contexto));
   const apr = new Map();
   for (const o of orcs) {
     cnt.set(o.user_id, (cnt.get(o.user_id) || 0) + 1);
