@@ -10,7 +10,7 @@
 #   bash scripts/ci-local.sh worker lint     # só os jobs citados
 #   CI_LOCAL_SEM_INSTALAR=1 bash scripts/ci-local.sh   # pula npm ci / pnpm i
 #
-# Jobs (nomes iguais aos do ci.yml): app-gate, painel, landing, worker, lint.
+# Jobs (nomes iguais aos do ci.yml): segredos, app-gate, painel, landing, worker, lint.
 # Sai com código != 0 se QUALQUER job falhar. Um job que falha não impede os
 # outros de rodar (igual ao Actions, onde os jobs são independentes).
 #
@@ -35,7 +35,7 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # O Actions não tem .env; o worker e o build não podem depender de segredo local.
 export FORCE_COLOR=0
 
-TODOS_JOBS=(app-gate painel landing worker lint)
+TODOS_JOBS=(segredos app-gate painel landing worker lint)
 if [ "$#" -gt 0 ]; then
   JOBS=("$@")
 else
@@ -142,6 +142,22 @@ passo() {
 # ---------------------------------------------------------------------------
 # Jobs — espelho 1:1 de .github/workflows/ci.yml
 # ---------------------------------------------------------------------------
+
+job_segredos() {
+  # gitleaks no HISTÓRICO INTEIRO (não só no diff): segredo esquecido num commit
+  # antigo continua vazado. Falsos-positivos triados ficam em .gitleaksignore (por
+  # impressão digital). Achado real = ROTACIONAR o segredo; apagar do git não basta.
+  # --redact: o valor nunca aparece no log. Sem o binário o job FALHA (gate fechado).
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "gitleaks não instalado — instale (MIT): https://github.com/gitleaks/gitleaks/releases"
+    return 1
+  fi
+  if [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+    echo "clone raso: o gitleaks precisa do histórico inteiro (git fetch --unshallow)"
+    return 1
+  fi
+  passo "Segredos no histórico (gitleaks $(gitleaks version))" . gitleaks git . --redact --no-banner --log-level warn --gitleaks-ignore-path .gitleaksignore
+}
 
 job_app_gate() {
   instalar_raiz_uma_vez || return 1
