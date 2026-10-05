@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '3 de outubro de 2026',
+  atualizadoEm: '4 de outubro de 2026',
   aviso:
-    'Documento atualizado em 3 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 4 de outubro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -109,7 +109,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Telefone (WhatsApp) informado no cadastro',
-          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: o número entra numa lista de "não contatar" que consultamos antes de cada mensagem.',
+          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: registramos o número numa lista de "não contatar" e paramos de enviar mensagens a ele, salvo resposta a um contato que você mesmo iniciar.',
           base: 'Legítimo interesse em ajudar quem criou a conta a usar o serviço (art. 7º, IX), com direito de oposição a qualquer momento.',
         },
         {
@@ -199,13 +199,14 @@ export const PRIVACIDADE: LegalDoc = {
       paragrafos: [
         'Os recursos de IA do OLLI (diagnóstico técnico, chat, voz e resumos) passam pelo ' +
           'nosso servidor na Cloudflare. O raciocínio em texto é processado pelo OpenRouter, ' +
-          'que encaminha o pedido somente a modelos gratuitos explicitamente selecionados e ' +
-          'a provedores compatíveis com a regra de não usar o conteúdo para treinamento. ' +
+          'que encaminha o pedido a modelos de linguagem de provedores de inferência (hoje, modelos da ' +
+          'OpenAI e da Mistral AI) selecionados por nós, com a regra de não usar o conteúdo para treinamento. ' +
           'Enviamos apenas o trecho necessário — por exemplo, a marca do equipamento e o sintoma.',
         'Quando você usa voz, o áudio é transcrito pelo serviço Workers AI da Cloudflare. ' +
           'O áudio não é enviado ao OpenRouter; somente a transcrição em texto segue para o ' +
-          'modelo quando você pede que a OLLI monte um orçamento. A configuração gratuita atual ' +
-          'não garante retenção zero em todos os provedores, por isso evite nomes, telefones, ' +
+          'modelo quando você pede que a OLLI monte um orçamento. Esses provedores podem ' +
+          'manter o pedido por prazo limitado para segurança e prevenção de abuso (a OpenAI e a Mistral AI informam até 30 dias) ' +
+          'e, por isso, evite nomes, telefones, ' +
           'endereços, documentos ou outros dados pessoais que não sejam necessários.',
         'A chave de acesso ao modelo fica somente no nosso servidor, nunca no aplicativo. ' +
           'Evite digitar ou ditar dados pessoais sensíveis desnecessários nos campos de IA. ' +
@@ -253,7 +254,7 @@ export const PRIVACIDADE: LegalDoc = {
           'para gerar e confirmar o Pix; o OLLI não tem acesso aos seus dados bancários.',
         'OpenRouter e provedores de inferência selecionados — roteamento e processamento dos ' +
           'pedidos de IA em texto. Exigimos rotas que declarem não usar o conteúdo para treinamento; ' +
-          'o modelo e o provedor efetivamente disponíveis podem variar dentro da lista gratuita configurada.',
+          'o modelo e o provedor efetivamente usados podem variar dentro da lista aprovada por nós.',
         'Sentry — monitoramento de erros e travamentos do aplicativo, para identificar e ' +
           'corrigir falhas técnicas. Recebe apenas dados técnicos do erro, sem o seu IP ou ' +
           'outros dados pessoais.',

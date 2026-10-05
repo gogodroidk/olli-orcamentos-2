@@ -68,8 +68,12 @@ export async function reivindicarEvento(env, { origem, eventId, tipo, payload })
     // Só é duplicado de verdade quem está 'processado'.
     if (r.status === 409) return await estadoDoEvento(env, origem, eventId);
 
+    // Falha que NÃO é duplicata: antes saía calada e o evento voltava ao gateway sem rastro
+    // (o RTDN do Play ficou mudo assim). Só origem e status HTTP: nada de payload nem chave.
+    console.error('[webhook_events] reivindicar falhou —', JSON.stringify({ origem, status: r.status }));
     return { ok: false, duplicado: false };
   } catch {
+    console.error('[webhook_events] reivindicar falhou —', JSON.stringify({ origem, status: 'rede' }));
     return { ok: false, duplicado: false };
   }
 }
@@ -111,8 +115,11 @@ async function estadoDoEvento(env, origem, eventId) {
  * Devolve `true` só quando o banco CONFIRMOU a escrita. Quem só quer a trilha
  * (Stripe, Resend) ignora o retorno; quem usa o 'processado' como "já consumido"
  * (Pix AbacatePay) precisa saber se ele ficou gravado — "não sei" não é "gravei".
+ *
+ * `payload` (opcional) SUBSTITUI o jsonb gravado na reivindicação — para quem só
+ * sabe o resultado no fim (webhook da AbacatePay). Sem ele, o payload fica intacto.
  */
-export async function marcarEvento(env, { origem, eventId, status, erro }) {
+export async function marcarEvento(env, { origem, eventId, status, erro, payload }) {
   if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return false;
   try {
     const url =
@@ -125,6 +132,7 @@ export async function marcarEvento(env, { origem, eventId, status, erro }) {
         status,
         erro: erro ? String(erro).slice(0, 500) : null,
         processado_em: new Date().toISOString(),
+        ...(payload !== undefined ? { payload } : {}),
       }),
     });
     return r.ok;

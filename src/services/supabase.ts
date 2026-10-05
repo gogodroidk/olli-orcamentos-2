@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../config';
 import { authStorage } from './authStorage';
@@ -7,6 +7,8 @@ import {
   classificarErroOAuth,
   criarRegistroFunilAuth,
   decidirRetornoNativo,
+  dismissEspurio,
+  criarCapturaRetorno,
   ErroOAuth,
   type MotivoErroOAuth,
   normalizarPlataforma,
@@ -299,7 +301,7 @@ export async function temDadosLocais(): Promise<boolean> {
  * Import dinâmico de expo-web-browser/expo-linking para o bundle não carregá-los à
  * toa fora do fluxo.
  */
-export type ResultadoOAuth = 'ok' | 'cancelado';
+export type ResultadoOAuth = 'ok' | 'cancelado' | 'em_andamento';
 
 // A tabela `auth_funil_eventos` aceita INSERT de anon (sem SELECT). Sem a
 // migration aplicada, o registrador se desliga no primeiro erro.
@@ -307,7 +309,25 @@ const registrarFunilAuth = criarRegistroFunilAuth(
   supabase ? (linha) => supabase!.from('auth_funil_eventos').insert(linha) : null,
 );
 
+// Uma sessão nativa por vez: toque duplo / chamada concorrente não abre duas Custom
+// Tabs (a 2ª cancelaria a 1ª e o "cancelado" seria mentira). Sempre liberada no finally.
+let oauthNativoEmAndamento = false;
+
 export async function signInWithGoogle(): Promise<ResultadoOAuth> {
+  if (!supabase) throw new Error('Backup na nuvem não configurado.');
+  if (Platform.OS !== 'web') {
+    if (oauthNativoEmAndamento) return 'em_andamento';
+    oauthNativoEmAndamento = true;
+    try {
+      return await signInWithGoogleCore();
+    } finally {
+      oauthNativoEmAndamento = false;
+    }
+  }
+  return signInWithGoogleCore();
+}
+
+async function signInWithGoogleCore(): Promise<ResultadoOAuth> {
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
   const plataforma = normalizarPlataforma(Platform.OS);
   const tentativa = novaTentativaOAuth();
@@ -345,18 +365,41 @@ export async function signInWithGoogle(): Promise<ResultadoOAuth> {
 
   // Rede de segurança do Android: guarda o deep link que chegar enquanto a aba
   // estiver aberta (a Custom Tab pode resolver `dismiss` mesmo tendo entregue o code).
-  let urlCapturada: string | null = null;
-  const assinatura = Linking.addEventListener('url', ({ url }) => {
-    if (url.startsWith(redirectTo)) urlCapturada = url;
-  });
+  const abriuEm = Date.now();
+  const captura = criarCapturaRetorno(redirectTo, abriuEm);
+  const assinatura = Linking.addEventListener('url', ({ url }) => captura.aoReceberUrl(url));
   let res: { type: string; url?: string | null };
   try {
-    res = await WebBrowser.openAuthSessionAsync(data!.url, redirectTo);
-  } catch (e) {
-    return falhar(classificarErroOAuth(null, (e as Error)?.message));
+    try {
+      res = await WebBrowser.openAuthSessionAsync(data!.url, redirectTo);
+    } catch {
+      // A aba nem abriu (sem Custom Tabs, outra sessão aberta, erro nativo): NÃO é cancelamento.
+      return falhar('navegador_falhou');
+    }
+    // Android: o polyfill resolve `dismiss` em qualquer AppState 'active', inclusive
+    // um espúrio logo após abrir (cancelado a 0,16 s em 03/10). Cedo demais para ser
+    // um gesto humano = a aba provavelmente segue aberta: espera o deep link.
+    // (iOS: `cancel` rápido é o toque em "Cancelar" do sistema — gesto humano, sem espera.)
+    if (dismissEspurio(res, Date.now() - abriuEm, captura.url(), Platform.OS)) {
+      const fim = await captura.esperar({
+        agora: Date.now,
+        observarAtivo: (cb) => {
+          const sub = AppState.addEventListener('change', (st) => {
+            if (st === 'active') cb();
+          });
+          return () => sub.remove();
+        },
+      });
+      if (fim === 'timeout') return falhar('sem_retorno');
+      if (fim === 'fechou') {
+        void registrarFunilAuth('oauth_erro', { plataforma, tentativa, motivo: 'cancelado' });
+        return 'cancelado';
+      }
+    }
   } finally {
     assinatura.remove();
   }
+  const urlCapturada = captura.url();
 
   const decisao = decidirRetornoNativo(res, urlCapturada);
   if (decisao.tipo === 'cancelado') {

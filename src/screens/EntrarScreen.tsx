@@ -235,9 +235,11 @@ export default function EntrarScreen() {
       Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
       return;
     }
+    if (googleBusy) return; // toque duplo: já há uma sessão do Google abrindo
     setGoogleBusy(true);
     try {
       const res = await signInWithGoogle();
+      if (res === 'em_andamento') return; // outra chamada é a dona do estado "ocupado"
       if (res === 'ok') {
         vibrar('sucesso');
         await entrarNoApp();

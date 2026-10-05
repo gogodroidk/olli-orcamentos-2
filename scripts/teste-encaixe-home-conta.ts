@@ -232,7 +232,8 @@ caso('Onboarding: "Trazer meus dados" conclui o cadastro e chega na importação
   assert.match(onboarding, /\{ index: 1, routes: \[\{ name: 'Tabs' \}, \{ name: 'Importar' \}\] \}/);
   assert.match(onboarding, /irParaApp\(destino\)/);
   assert.match(onboarding, /onPress=\{\(\) => \{ void concluir\('orcamento'\); \}\}/, 'o botão principal não recebe o evento como destino');
-  assert.match(onboarding, /perfilOperacionalCompleto\(empresaFinal\)/, 'a mesma validação vale para os dois destinos');
+  // T-006: nenhum destino trava por cadastro incompleto; o envio é que cobra.
+  assert.doesNotMatch(onboarding, /perfilOperacionalCompleto\(empresaFinal\)/, 'nenhum destino trava por cadastro incompleto');
 });
 
 caso('motion só pelos componentes da casa nos encaixes novos', () => {

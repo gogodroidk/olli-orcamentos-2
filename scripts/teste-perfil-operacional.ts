@@ -207,7 +207,10 @@ assert.match(meuNegocio, /saveEmpresa\(completarPerfilDeduzido\(empresa\)\)/, 'e
 
 const onboardingMobile = readFileSync(new URL('../src/screens/OnboardingScreen.tsx', import.meta.url), 'utf8');
 assert.doesNotMatch(onboardingMobile, /accessibilityLabel="Pular configuração"/, 'onboarding móvel não pode mais ser pulado');
-assert.match(onboardingMobile, /perfilOperacionalCompleto\(empresaFinal\)/, 'conclusão móvel deve validar o perfil inteiro');
+// T-006 (04/10/2026, paridade com o painel #139): o onboarding móvel NÃO trava por
+// cadastro incompleto; só barra formato errado. Completo é cobrado no envio.
+assert.doesNotMatch(onboardingMobile, /perfilOperacionalCompleto\(empresaFinal\)/, 'onboarding móvel não trava por cadastro incompleto');
+assert.match(onboardingMobile, /validarBaseFormato\(base, isValidCNPJ\)/, 'tela da base só valida formato');
 
 // Painel web (04/10/2026, paridade com o app 1.2.0): o cadastro incompleto NÃO
 // fecha mais o painel — 38 de 61 contas pararam nessa trava antes de qualquer
