@@ -109,7 +109,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Telefone (WhatsApp) informado no cadastro',
-          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: o número entra numa lista de "não contatar" que consultamos antes de cada mensagem.',
+          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: registramos o número numa lista de "não contatar" e paramos de enviar mensagens a ele, salvo resposta a um contato que você mesmo iniciar.',
           base: 'Legítimo interesse em ajudar quem criou a conta a usar o serviço (art. 7º, IX), com direito de oposição a qualquer momento.',
         },
         {
@@ -205,7 +205,7 @@ export const PRIVACIDADE: LegalDoc = {
         'Quando você usa voz, o áudio é transcrito pelo serviço Workers AI da Cloudflare. ' +
           'O áudio não é enviado ao OpenRouter; somente a transcrição em texto segue para o ' +
           'modelo quando você pede que a OLLI monte um orçamento. Esses provedores podem ' +
-          'manter o pedido por prazo limitado para segurança e prevenção de abuso (a OpenAI informa até 30 dias) ' +
+          'manter o pedido por prazo limitado para segurança e prevenção de abuso (a OpenAI e a Mistral AI informam até 30 dias) ' +
           'e, por isso, evite nomes, telefones, ' +
           'endereços, documentos ou outros dados pessoais que não sejam necessários.',
         'A chave de acesso ao modelo fica somente no nosso servidor, nunca no aplicativo. ' +
