@@ -1385,23 +1385,37 @@ function tsMaisNovo(localTs?: string | null, recebidoEm?: string): boolean {
  * o sync passava de segundos a minutos em rede móvel). Agora buscamos TODOS os
  * timestamps da tabela numa ÚNICA query e montamos um mapa `id → atualizado_em`; o
  * guard vira um lookup local síncrono. `remoteCol` é o nome (fixo, interno) da
- * coluna de timestamp. NUNCA lança: na dúvida devolve mapa vazio → o push acontece
- * (mantém o last-writer-wins antigo como piso seguro).
+ * coluna de timestamp. NUNCA lança.
+ *
+ * Erro NÃO vira mapa vazio: mapa vazio significaria "a nuvem não tem nada mais novo"
+ * e o push sobrescreveria às cegas a edição/exclusão mais recente feita no painel
+ * ou em outro aparelho (justamente quando o pull também pode ter falhado). Em erro
+ * devolve `null` e a tabela inteira fica para o próximo ciclo — as linhas continuam
+ * no SQLite, nada se perde. Pagina de 1000 em 1000 (teto padrão do PostgREST):
+ * sem isso, acima de 1000 linhas a guarda ficava cega para o resto.
  */
-async function carregarTimestampsRemotos(table: SyncTable, remoteCol: string): Promise<Map<string, string>> {
+const TIMESTAMPS_PAGINA = 1000;
+async function carregarTimestampsRemotos(table: SyncTable, remoteCol: string): Promise<Map<string, string> | null> {
+  if (!supabase) return null;
   const mapa = new Map<string, string>();
-  if (!supabase) return mapa;
   try {
-    // `remoteCol` é um literal interno ('atualizado_em'), nunca entrada externa.
-    const { data, error } = await supabase.from(remoteNome(table)).select(`id, ${remoteCol}`);
-    if (error || !Array.isArray(data)) return mapa;
-    for (const row of data) {
-      const id = (row as any)?.id as string | undefined;
-      const ts = (row as any)?.[remoteCol] as string | undefined;
-      if (id && ts) mapa.set(id, ts);
+    for (let de = 0; ; de += TIMESTAMPS_PAGINA) {
+      // `remoteCol` é um literal interno ('atualizado_em'), nunca entrada externa.
+      const { data, error } = await supabase
+        .from(remoteNome(table))
+        .select(`id, ${remoteCol}`)
+        .order('id', { ascending: true })
+        .range(de, de + TIMESTAMPS_PAGINA - 1);
+      if (error || !Array.isArray(data)) return null;
+      for (const row of data) {
+        const id = (row as any)?.id as string | undefined;
+        const ts = (row as any)?.[remoteCol] as string | undefined;
+        if (id && ts) mapa.set(id, ts);
+      }
+      if (data.length < TIMESTAMPS_PAGINA) break;
     }
   } catch {
-    // best-effort: mapa vazio faz o push acontecer (piso seguro)
+    return null;
   }
   return mapa;
 }
@@ -1409,8 +1423,11 @@ async function carregarTimestampsRemotos(table: SyncTable, remoteCol: string): P
 /**
  * Consulta o mapa de timestamps remotos: true se a NUVEM for mais nova que o local
  * (→ push PULADO, preserva a versão remota). Lookup local, sem round-trip.
+ * Mapa `null` (não deu para ler a nuvem) → true: não sabemos quem é mais novo,
+ * então não sobrescrevemos; o próximo sync tenta de novo.
  */
-function remoteMaisNovoNoMapa(mapa: Map<string, string>, id: string, localTs?: string | null): boolean {
+function remoteMaisNovoNoMapa(mapa: Map<string, string> | null, id: string, localTs?: string | null): boolean {
+  if (mapa === null) return true;
   if (!localTs) return false;
   return tsMaisNovo(mapa.get(id), localTs);
 }

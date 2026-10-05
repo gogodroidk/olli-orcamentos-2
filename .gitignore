@@ -89,3 +89,6 @@ supabase/.temp/
 
 # Logs do CI local (scripts/ci-local.sh)
 .ci-local/
+
+# Canvas do Maestri (pastas de papel dos agentes) — local, nunca vai pro repo
+.maestri/

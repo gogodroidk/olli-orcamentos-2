@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { registrarAtividadeUsuario } from '../services/equipe';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
   TouchableOpacity, Modal, Alert, Keyboard,
@@ -151,6 +152,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
     setSalvandoNovo(true);
     try {
       await saveCliente(c);
+      void registrarAtividadeUsuario('client_create');
       selectCliente(c);
       setShowNew(false);
       setNc({});

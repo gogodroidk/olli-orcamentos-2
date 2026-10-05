@@ -22,6 +22,7 @@ import { useContextoDeEscrita } from "@/olli/mutacoes";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { formatBRL } from "./helpers";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /** Os ofícios da pergunta de 1 toque: os especializados + "Outro serviço". */
 const OFICIOS: readonly { id: VerticalId; label: string; emoji: string }[] = [
@@ -70,7 +71,14 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 	const contexto = useContextoDeEscrita();
 	const ehDono = contexto.isSuccess && ehDonoDaConta(contexto.data?.papel);
 
-	if (!ehDono || !orcamentos.isSuccess || !recibos.isSuccess || !empresa.isSuccess) return null;
+	const leiturasProntas = orcamentos.isSuccess && recibos.isSuccess && empresa.isSuccess;
+	// Telemetria do funil: o cartão "Seu primeiro orçamento" foi de fato desenhado.
+	const cartaoVisivel = ehDono && leiturasProntas && mostrarCartaoPrimeiroOrcamento((orcamentos.data ?? []).length);
+	useEffect(() => {
+		if (cartaoVisivel) void registrarEtapaAtivacao("ativacao_card_visto");
+	}, [cartaoVisivel]);
+
+	if (!ehDono || !leiturasProntas) return null;
 	const listaOrc = orcamentos.data ?? [];
 	const dados = (empresa.data?.dados as Empresa | undefined) ?? null;
 
@@ -123,7 +131,13 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 					<div className="border-t border-border/60 px-5 py-4">
 						{exemplo && vertical ? (
 							<div className="space-y-2">
-								<Button onClick={() => abrirExemplo(vertical)} className="min-h-11">
+								<Button
+									onClick={() => {
+										void registrarEtapaAtivacao("ativacao_card_clicado");
+										abrirExemplo(vertical);
+									}}
+									className="min-h-11"
+								>
 									<FileText className="mr-2 size-4" />
 									Abrir orçamento de exemplo
 								</Button>
@@ -137,7 +151,11 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 										<button
 											key={o.id}
 											type="button"
-											onClick={() => abrirExemplo(o.id)}
+											onClick={() => {
+												void registrarEtapaAtivacao("ativacao_card_clicado");
+												void registrarEtapaAtivacao("oficio_escolhido");
+												abrirExemplo(o.id);
+											}}
 											className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
 										>
 											<span aria-hidden="true">{o.emoji}</span>

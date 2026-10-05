@@ -87,6 +87,7 @@ import { cn } from "@/utils";
 const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
 
 import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /**
  * A linha como ela vem do Supabase: colunas-espelho + o BLOB. Os nomes das colunas
@@ -459,6 +460,7 @@ export default function OrcamentosPage() {
 			try {
 				const marca = await resolverMarcaDoDocumento(qc);
 				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });
+				void registrarEtapaAtivacao("orcamento_enviado");
 				try {
 					await registrarDocumentoWeb({
 						tipo: "orcamento",

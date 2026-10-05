@@ -78,6 +78,7 @@ import {
 } from "./constantes";
 import { normalizarChavePix } from "../../../../../src/utils/pixBrCode";
 import { arquivoParaLogoDataUri, LOGO_TIPOS_ACEITOS } from "./logoUpload";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 import {
 	consultarCnpjWeb,
 	sugerirMarcaWeb,
@@ -345,6 +346,7 @@ export default function MeuNegocio() {
 			return dados;
 		},
 		onSuccess: async (dados) => {
+			void registrarEtapaAtivacao("empresa_salva");
 			setForm(dados);
 			setSalvoEm(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
 			await qc.invalidateQueries({ queryKey: ["olli", "empresa", "me"] });

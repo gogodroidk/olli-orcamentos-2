@@ -1,4 +1,5 @@
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
+import { registrarAtividadeUsuario } from '../services/equipe';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -462,6 +463,7 @@ export default function VisualizarOrcamentoScreen() {
         removerMarca: temAcesso(RECURSO_REMOVE_MARCA),
       });
       await confirmarEntrega(reserva);
+      void registrarAtividadeUsuario('orcamento_enviado');
       if (orc.status === 'rascunho') await updateStatus('enviado');
     } catch (e: any) {
       if (reserva?.requerConfirmacao) {
@@ -555,6 +557,7 @@ export default function VisualizarOrcamentoScreen() {
       setConfirmandoEnvio(true);
       try {
         await confirmarEntrega(pendente.reserva).catch(() => {});
+        void registrarAtividadeUsuario('orcamento_enviado');
         // updateStatus nunca lança e, se não gravar, avisa e mantém o status antigo.
         if (orc.status === 'rascunho') await updateStatus('enviado');
       } finally {
@@ -601,6 +604,7 @@ export default function VisualizarOrcamentoScreen() {
         message: montarMensagemLinkOrcamento(orc, empresa, url),
       });
       await confirmarEntrega(reserva);
+      void registrarAtividadeUsuario('orcamento_enviado');
       if (orc.status === 'rascunho') await updateStatus('enviado');
     } catch (e: any) {
       if (reserva?.requerConfirmacao) {

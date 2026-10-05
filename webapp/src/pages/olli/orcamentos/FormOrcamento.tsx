@@ -53,6 +53,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Separator } from "@/ui/separator";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /* ═══════════════════════════════  A TRAVA  ═══════════════════════════════════ */
 
@@ -356,6 +357,11 @@ function Editor({
 		return () => window.removeEventListener("beforeunload", aviso);
 	}, [sujo, aberto]);
 
+	// Telemetria do funil: editor de orçamento NOVO aberto (não edição).
+	useEffect(() => {
+		if (aberto && ehNovo) void registrarEtapaAtivacao("orcamento_novo_aberto");
+	}, [aberto, ehNovo]);
+
 	/* ───────────────────────────────  Catálogo  ───────────────────────────────── */
 
 	const servicos = useOlliList<LinhaServico>("servicos", { orderBy: "nome", ascending: true });
@@ -586,6 +592,7 @@ function Editor({
 			}
 
 			await salvar.mutateAsync(final);
+			if (ehNovo) void registrarEtapaAtivacao("quote_create");
 			aoFechar();
 		} catch (err) {
 			setErro((err as Error)?.message ?? "Não foi possível salvar o orçamento.");

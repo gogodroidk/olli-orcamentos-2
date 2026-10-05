@@ -1,4 +1,5 @@
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
+import { registrarAtividadeUsuario } from '../services/equipe';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform,
@@ -226,6 +227,10 @@ export default function NovoOrcamentoScreen() {
   // Religa no (re)montar: no StrictMode o React desmonta e remonta o efeito, e um
   // `false` que nunca volta a `true` deixaria a tela presa em "Preparando…".
   const montadoRef = useRef(true);
+  // Telemetria do funil: tela de orçamento NOVO aberta (não edição).
+  useEffect(() => {
+    if (!orcamentoId) void registrarAtividadeUsuario('orcamento_novo_aberto');
+  }, [orcamentoId]);
   useEffect(() => {
     montadoRef.current = true;
     return () => { montadoRef.current = false; };
@@ -473,6 +478,7 @@ export default function NovoOrcamentoScreen() {
       // festa) — o overlay dispara e a navegação real acontece no onDone dele,
       // pra dar tempo do usuário ver a animação antes de trocar de tela.
       if (!isEdit) {
+        void registrarAtividadeUsuario('quote_create');
         track(Eventos.quoteCreated, { origem: ehExemplo ? 'exemplo_ativacao' : 'manual', itens: toSave.itens.length });
         pendingNavRef.current = toSave.id;
         saidaLiberadaRef.current = true;
@@ -504,7 +510,10 @@ export default function NovoOrcamentoScreen() {
         atualizadoEm: agora,
         ...(isEdit ? { editadoEm: agora } : {}),
       }));
-      if (!isEdit) track(Eventos.quoteCreated, { origem: 'manual', itens: orc.itens.length, rascunho: true });
+      if (!isEdit) {
+        void registrarAtividadeUsuario('quote_create');
+        track(Eventos.quoteCreated, { origem: 'manual', itens: orc.itens.length, rascunho: true });
+      }
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
         avisar('Rascunho salvo', 'Seu orçamento foi salvo como rascunho.');
         sairLiberado(acao);
