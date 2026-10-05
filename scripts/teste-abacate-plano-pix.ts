@@ -314,7 +314,14 @@ console.log('\n5. consumo único (cobrança não reativa plano revogado)');
   const b = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_replay') });
   const c = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_replay') });
   checar('replay do webhook não duplica: 200 em todos', [a.status, b.status, c.status], [200, 200, 200]);
-  checar('...uma escrita de plano e uma linha de consumo', [escritas.length, Object.keys(eventos)], [1, ['abacate|pix_replay']]);
+  // Mesmo corpo 3x (sem `id` de evento): UMA linha de consumo e UMA de trilha
+  // ('abacatepay', chave = hash do corpo — ver teste-abacate-webhook.js no worker).
+  checar(
+    '...uma escrita de plano e uma linha de consumo',
+    [escritas.length, Object.keys(eventos).filter((k) => k.startsWith('abacate|'))],
+    [1, ['abacate|pix_replay']],
+  );
+  checar('...e uma linha só de trilha do webhook', Object.keys(eventos).filter((k) => k.startsWith('abacatepay|')).length, 1);
   const poll2 = await chamar(envProd, 'GET', '/abacate/status?id=pix_replay', { jwt: 'jwt-user' });
   checar('...e o cliente no polling continua vendo pago:true', [poll2.corpo?.pago, escritas.length], [true, 1]);
 
