@@ -28,9 +28,7 @@ function checar(nome: string, condicao: unknown) {
 }
 
 const semComentarios = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-const sync = semComentarios(readFileSync('src/services/cloudSync.ts', 'utf8').replace(/
-/g, '
-'));
+const sync = semComentarios(readFileSync('src/services/cloudSync.ts', 'utf8').replace(/\r\n/g, '\n'));
 
 console.log('\n1. Regra executada');
 const versoes = opcoesUpsert('documento_versoes', 'id');

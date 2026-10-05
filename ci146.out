@@ -1,0 +1,13 @@
+==================================================================
+CI LOCAL — OLLI
+commit testado: 38623e220bb6462ac234f7c2e1b1058796e2a7e9
+node: v24.16.0  npm: 11.13.0
+AVISO: o Actions usa Node 22; aqui é v24.16.0. Resultado ainda vale como gate, mas registre a versão no PR.
+jobs: app-gate worker lint
+logs: /c/OLLI_WT/p146/.ci-local
+==================================================================
+
+==================================================================
+JOB: app-gate
+==================================================================
+[instalar] .: npm ci
