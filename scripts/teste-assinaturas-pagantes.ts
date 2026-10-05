@@ -164,14 +164,10 @@ const rotGratis = origemExibida({ plano: 'gratis', status: 'canceled', current_p
 checar('lista: grátis = gratis', rotGratis.plano === 'gratis' && rotGratis.origem === 'gratis');
 
 // ── SQL ─────────────────────────────────────────────────────────────────────
-const FUNIL = readFileSync('supabase/migrations/20260930120100_funil_receita.sql', 'utf8').replace(/
-/g, '
-');
+const FUNIL = readFileSync('supabase/migrations/20260930120100_funil_receita.sql', 'utf8').replace(/\r\n/g, '\n');
 const ficticia = FUNIL.match(/create or replace function public\.funil_assinatura_ficticia[\s\S]*?\$\$;\n/);
 if (!ficticia) throw new Error('funil_assinatura_ficticia não encontrada na migration do funil');
-const MIGRATION = readFileSync('supabase/migrations/20261008100000_assinaturas_pagantes.sql', 'utf8').replace(/
-/g, '
-');
+const MIGRATION = readFileSync('supabase/migrations/20261008100000_assinaturas_pagantes.sql', 'utf8').replace(/\r\n/g, '\n');
 
 const db = new PGlite();
 await db.exec(`
