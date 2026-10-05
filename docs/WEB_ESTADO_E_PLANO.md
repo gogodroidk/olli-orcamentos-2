@@ -67,11 +67,21 @@
 **Como republicar:**
 ```bash
 cd web    && npm run build            # gera web/dist + o _headers com o CSP
+node scripts/indexnow.mjs plan         # ANTES do deploy: lista só as páginas que mudaram
 cd ../site && npx wrangler deploy      # publica a LANDING na raiz
+cd ../web && node scripts/indexnow.mjs ping   # DEPOIS: avisa Bing e cia (IndexNow)
 
 cd ../webapp && npm run build
 npx wrangler pages deploy dist --project-name olli-painel-web --branch main
 ```
+
+**IndexNow (aviso de recrawl, só da landing):** o `plan` compara o `dist/` com o que está no ar e grava
+`web/.indexnow-plano.json` (só URLs novas ou alteradas; erro de rede fica de fora, nunca vira "alterada").
+O `ping` confere que `https://olliorcamentos.online/<chave>.txt` já está no ar e só então envia o lote a
+`api.indexnow.org`; sem a chave no ar ele recusa. Plano já enviado não reenvia sem `--force`; acima de 200
+URLs ele para (`--max`). Isso **encurta o tempo até o recrawl no Bing e parceiros; não garante indexação nem
+posição, e o Google não participa do IndexNow.** A chave é pública por desenho (o protocolo exige o arquivo
+aberto na raiz). Código: `web/scripts/indexnow.mjs`; teste: `scripts/teste-indexnow.ts`.
 ⚠️ **Não deixe `CLOUDFLARE_API_TOKEN` no ambiente** ao rodar o wrangler: o token do
 `.env` é fraco (só lê zona) e **sobrescreve** o login OAuth bom. Use `env -u CLOUDFLARE_API_TOKEN`.
 

@@ -1,0 +1,41 @@
+# Linha de base do Trivy (05/10/2026): 21 achados ALTA, 0 CRÍTICA. Cada um VENCE em 31/10/2026:
+# depois disso volta a reprovar o CI. CRÍTICA nunca entra aqui. Corrigir = atualizar a dependência.
+
+# brace-expansion@5.0.9 -> 5.0.10, 3.0.7, 2.1.5, 1.1.19 (package-lock.json)
+CVE-2026-102276 exp:2026-10-31
+# brace-expansion@5.0.9 -> 5.0.11, 3.0.8, 2.1.6, 1.1.20 (package-lock.json)
+CVE-2026-102278 exp:2026-10-31
+# braces@3.0.3 -> sem correção (package-lock.json)
+CVE-2026-93687 exp:2026-10-31
+# node-forge@1.4.0 -> sem correção (package-lock.json)
+CVE-2026-85393 exp:2026-10-31
+# devalue@5.8.1 -> 5.9.3 (web/package-lock.json)
+CVE-2026-92708 exp:2026-10-31
+# devalue@5.8.1 -> 5.9.3 (web/package-lock.json)
+GHSA-mcm9-63f2-9j32 exp:2026-10-31
+# devalue@5.8.1 -> 5.9.3 (web/package-lock.json)
+GHSA-r9w8-h9r3-54w4 exp:2026-10-31
+# devalue@5.8.1 -> 5.9.3 (web/package-lock.json)
+GHSA-x5rw-q4pp-hg5g exp:2026-10-31
+# http-cache-semantics@4.2.0 -> sem correção (web/package-lock.json)
+CVE-2026-93748 exp:2026-10-31
+# undici@8.10.0 -> 6.28.1, 7.29.1, 8.10.2 (web/package-lock.json)
+CVE-2026-19534 exp:2026-10-31
+# undici@8.10.0 -> 7.29.1, 8.10.2 (web/package-lock.json)
+CVE-2026-84961 exp:2026-10-31
+# undici@8.10.0 -> 8.10.2 (web/package-lock.json)
+CVE-2026-85152 exp:2026-10-31
+# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
+CVE-2026-101898 exp:2026-10-31
+# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
+CVE-2026-101901 exp:2026-10-31
+# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
+CVE-2026-101903 exp:2026-10-31
+# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
+CVE-2026-101905 exp:2026-10-31
+# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
+CVE-2026-101906 exp:2026-10-31
+# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
+CVE-2026-101907 exp:2026-10-31
+# axios@1.19.0 -> 0.34.0, 1.20.0 (webapp/pnpm-lock.yaml)
+CVE-2026-101909 exp:2026-10-31

@@ -19,8 +19,11 @@
  * A exclusão é SOFT (lixeira): `useExcluir` carimba `excluidoEm` no blob e na coluna.
  * Apagar de verdade faria o celular ressuscitar a linha no próximo sync.
  */
+
+import { avisoTrialAutomatico } from "@ativacao";
 import type { Cliente, Empresa, Orcamento, StatusOrcamento } from "@dominio";
 import { STATUS_LABELS } from "@dominio";
+import { useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	Copy,
@@ -39,21 +42,27 @@ import {
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
 import { lazyComRetry } from "@/components/lazy/carregar-chunk";
-import { useQueryClient } from "@tanstack/react-query";
-import { avisoDaMarca, resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
-import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
-import { registrarDocumentoWeb } from "@/olli/documentos";
+import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { novoOrcamentoVazio } from "@/olli/components/novoOrcamentoVazio";
 import { orcamentoComItensPrefill, type PrefillItemOrcamento } from "@/olli/components/prefillItemOrcamento";
 import { BotaoAbrirLinha, getStatusVariant, linhaClicavel, NameCell } from "@/olli/components/record-list-helpers";
 import { clienteParaOrcamento } from "@/olli/components/SeletorCliente";
 import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
+import {
+	cancelarReservaEnvioOrcamento,
+	confirmarEnvioOrcamento,
+	obterEstadoOfertaComercial,
+	reservarEnvioOrcamento,
+} from "@/olli/cota-envios";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { ymdParaBr } from "@/olli/datas";
+import { registrarDocumentoWeb } from "@/olli/documentos";
+import { usePortaDoCadastro } from "@/olli/exigirCadastro";
+import { avisoDaMarca, resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
 import { useExcluir } from "@/olli/mutacoes";
+import { imprimirOrcamento } from "@/olli/pdf/imprimirOrcamento";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -68,13 +77,7 @@ import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
-import {
-	cancelarReservaEnvioOrcamento,
-	confirmarEnvioOrcamento,
-	obterEstadoOfertaComercial,
-	reservarEnvioOrcamento,
-} from "@/olli/cota-envios";
-import { avisoTrialAutomatico } from "@ativacao";
+
 /**
  * Contrato carregado SOB DEMANDA: ele arrasta o gerador de PDF do contrato, e
  * quem só abre a lista de orçamentos (a maioria, o tempo todo) não deve pagar
@@ -82,6 +85,7 @@ import { avisoTrialAutomatico } from "@ativacao";
  * é prestador em 4G ruim, onde chunk que não baixa é comum e viraria tela morta.
  */
 const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
+
 import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
 
 /**
@@ -319,12 +323,15 @@ export default function OrcamentosPage() {
 	const [pdfEmCurso, setPdfEmCurso] = useState<string | null>(null);
 	/** O orçamento que virou contrato — o diálogo abre em cima do BLOB, nunca da linha. */
 	const [contratoDe, setContratoDe] = useState<Orcamento | null>(null);
+	const [empresaDoContrato, setEmpresaDoContrato] = useState<Empresa | null>(null);
+	const [conferindoContrato, setConferindoContrato] = useState(false);
 	const [excluindo, setExcluindo] = useState<Orcamento | null>(null);
 	const [erroExclusao, setErroExclusao] = useState<string | null>(null);
 
 	const excluir = useExcluir("orcamentos");
 	/** Usado só para AGUARDAR a leitura do plano no clique do PDF (ver `verPdf`). */
 	const qc = useQueryClient();
+	const exigirCadastro = usePortaDoCadastro();
 
 	const linhas = useMemo(() => {
 		let lista = data ?? [];
@@ -417,7 +424,7 @@ export default function OrcamentosPage() {
 	 * Os 3 estados aparecem: "Preparando…" enquanto monta, sucesso ao abrir o diálogo,
 	 * e ERRO dito em voz alta se falhar — nunca uma janela em branco ou um clique mudo.
 	 */
-	const verPdf = (linha: LinhaOrcamento) => {
+	const verPdf = async (linha: LinhaOrcamento) => {
 		if (pdfEmCurso) return; // já tem um em preparo; a linha mostra o estado
 		const blob = blobDe(linha);
 		if (!blob) {
@@ -426,13 +433,18 @@ export default function OrcamentosPage() {
 			});
 			return;
 		}
+		setPdfEmCurso(linha.id);
+		/*
+		 * PORTA DO CADASTRO: o PDF sai com nome e contato do negócio. A porta relê a
+		 * empresa NA HORA (3 estados; erro nunca libera) e, se faltar algo, avisa com
+		 * "Completar agora". A empresa usada no documento é a que a porta acabou de ler
+		 * — não a da renderização, que pode ser de antes de a pessoa completar.
+		 */
+		const empresa = await exigirCadastro("orcamento");
 		if (!empresa) {
-			toast.error("Complete o cadastro do seu negócio (Meu Negócio) antes de gerar o PDF.", {
-				position: "top-center",
-			});
+			setPdfEmCurso(null);
 			return;
 		}
-		setPdfEmCurso(linha.id);
 		/**
 		 * O SELO DO OLLI é resolvido ANTES de montar o documento, e o clique ESPERA
 		 * por isso. `resolverMarcaDoDocumento` lê a assinatura real (cache quente =
@@ -457,7 +469,9 @@ export default function OrcamentosPage() {
 						status: "pronto",
 					});
 				} catch {
-					toast.error("O PDF abriu, mas não consegui registrar este orçamento na Central de documentos. Tente sincronizar e repetir o registro.");
+					toast.error(
+						"O PDF abriu, mas não consegui registrar este orçamento na Central de documentos. Tente sincronizar e repetir o registro.",
+					);
 				}
 				const confirmou = await confirmarEnvioOrcamento(linha.id, reserva.reservaToken);
 				/*
@@ -482,8 +496,7 @@ export default function OrcamentosPage() {
 				}
 				throw erro;
 			}
-		})()
-			.finally(() => setPdfEmCurso(null));
+		})().finally(() => setPdfEmCurso(null));
 		toast.promise(tarefa, {
 			loading: "Preparando o PDF…",
 			success: (marca) => {
@@ -506,7 +519,7 @@ export default function OrcamentosPage() {
 	 * contrato sairia sem CONTRATADA — um contrato com uma parte em branco é pior
 	 * que nenhum contrato. Cada caso diz o que fazer, não trava mudo.
 	 */
-	const gerarContrato = (linha: LinhaOrcamento) => {
+	const gerarContrato = async (linha: LinhaOrcamento) => {
 		const blob = blobDe(linha);
 		if (!blob) {
 			toast.error("Este orçamento está sem os dados completos — abra-o no celular para gerar o contrato.", {
@@ -514,12 +527,14 @@ export default function OrcamentosPage() {
 			});
 			return;
 		}
-		if (!empresa) {
-			toast.error("Complete o cadastro do seu negócio (Meu Negócio) antes de gerar o contrato.", {
-				position: "top-center",
-			});
-			return;
-		}
+		// Mesma porta do PDF: o contrato sem CONTRATADA completa não sai. O diálogo
+		// recebe a empresa que a porta leu (não a da renderização, que pode ser velha).
+		if (conferindoContrato) return;
+		setConferindoContrato(true);
+		const empresaLida = await exigirCadastro("contrato");
+		setConferindoContrato(false);
+		if (!empresaLida) return;
+		setEmpresaDoContrato(empresaLida);
 		setContratoDe(blob);
 	};
 
@@ -707,7 +722,7 @@ export default function OrcamentosPage() {
 											<tr
 												key={l.id}
 												{...linhaClicavel(
-													() => verPdf(l),
+													() => void verPdf(l),
 													"border-b border-border/50 transition-colors last:border-0 hover:bg-bg-neutral/40",
 												)}
 											>
@@ -715,7 +730,7 @@ export default function OrcamentosPage() {
 													{/* O Nº é o caminho de TECLADO da mesma ação (Tab + Enter). */}
 													<BotaoAbrirLinha
 														rotulo={`Ver PDF do orçamento ${l.numero || "sem número"}`}
-														aoAbrir={() => verPdf(l)}
+														aoAbrir={() => void verPdf(l)}
 														ocupado={gerando}
 														className="flex items-center gap-1.5 group-hover:underline"
 													>
@@ -771,12 +786,12 @@ export default function OrcamentosPage() {
 					{/* MOBILE */}
 					<div className="divide-y divide-border/60 md:hidden">
 						{linhas.map((l) => (
-							<div key={l.id} {...linhaClicavel(() => verPdf(l), "flex items-start gap-3 p-4 transition-colors")}>
+							<div key={l.id} {...linhaClicavel(() => void verPdf(l), "flex items-start gap-3 p-4 transition-colors")}>
 								<div className="min-w-0 flex-1">
 									<div className="flex items-center gap-2">
 										<BotaoAbrirLinha
 											rotulo={`Ver PDF do orçamento ${l.numero || "sem número"}`}
-											aoAbrir={() => verPdf(l)}
+											aoAbrir={() => void verPdf(l)}
 											ocupado={pdfEmCurso === l.id}
 											className="flex items-center gap-1.5"
 										>
@@ -848,8 +863,8 @@ export default function OrcamentosPage() {
 			    montagem. Sem a chave, abrir o contrato de um segundo orçamento reaproveitaria
 			    a instância e mostraria as cláusulas do PRIMEIRO — o prestador imprimiria o
 			    objeto e o prazo do cliente errado sem nada na tela denunciando.
-			    `empresa` já foi checada em `gerarContrato`; o `&&` é a garantia de tipo. */}
-			{contratoDe && empresa && (
+			    A empresa é a que a porta do cadastro leu em `gerarContrato`. */}
+			{contratoDe && empresaDoContrato && (
 				/* Se o pedaço do contrato não baixar, a fronteira diz isso em português
 				   e deixa fechar — em vez de diálogo em branco, que o usuário lê como
 				   "o sistema perdeu meu orçamento". */
@@ -858,7 +873,7 @@ export default function OrcamentosPage() {
 						<DialogoContrato
 							key={contratoDe.id}
 							orcamento={contratoDe}
-							empresa={empresa}
+							empresa={empresaDoContrato}
 							aoFechar={() => setContratoDe(null)}
 						/>
 					</Suspense>

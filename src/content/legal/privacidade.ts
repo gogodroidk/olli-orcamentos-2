@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '3 de outubro de 2026',
+  atualizadoEm: '4 de outubro de 2026',
   aviso:
-    'Documento atualizado em 3 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 4 de outubro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -106,6 +106,11 @@ export const PRIVACIDADE: LegalDoc = {
           dado: 'Cadastro: e-mail, nome e telefone',
           finalidade: 'Criar e autenticar a sua conta, dar suporte e enviar avisos essenciais do serviço.',
           base: 'Execução de contrato (art. 7º, V).',
+        },
+        {
+          dado: 'Telefone (WhatsApp) informado no cadastro',
+          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: registramos o número numa lista de "não contatar" e paramos de enviar mensagens a ele, salvo resposta a um contato que você mesmo iniciar.',
+          base: 'Legítimo interesse em ajudar quem criou a conta a usar o serviço (art. 7º, IX), com direito de oposição a qualquer momento.',
         },
         {
           dado: 'Login com o Google: nome, e-mail e foto do perfil da sua conta Google',
@@ -194,13 +199,14 @@ export const PRIVACIDADE: LegalDoc = {
       paragrafos: [
         'Os recursos de IA do OLLI (diagnóstico técnico, chat, voz e resumos) passam pelo ' +
           'nosso servidor na Cloudflare. O raciocínio em texto é processado pelo OpenRouter, ' +
-          'que encaminha o pedido somente a modelos gratuitos explicitamente selecionados e ' +
-          'a provedores compatíveis com a regra de não usar o conteúdo para treinamento. ' +
+          'que encaminha o pedido a modelos de linguagem de provedores de inferência (hoje, modelos da ' +
+          'OpenAI e da Mistral AI) selecionados por nós, com a regra de não usar o conteúdo para treinamento. ' +
           'Enviamos apenas o trecho necessário — por exemplo, a marca do equipamento e o sintoma.',
         'Quando você usa voz, o áudio é transcrito pelo serviço Workers AI da Cloudflare. ' +
           'O áudio não é enviado ao OpenRouter; somente a transcrição em texto segue para o ' +
-          'modelo quando você pede que a OLLI monte um orçamento. A configuração gratuita atual ' +
-          'não garante retenção zero em todos os provedores, por isso evite nomes, telefones, ' +
+          'modelo quando você pede que a OLLI monte um orçamento. Esses provedores podem ' +
+          'manter o pedido por prazo limitado para segurança e prevenção de abuso (a OpenAI e a Mistral AI informam até 30 dias) ' +
+          'e, por isso, evite nomes, telefones, ' +
           'endereços, documentos ou outros dados pessoais que não sejam necessários.',
         'A chave de acesso ao modelo fica somente no nosso servidor, nunca no aplicativo. ' +
           'Evite digitar ou ditar dados pessoais sensíveis desnecessários nos campos de IA. ' +
@@ -229,6 +235,9 @@ export const PRIVACIDADE: LegalDoc = {
           '(processador de pagamento da loja), quando essa opção estiver disponível. A Google ' +
           'recebe os dados do pagamento, e o OLLI recebe da Google Play o histórico da compra ' +
           '(plano, estado e datas da assinatura), sem acesso ao número do seu cartão.',
+        'WhatsApp (Meta) — as conversas com o WhatsApp do OLLI passam pela infraestrutura do ' +
+          'WhatsApp, que trata as mensagens conforme a própria política de privacidade. Só falamos ' +
+          'pelo WhatsApp com quem não pediu para sair (ver a seção 3).',
         'Resend — envio de e-mails do serviço: confirmação de conta, recuperação de senha, ' +
           'convite de equipe, boas-vindas, avisos de assinatura e resumos. Recebe o seu e-mail ' +
           'e o conteúdo da mensagem enviada.',
@@ -245,7 +254,7 @@ export const PRIVACIDADE: LegalDoc = {
           'para gerar e confirmar o Pix; o OLLI não tem acesso aos seus dados bancários.',
         'OpenRouter e provedores de inferência selecionados — roteamento e processamento dos ' +
           'pedidos de IA em texto. Exigimos rotas que declarem não usar o conteúdo para treinamento; ' +
-          'o modelo e o provedor efetivamente disponíveis podem variar dentro da lista gratuita configurada.',
+          'o modelo e o provedor efetivamente usados podem variar dentro da lista aprovada por nós.',
         'Sentry — monitoramento de erros e travamentos do aplicativo, para identificar e ' +
           'corrigir falhas técnicas. Recebe apenas dados técnicos do erro, sem o seu IP ou ' +
           'outros dados pessoais.',
@@ -328,6 +337,9 @@ export const PRIVACIDADE: LegalDoc = {
         'Boa parte você resolve dentro do próprio app: edite o seu cadastro e o seu negócio a ' +
           'qualquer momento e ative ou desative o ' +
           'rastreio de localização e as permissões de câmera e microfone no seu aparelho.',
+        'Para parar de receber mensagens nossas pelo WhatsApp, responda SAIR na conversa ou peça ' +
+          'pelo e-mail contato@olliorcamentos.online; para os lembretes por e-mail, use o link ' +
+          '"Parar de receber lembretes" no rodapé de cada mensagem.',
         'Quando o gerenciamento de assinatura estiver disponível no canal em que você contratou, ' +
           'ele será apresentado nessa conta; alguns builds nativos mostram apenas o status e os recibos.',
         'Para exportar os seus dados, excluir a sua conta ou fazer qualquer outro pedido ' +
