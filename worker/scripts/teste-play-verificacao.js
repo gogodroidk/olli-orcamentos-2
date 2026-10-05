@@ -219,6 +219,10 @@ globalThis.fetch = async (url, init = {}) => {
     const corpo = JSON.parse(init.body || '{}');
     if (u.pathname === `/v1/${ASSINATURA_PUBSUB}:pull`) {
       pubsub.pulls++;
+      // Como o Pub/Sub real (04/10/2026): com returnImmediately o pull pode voltar
+      // VAZIO mesmo com fila — o mock devolve vazio sempre, para pegar a regressão.
+      if (corpo.returnImmediately) return resp({});
+      if (pubsub.pendurar) throw new DOMException('pull sem mensagem', 'TimeoutError');
       return resp({ receivedMessages: pubsub.fila.slice(0, corpo.maxMessages) });
     }
     if (u.pathname === `/v1/${ASSINATURA_PUBSUB}:acknowledge`) {
@@ -578,6 +582,12 @@ try {
     );
     const r2 = await processarRtdn(envBase, { agora: new Date(AGORA + 2000) });
     checar('teste/outro pacote/lixo: todos confirmados', [r2.recebidas, r2.confirmadas], [3, 3]);
+
+    // Fila vazia: o long poll estoura o nosso timeout → rodada ok, sem erro.
+    pubsub.pendurar = true;
+    const rv = await processarRtdn(envBase, { agora: new Date(AGORA + 2500) });
+    pubsub.pendurar = false;
+    checar('timeout do long poll = fila vazia, não erro', [rv.estado, rv.recebidas], ['ok', 0]);
     checar('...e o RTDN de teste aparece no log', logs.some((x) => x.includes('RTDN de teste')), true);
 
     // Google fora: NÃO dá ack (o Pub/Sub reentrega) e NÃO mexe no plano.
