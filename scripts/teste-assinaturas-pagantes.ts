@@ -2,7 +2,7 @@
  * Assinaturas pagantes (T-011) — a MESMA tabela de casos contra as duas
  * implementações da regra "quem paga":
  *   - worker/src/assinaturasPagantes.js (painel admin: pagantes, MRR, sumidos);
- *   - supabase/migrations/20261007090000_assinaturas_pagantes.sql rodando de
+ *   - supabase/migrations/20261008100000_assinaturas_pagantes.sql rodando de
  *     verdade num Postgres (PGlite, em memória), view public.assinaturas_pagantes.
  *
  *     node scripts/teste-assinaturas-pagantes.ts
@@ -167,7 +167,7 @@ checar('lista: grátis = gratis', rotGratis.plano === 'gratis' && rotGratis.orig
 const FUNIL = readFileSync('supabase/migrations/20260930120100_funil_receita.sql', 'utf8');
 const ficticia = FUNIL.match(/create or replace function public\.funil_assinatura_ficticia[\s\S]*?\$\$;\n/);
 if (!ficticia) throw new Error('funil_assinatura_ficticia não encontrada na migration do funil');
-const MIGRATION = readFileSync('supabase/migrations/20261007090000_assinaturas_pagantes.sql', 'utf8');
+const MIGRATION = readFileSync('supabase/migrations/20261008100000_assinaturas_pagantes.sql', 'utf8');
 
 const db = new PGlite();
 await db.exec(`

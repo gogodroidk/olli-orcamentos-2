@@ -52,7 +52,11 @@ checar('scheduled registra a Promise no contexto', /ctx\.waitUntil\(processarWel
 checar('cron está configurado', /"crons"\s*:\s*\[\s*"\* \* \* \* \*"\s*[,\]]/.test(wrangler));
 checar('produção envia de verdade (dono autorizou em 29/09)', /"WELCOME_DISPATCH_MODE"\s*:\s*"production"/.test(varsProducao));
 checar('staging continua sem envio', /"WELCOME_DISPATCH_MODE"\s*:\s*"off"/.test(varsStaging) && !/"WELCOME_DISPATCH_MODE"\s*:\s*"production"/.test(varsStaging));
-checar('lembretes ligados só na produção', /"EMAIL_LEMBRETES_MODE"\s*:\s*"production"/.test(varsProducao) && /"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsStaging));
+// Pausa operacional da régua na produção é permitida SÓ se documentada com data de
+// religar (ex.: teste do concierge, 04/10/2026). Sem isso, produção tem de estar ligada.
+const pausaDocumentada = /PAUSA OPERACIONAL[\s\S]*RELIGAR[^\n]*\d{2}\/\d{2}\/\d{4}[\s\S]*"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsProducao);
+checar('lembretes ligados na produção (ou pausa documentada) e desligados no staging',
+  (/"EMAIL_LEMBRETES_MODE"\s*:\s*"production"/.test(varsProducao) || pausaDocumentada) && /"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsStaging));
 checar('batch de produção é pequeno (3) e o de staging, um', /"WELCOME_BATCH_LIMIT"\s*:\s*"3"/.test(varsProducao) && /"WELCOME_BATCH_LIMIT"\s*:\s*"1"/.test(varsStaging));
 checar('URL de descadastro aponta para a rota do worker', /"EMAIL_DESCADASTRO_URL"\s*:\s*"https:\/\/diagnostico\.olliorcamentos\.online\/email\/descadastrar"/.test(varsProducao));
 checar('scheduled também roda a seleção de lembretes', /ctx\.waitUntil\(processarLembretesEmail\(env/.test(index));

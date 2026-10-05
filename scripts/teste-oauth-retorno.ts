@@ -5,11 +5,19 @@ import {
   classificarErroOAuth,
   criarRegistroFunilAuth,
   decidirRetornoNativo,
+  dismissEspurio,
+  criarCapturaRetorno,
+  CARENCIA_FECHAMENTO_MS,
+  ESPERA_RETORNO_TARDIO_MS,
+  type DepsEsperaRetorno,
+  JANELA_DISMISS_ESPURIO_MS,
   ErroOAuth,
   erroDeTabelaAusente,
   type LinhaFunilAuth,
   lerRetornoOAuth,
+  MOTIVOS_ERRO_CADASTRO,
   MOTIVOS_ERRO_OAUTH,
+  classificarErroCadastro,
   mensagemErroOAuth,
   mensagemRetornoSemOrigem,
   normalizarPlataforma,
@@ -23,6 +31,7 @@ import {
   guardarIntencaoOAuth,
 } from '../webapp/src/olli/plano-intent.ts';
 import { DESTINO_RETORNO_OAUTH, destinoResgateOAuth } from '../web/src/scripts/oauth-resgate.ts';
+import { detectarNavegadorInApp, linkAbrirNoNavegador } from '../webapp/src/lib/navegadorInApp.ts';
 
 console.log('\nLogin social — retorno do OAuth nunca falha em silêncio (incidente 16–25/09)');
 
@@ -133,6 +142,133 @@ igual(
   'negou no Google = cancelado',
 );
 
+// Android 03/10: dismiss a 0,16 s NÃO é cancelamento humano; `locked` não é cancelamento.
+igual(dismissEspurio({ type: 'dismiss' }, 160, null, 'android'), true, 'android: dismiss a 0,16 s é espúrio');
+igual(dismissEspurio({ type: 'cancel' }, 1500, null, 'android'), false, 'android: cancel a 1,5 s NÃO é espúrio (só dismiss)');
+igual(dismissEspurio({ type: 'cancel' }, 300, null, 'ios'), false, 'ios: cancel a 0,3 s é gesto humano → cancelado na hora');
+igual(dismissEspurio({ type: 'dismiss' }, 300, null, 'ios'), false, 'ios: nunca espera');
+igual(dismissEspurio({ type: 'dismiss' }, JANELA_DISMISS_ESPURIO_MS + 1, null, 'android'), false, 'android: dismiss depois da janela é humano');
+igual(dismissEspurio({ type: 'dismiss' }, 160, `${cb}?code=${CODE}`, 'android'), false, 'com deep link capturado não espera');
+igual(dismissEspurio({ type: 'success', url: cb }, 100, null, 'android'), false, 'success nunca é espúrio');
+igual(decidirRetornoNativo({ type: 'cancel' }, null), { tipo: 'cancelado' }, 'ios: cancel rápido decide cancelado');
+igual(ESPERA_RETORNO_TARDIO_MS, 60_000, 'espera tardia de 60 s');
+
+// Espera do retorno tardio: sem corrida e com saída (timers/AppState falsos, determinísticos).
+function relogio() {
+  let t = 0;
+  const timers: { id: number; em: number; fn: () => void }[] = [];
+  let n = 0;
+  return {
+    agora: () => t,
+    setTimer: (fn: () => void, ms: number) => { const id = ++n; timers.push({ id, em: t + ms, fn }); return id; },
+    clearTimer: (id: unknown) => { const i = timers.findIndex((x) => x.id === id); if (i >= 0) timers.splice(i, 1); },
+    avancar(ms: number) {
+      const alvo = t + ms;
+      for (;;) {
+        timers.sort((a, b) => a.em - b.em);
+        const prox = timers[0];
+        if (!prox || prox.em > alvo) break;
+        timers.shift(); t = prox.em; prox.fn();
+      }
+      t = alvo;
+    },
+    pendentes: () => timers.length,
+  };
+}
+function deps(r: ReturnType<typeof relogio>, extra: Partial<DepsEsperaRetorno> = {}) {
+  let ativo: (() => void) | null = null;
+  let assinaturas = 0;
+  return {
+    d: {
+      agora: r.agora, setTimer: r.setTimer, clearTimer: r.clearTimer,
+      observarAtivo: (cbk: () => void) => { ativo = cbk; assinaturas++; return () => { ativo = null; assinaturas--; }; },
+      ...extra,
+    } as DepsEsperaRetorno,
+    ficarAtivo: () => ativo?.(),
+    assinaturas: () => assinaturas,
+  };
+}
+const redir = 'olliorcamentos://auth/callback';
+const urlOk = `${redir}?code=${CODE}`;
+const sinal = async <T,>(p: Promise<T>) => p;
+
+// (a) a URL chega ENTRE a leitura de null e a instalação do aviso (a corrida do review).
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  igual(cap.url(), null, 'leitura: ainda sem URL');
+  const dp = deps(r, { aoInstalarAviso: () => cap.aoReceberUrl(urlOk) }); // chega na transição
+  igual(await sinal(cap.esperar(dp.d)), 'url', 'URL na transição não se perde (sem 60 s de espera)');
+  igual(cap.url(), urlOk, 'URL guardada');
+  igual(r.pendentes(), 0, 'sem timers vazando');
+  igual(dp.assinaturas(), 0, 'sem assinatura vazando');
+}
+// (b) a URL chegou antes de esperar() ser chamada.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  cap.aoReceberUrl(urlOk);
+  igual(await cap.esperar(deps(r).d), 'url', 'URL já capturada resolve na hora');
+}
+// (c) URL de outro esquema é ignorada.
+{
+  const cap = criarCapturaRetorno(redir, 0);
+  cap.aoReceberUrl('https://evil.test/?code=x');
+  igual(cap.url(), null, 'URL fora do redirect é ignorada');
+}
+// (d) URL chega durante a espera.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(5000);
+  cap.aoReceberUrl(urlOk);
+  igual(await p, 'url', 'URL durante a espera resolve');
+  igual(r.pendentes(), 0, 'timers limpos');
+}
+// (e) aba fechada de verdade: AppState active > 2 s depois, sem URL por 1,5 s → fechou.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(10_000);
+  dp.ficarAtivo();
+  r.avancar(CARENCIA_FECHAMENTO_MS);
+  igual(await p, 'fechou', 'AppState active tardio sem URL encerra como fechou');
+  igual(r.pendentes(), 0, 'timers limpos (fechou)');
+  igual(dp.assinaturas(), 0, 'assinatura liberada (fechou)');
+}
+// (f) deep link logo depois do active (dentro da carência) ganha do "fechou".
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(10_000);
+  dp.ficarAtivo();
+  r.avancar(500);
+  cap.aoReceberUrl(urlOk);
+  igual(await p, 'url', 'deep link na carência vira url, não fechou');
+}
+// (g) 'active' espúrio (≤ 2 s da abertura) não encerra.
+{
+  const r = relogio();
+  const cap = criarCapturaRetorno(redir, 0);
+  const dp = deps(r);
+  const p = cap.esperar(dp.d);
+  r.avancar(1000);
+  dp.ficarAtivo();
+  r.avancar(CARENCIA_FECHAMENTO_MS + 100);
+  igual(r.pendentes(), 1, 'só o timer total segue armado');
+  r.avancar(ESPERA_RETORNO_TARDIO_MS);
+  igual(await p, 'timeout', 'sem sinal nenhum, vence o timeout de 60 s');
+  igual(dp.assinaturas(), 0, 'assinatura liberada (timeout)');
+}
+igual(decidirRetornoNativo({ type: 'locked' }, null), { tipo: 'erro', motivo: 'navegador_falhou' }, 'locked = navegador não abriu');
+igual(mensagemErroOAuth('navegador_falhou').includes('abrir o navegador'), true, 'mensagem navegador_falhou');
+
 // ─── 6. Intenção de plano atravessa o redirect pelo sessionStorage ─────────────
 function armazenamentoFalso() {
   const m = new Map<string, string>();
@@ -220,6 +356,10 @@ ok(!/cancel' \/ 'dismiss' → usuário fechou o navegador; silêncio/.test(nativ
 ok(/decidirRetornoNativo\(res, urlCapturada\)/.test(nativo), 'nativo usa a decisão testada');
 ok(/Linking\.addEventListener\('url'/.test(nativo), 'nativo escuta o deep link durante a aba');
 ok(/oauth_sessao_criada/.test(nativo) && /oauth_iniciado/.test(nativo), 'nativo registra o funil');
+ok(/dismissEspurio\(res,[\s\S]{0,60}Platform\.OS\)/.test(nativo), 'nativo espera o deep link após dismiss espúrio (só Android)');
+ok(/criarCapturaRetorno\(/.test(nativo) && /captura\.esperar\(/.test(nativo), 'nativo usa a espera sem corrida');
+ok(/oauthNativoEmAndamento/.test(nativo) && /'em_andamento'/.test(nativo), 'nativo trava sessão concorrente');
+ok(/falhar\('navegador_falhou'\)/.test(nativo), 'falha ao abrir navegador não vira cancelado');
 const entrar = ler('../src/screens/EntrarScreen.tsx');
 ok(/res === 'cancelado'[\s\S]{0,80}Alert\.alert/.test(entrar), 'app avisa quando o login não conclui');
 const traduz = ler('../src/utils/authErrors.ts');
@@ -241,6 +381,70 @@ const migration = ler('../supabase/migrations/20260929210000_auth_funil_eventos.
 ok(/grant insert \(evento, plataforma, provedor, motivo, tentativa\)/.test(migration), 'migration: INSERT só nas colunas sem PII');
 ok(!/grant select/i.test(migration), 'migration: anon não lê o funil');
 ok(/force row level security/.test(migration), 'migration: RLS forçada');
-for (const motivo of MOTIVOS_ERRO_OAUTH) ok(migration.includes(`'${motivo}'`), `migration aceita o motivo ${motivo}`);
+const migracaoMotivos = ler('../supabase/migrations/20261007090000_auth_funil_motivos_navegador.sql');
+for (const motivo of MOTIVOS_ERRO_OAUTH) {
+  ok(migration.includes(`'${motivo}'`) || migracaoMotivos.includes(`'${motivo}'`), `migrations aceitam o motivo ${motivo}`);
+  ok(migracaoMotivos.includes(`'${motivo}'`), `migration 20261007 lista ${motivo} no CHECK`);
+}
+
+for (const motivo of ['validacao', 'email_existente', 'senha_fraca', 'rate_limit']) {
+  ok(migracaoMotivos.includes(`'${motivo}'`), `migration 20261007 preserva o motivo de cadastro ${motivo} (#149)`);
+}
+ok(/motivo_so_em_erro[\s\S]*'oauth_erro', 'cadastro_erro'/.test(migracaoMotivos), 'migration 20261007 mantém motivo_so_em_erro p/ oauth_erro e cadastro_erro');
+ok(/'cadastro_ok'/.test(migracaoMotivos) && /'email'/.test(migracaoMotivos), 'migration 20261007 mantém CHECKs de evento/provedor');
+
+// ─── Funil do pré-cadastro (T-010) ───────────────────────────────────────────
+const preCadastro = ler('../supabase/migrations/20261007080000_funil_pre_cadastro.sql');
+for (const ev of ['cadastro_visto', 'cadastro_iniciado', 'cadastro_enviado', 'cadastro_erro', 'cadastro_ok', 'oauth_iniciado', 'oauth_sessao_criada', 'oauth_erro']) {
+  ok(preCadastro.includes(`'${ev}'`), `migration pré-cadastro aceita o evento ${ev}`);
+}
+ok(/provedor in \('google', 'apple', 'email'\)/.test(preCadastro), 'migration pré-cadastro aceita provedor email');
+for (const motivo of [...MOTIVOS_ERRO_OAUTH, ...MOTIVOS_ERRO_CADASTRO, 'navegador_falhou', 'sem_retorno']) {
+  ok(preCadastro.includes(`'${motivo}'`), `migration pré-cadastro aceita o motivo ${motivo}`);
+}
+ok(/evento in \('oauth_erro', 'cadastro_erro'\)\) = \(motivo is not null\)/.test(preCadastro), 'motivo só nos dois eventos de erro');
+ok(!/grant|create policy/i.test(preCadastro.replace(/--.*$/gm, '')), 'migration pré-cadastro não mexe em permissões');
+
+const caso = (e: unknown) => classificarErroCadastro(e);
+ok(caso({ code: 'user_already_exists' }) === 'email_existente' && caso({ code: 'email_exists' }) === 'email_existente', 'signUp: e-mail existente');
+ok(caso({ code: 'weak_password' }) === 'senha_fraca', 'signUp: senha fraca');
+ok(caso({ code: 'over_request_rate_limit' }) === 'rate_limit' && caso({ code: 'over_email_send_rate_limit' }) === 'rate_limit' && caso({ status: 429 }) === 'rate_limit', 'signUp: rate limit');
+ok(caso({ name: 'AuthRetryableFetchError', status: 0, message: 'Failed to fetch' }) === 'rede' && caso(new TypeError('Failed to fetch')) === 'rede', 'signUp: rede');
+ok(caso({ message: 'texto cru com a@b.com' }) === 'desconhecido' && caso(null) === 'desconhecido', 'signUp: desconhecido, sem texto cru');
+
+const linhasCad: LinhaFunilAuth[] = [];
+const regCad = criarRegistroFunilAuth(async (l) => { linhasCad.push(l); return { error: null }; });
+await regCad('cadastro_visto', { plataforma: 'web', tentativa: 't1', motivo: 'validacao' });
+await regCad('cadastro_erro', { plataforma: 'web', provedor: 'email', tentativa: 't1', motivo: 'senha_fraca' });
+await regCad('cadastro_erro', { plataforma: 'web', tentativa: 't1', motivo: 'inventado' as never });
+await regCad('oauth_erro', { plataforma: 'web', provedor: 'google', tentativa: 't2', motivo: 'senha_fraca' });
+ok(linhasCad[0].provedor === 'email' && linhasCad[0].motivo === null, 'cadastro_visto: provedor email, sem motivo');
+ok(linhasCad[1].motivo === 'senha_fraca' && linhasCad[2].motivo === 'desconhecido', 'cadastro_erro: motivo de lista fechada');
+ok(linhasCad[3].motivo === 'desconhecido', 'oauth_erro não aceita motivo exclusivo de cadastro');
+
+const formCad = ler('../webapp/src/pages/sys/login/register-form.tsx');
+for (const ev of ['cadastro_visto', 'cadastro_iniciado', 'cadastro_enviado', 'cadastro_ok']) {
+  ok(formCad.includes(`registrarEtapa("${ev}")`), `painel dispara ${ev}`);
+}
+ok(/registrarFunilAuth\("cadastro_erro"/.test(formCad) && /registrarErroCadastro\(classificarErroCadastro\(err\)\)/.test(formCad), 'painel dispara cadastro_erro classificado (signUp)');
+ok(/handleSubmit\(onFinish, \(\) => registrarErroCadastro\("validacao"\)\)/.test(formCad), 'painel dispara cadastro_erro validacao');
+ok(/onFocusCapture/.test(formCad), 'painel dispara cadastro_iniciado no 1º foco');
+ok(/registrarFunilAuth\("oauth_iniciado"/.test(botoes), 'oauth_iniciado continua disparando');
+
+// T-010: navegador do Instagram/Facebook — o Google recusa OAuth em webview embutida.
+const UA_IG_ANDROID = 'Mozilla/5.0 (Linux; Android 13; SM-A146M; wv) AppleWebKit/537.36 Chrome/129.0 Mobile Safari/537.36 Instagram 350.0.0.38.94 Android';
+const UA_FB_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 [FBAN/FBIOS;FBAV/470.0]';
+const UA_CHROME = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/129.0 Mobile Safari/537.36';
+ok(detectarNavegadorInApp(UA_IG_ANDROID) === 'instagram', 'detecta Instagram');
+ok(detectarNavegadorInApp(UA_FB_IOS) === 'facebook', 'detecta Facebook iOS');
+ok(detectarNavegadorInApp(UA_CHROME) === null, 'Chrome comum não é in-app');
+ok(detectarNavegadorInApp('Mozilla/5.0 (Linux; Android 14; moto g15; wv) AppleWebKit/537.36 Version/4.0 Chrome/153.0 Mobile Safari/537.36') === 'outro', 'WebView Android genérica conta como in-app');
+const intent = linkAbrirNoNavegador('https://app.olliorcamentos.online/auth/login?modo=cadastro&utm_source=instagram', UA_IG_ANDROID) ?? '';
+ok(intent.startsWith('intent://app.olliorcamentos.online/auth/login?modo=cadastro&utm_source=instagram#Intent;scheme=https;package=com.android.chrome;'), 'Android abre a MESMA URL (com UTM) no Chrome');
+ok(intent.includes('S.browser_fallback_url=https%3A%2F%2Fapp.olliorcamentos.online'), 'intent tem fallback para a própria página');
+ok(linkAbrirNoNavegador('https://app.olliorcamentos.online/auth/login', UA_FB_IOS) === null, 'iPhone não ganha link (ensina o menu)');
+ok(linkAbrirNoNavegador('javascript:alert(1)', UA_IG_ANDROID) === null, 'só https vira intent');
+ok(/if \(inApp\) return <AvisoNavegadorInApp/.test(botoes), 'in-app troca Google/Apple pelo aviso');
+ok(/\{!inApp && \(/.test(formCad) && /\{inApp && <OAuthButtons \/>\}/.test(formCad), 'cadastro in-app: e-mail primeiro, aviso depois');
 
 console.log(`PASSOU: ${checks} verificações — redirect fixo, erro visível, code resgatado, funil sem PII.`);

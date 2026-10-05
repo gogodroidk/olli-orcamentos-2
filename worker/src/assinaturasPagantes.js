@@ -12,7 +12,7 @@
  *
  * Mesma regra, no banco, em `public.assinatura_motivo_nao_pagante`, na view
  * `public.assinaturas_pagantes` e em `public.admin_assinaturas_pagantes`
- * (migration 20261007090000_assinaturas_pagantes). Mudou aqui, muda lá — o
+ * (migration 20261008100000_assinaturas_pagantes). Mudou aqui, muda lá — o
  * teste `scripts/teste-assinaturas-pagantes.ts` roda as duas com os mesmos casos.
  */
 import { derivarEntitlement } from './entitlement.js';

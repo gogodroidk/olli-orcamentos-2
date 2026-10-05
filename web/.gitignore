@@ -22,3 +22,6 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# IndexNow: plano de URLs alteradas (gerado a cada deploy, nao vai ao repo)
+.indexnow-plano.json

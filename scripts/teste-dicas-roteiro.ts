@@ -42,6 +42,7 @@ import {
   telefoneNormalizado,
   totalRascunho,
   validarBase,
+  validarBaseFormato,
   type DadosBase,
 } from '../src/services/onboardingRapido.ts';
 import { EXEMPLOS_POR_VERTICAL, totalDoExemplo } from '../src/services/ativacao.ts';
@@ -283,6 +284,11 @@ caso('tela 3: só o necessário, com a mesma exigência do perfil operacional', 
   assert.ok(empresa.cnpj && empresa.nomeNegocio, 'empresa exige CNPJ e nome');
   assert.ok(validarBase({ ...BASE_OK, cnpj: '11.111.111/1111-11' }, () => false).cnpj, 'CNPJ inválido barra');
   assert.equal(telefoneNormalizado('+55 (11) 98888-7777'), '11988887777');
+  // T-006: formato só do que foi preenchido; vazio passa.
+  assert.deepEqual(validarBaseFormato({ tipoNegocio: undefined, nomePrestador: '', nomeNegocio: '', whatsapp: '', cnpj: '', cidade: '', estado: '' }, () => false), {}, 'tudo vazio segue');
+  assert.ok(validarBaseFormato({ ...BASE_OK, whatsapp: '1199' }, cnpjSempreValido).whatsapp, 'WhatsApp curto barra');
+  assert.ok(validarBaseFormato({ ...BASE_OK, cnpj: '11.111.111/1111-11' }, () => false).cnpj, 'CNPJ preenchido inválido barra');
+  assert.ok(validarBaseFormato({ ...BASE_OK, estado: 'S' }, cnpjSempreValido).estado, 'UF de 1 letra barra');
   assert.equal(nomeDoNegocio(BASE_OK), 'João', 'autônomo sem nome de negócio usa o próprio nome');
   assert.equal(nomeDoNegocio({ ...BASE_OK, nomeNegocio: ' Clima Frio ' }), 'Clima Frio');
 });

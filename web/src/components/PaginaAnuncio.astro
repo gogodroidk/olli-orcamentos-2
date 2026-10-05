@@ -1,0 +1,108 @@
+---
+/**
+ * PÁGINA DE ANÚNCIO — uma por ofício, para onde o anúncio daquele ofício aponta.
+ *
+ * Por que existe (auditoria MKT 04/10/2026): o anúncio dizia "Chega de mandar preço
+ * por áudio" e a home respondia com um H1 genérico; 805 cliques, 0 cadastros. Aqui o
+ * H1 É a frase do anúncio, a prova vem antes da promessa (print REAL da página que o
+ * cliente final recebe) e só existe UMA ação: criar a conta.
+ *
+ * O que ficou de fora de propósito: menu, chips de ofício, planos, FAQ, motion. Cada
+ * link a mais é uma saída a mais antes do cadastro. As páginas de SEO (/para/<ofício>)
+ * continuam sendo o lugar do conteúdo longo.
+ *
+ * NÃO é `noindex`: `scripts/marketing.ts` sai cedo em página noindex, e o Pixel, a
+ * Google tag e a origem (UTM) morreriam justo onde o anúncio cai.
+ *
+ * Preço e Grátis só da FONTE (`data/planos.ts`, `data/recursos.ts`). Sem promessa de
+ * tempo ("pronto em 2 min") até haver medição.
+ */
+import OlliLogo from "./OlliLogo.astro";
+import Layout from "../layouts/Layout.astro";
+import { PRECO_PRO, reais } from "../data/planos";
+import { NOTA_SELO_GRATIS } from "../data/recursos";
+
+interface Props {
+	/** Título da aba e do compartilhamento. */
+	titulo: string;
+	descricao: string;
+	/** Frase do anúncio (H1). */
+	h1: string;
+	sub: string;
+	/** Print da página do cliente (em /public/anuncio). */
+	imagem: string;
+	imagemAlt: string;
+	/** Vai no `utm_content` do CTA: identifica a página na atribuição. */
+	utmContent: string;
+}
+
+const { titulo, descricao, h1, sub, imagem, imagemAlt, utmContent } = Astro.props;
+
+// O UTM fixo sobrevive: `anexarAtribuicaoAoLink` só acrescenta o que o link não tem.
+const CTA_URL = `https://app.olliorcamentos.online/auth/login?modo=cadastro&utm_content=${encodeURIComponent(utmContent)}`;
+const CTA_TEXTO = "Montar meu 1º orçamento — grátis";
+const PRECO_PRO_MES = reais(PRECO_PRO.mensalCentavos);
+
+const passos = [
+	{ n: "1", titulo: "Monte o orçamento", texto: "No celular ou no computador, já com itens de exemplo do seu ofício para você trocar pelos seus." },
+	{ n: "2", titulo: "Mande o link no WhatsApp", texto: "O cliente abre uma página com a sua marca, os itens e o total. Também sai em PDF." },
+	{ n: "3", titulo: "O cliente aprova pelo celular", texto: "Ele toca em aprovar e a resposta aparece no seu OLLI. Sem áudio, sem foto de caderno." },
+];
+---
+<Layout titulo={titulo} descricao={descricao}>
+  <header class="mx-auto flex max-w-5xl items-center px-6 pt-6">
+    <OlliLogo size={34} />
+  </header>
+
+  <main>
+    <section class="mx-auto grid max-w-5xl items-center gap-10 px-6 pb-16 pt-10 md:grid-cols-[1.1fr_1fr] md:pt-16">
+      <div class="min-w-0">
+        <h1 class="text-[clamp(2.2rem,6vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight text-ink">{h1}</h1>
+        <p class="mt-5 max-w-xl text-lg leading-relaxed text-slate">{sub}</p>
+        <a
+          href={CTA_URL}
+          class="mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand sm:w-auto"
+        >
+          {CTA_TEXTO}
+        </a>
+        <p class="mt-3 text-sm text-muted">Grátis com orçamentos ilimitados. Sem cartão.</p>
+      </div>
+
+      <figure class="mx-auto w-full max-w-[300px]">
+        <div class="overflow-hidden rounded-[2rem] border-[6px] border-ink/90 bg-card shadow-2xl">
+          <img src={imagem} alt={imagemAlt} width="390" height="844" class="block h-auto w-full" fetchpriority="high" decoding="async" />
+        </div>
+        <figcaption class="mt-3 text-center text-xs text-muted">O que o seu cliente recebe no WhatsApp</figcaption>
+      </figure>
+    </section>
+
+    <section class="border-t border-line bg-card/60">
+      <ol class="mx-auto grid max-w-5xl gap-8 px-6 py-14 md:grid-cols-3">
+        {passos.map((p) => (
+          <li>
+            <span class="grid size-9 place-items-center rounded-full bg-brand/10 text-sm font-bold text-brand-fg" aria-hidden="true">{p.n}</span>
+            <h2 class="mt-3 text-lg font-bold text-ink">{p.titulo}</h2>
+            <p class="mt-1.5 text-sm leading-relaxed text-slate">{p.texto}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <section class="mx-auto max-w-5xl px-6 py-14 text-center">
+      <a
+        href={CTA_URL}
+        class="inline-flex min-h-12 w-full items-center justify-center rounded-acao bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand sm:w-auto"
+      >
+        {CTA_TEXTO}
+      </a>
+      <p class="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-muted">
+        {NOTA_SELO_GRATIS} Sem o selo: plano Pro por {PRECO_PRO_MES}/mês.
+      </p>
+    </section>
+  </main>
+
+  <footer class="mx-auto flex max-w-5xl flex-wrap justify-center gap-x-5 gap-y-2 px-6 pb-10 text-xs text-muted">
+    <a href="/legal/privacidade/" class="underline-offset-2 hover:underline">Privacidade</a>
+    <a href="/legal/termos/" class="underline-offset-2 hover:underline">Termos</a>
+  </footer>
+</Layout>
