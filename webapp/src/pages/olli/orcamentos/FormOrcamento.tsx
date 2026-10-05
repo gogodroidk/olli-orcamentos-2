@@ -350,17 +350,17 @@ function Editor({
 	// navegador — mesmo padrão de meu-negocio. Cobre o Ctrl+W, que a guarda do
 	// diálogo (Esc/clique-fora) não alcança. `aberto` na dependência: diálogo
 	// fechado não pode segurar a aba.
-	// Telemetria do funil: editor de orçamento NOVO aberto (não edição).
-	useEffect(() => {
-		if (aberto && ehNovo) void registrarEtapaAtivacao("orcamento_novo_aberto");
-	}, [aberto, ehNovo]);
-
 	useEffect(() => {
 		if (!sujo || !aberto) return;
 		const aviso = (e: BeforeUnloadEvent) => e.preventDefault();
 		window.addEventListener("beforeunload", aviso);
 		return () => window.removeEventListener("beforeunload", aviso);
 	}, [sujo, aberto]);
+
+	// Telemetria do funil: editor de orçamento NOVO aberto (não edição).
+	useEffect(() => {
+		if (aberto && ehNovo) void registrarEtapaAtivacao("orcamento_novo_aberto");
+	}, [aberto, ehNovo]);
 
 	/* ───────────────────────────────  Catálogo  ───────────────────────────────── */
 

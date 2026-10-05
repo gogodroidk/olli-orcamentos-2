@@ -105,19 +105,32 @@ grant usage on schema private to authenticated;
 grant execute on function private.atividade_recente(text) to authenticated;
 
 -- Funil por etapa: das contas reais (fora de funil_exclusoes), quantas
--- chegaram a cada etapa, separado por plataforma da 1ª vez que a etapa ocorreu.
+-- chegaram a cada etapa, por plataforma da 1ª vez que a etapa ocorreu.
+--
+-- Definição de "1ª sessão": para cada user_id, inicio = min(criado_em) entre
+-- TODOS os eventos dele. Um evento conta em pessoas_1a_sessao só se a 1ª
+-- ocorrência dele caiu dentro de 60 minutos desde o inicio (janela fixa e
+-- documentada; a mediana da 1ª sessão medida foi < 36 min). Quem voltou dias
+-- depois NÃO entra em pessoas_1a_sessao; entra só em pessoas_alguma_vez
+-- (1ª ocorrência vitalícia, sem janela).
 create or replace view public.ativacao_funil_etapas
 with (security_invoker = true) as
-with primeira as (
-  select l.user_id, l.evento, min(l.criado_em) as em,
-         (array_agg(l.plataforma order by l.criado_em))[1] as plataforma
+with ev as (
+  select l.user_id, l.evento, l.plataforma, l.criado_em,
+         min(l.criado_em) over (partition by l.user_id) as inicio
     from public.user_activity_log l
    where not exists (select 1 from public.funil_exclusoes f where f.user_id = l.user_id)
-   group by l.user_id, l.evento
+),
+primeira as (
+  select e.user_id, e.evento, min(e.criado_em) as em, min(e.inicio) as inicio,
+         (array_agg(e.plataforma order by e.criado_em))[1] as plataforma
+    from ev e
+   group by e.user_id, e.evento
 )
 select p.evento,
        p.plataforma,
-       count(*) as pessoas,
+       count(*) filter (where p.em <= p.inicio + interval '60 minutes') as pessoas_1a_sessao,
+       count(*) as pessoas_alguma_vez,
        max(p.em) as ultima_vez
   from primeira p
  group by p.evento, p.plataforma
@@ -131,4 +144,4 @@ revoke all on public.ativacao_funil_etapas from public, anon, authenticated;
 grant select on public.ativacao_funil_etapas to service_role;
 
 comment on view public.ativacao_funil_etapas is
-  'Onde a 1ª sessão morre: pessoas por etapa (1ª ocorrência) e plataforma. Só service_role.';
+  'Onde a 1ª sessão morre: pessoas por etapa e plataforma; pessoas_1a_sessao = 1ª ocorrência em até 60 min do 1º evento da conta; pessoas_alguma_vez = sem janela. Só service_role.';
