@@ -110,7 +110,7 @@ caso('ritual: os radares só são lidos atrás da régua do papel', () => {
   const src = ler('src/services/ritualDiario.ts');
   const corpo = src.slice(src.indexOf('async function montarBomDia('), src.indexOf('function horarioFecharHojeOuNull('));
   assert.ok(corpo.length > 0, 'montarBomDia sumiu');
-  const regua = corpo.indexOf('const sinais = sinaisComerciaisPermitidos(await lerTipoContaAtual());');
+  const regua = corpo.indexOf('const sinais = sinaisComerciaisPermitidos(await resolverTipoContaAtual());');
   assert.ok(regua >= 0, 'sem régua de papel no "Bom dia"');
   assert.match(corpo, /sinais\.cobranca \? lerSinal\(orcamentosParaCobrar\) : Promise\.resolve\(FORA\)/);
   assert.match(corpo, /sinais\.posVenda \? lerSinal\(clientesParaReconquistar\) : Promise\.resolve\(FORA\)/);

@@ -290,8 +290,8 @@ export async function reagendarAvisoSaidaDoDia(forcar = false, escopoPronto?: Es
  * radares. Falha de leitura vira `erro` (nunca lista vazia) e só cede a vez.
  */
 async function montarBomDia(alvo: Date, escopo: EscopoConhecido | null): Promise<{ titulo: string; corpo: string } | null> {
-  // `lerTipoContaAtual` nunca lança; sem papel conhecido, os dois sinais ficam fora.
-  const sinais = sinaisComerciaisPermitidos(await lerTipoContaAtual());
+  // `resolverTipoContaAtual` nunca lança; sem papel conhecido, os dois sinais ficam fora.
+  const sinais = sinaisComerciaisPermitidos(await resolverTipoContaAtual());
   const [proxima, cobranca, radar] = await Promise.all([
     escopo ? getProximaSaida(escopo).catch(() => null) : Promise.resolve(null),
     sinais.cobranca ? lerSinal(orcamentosParaCobrar) : Promise.resolve(FORA),
