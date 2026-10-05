@@ -219,6 +219,10 @@ globalThis.fetch = async (url, init = {}) => {
     const corpo = JSON.parse(init.body || '{}');
     if (u.pathname === `/v1/${ASSINATURA_PUBSUB}:pull`) {
       pubsub.pulls++;
+      // Como o Pub/Sub real (04/10/2026): com returnImmediately o pull pode voltar
+      // VAZIO mesmo com fila — o mock devolve vazio sempre, para pegar a regressão.
+      if (corpo.returnImmediately) return resp({});
+      if (pubsub.pendurar) throw new DOMException('pull sem mensagem', 'TimeoutError');
       return resp({ receivedMessages: pubsub.fila.slice(0, corpo.maxMessages) });
     }
     if (u.pathname === `/v1/${ASSINATURA_PUBSUB}:acknowledge`) {
@@ -578,6 +582,12 @@ try {
     );
     const r2 = await processarRtdn(envBase, { agora: new Date(AGORA + 2000) });
     checar('teste/outro pacote/lixo: todos confirmados', [r2.recebidas, r2.confirmadas], [3, 3]);
+
+    // Fila vazia: o long poll estoura o nosso timeout → rodada ok, sem erro.
+    pubsub.pendurar = true;
+    const rv = await processarRtdn(envBase, { agora: new Date(AGORA + 2500) });
+    pubsub.pendurar = false;
+    checar('timeout do long poll = fila vazia, não erro', [rv.estado, rv.recebidas], ['ok', 0]);
     checar('...e o RTDN de teste aparece no log', logs.some((x) => x.includes('RTDN de teste')), true);
 
     // Google fora: NÃO dá ack (o Pub/Sub reentrega) e NÃO mexe no plano.
@@ -649,6 +659,28 @@ try {
     const rtdn = await tarefaPlayDoCron(envBase, { agora: naMinuto(3, HORA_TESTE) });
     checar('cron :03 → RTDN (e não a reconciliação)', [rtdn.tarefa, pubsub.pulls - pullsAntes], ['rtdn', 1]);
     checar('cron :43 → RTDN', (await tarefaPlayDoCron(envBase, { agora: naMinuto(43, HORA_TESTE) })).tarefa, 'rtdn');
+
+    // RTDN mudo (05/10): o cron SEMPRE escreve uma linha de log, com ou sem mensagem, e diz POR QUE
+    // está desligado. Antes o resultado era jogado fora e "desligado" não explicava nada.
+    {
+      const linhas = [];
+      const logOriginal = console.log;
+      console.log = (...a) => linhas.push(a.join(' '));
+      let semAssinatura, semCredencial, comTrabalho;
+      try {
+        comTrabalho = await tarefaPlayDoCron(envBase, { agora: naMinuto(3, HORA_TESTE) });
+        semAssinatura = await tarefaPlayDoCron({ ...envBase, PLAY_PUBSUB_SUBSCRIPTION: '' }, { agora: naMinuto(3, HORA_TESTE) });
+        semCredencial = await tarefaPlayDoCron({ ...envBase, PLAY_SA_JSON: '' }, { agora: naMinuto(43, HORA_TESTE) });
+      } finally {
+        console.log = logOriginal;
+      }
+      const json = linhas.map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((x) => x?.evento === 'play_cron');
+      checar('cron escreve UMA linha play_cron por execução', json.length, 3);
+      checar('linha com trabalho traz tarefa/estado/contagens', [json[0].tarefa, json[0].estado, typeof json[0].recebidas, typeof json[0].confirmadas, typeof json[0].mantidas], ['rtdn', comTrabalho.estado, 'number', 'number', 'number']);
+      checar('desligado por falta de assinatura diz o motivo', [semAssinatura.estado, semAssinatura.motivo, json[1].motivo], ['desligado', 'sem_assinatura', 'sem_assinatura']);
+      checar('desligado por falta de credencial diz o motivo', [semCredencial.estado, semCredencial.motivo, json[2].motivo], ['desligado', 'sem_credencial', 'sem_credencial']);
+      checar('a linha de log não leva segredo nem id de compra', linhas.some((l) => /eyJ|PRIVATE KEY|purchase_token|@/.test(l)), false);
+    }
 
     // Google fora na reconciliação: nada muda.
     c.verificado_em = new Date(R27.getTime() - 2 * 3600e3).toISOString();
