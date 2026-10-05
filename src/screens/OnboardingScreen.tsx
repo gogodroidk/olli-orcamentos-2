@@ -28,7 +28,6 @@ import { useCepLookup } from '../services/cep';
 import { AvisoCep } from '../components/AvisoCep';
 import { consultarCnpj } from '../services/cnpj';
 import { deduzirVerticais, verticalPorId, type VerticalId } from '../services/verticais';
-import { camposPendentesPerfil, perfilOperacionalCompleto } from '../services/perfilOperacional';
 import { getCurrentUser, signOut } from '../services/supabase';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { WHATSAPP_SUPORTE } from '../config';
@@ -42,7 +41,7 @@ import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { AVISO_EXEMPLO } from '../services/ativacao';
 import {
   OFICIOS_ONBOARDING, camposDoOficio, itensIniciais, nomeDoNegocio, oficioPorVertical,
-  paramsPrimeiroOrcamento, telefoneNormalizado, totalRascunho, validarBase,
+  paramsPrimeiroOrcamento, telefoneNormalizado, totalRascunho, validarBaseFormato,
   type CampoBase, type DadosBase, type ItemRascunho,
 } from '../services/onboardingRapido';
 
@@ -245,7 +244,7 @@ export default function OnboardingScreen() {
     );
   }
 
-  /** Empresa COMPLETA (o perfil operacional exige nome, telefone, ofício e cidade). */
+  /** Empresa com o que a pessoa preencheu (pode estar incompleta; ver exigirCadastro). */
   function montarEmpresa(): Empresa {
     const oficio = vertical ? camposDoOficio(vertical) : null;
     const tel = telefoneNormalizado(base.whatsapp);
@@ -337,7 +336,7 @@ export default function OnboardingScreen() {
       return;
     }
     if (tela === 2) {
-      const e = validarBase(base, isValidCNPJ);
+      const e = validarBaseFormato(base, isValidCNPJ);
       setErrors(e);
       if (Object.keys(e).length) { vibrar('erro'); return; }
       vibrar('selecao');
@@ -359,13 +358,9 @@ export default function OnboardingScreen() {
 
   async function concluir(destino: 'orcamento' | 'importar' | 'inicio') {
     if (saving) return;
+    // Sem trava (T-006): salva o que tiver; o cadastro completo é cobrado só ao
+    // gerar/enviar PDF, recibo ou contrato (services/exigirCadastro.ts).
     const empresaFinal = montarEmpresa();
-    if (!perfilOperacionalCompleto(empresaFinal)) {
-      const pendentes = camposPendentesPerfil(empresaFinal);
-      irParaTela(pendentes.includes('verticais') ? 1 : 2);
-      Alert.alert('Falta um dado', 'Complete os campos destacados para começar.');
-      return;
-    }
     setSaving(true);
     try {
       if (!(await confirmarAusenciaAntesDeSalvar())) return;
@@ -498,12 +493,12 @@ export default function OnboardingScreen() {
               </View>
               {errors.tipoNegocio ? <Text style={styles.fieldError}>{errors.tipoNegocio}</Text> : null}
 
-              <OlliInput label="Seu nome" required value={base.nomePrestador} error={errors.nomePrestador}
+              <OlliInput label="Seu nome" value={base.nomePrestador} error={errors.nomePrestador}
                 onChangeText={v => setCampo('nomePrestador', v)} placeholder="Ex: João da Silva" leftIcon="account" />
 
               {base.tipoNegocio === 'empresa' ? (
                 <>
-                  <OlliInput label="CNPJ" required mask="cnpj" value={base.cnpj} error={errors.cnpj}
+                  <OlliInput label="CNPJ" mask="cnpj" value={base.cnpj} error={errors.cnpj}
                     onChangeText={v => setCampo('cnpj', v)} placeholder="00.000.000/0001-00" leftIcon="domain" />
                   <PressableAnimado
                     onPress={buscarCnpj}
@@ -523,7 +518,6 @@ export default function OnboardingScreen() {
 
               <OlliInput
                 label={base.tipoNegocio === 'empresa' ? 'Nome da empresa' : 'Nome do negócio (opcional)'}
-                required={base.tipoNegocio === 'empresa'}
                 value={base.nomeNegocio}
                 error={errors.nomeNegocio}
                 onChangeText={v => setCampo('nomeNegocio', v)}
@@ -531,7 +525,7 @@ export default function OnboardingScreen() {
                 leftIcon="store"
               />
 
-              <OlliInput label="WhatsApp" required mask="phone" value={base.whatsapp} error={errors.whatsapp}
+              <OlliInput label="WhatsApp" mask="phone" value={base.whatsapp} error={errors.whatsapp}
                 onChangeText={v => setCampo('whatsapp', v)} placeholder="(11) 99999-9999" leftIcon="whatsapp" />
 
               <OlliInput label="CEP" mask="cep" value={end.cep}
@@ -540,10 +534,10 @@ export default function OnboardingScreen() {
               <AvisoCep estado={estadoCep} endereco={enderecoCep} divergencias={divergencias} onUsarDoCep={usarDoCep} />
 
               <View style={styles.rowFields}>
-                <OlliInput label="Cidade" required error={errors.cidade} value={base.cidade}
+                <OlliInput label="Cidade" error={errors.cidade} value={base.cidade}
                   onChangeText={v => setCampo('cidade', v)} placeholder="São Paulo"
                   containerStyle={{ flex: 2, marginRight: 10, marginBottom: 0 }} />
-                <OlliInput label="UF" required error={errors.estado} value={base.estado}
+                <OlliInput label="UF" error={errors.estado} value={base.estado}
                   onChangeText={v => setCampo('estado', v.toUpperCase().slice(0, 2))}
                   autoCapitalize="characters" maxLength={2} placeholder="SP"
                   containerStyle={{ flex: 1, marginBottom: 0 }} />
