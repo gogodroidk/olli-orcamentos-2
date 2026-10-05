@@ -125,7 +125,7 @@ export default function ContratosPage() {
 						Contratos recorrentes
 					</h1>
 					<p className="mt-0.5 text-sm text-text-secondary">
-						Feche a manutenção uma vez: cada visita entra sozinha na agenda com o técnico.
+						Feche a manutenção uma vez: as visitas entram na agenda ao salvar e sempre que você abre o OLLI.
 					</p>
 				</div>
 				{leitura.data?.status === "ok" && (
