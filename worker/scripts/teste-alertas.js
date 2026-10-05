@@ -569,11 +569,11 @@ await caso('crons do wrangler.jsonc batem com ALERTAS_CRONS', () => {
   assert.ok(crons.includes(CRON_PLAY), 'o cron próprio da Play está no wrangler.jsonc');
   assert.equal(fonteDoCron(CRON_PLAY), null, 'o cron da Play não dispara alertas');
   assert.ok(crons.length <= 3, `crons em produção: ${crons.length}`);
-  // `triggers` é herdado pelo env de staging: ele precisa fixar os próprios crons.
+  // `triggers` é herdado pelo env de staging: `[]` remove os crons já implantados.
   const staging = wr.slice(wr.indexOf('"olli-diagnostico-staging"'));
   const ms = /"triggers"\s*:\s*\{\s*"crons"\s*:\s*\[([^\]]*)\]/.exec(staging);
   assert.ok(ms, 'staging declara os próprios triggers');
-  assert.deepEqual([...ms[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), ['* * * * *']);
+  assert.deepEqual([...ms[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), []);
   assert.equal(fonteDoCron('* * * * *'), null);
   assert.equal(fonteDoCron(undefined), null);
   assert.ok(/"binding"\s*:\s*"CACHE"/.test(wr), 'binding KV CACHE declarado');
