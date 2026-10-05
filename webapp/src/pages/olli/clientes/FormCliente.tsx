@@ -57,6 +57,7 @@ import { useSalvar } from "@/olli/mutacoes";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { buscarCep } from "./cep";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 
 const soDigitos = (s: string | undefined | null) => (s ?? "").replace(/\D/g, "");
 
@@ -285,6 +286,7 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Pro
 
 		try {
 			await salvar.mutateAsync(c);
+			if (!cliente) void registrarEtapaAtivacao("client_create");
 			aoFechar();
 		} catch {
 			// O erro fica visível no rodapé do diálogo (`salvar.error`), não some num toast.

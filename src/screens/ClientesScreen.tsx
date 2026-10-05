@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { registrarAtividadeUsuario } from '../services/equipe';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
@@ -345,6 +346,7 @@ export default function ClientesScreen() {
     setSalvando(true);
     try {
       await saveCliente(c);
+      if (!editing.id) void registrarAtividadeUsuario('client_create');
       vibrar('sucesso');
       setEditing(null);
       load();
