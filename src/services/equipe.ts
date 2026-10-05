@@ -444,25 +444,62 @@ export async function registrarAcesso(
 
 let atividadeLoginUsuario: string | null = null;
 
+/** Eventos do funil de ativação (allowlist do RPC no banco). */
+export type EventoAtividade =
+  | 'login'
+  | 'app_open'
+  | 'ativacao_card_visto'
+  | 'ativacao_card_clicado'
+  | 'oficio_escolhido'
+  | 'orcamento_novo_aberto'
+  | 'empresa_salva'
+  | 'orcamento_enviado'
+  | 'client_create'
+  | 'quote_create';
+
+/** Podem repetir, no máximo 1 vez por minuto por evento. */
+const EVENTOS_REPETIVEIS: ReadonlySet<EventoAtividade> = new Set(['client_create', 'quote_create', 'orcamento_enviado']);
+/** Dedup por (usuário, evento) na vida do processo. */
+const atividadeEnviada = new Set<string>();
+/** Último envio (ms) por (usuário, evento) dos eventos repetíveis. */
+const atividadeUltimoEnvio = new Map<string, number>();
+
 /**
  * Registra atividade operacional sem carregar conteúdo de cliente, prompt,
  * token ou endereço de rede. O RPC deriva user_id de auth.uid() e o app nunca
- * recebe permissão de leitura do log.
+ * recebe permissão de leitura do log. Best-effort: nunca lança.
  */
 export async function registrarAtividadeUsuario(
-  evento: 'login' | 'app_open' = 'app_open',
+  evento: EventoAtividade = 'app_open',
 ): Promise<void> {
   try {
     if (!supabase) return;
     const user = await getCurrentUser();
     if (!user) return;
     if (evento === 'login' && atividadeLoginUsuario === user.id) return;
+    const chave = `${user.id}:${evento}`;
+    const repetivel = EVENTOS_REPETIVEIS.has(evento);
+    if (evento !== 'login' && evento !== 'app_open') {
+      if (repetivel) {
+        const ultimo = atividadeUltimoEnvio.get(chave);
+        if (ultimo !== undefined && Date.now() - ultimo < 60_000) return;
+        atividadeUltimoEnvio.set(chave, Date.now());
+      } else {
+        if (atividadeEnviada.has(chave)) return;
+        atividadeEnviada.add(chave);
+      }
+    }
     const { Platform } = require('react-native');
     const plataforma = ['web', 'ios', 'android'].includes(Platform.OS) ? Platform.OS : 'unknown';
     const { error } = await supabase.rpc('registrar_atividade_usuario', {
       p_evento: evento,
       p_plataforma: plataforma,
     });
+    if (error && evento !== 'login' && evento !== 'app_open') {
+      // falhou: libera para uma nova tentativa.
+      atividadeEnviada.delete(chave);
+      atividadeUltimoEnvio.delete(chave);
+    }
     if (!error && evento === 'login') atividadeLoginUsuario = user.id;
   } catch {
     // best-effort: telemetria nunca bloqueia o uso do app.
@@ -471,6 +508,8 @@ export async function registrarAtividadeUsuario(
 
 export function resetarAtividadeUsuario(): void {
   atividadeLoginUsuario = null;
+  atividadeEnviada.clear();
+  atividadeUltimoEnvio.clear();
 }
 
 // ─── helpers ─────────────────────────────────────────────────

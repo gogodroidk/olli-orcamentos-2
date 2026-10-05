@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { registrarAtividadeUsuario } from '../services/equipe';
 import {
   View, Text, ScrollView, StyleSheet,
   TouchableOpacity, Alert, Image, Modal, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -253,6 +254,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     try {
       // Grava também o que foi deduzido (mesma regra do contador de pendências).
       await saveEmpresa(completarPerfilDeduzido(empresa));
+      void registrarAtividadeUsuario('empresa_salva');
       void recarregarVerticais(); // atualiza o gate de ferramentas por ofício na hora
       vibrar('sucesso');
       setDirty(false);

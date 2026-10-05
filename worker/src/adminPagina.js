@@ -538,7 +538,14 @@ async function mostrarGateMfa(){
  document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));
  $('titulo').textContent='Confirme o código';$('subtitulo').textContent='';limpar($('cabAcoes'));
  const g=limpar($('gateMfa'));g.classList.remove('hidden');
- let fatores=[];try{fatores=await listarFatoresMfa();}catch{}
+ // Erro ao ler os fatores NÃO vira "sem fator": isso mandaria cadastrar outro autenticador.
+ let fatores=[];try{fatores=await listarFatoresMfa();}catch(e){
+  const ce=el('div',{className:'card pad',style:'max-width:620px'});
+  ce.append(el('h2',{style:'font-size:18px;margin-bottom:8px'},'Não consegui conferir a verificação em duas etapas'),
+   el('p',{className:'mut',style:'margin-bottom:16px'},(e&&e.message)||'Falha de conexão. Nenhum dado foi liberado.'),
+   el('button',{className:'btn',onclick:()=>mostrarGateMfa()},'Tentar de novo'));
+  g.append(ce);return;
+ }
  const c=el('div',{className:'card pad',style:'max-width:620px'});
  c.append(el('h2',{style:'font-size:18px;margin-bottom:8px'},fatores.length?'Falta só o código do autenticador':'Ative a verificação em duas etapas'),
   el('p',{className:'mut',style:'margin-bottom:16px'},'Este painel mostra dados de todos os clientes, então a senha sozinha não abre nada. '+(fatores.length?'Confirme o código uma vez neste aparelho e ele fica lembrado por 30 dias.':'Cadastre um app autenticador; leva 1 minuto.')),
