@@ -16,7 +16,7 @@ import { podeComPapel } from '../utils/permissoesPapel';
 import { aplicarEscopo, escopoConhecido, type EscopoConhecido } from '../utils/agendaDominio';
 import { semMovimentosConhecidos } from '../utils/relatorioDiaTexto';
 import { mancheteComercial, sinaisComerciaisPermitidos, type SinalComercial } from '../utils/bomDiaSinais';
-import type { Agendamento, Cliente } from '../types';
+import type { Agendamento } from '../types';
 import {
   RITUAL_NOTIF_MAP_KEY,
   RITUAL_BOM_DIA_TOGGLE_KEY,
