@@ -57,3 +57,40 @@ diferente de 0 se qualquer job falhar.
 O `ci.yml` roda em `pull_request` e em `push` **só na `main`**, para não executar duas vezes
 por PR (push da branch + pull_request). O `promotion.yml` já limitava o `push` a
 `staging`/`main` e mantém o `workflow_dispatch` manual de promoção.
+
+## Estado do Actions (verificado em 05/10/2026)
+
+**Travado por faturamento, não por código.** Todo run de `CI` e `OLLI Promotion Pipeline`
+(push e pull_request) termina `failure` sem executar um passo sequer (`steps: 0`). A anotação
+do check, lida pela API (`gh api repos/<repo>/actions/runs/<id>/jobs` → `check_run_url` →
+`/annotations`), diz:
+
+> The job was not started because recent account payments have failed or your spending limit
+> needs to be increased. Please check the 'Billing & plans' section in your settings
+
+Consequências:
+
+- O ✗ vermelho em PR/commit **não significa que o código quebrou**. Significa que o job nem
+  começou. Não investigue o código por causa dele.
+- `staging-promotion` e `production-promotion` ficam `skipped`: **a promoção do
+  `promotion.yml` não roda** enquanto o Actions estiver travado.
+- O gate de merge é este script (seção "Regra de merge sem Actions"). Decisão do dono:
+  **não pagar o Actions** (ver memória do projeto).
+- Para religar um dia: regularizar *Billing & plans* da conta GitHub (ou subir o spending
+  limit). Nada no repositório precisa mudar; o `ci.yml` já cobre os mesmos jobs.
+- Aviso do próprio GitHub: o label `ubuntu-latest` migra para Ubuntu 26 em 19/10/2026.
+  Quando o Actions voltar, reconferir `ci.yml` nesse runner.
+
+### Armadilhas do gate local (aprendidas em 05/10/2026)
+
+1. **Rode o job `painel` quando mexer em `src/` compartilhado com o `webapp/`.** O `app-gate`
+   não pega erro do `tsc` do painel (`noUnusedLocals`): o #160 passou no `app-gate` e quebrou
+   o build do painel com `TS6196` (corrigido no #161). Na dúvida, `bash scripts/ci-local.sh`
+   inteiro, como a regra de merge manda.
+2. **Checkout Windows com `autocrlf` (CRLF):** teste que lê arquivo-fonte com regex em `\n`
+   falha só no Windows. Normalize ao ler: `.replace(/\r\n/g, '\n')`.
+3. **Worktree nova ou `node_modules` pela metade:** `npm ci` falha com `ENOTEMPTY` se uma
+   execução anterior foi interrompida. Apague `node_modules` e rode de novo. Não use
+   `CI_LOCAL_SEM_INSTALAR=1` em worktree sem `node_modules` (dá VERMELHO em 1 s).
+4. **Job `dependencias`:** exige o `trivy` no PATH ou em `TRIVY_BIN`. Os `.trivyignore` vencem
+   em **31/10/2026**: antes disso, atualizar axios, undici, devalue e brace-expansion.
