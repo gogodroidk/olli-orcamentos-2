@@ -247,7 +247,7 @@ ok(/force row level security/.test(migration), 'migration: RLS forçada');
 for (const motivo of MOTIVOS_ERRO_OAUTH) ok(migration.includes(`'${motivo}'`), `migration aceita o motivo ${motivo}`);
 
 // ─── Funil do pré-cadastro (T-010) ───────────────────────────────────────────
-const preCadastro = ler('../supabase/migrations/20261004140000_funil_pre_cadastro.sql');
+const preCadastro = ler('../supabase/migrations/20261007080000_funil_pre_cadastro.sql');
 for (const ev of ['cadastro_visto', 'cadastro_iniciado', 'cadastro_enviado', 'cadastro_erro', 'cadastro_ok', 'oauth_iniciado', 'oauth_sessao_criada', 'oauth_erro']) {
   ok(preCadastro.includes(`'${ev}'`), `migration pré-cadastro aceita o evento ${ev}`);
 }
