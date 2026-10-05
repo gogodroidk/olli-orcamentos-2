@@ -15,8 +15,8 @@ import { resolverTipoContaAtual } from '../hooks/useTipoConta';
 import { podeComPapel } from '../utils/permissoesPapel';
 import { aplicarEscopo, escopoConhecido, type EscopoConhecido } from '../utils/agendaDominio';
 import { semMovimentosConhecidos } from '../utils/relatorioDiaTexto';
-import { formatCurrency } from '../utils/currency';
-import type { Agendamento } from '../types';
+import { mancheteComercial, sinaisComerciaisPermitidos, type SinalComercial } from '../utils/bomDiaSinais';
+import type { Agendamento, Cliente } from '../types';
 import {
   RITUAL_NOTIF_MAP_KEY,
   RITUAL_BOM_DIA_TOGGLE_KEY,
@@ -55,6 +55,13 @@ import {
  * "saia às" da visita do colega). Papel desconhecido = a agenda fica fora:
  * nenhum aviso é criado ou trocado a partir dela, e o "Bom dia" cai para os
  * outros sinais (ou silêncio). Nunca vira "sem visita" nem a agenda da equipe.
+ *
+ * SINAIS COMERCIAIS SÓ PARA QUEM CUIDA DO COMERCIAL — o "R$ X parados em N
+ * orçamentos" soma a empresa inteira e o radar pós-venda é a carteira de
+ * clientes da empresa; o `Orcamento` não tem responsável para recortar "os do
+ * técnico". O técnico (e o papel desconhecido) não ouve nenhum dos dois: o
+ * "Bom dia" dele é a visita dele, ou silêncio. A régua mora em
+ * `utils/bomDiaSinais.ts`.
  *
  * "FECHAR O DIA" SÓ PARA QUEM VÊ RELATÓRIOS — o relatório do dia soma
  * orçamentos, recibos e clientes novos da base INTEIRA (valores agregados da
@@ -277,12 +284,18 @@ export async function reagendarAvisoSaidaDoDia(forcar = false, escopoPronto?: Es
  *
  * Sem escopo conhecido, a visita não entra (não sei de quem é a próxima): o
  * "Bom dia" usa os outros sinais ou fica em silêncio.
+ *
+ * Os sinais comerciais só são LIDOS para quem pode ouvi-los
+ * (`sinaisComerciaisPermitidos`): técnico e papel desconhecido nem tocam nos
+ * radares. Falha de leitura vira `erro` (nunca lista vazia) e só cede a vez.
  */
 async function montarBomDia(alvo: Date, escopo: EscopoConhecido | null): Promise<{ titulo: string; corpo: string } | null> {
+  // `resolverTipoContaAtual` nunca lança; sem papel conhecido, os dois sinais ficam fora.
+  const sinais = sinaisComerciaisPermitidos(await resolverTipoContaAtual());
   const [proxima, cobranca, radar] = await Promise.all([
     escopo ? getProximaSaida(escopo).catch(() => null) : Promise.resolve(null),
-    orcamentosParaCobrar().catch(() => []),
-    clientesParaReconquistar().catch(() => []),
+    sinais.cobranca ? lerSinal(orcamentosParaCobrar) : Promise.resolve(FORA),
+    sinais.posVenda ? lerSinal(clientesParaReconquistar) : Promise.resolve(FORA),
   ]);
 
   if (proxima && mesmoDiaCalendario(new Date(proxima.inicio), alvo)) {
@@ -304,23 +317,19 @@ async function montarBomDia(alvo: Date, escopo: EscopoConhecido | null): Promise
     }
   }
 
-  if (cobranca.length > 0) {
-    const total = cobranca.reduce((s, item) => s + item.valor, 0);
-    return {
-      titulo: 'Bom dia da OLLI',
-      corpo: `${formatCurrency(total)} parado${cobranca.length > 1 ? 's' : ''} em ${cobranca.length} orçamento${cobranca.length > 1 ? 's' : ''} aprovado${cobranca.length > 1 ? 's' : ''} — cobre com 1 toque`,
-    };
-  }
+  const corpo = mancheteComercial(cobranca, radar);
+  return corpo ? { titulo: 'Bom dia da OLLI', corpo } : null;
+}
 
-  if (radar.length > 0) {
-    const item = radar[0];
-    return {
-      titulo: 'Bom dia da OLLI',
-      corpo: `${item.cliente.nome}: último serviço há ${item.mesesSemContato} ${item.mesesSemContato === 1 ? 'mês' : 'meses'} — hora de lembrar da manutenção`,
-    };
-  }
+const FORA = { status: 'fora' } as const;
 
-  return null;
+/** Lê um radar como sinal de 3 estados: falha vira `erro`, nunca `[]`. */
+async function lerSinal<T>(ler: () => Promise<T[]>): Promise<SinalComercial<T>> {
+  try {
+    return { status: 'ok', itens: await ler() };
+  } catch {
+    return { status: 'erro' };
+  }
 }
 
 /**
