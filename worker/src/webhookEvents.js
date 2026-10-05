@@ -68,8 +68,12 @@ export async function reivindicarEvento(env, { origem, eventId, tipo, payload })
     // Só é duplicado de verdade quem está 'processado'.
     if (r.status === 409) return await estadoDoEvento(env, origem, eventId);
 
+    // Falha que NÃO é duplicata: antes saía calada e o evento voltava ao gateway sem rastro
+    // (o RTDN do Play ficou mudo assim). Só origem e status HTTP: nada de payload nem chave.
+    console.error('[webhook_events] reivindicar falhou —', JSON.stringify({ origem, status: r.status }));
     return { ok: false, duplicado: false };
   } catch {
+    console.error('[webhook_events] reivindicar falhou —', JSON.stringify({ origem, status: 'rede' }));
     return { ok: false, duplicado: false };
   }
 }
