@@ -831,7 +831,7 @@ export const CALCULOS: CalculoOficio[] = [
   nome: 'Diluição por tipo de tinta',
   icon: 'water-percent',
   descricao: 'O diluente certo e o quanto usar, por tipo de tinta.',
-  base: 'NBR 13245: diluição conforme fabricante/substrato. Base água (acrílica/textura): só água, até ~5%. Base solvente (esmalte/verniz): aguarrás/thinner, tipicamente 5–15% — nunca diluir com água.',
+  base: 'NBR 13245: diluição conforme fabricante/substrato. Acrílica/látex: só água, e a dose varia por linha — de 10–20% nas demãos em algumas linhas a 50–80% em linhas econômicas; a 1ª demão em superfície não selada pode ir a até 50%. Siga a ficha da lata. Textura: só água, até ~5%. Base solvente (esmalte/verniz): aguarrás/thinner, tipicamente 5–15% — nunca diluir com água.',
   campos: [
     { key: 'tipo', label: 'Tipo de tinta', tipo: 'opcao', default: 'acrilica', opcoes: [
       { v: 'acrilica', label: 'Acrílica / látex (base água)' },
@@ -840,11 +840,19 @@ export const CALCULOS: CalculoOficio[] = [
       { v: 'verniz', label: 'Verniz (base solvente)' },
     ] },
     { key: 'quantidade', label: 'Quantidade de tinta', tipo: 'numero', sufixo: 'L', placeholder: 'Ex.: 18' },
-    { key: 'percentual', label: 'Diluição desejada', tipo: 'numero', sufixo: '%', default: '5' },
+    { key: 'percentual', label: 'Diluição desejada', tipo: 'numero', sufixo: '%', default: '10' },
   ],
   calcular: (v) => {
-    const TIPOS: Record<string, { label: string; diluente: string; min: number; max: number }> = {
-      acrilica: { label: 'Acrílica/látex', diluente: 'água', min: 0, max: 5 },
+    // Acrílica: a dose muda muito por linha (ficha Coralar Antimofo: 10–20% nas demãos, até 50% na
+    // 1ª demão sem selador; Coral Rende Muito: 50–80%). Faixa 10–30% = o comum; o texto manda seguir a lata.
+    const TIPOS: Record<string, { label: string; diluente: string; min: number; max: number; nota?: string }> = {
+      acrilica: {
+        label: 'Acrílica/látex',
+        diluente: 'água',
+        min: 10,
+        max: 30,
+        nota: 'Na acrílica a diluição varia por linha — siga a ficha da lata (há linhas que pedem 10–20% e outras, econômicas, 50–80%; a 1ª demão em superfície não selada pode ir a até 50%).',
+      },
       textura: { label: 'Textura acrílica', diluente: 'água', min: 0, max: 5 },
       esmalte: { label: 'Esmalte sintético', diluente: 'aguarrás/thinner', min: 5, max: 15 },
       verniz: { label: 'Verniz', diluente: 'aguarrás/thinner', min: 5, max: 15 },
@@ -855,6 +863,7 @@ export const CALCULOS: CalculoOficio[] = [
     const diluenteLitros = qtd * (pct / 100);
     const diluenteTxt = diluenteLitros < 1 ? `${br(diluenteLitros * 1000)} ml` : `${br(diluenteLitros, 2)} L`;
     const foraDaFaixa = pct > tipo.max || pct < tipo.min;
+    const nota = tipo.nota ? ` ${tipo.nota}` : '';
     return {
       linhas: [
         { label: 'Diluente indicado', valor: tipo.diluente },
@@ -868,8 +877,8 @@ export const CALCULOS: CalculoOficio[] = [
         descricao: `${diluenteTxt} para ${br(qtd, 1)} L de ${tipo.label} a ${br(pct, 1)}%`,
       },
       aviso: foraDaFaixa
-        ? `Fora da faixa usual (${br(tipo.min)}–${br(tipo.max)}%) para ${tipo.label} — confira a ficha técnica do fabricante antes de aplicar. Nunca troque o diluente (água ↔ aguarrás/thinner) entre tipos.`
-        : 'Diluição sempre conforme a ficha técnica do fabricante e o substrato (NBR 13245); nunca troque o diluente (água ↔ aguarrás/thinner) entre tipos.',
+        ? `Fora da faixa usual (${br(tipo.min)}–${br(tipo.max)}%) para ${tipo.label} — confira a ficha técnica do fabricante antes de aplicar. Nunca troque o diluente (água ↔ aguarrás/thinner) entre tipos.${nota}`
+        : `Diluição sempre conforme a ficha técnica do fabricante e o substrato (NBR 13245); nunca troque o diluente (água ↔ aguarrás/thinner) entre tipos.${nota}`,
     };
   },
 },
