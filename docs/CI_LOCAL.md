@@ -17,6 +17,7 @@ Ele reproduz `.github/workflows/ci.yml` job por job, com os mesmos comandos:
 | Job | O que roda (igual ao `ci.yml`) |
 |---|---|
 | `segredos` | `gitleaks git .` no **histórico inteiro**, com `--redact`; falsos-positivos triados em `.gitleaksignore` (impressão digital). Achado real = **rotacionar** o segredo (apagar do git não basta). Sem o binário o job falha. |
+| `dependencias` | `trivy fs .` nos lockfiles: CRÍTICA sempre reprova; ALTA reprova se não estiver no `.trivyignore`, e cada linha lá **vence** (`exp:`). Gera o SBOM CycloneDX em `.ci-local/sbom.cdx.json`. Binário via `trivy` no PATH ou `TRIVY_BIN`; cache em `TRIVY_CACHE_DIR` (~1 GB). |
 | `app-gate` | `npm ci` na raiz + `npm run preflight` (typecheck, suíte inteira, lint, contraste, Doctor, config de release) |
 | `painel` | `npm ci` na raiz e em `web/`, `pnpm i --frozen-lockfile` em `webapp/`, `pnpm run build`, `pnpm run test:importacao`, `pnpm run test:bundle` |
 | `landing` | `npm ci` na raiz e em `web/`, `npx astro check`, `npm run build` |
