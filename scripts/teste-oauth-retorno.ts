@@ -291,6 +291,7 @@ const UA_CHROME = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/129
 ok(detectarNavegadorInApp(UA_IG_ANDROID) === 'instagram', 'detecta Instagram');
 ok(detectarNavegadorInApp(UA_FB_IOS) === 'facebook', 'detecta Facebook iOS');
 ok(detectarNavegadorInApp(UA_CHROME) === null, 'Chrome comum não é in-app');
+ok(detectarNavegadorInApp('Mozilla/5.0 (Linux; Android 14; moto g15; wv) AppleWebKit/537.36 Version/4.0 Chrome/153.0 Mobile Safari/537.36') === 'outro', 'WebView Android genérica conta como in-app');
 const intent = linkAbrirNoNavegador('https://app.olliorcamentos.online/auth/login?modo=cadastro&utm_source=instagram', UA_IG_ANDROID) ?? '';
 ok(intent.startsWith('intent://app.olliorcamentos.online/auth/login?modo=cadastro&utm_source=instagram#Intent;scheme=https;package=com.android.chrome;'), 'Android abre a MESMA URL (com UTM) no Chrome');
 ok(intent.includes('S.browser_fallback_url=https%3A%2F%2Fapp.olliorcamentos.online'), 'intent tem fallback para a própria página');

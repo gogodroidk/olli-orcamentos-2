@@ -25,7 +25,11 @@ import { CHAVE_TENTATIVA_OAUTH } from "../use-retorno-oauth";
 type OAuthProvider = "google" | "apple";
 const OAUTH_PROVIDER_LABEL: Record<OAuthProvider, string> = { google: "Google", apple: "Apple" };
 
-const NOME_APP: Record<NavegadorInApp, string> = { instagram: "Instagram", facebook: "Facebook" };
+const ONDE: Record<NavegadorInApp, string> = {
+	instagram: "Dentro do app do Instagram",
+	facebook: "Dentro do app do Facebook",
+	outro: "Dentro deste app",
+};
 
 /**
  * No navegador embutido do Instagram/Facebook o Google recusa o login
@@ -38,11 +42,11 @@ function AvisoNavegadorInApp({ app }: { app: NavegadorInApp }) {
 	return (
 		<div className="space-y-2 rounded-md border border-border p-3 text-sm" role="note">
 			<p className="text-muted-foreground">
-				Quer entrar com Google ou Apple? Dentro do app do {NOME_APP[app]} o Google não permite. Abra esta página no
+				Quer entrar com Google ou Apple? {ONDE[app]} o Google não permite. Abra esta página no
 				navegador do celular.
 			</p>
 			{link ? (
-				<Button asChild type="button" variant="outline" className="w-full">
+				<Button asChild variant="outline" className="w-full">
 					<a href={link}>Abrir no navegador</a>
 				</Button>
 			) : (

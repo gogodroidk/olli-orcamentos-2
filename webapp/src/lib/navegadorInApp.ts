@@ -7,11 +7,13 @@
  * da tela — é um beco sem saída ali. Nesse navegador o cadastro por e-mail vem
  * primeiro e o login social vira um convite para abrir o navegador do aparelho.
  */
-export type NavegadorInApp = "instagram" | "facebook";
+export type NavegadorInApp = "instagram" | "facebook" | "outro";
 
 export function detectarNavegadorInApp(ua: string): NavegadorInApp | null {
 	if (/Instagram/i.test(ua)) return "instagram";
 	if (/FBAN|FBAV|FB_IAB|FBIOS|FB4A/i.test(ua)) return "facebook";
+	// WebView Android de qualquer outro app (Gmail, Google app…): o Google recusa igual.
+	if (/Android/i.test(ua) && /; wv\)/.test(ua)) return "outro";
 	return null;
 }
 

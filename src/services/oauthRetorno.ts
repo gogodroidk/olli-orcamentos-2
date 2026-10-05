@@ -284,7 +284,10 @@ export function criarRegistroFunilAuth(inserir: InserirFunilAuth | null) {
     try {
       return Promise.resolve(inserir(linha))
         .then(({ error }) => {
-          if (error && erroDeTabelaAusente(error)) desligado = true;
+          if (!error) return;
+          if (erroDeTabelaAusente(error)) desligado = true;
+          // Outro erro (ex.: CHECK sem o evento novo) não pode virar "0" mudo no funil.
+          else console.warn('[funil-auth] evento não gravado:', linha.evento, (error as { code?: string })?.code ?? '');
         })
         .catch(() => {});
     } catch {
