@@ -51,6 +51,7 @@ import { type FalhaCheckout, iniciarCheckout, type PlanoCheckout } from "./check
 import { DialogPix } from "./DialogPix";
 import { type PlanoPix, pixDisponivel } from "./pix";
 import { FRASE_GRATIS, nomeDoPlano, type PlanoBase, PLANOS_BASE, RECURSOS_GRATIS } from "./planos-base";
+import { estadoDoCardPlano } from "./estadoCard";
 import {
 	DESCONTO_ANUAL_ROTULO,
 	type PeriodoCobranca,
@@ -333,6 +334,7 @@ export default function Planos() {
 						plano={p}
 						periodo={periodo}
 						atual={planoAtual(p.id)}
+						emTeste={!!resumo && resumo.origem === "trial" && resumo.planoEfetivo === p.id}
 						escritaBloqueada={membroNaoDono}
 						carregando={checkout.plano === p.id && checkout.carregando}
 						erro={checkout.plano === p.id ? checkout.erro : null}
@@ -701,6 +703,7 @@ function CardPlano({
 	plano,
 	periodo,
 	atual,
+	emTeste,
 	escritaBloqueada,
 	carregando,
 	erro,
@@ -712,6 +715,8 @@ function CardPlano({
 	periodo: PeriodoCobranca;
 	/** true/false quando sabemos; `null` quando a leitura falhou (não marcamos nada). */
 	atual: boolean | null;
+	/** O acesso a este plano é um TESTE: o cartão fica marcado, mas pagar continua possível. */
+	emTeste: boolean;
 	/** Membro não-dono: quem assina/troca de plano é o dono da empresa, não ele. */
 	escritaBloqueada?: boolean;
 	carregando: boolean;
@@ -721,7 +726,10 @@ function CardPlano({
 	pixDisponivel: boolean;
 	aoPagarComPix: () => void;
 }) {
-	const ehAtual = atual === true;
+	const estado = estadoDoCardPlano({ atual, emTeste });
+	// Só o plano PAGO trava o cartão; no teste ele fica marcado mas pode ser assinado (estadoCard.ts).
+	const ehAtual = estado === "travado_atual";
+	const ehTeste = estado === "teste_pode_assinar";
 	const preco = precoDoPlano(plano.id);
 	// Preço da tela derivado da FONTE — no Grátis não há período nem nota.
 	const { valor, sufixo, nota } = preco
@@ -739,14 +747,16 @@ function CardPlano({
 		<Card
 			className={cn(
 				"relative h-full gap-0 p-6",
-				ehAtual && "border-primary ring-1 ring-primary/30",
-				plano.destaque && !ehAtual && "border-primary/40",
+				(ehAtual || ehTeste) && "border-primary ring-1 ring-primary/30",
+				plano.destaque && !ehAtual && !ehTeste && "border-primary/40",
 			)}
 		>
 			<div className="flex items-center justify-between">
 				<h3 className="text-lg font-bold text-text-primary">{plano.nome}</h3>
 				{ehAtual ? (
 					<Badge variant="success">Seu plano atual</Badge>
+				) : ehTeste ? (
+					<Badge variant="success">Teste ativo</Badge>
 				) : plano.destaque ? (
 					<Badge variant="default">
 						<Sparkles className="size-3" aria-hidden /> Recomendado
