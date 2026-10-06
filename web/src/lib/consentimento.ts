@@ -24,6 +24,16 @@ const ID_BANNER = "olli-consentimento";
 
 export type Consentimento = "sim" | "nao" | null;
 
+/**
+ * Só `olliorcamentos.online` e subdomínios medem anúncio (Pixel, Google tag, CAPI). Qualquer
+ * outro host — `127.0.0.1`/`localhost` do desenvolvimento, `*.pages.dev` de preview, o `.workers.dev`
+ * — é ambiente de teste e não pode gerar evento no Pixel nem conversão no Google Ads reais.
+ */
+export function hostDeProducao(host: string): boolean {
+	const h = String(host ?? "").toLowerCase();
+	return h === "olliorcamentos.online" || h.endsWith(".olliorcamentos.online");
+}
+
 /** GPC / Do Not Track ligados = recusa já expressa pelo navegador. */
 export function sinalDeRecusaDoNavegador(
 	nav: { globalPrivacyControl?: boolean; doNotTrack?: string | null } | undefined = typeof navigator === "undefined"

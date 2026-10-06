@@ -21,7 +21,7 @@
  *    é descartado em vez de vazar o token para terceiros.
  */
 
-import { consentimentoAtual } from "./consentimento.ts";
+import { consentimentoAtual, hostDeProducao } from "./consentimento.ts";
 
 export const META_PIXEL_ID = "4793168394059665";
 const URL_FBEVENTS = "https://connect.facebook.net/en_US/fbevents.js";
@@ -93,6 +93,9 @@ function instalarFbq(w: JanelaComPixel): Fbq {
  */
 export function iniciarPixel(): boolean {
 	if (typeof window === "undefined" || typeof document === "undefined") return false;
+	// Só o site de produção mede anúncio: servidor de desenvolvimento (127.0.0.1), preview
+	// (*.pages.dev) e testes não podem sujar o Pixel real (7 dias: 1 PageView era de 127.0.0.1).
+	if (!hostDeProducao(window.location.hostname)) return false;
 	if (iniciado) return true;
 	if (!rastreamentoPermitido() || consentimentoAtual() !== "sim") return false;
 	try {

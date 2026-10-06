@@ -29,6 +29,7 @@ import {
 } from '../web/src/lib/metaPixel.ts';
 import {
   consentimentoAtual,
+  hostDeProducao,
   lerConsentimentoDeCookies,
   montarCookieConsentimento,
   sinalDeRecusaDoNavegador,
@@ -270,6 +271,21 @@ doc.cookie = 'olli_consent=nao';
 assert.equal(iniciarPixel(), false, 'recusa = não carrega');
 assert.equal(anexos.length, 0, 'nada de terceiro foi injetado sem aceite');
 doc.cookie = 'olli_consent=sim';
+// HOST: só produção mede anúncio. Na Meta, 7 dias de Pixel real tinham 1 PageView de 127.0.0.1
+// (servidor de desenvolvimento): mesmo COM aceite, dev/preview/teste não carregam nada de terceiro.
+for (const ok of ['olliorcamentos.online', 'app.olliorcamentos.online', 'LINK.OLLIORCAMENTOS.ONLINE']) {
+  assert.equal(hostDeProducao(ok), true, `${ok} é produção`);
+}
+for (const nao of ['127.0.0.1', 'localhost', 'olli-painel-web.pages.dev', 'olli-site.igoreluisa.workers.dev', 'olliorcamentos.online.evil.com', 'xolliorcamentos.online', '']) {
+  assert.equal(hostDeProducao(nao), false, `${nao || '(vazio)'} NÃO é produção`);
+}
+for (const host of ['127.0.0.1', 'localhost', 'olli-painel-web.pages.dev']) {
+  janela.location.hostname = host;
+  assert.equal(iniciarPixel(), false, `Pixel não carrega em ${host}, nem com aceite`);
+  assert.equal(iniciarGoogleTag(), false, `Google tag não carrega em ${host}, nem com aceite`);
+}
+assert.equal(anexos.length, 0, 'nada de terceiro foi injetado fora de produção');
+janela.location.hostname = 'app.olliorcamentos.online';
 assert.equal(iniciarPixel(), true);
 assert.equal(iniciarPixel(), true, 'idempotente');
 assert.equal(anexos.length, 1, 'injeta o fbevents.js uma única vez');
