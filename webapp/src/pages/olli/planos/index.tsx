@@ -52,6 +52,7 @@ import { DialogPix } from "./DialogPix";
 import { type PlanoPix, pixDisponivel } from "./pix";
 import { FRASE_GRATIS, nomeDoPlano, type PlanoBase, PLANOS_BASE, RECURSOS_GRATIS } from "./planos-base";
 import { estadoDoCardPlano } from "./estadoCard";
+import { notaCartao } from "./notaCartao";
 import {
 	DESCONTO_ANUAL_ROTULO,
 	type PeriodoCobranca,
@@ -829,6 +830,9 @@ function CardPlano({
 								Pagar com Pix
 							</Button>
 						)}
+
+						{/* Quais cartões o checkout aceita — dito ANTES do clique (ver notaCartao.ts). */}
+						<p className="mt-2 text-center text-xs text-text-secondary">{notaCartao(pixDisponivel)}</p>
 
 						{erro && (
 							<div
