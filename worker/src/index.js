@@ -59,6 +59,7 @@ import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
 import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
+import { cronPlayComBatimento } from './playBatimento.js';
 import { handleResendWebhook } from './resendWebhook.js';
 import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
@@ -900,7 +901,7 @@ const handler = {
     // PLAY_SA_JSON sai sem fazer nada. Ver worker/src/play.js.
     if (controller?.cron === CRON_PLAY) {
       const quando = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
-      ctx.waitUntil(tarefaPlayDoCron(env, { agora: quando }));
+      ctx.waitUntil(cronPlayComBatimento(env, quando, () => tarefaPlayDoCron(env, { agora: quando })));
       return;
     }
     // Dispatch da outbox (boas-vindas + lembretes): fail-closed pelo
