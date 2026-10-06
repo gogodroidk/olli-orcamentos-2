@@ -215,6 +215,79 @@ try {
     assert.equal(r.motivo, 'falhou');
     assert.equal(r.codigo, 'supabase_rpc_500');
   });
+  // ─── BATIMENTO: cada rodada real deixa ini/fim em webhook_events (origem 'lembretes_cron') ───
+  function falsoWebhookEvents({ quebrar = false } = {}) {
+    const original = globalThis.fetch;
+    const chamadas = [];
+    globalThis.fetch = async (url, init = {}) => {
+      if (quebrar) throw new Error('rede fora');
+      const metodo = init.method || 'GET';
+      const u = new URL(url);
+      if (u.pathname.endsWith('/rest/v1/webhook_events')) {
+        chamadas.push({ metodo, url: String(url), body: init.body ? JSON.parse(init.body) : null });
+        return new Response('', { status: metodo === 'POST' ? 201 : 204 });
+      }
+      return new Response('{}', { status: 200 });
+    };
+    return { chamadas, restaurar: () => { globalThis.fetch = original; } };
+  }
+  await caso('batimento: rodada real grava ini ANTES e fim DEPOIS, só com contagens e rótulos', async () => {
+    const w = falsoWebhookEvents();
+    try {
+      const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
+      const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'production:ativacao' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+      assert.equal(r.enfileirados, 1);
+      const posts = w.chamadas.filter((c) => c.metodo === 'POST').map((c) => c.body);
+      assert.deepEqual(posts.map((b) => b.event_id), ['ini|2026-09-29T15', 'fim|2026-09-29T15']);
+      assert.ok(posts.every((b) => b.origem === 'lembretes_cron'));
+      assert.deepEqual(posts[1].payload, {
+        modo: 'production', motivo: 'ok', codigo: null, candidatos: 2, enfileirados: 1,
+        decisoes: { ativacao: 1, tipo_desligado: 1 }, banco: { enfileirado: 1 },
+      });
+      const texto = JSON.stringify(w.chamadas);
+      assert.equal(texto.includes(U(1)), false);
+      assert.equal(/@/.test(texto), false);
+      assert.equal(w.chamadas.filter((c) => c.metodo === 'PATCH').length, 2);
+    } finally { w.restaurar(); }
+  });
+  await caso('batimento: modo off ou fora da hora cheia NÃO grava nada', async () => {
+    const w = falsoWebhookEvents();
+    try {
+      const f = fetchFalso({ candidatos: [contaNova(1)] });
+      await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'off' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+      await processarLembretesEmail(ENV, { fetchImpl: f.fetchImpl, now: () => new Date(AGORA.getTime() + 30 * 60e3) });
+      assert.equal(w.chamadas.length, 0);
+    } finally { w.restaurar(); }
+  });
+  await caso('batimento: motivo de saída antes da seleção (descadastro) também aparece no fim', async () => {
+    const w = falsoWebhookEvents();
+    try {
+      const f = fetchFalso({ candidatos: [] });
+      await processarLembretesEmail({ ...ENV, EMAIL_DESCADASTRO_URL: '' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+      const fim = w.chamadas.find((c) => c.metodo === 'POST' && c.body.event_id.startsWith('fim|'));
+      assert.equal(fim.body.payload.motivo, 'descadastro_nao_configurado');
+    } finally { w.restaurar(); }
+  });
+  await caso('batimento: erro do banco vira fim "falhou" com o código; falha de gravação não muda o resultado', async () => {
+    const w = falsoWebhookEvents();
+    try {
+      const fetchImpl = async () => new Response('{}', { status: 500 });
+      const r = await processarLembretesEmail(ENV, { fetchImpl, now: () => AGORA });
+      assert.equal(r.motivo, 'falhou');
+      const fim = w.chamadas.find((c) => c.metodo === 'POST' && c.body.event_id.startsWith('fim|'));
+      assert.equal(fim.body.payload.motivo, 'falhou');
+      assert.equal(fim.body.payload.codigo, 'supabase_rpc_500');
+      const patchFim = w.chamadas.find((c) => c.metodo === 'PATCH' && c.url.includes('fim'));
+      assert.ok(patchFim);
+    } finally { w.restaurar(); }
+    const quebrado = falsoWebhookEvents({ quebrar: true });
+    try {
+      const f = fetchFalso({ candidatos: [candidato(1)] });
+      const r = await processarLembretesEmail(ENV, { fetchImpl: f.fetchImpl, now: () => AGORA });
+      assert.equal(r.motivo, 'ok');
+      assert.equal(r.enfileirados, 1);
+    } finally { quebrado.restaurar(); }
+  });
   await caso('log da rodada não tem id de conta nem e-mail', async () => {
     const texto = logs.join('\n');
     assert.ok(texto.includes('email_lembretes_rodada'));

@@ -19,6 +19,7 @@
 import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 import { chamarRpcServico } from './emailRpc.js';
 import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js';
+import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
@@ -46,7 +47,7 @@ function descadastroUrlValida(valor) {
   }
 }
 
-export async function processarLembretesEmail(env, dependencias = {}) {
+async function executarRodada(env, dependencias = {}) {
   // "production" = todos os tipos; "production:ativacao,..." = só os listados; qualquer outra coisa = off.
   const [baseModo, ...restoModo] = texto(env?.EMAIL_LEMBRETES_MODE, 80).toLowerCase().split(':');
   const modo = baseModo === 'production' ? 'production' : 'off';
@@ -120,4 +121,66 @@ export async function processarLembretesEmail(env, dependencias = {}) {
     console.error(JSON.stringify({ event: 'email_lembretes_rodada_falhou', code: codigo }));
     return resumo({ mode: modo, motivo: 'falhou', codigo, candidatos: 0, enfileirados: 0 });
   }
+}
+
+export const ORIGEM_BATIMENTO_LEMBRETES = 'lembretes_cron';
+const ROTULO = /^[a-z0-9_:.-]{1,60}$/i;
+
+/** Só números e rótulos curtos (nada de id de conta, e-mail ou nome): o que vai para a linha de batimento. */
+export function resumoSeguroRodada(r) {
+  const n = (v) => (Number.isFinite(v) ? v : null);
+  const rotulo = (v) => (typeof v === 'string' && ROTULO.test(v) ? v : null);
+  const contagens = (o) => {
+    const saida = {};
+    if (o && typeof o === 'object') {
+      for (const [k, v] of Object.entries(o).slice(0, 30)) if (ROTULO.test(k) && Number.isFinite(v)) saida[k] = v;
+    }
+    return saida;
+  };
+  return {
+    modo: rotulo(r?.mode),
+    motivo: rotulo(r?.motivo),
+    codigo: rotulo(r?.codigo),
+    candidatos: n(r?.candidatos),
+    enfileirados: n(r?.enfileirados),
+    decisoes: contagens(r?.decisoes),
+    banco: contagens(r?.banco),
+  };
+}
+
+/**
+ * BATIMENTO da seleção de lembretes (07/10/2026): em 06/10 a rodada das 21:00 UTC não enfileirou
+ * nada e não havia como saber por quê sem acesso aos logs do Cloudflare. Agora toda rodada REAL (hora
+ * cheia, 8h–20h, modo ligado) deixa duas linhas em `webhook_events` (origem 'lembretes_cron'),
+ * consultáveis por SQL: `ini|<hora>` ANTES de trabalhar e `fim|<hora>` DEPOIS, com contagens e o
+ * motivo (ok, falhou, descadastro_nao_configurado...). Ini sem fim = a invocação morreu no meio.
+ * Fora da hora cheia ou com o modo off não grava nada (nada de 1.440 linhas por dia). Melhor esforço:
+ * falha de gravação não derruba nem atrasa a seleção.
+ */
+export async function processarLembretesEmail(env, dependencias = {}) {
+  const modoLigado = texto(env?.EMAIL_LEMBRETES_MODE, 80).toLowerCase().split(':')[0] === 'production';
+  const agora = (dependencias.now || (() => new Date()))();
+  const ehRodada = modoLigado && rodadaDeSelecao(agora);
+  const hora = ehRodada ? agora.toISOString().slice(0, 13) : '';
+  if (ehRodada) {
+    try {
+      await reivindicarEvento(env, { origem: ORIGEM_BATIMENTO_LEMBRETES, eventId: `ini|${hora}`, tipo: 'cron', payload: null });
+    } catch {
+      /* melhor esforço */
+    }
+  }
+  const resultado = await executarRodada(env, dependencias);
+  if (ehRodada) {
+    try {
+      const resumo = resumoSeguroRodada(resultado);
+      const eventId = `fim|${hora}`;
+      await reivindicarEvento(env, { origem: ORIGEM_BATIMENTO_LEMBRETES, eventId, tipo: 'cron', payload: resumo });
+      const falhou = resumo.motivo === 'falhou';
+      await marcarEvento(env, { origem: ORIGEM_BATIMENTO_LEMBRETES, eventId, status: falhou ? 'falhou' : 'processado', erro: falhou ? resumo.codigo || 'falhou' : undefined });
+      await marcarEvento(env, { origem: ORIGEM_BATIMENTO_LEMBRETES, eventId: `ini|${hora}`, status: 'processado' });
+    } catch {
+      /* melhor esforço */
+    }
+  }
+  return resultado;
 }
