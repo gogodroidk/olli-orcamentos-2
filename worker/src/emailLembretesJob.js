@@ -3,9 +3,9 @@
  * mesma outbox das boas-vindas (quem envia é o consumer, no minuto seguinte).
  *
  * Portões, todos fail-closed:
- *   1. EMAIL_LEMBRETES_MODE = "production" (staging e qualquer outro valor = off);
- *      EMAIL_LEMBRETES_TIPOS (opcional) limita QUAIS tipos saem: ativacao, assinatura,
- *      reengajamento (vazio = todos; valor sem tipo conhecido = nenhum);
+ *   1. EMAIL_LEMBRETES_MODE = "production" (staging e qualquer outro valor = off); o sufixo
+ *      opcional limita QUAIS tipos saem: "production:ativacao,assinatura" (tipos: ativacao,
+ *      assinatura, reengajamento; sufixo sem tipo conhecido = nenhum);
  *   2. WELCOME_DISPATCH_MODE = "production" — sem dispatch real, não acumula fila;
  *   3. hora cheia entre 8h e 20h de Brasília (uma rodada por hora);
  *   4. link de descadastro configurado (URL + chave) — lembrete sem "parar de
@@ -47,7 +47,10 @@ function descadastroUrlValida(valor) {
 }
 
 export async function processarLembretesEmail(env, dependencias = {}) {
-  const modo = texto(env?.EMAIL_LEMBRETES_MODE, 20).toLowerCase() === 'production' ? 'production' : 'off';
+  // "production" = todos os tipos; "production:ativacao,..." = só os listados; qualquer outra coisa = off.
+  const [baseModo, ...restoModo] = texto(env?.EMAIL_LEMBRETES_MODE, 80).toLowerCase().split(':');
+  const modo = baseModo === 'production' ? 'production' : 'off';
+  const tiposPermitidos = lerTiposPermitidos(restoModo.length > 0 ? restoModo.join(':') : undefined);
   if (modo === 'off') return resumo({ mode: 'off', motivo: 'desligado', candidatos: 0, enfileirados: 0 });
   if (texto(env?.WELCOME_DISPATCH_MODE, 20).toLowerCase() !== 'production') {
     return resumo({ mode: modo, motivo: 'dispatch_nao_production', candidatos: 0, enfileirados: 0 });
@@ -87,7 +90,7 @@ export async function processarLembretesEmail(env, dependencias = {}) {
       precoProMensal: reais(PRECO_PRO.mensalCentavos),
       ativacaoMaxDias,
       tetoRodada,
-      tiposPermitidos: lerTiposPermitidos(env?.EMAIL_LEMBRETES_TIPOS),
+      tiposPermitidos,
     });
 
     const banco = {};
