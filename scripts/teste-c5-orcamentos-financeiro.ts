@@ -153,7 +153,10 @@ assert.match(telaDetalhe, /link\?\.status !== 'aprovado' \|\| \(comPix && saldo 
 const clienteLinkSrc = ler('../src/services/clienteLink.ts');
 // (o reenvio atualiza SÓ o snapshot, sem status: o status é a resposta do cliente).
 assert.match(clienteLinkSrc, /\.update\(conteudo\)\s*\.eq\('token', reusado\)/, 'reenvio atualiza só o snapshot do link existente');
-assert.doesNotMatch(clienteLinkSrc.slice(clienteLinkSrc.indexOf('const conteudo = {'), clienteLinkSrc.indexOf('const baseRow')), /status:/, 'o snapshot republicado não leva status (preserva o aprovado do link)');
+// O conteúdo agora nasce em `conteudoDoLink` (clienteLinkSnapshot.ts, compartilhado com o painel).
+const snapshotLinkSrc = ler('../src/services/clienteLinkSnapshot.ts');
+assert.match(clienteLinkSrc, /const conteudo = conteudoDoLink\(orc, empresa, cobranca\);\s*const baseRow/, 'o app monta o conteúdo do link por conteudoDoLink');
+assert.doesNotMatch(snapshotLinkSrc.slice(snapshotLinkSrc.indexOf('export function conteudoDoLink')), /status:/, 'o snapshot republicado não leva status (preserva o aprovado do link)');
 // Lista: "Criar revisão" do card (recusado/expirado/cancelado) cria a revisão de fato.
 assert.match(telaMobile, /label: 'Criar revisão', cor: cores\.primary, onPress: \(\) => onRevisar\(o\)/, 'Criar revisão do card não pode abrir o original no editor');
 assert.match(telaDetalhe, /montarMensagemCobrancaLink/, 'o detalhe usa a mensagem com link');

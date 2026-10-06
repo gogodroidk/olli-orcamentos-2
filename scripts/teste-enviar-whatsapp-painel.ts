@@ -66,6 +66,7 @@ function falso(opts: { user?: any; existente?: string | null; erroLeitura?: bool
         if (colisoes > 0) { colisoes--; return Promise.resolve({ error: { code: '23505' } }); }
         return Promise.resolve({ error: opts.erroInsert ?? null });
       },
+      // biome-ignore lint/suspicious/noThenProperty: o query builder do supabase-js é um thenable (`await builder`); o falso precisa ser igual.
       then(res: any, rej: any) {
         if (tabela === 'recibos') { ops.push(op); return Promise.resolve(opts.recibos ?? { data: [], error: null }).then(res, rej); }
         if (op.op === 'update' || op.op === 'select') ops.push(op);
