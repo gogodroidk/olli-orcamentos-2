@@ -24,6 +24,12 @@ import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailL
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
 const LIMITE_CANDIDATOS = 50;
+/**
+ * Teto de leitura da lista de candidatos. O padrão do cliente RPC (32 KB) estourou em 06/10/2026
+ * (40 contas = 34 KB → `resposta_grande`, régua parada em silêncio). Cada candidato pesa até ~1,1 KB,
+ * então 50 cabem em ~55 KB; 128 KB dá folga sem abrir a porta para resposta sem limite.
+ */
+const LIMITE_BYTES_CANDIDATOS = 128 * 1024;
 
 function texto(valor, limite) {
   return typeof valor === 'string' ? valor.trim().slice(0, limite) : '';
@@ -82,7 +88,7 @@ async function executarRodada(env, dependencias = {}) {
       p_now: agoraIso,
       p_ativacao_max_dias: ativacaoMaxDias,
       p_limit: LIMITE_CANDIDATOS,
-    });
+    }, { limiteBytes: LIMITE_BYTES_CANDIDATOS });
     if (!Array.isArray(linhas)) throw Object.assign(new Error('candidatos_resposta_invalida'), { codigo: 'candidatos_resposta_invalida' });
     const candidatos = linhas.map((linha) => (linha && typeof linha === 'object' ? linha.candidato : null));
 
