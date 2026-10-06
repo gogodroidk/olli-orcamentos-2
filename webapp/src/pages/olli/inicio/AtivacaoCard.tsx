@@ -13,6 +13,7 @@ import {
 	verticalDoExemplo,
 } from "@ativacao";
 import { VERTICAIS, VERTICAL_GERAL, type VerticalId } from "@verticais";
+import { lembrarOficioEscolhido } from "@/olli/oficioEscolhido";
 import { CheckCircle2, ChevronRight, Circle, FileText, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
@@ -96,6 +97,8 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 	const abrirExemplo = (v: VerticalId) => {
 		const ex = exemploOrcamentoPara(v);
 		if (!ex) return;
+		// Sugestão para o "Meu negócio" (a escolha vale para o exemplo; o cadastro só a usa pré-preenchida).
+		lembrarOficioEscolhido(v);
 		// Pelo ESTADO da rota, como os outros atalhos de "novo orçamento" (ver
 		// `orcamentos/index.tsx`): o editor abre sozinho com os itens do exemplo.
 		navigate("/orcamentos?novo=1", { state: { prefillItems: itensPrefillDoExemplo(ex), exemploVertical: v } });

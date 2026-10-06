@@ -54,6 +54,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useBlocker, useLocation, useNavigate } from "react-router";
 import { VERTICAL_PARA_SEGMENTO } from "@vertical-segmento";
 import { ferramentasSugeridas, VERTICAIS, VERTICAL_GERAL, type VerticalId } from "@verticais";
+import { oficioEscolhidoLembrado, semearComOficio } from "@/olli/oficioEscolhido";
 import { supabase } from "@/lib/supabase";
 import { applyBrandColor } from "@/olli/branding";
 import { Campo, CampoMascarado, cnpjValido, cpfValido } from "@/olli/components/campos";
@@ -79,11 +80,7 @@ import {
 import { normalizarChavePix } from "../../../../../src/utils/pixBrCode";
 import { arquivoParaLogoDataUri, LOGO_TIPOS_ACEITOS } from "./logoUpload";
 import { registrarEtapaAtivacao } from "@/store/userStore";
-import {
-	consultarCnpjWeb,
-	sugerirMarcaWeb,
-	type SugestaoMarcaWeb,
-} from "./assistentes";
+import { consultarCnpjWeb, sugerirMarcaWeb, type SugestaoMarcaWeb } from "./assistentes";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -95,20 +92,22 @@ interface LinhaEmpresa {
 }
 
 /** Erros de validação, por campo. */
-type Erros = Partial<Record<
-	| "tipoNegocio"
-	| "nome"
-	| "nomePrestador"
-	| "telefone"
-	| "especialidade"
-	| "verticais"
-	| "cidade"
-	| "estado"
-	| "cnpj"
-	| "cpf"
-	| "email",
-	string
->>;
+type Erros = Partial<
+	Record<
+		| "tipoNegocio"
+		| "nome"
+		| "nomePrestador"
+		| "telefone"
+		| "especialidade"
+		| "verticais"
+		| "cidade"
+		| "estado"
+		| "cnpj"
+		| "cpf"
+		| "email",
+		string
+	>
+>;
 
 function validar(f: Empresa): Erros {
 	const e: Erros = {};
@@ -201,13 +200,20 @@ export default function MeuNegocio() {
 			// Nunca sobrescreve o que o usuário está digitando: se já há rascunho, mantém.
 			if (atual) return atual;
 			const base = { ...empresaEmBranco(), ...(linha?.dados ?? {}) };
-			return {
-				...base,
-				nomePrestador: base.nomePrestador || usuario.name || "",
-				telefone: base.telefone || telefoneNacional(usuario.phone),
-				whatsapp: base.whatsapp || telefoneNacional(usuario.phone),
-				email: base.email || usuario.email || "",
-			};
+			// Ofício escolhido no cartão do Início = sugestão (só preenche o que está vazio; salvar é com a pessoa).
+			const idOficio = oficioEscolhidoLembrado();
+			const vert = idOficio ? VERTICAIS.find((v) => v.id === idOficio) : undefined;
+			const sugestao = idOficio ? { id: idOficio, especialidade: vert ? vert.label : null } : null;
+			return semearComOficio(
+				{
+					...base,
+					nomePrestador: base.nomePrestador || usuario.name || "",
+					telefone: base.telefone || telefoneNacional(usuario.phone),
+					whatsapp: base.whatsapp || telefoneNacional(usuario.phone),
+					email: base.email || usuario.email || "",
+				},
+				sugestao,
+			);
 		});
 		setSemeadoEm((s) => s ?? carregadoEm ?? "novo");
 	}, [empresaQ.isLoading, empresaQ.isError, linha, carregadoEm, usuario.email, usuario.name, usuario.phone]);
@@ -440,15 +446,19 @@ export default function MeuNegocio() {
 				const e = resultado.empresa;
 				const nome = e.nomeFantasia || e.razaoSocial;
 				const endereco = [e.logradouro, e.bairro].filter(Boolean).join(", ");
-				setForm((atual) => atual ? {
-					...atual,
-					tipoNegocio: "empresa",
-					nome: atual.nome.trim() || nome,
-					especialidade: atual.especialidade.trim() || e.cnaePrincipal.descricao,
-					endereco: atual.endereco.trim() || endereco,
-					cidade: atual.cidade.trim() || e.municipio,
-					estado: atual.estado.trim() || e.uf,
-				} : atual);
+				setForm((atual) =>
+					atual
+						? {
+								...atual,
+								tipoNegocio: "empresa",
+								nome: atual.nome.trim() || nome,
+								especialidade: atual.especialidade.trim() || e.cnaePrincipal.descricao,
+								endereco: atual.endereco.trim() || endereco,
+								cidade: atual.cidade.trim() || e.municipio,
+								estado: atual.estado.trim() || e.uf,
+							}
+						: atual,
+				);
 				setCnpjInfo(`Achei ${nome}. Completei somente os campos vazios — confira antes de salvar.`);
 			} else if (resultado.estado === "nao_encontrado") {
 				setCnpjInfo("Não achei esse CNPJ. Confira o número ou preencha manualmente.");
@@ -490,11 +500,15 @@ export default function MeuNegocio() {
 
 	function aplicarMarca() {
 		if (!sugestaoMarca) return;
-		setForm((atual) => atual ? {
-			...atual,
-			especialidade: sugestaoMarca.especialidade,
-			slogan: sugestaoMarca.slogan,
-		} : atual);
+		setForm((atual) =>
+			atual
+				? {
+						...atual,
+						especialidade: sugestaoMarca.especialidade,
+						slogan: sugestaoMarca.slogan,
+					}
+				: atual,
+		);
 		setAssistenteAberto(false);
 	}
 
@@ -640,10 +654,18 @@ export default function MeuNegocio() {
 								A escolha define quais dados fiscais são necessários; você pode alterar depois.
 							</p>
 							<div className="flex flex-wrap gap-2">
-								<Chip ativo={form.tipoNegocio === "autonomo"} disabled={bloqueado} onClick={() => set("tipoNegocio", "autonomo")}>
+								<Chip
+									ativo={form.tipoNegocio === "autonomo"}
+									disabled={bloqueado}
+									onClick={() => set("tipoNegocio", "autonomo")}
+								>
 									Autônomo / pessoa física
 								</Chip>
-								<Chip ativo={form.tipoNegocio === "empresa"} disabled={bloqueado} onClick={() => set("tipoNegocio", "empresa")}>
+								<Chip
+									ativo={form.tipoNegocio === "empresa"}
+									disabled={bloqueado}
+									onClick={() => set("tipoNegocio", "empresa")}
+								>
 									Empresa com CNPJ
 								</Chip>
 							</div>
@@ -690,7 +712,11 @@ export default function MeuNegocio() {
 								type="button"
 								variant="outline"
 								disabled={bloqueado}
-								onClick={() => { setAssistenteAberto((v) => !v); setErroMarca(null); setSugestaoMarca(null); }}
+								onClick={() => {
+									setAssistenteAberto((v) => !v);
+									setErroMarca(null);
+									setSugestaoMarca(null);
+								}}
 							>
 								<Sparkles className="size-4" />
 								{assistenteAberto ? "Fechar" : "Criar com IA"}
@@ -707,7 +733,11 @@ export default function MeuNegocio() {
 										disabled={bloqueado || gerandoMarca}
 										value={pedidoMarca}
 										maxLength={700}
-										onChange={(e) => { setPedidoMarca(e.target.value); setErroMarca(null); setSugestaoMarca(null); }}
+										onChange={(e) => {
+											setPedidoMarca(e.target.value);
+											setErroMarca(null);
+											setSugestaoMarca(null);
+										}}
 										placeholder="Ex.: Quero transmitir confiança e rapidez para famílias e pequenos comércios, sem parecer uma empresa cara."
 									/>
 								</Campo>
@@ -732,7 +762,9 @@ export default function MeuNegocio() {
 											<p className="text-xs font-semibold uppercase tracking-wide text-text-tertiary">Slogan</p>
 											<p className="mt-1 font-medium text-text-primary">{sugestaoMarca.slogan}</p>
 										</div>
-										{sugestaoMarca.explicacao && <p className="text-sm text-text-secondary">{sugestaoMarca.explicacao}</p>}
+										{sugestaoMarca.explicacao && (
+											<p className="text-sm text-text-secondary">{sugestaoMarca.explicacao}</p>
+										)}
 										<Button type="button" onClick={aplicarMarca}>
 											<Check className="size-4" />
 											Usar estas sugestões
@@ -792,7 +824,9 @@ export default function MeuNegocio() {
 								rotulo="CNPJ"
 								obrigatorio={form.tipoNegocio === "empresa"}
 								erro={erros.cnpj}
-								dica={form.tipoNegocio === "empresa" ? "Necessário para a empresa declarada." : "Opcional para autônomos."}
+								dica={
+									form.tipoNegocio === "empresa" ? "Necessário para a empresa declarada." : "Opcional para autônomos."
+								}
 							>
 								<CampoMascarado tipo="cnpj" disabled={bloqueado} valor={form.cnpj} aoMudar={(v) => set("cnpj", v)} />
 								<Button
@@ -825,7 +859,12 @@ export default function MeuNegocio() {
 						</Campo>
 
 						<Campo rotulo="Cidade" obrigatorio erro={erros.cidade}>
-							<Input data-erro={erros.cidade ? "1" : undefined} disabled={bloqueado} value={form.cidade} onChange={(e) => set("cidade", e.target.value)} />
+							<Input
+								data-erro={erros.cidade ? "1" : undefined}
+								disabled={bloqueado}
+								value={form.cidade}
+								onChange={(e) => set("cidade", e.target.value)}
+							/>
 						</Campo>
 
 						<Campo rotulo="UF" obrigatorio erro={erros.estado}>
@@ -966,7 +1005,12 @@ export default function MeuNegocio() {
 				<Bloco titulo="Contato" descricao="Como o cliente encontra e fala com a sua empresa.">
 					<div className="grid gap-4 sm:grid-cols-2">
 						<div data-erro={erros.telefone ? "1" : undefined}>
-							<Campo rotulo="Telefone" obrigatorio erro={erros.telefone} dica="Usado para contato operacional; marketing exige consentimento separado.">
+							<Campo
+								rotulo="Telefone"
+								obrigatorio
+								erro={erros.telefone}
+								dica="Usado para contato operacional; marketing exige consentimento separado."
+							>
 								<CampoMascarado
 									tipo="telefone"
 									disabled={bloqueado}
