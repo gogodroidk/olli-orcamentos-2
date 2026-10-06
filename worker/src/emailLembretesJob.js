@@ -4,6 +4,8 @@
  *
  * Portões, todos fail-closed:
  *   1. EMAIL_LEMBRETES_MODE = "production" (staging e qualquer outro valor = off);
+ *      EMAIL_LEMBRETES_TIPOS (opcional) limita QUAIS tipos saem: ativacao, assinatura,
+ *      reengajamento (vazio = todos; valor sem tipo conhecido = nenhum);
  *   2. WELCOME_DISPATCH_MODE = "production" — sem dispatch real, não acumula fila;
  *   3. hora cheia entre 8h e 20h de Brasília (uma rodada por hora);
  *   4. link de descadastro configurado (URL + chave) — lembrete sem "parar de
@@ -17,7 +19,7 @@
 import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 import { chamarRpcServico } from './emailRpc.js';
 import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js';
-import { rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
+import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
 const LIMITE_CANDIDATOS = 50;
@@ -85,6 +87,7 @@ export async function processarLembretesEmail(env, dependencias = {}) {
       precoProMensal: reais(PRECO_PRO.mensalCentavos),
       ativacaoMaxDias,
       tetoRodada,
+      tiposPermitidos: lerTiposPermitidos(env?.EMAIL_LEMBRETES_TIPOS),
     });
 
     const banco = {};
