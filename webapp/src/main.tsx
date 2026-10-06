@@ -16,6 +16,10 @@ import ErrorBoundary from "./routes/components/error-boundary";
 import { routesSection } from "./routes/sections";
 import { urlJoin } from "./utils";
 
+declare const __OLLI_BUILD__: string;
+// Para suporte: `window.__OLLI_BUILD__` no console diz qual publicação o cliente está vendo.
+(window as unknown as { __OLLI_BUILD__?: string }).__OLLI_BUILD__ = __OLLI_BUILD__;
+
 /**
  * Sentry — crash reporting do painel.
  *
