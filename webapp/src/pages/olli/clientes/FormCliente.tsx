@@ -133,9 +133,11 @@ interface Props {
 	aoFechar: () => void;
 	/** Abrir o cliente duplicado que o aviso apontou (o pai troca o alvo do formulário). */
 	aoAbrirExistente?: (linha: LinhaCliente) => void;
+	/** Chamado com o cliente gravado, antes de fechar (o seletor de cliente do orçamento usa para já selecioná-lo). */
+	aoSalvar?: (cliente: Cliente) => void;
 }
 
-export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Props) {
+export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSalvar }: Props) {
 	const idBase = useId();
 	const formId = `form-cliente-${idBase}`;
 
@@ -287,6 +289,7 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente }: Pro
 		try {
 			await salvar.mutateAsync(c);
 			if (!cliente) void registrarEtapaAtivacao("client_create");
+			aoSalvar?.(c);
 			aoFechar();
 		} catch {
 			// O erro fica visível no rodapé do diálogo (`salvar.error`), não some num toast.
