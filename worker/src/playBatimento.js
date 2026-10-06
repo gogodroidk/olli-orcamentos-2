@@ -55,6 +55,9 @@ export async function cronPlayComBatimento(env, quando, executar) {
       status: falhou ? 'falhou' : 'processado',
       erro: falhou ? resumo.motivo || resumo.estado : undefined,
     });
+    // A linha `ini` também sai de "recebido" quando o trabalho TERMINOU: "recebido" fica só para quem
+    // morreu no meio (ini sem fim), que é exatamente o que o índice (status, recebido_em) precisa achar.
+    await marcarEvento(env, { origem: ORIGEM_BATIMENTO, eventId: chaveDoBatimento('ini', quando), status: 'processado' });
   } catch {
     /* melhor esforço */
   }

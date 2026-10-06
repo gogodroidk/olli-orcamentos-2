@@ -1421,6 +1421,18 @@ async function carregarTimestampsRemotos(table: SyncTable, remoteCol: string): P
 }
 
 /**
+ * Mesma leitura, mas AVISA quando a nuvem não respondeu. Antes o `null` era silencioso: a tabela parava
+ * de sincronizar na sessão e ninguém sabia por quê. Só o nome da tabela vai ao log (nada de dado).
+ */
+async function timestampsRemotosOuAviso(table: SyncTable, remoteCol: string): Promise<Map<string, string> | null> {
+  const mapa = await carregarTimestampsRemotos(table, remoteCol);
+  if (mapa === null) {
+    console.warn(`[sync] não consegui ler os timestamps de ${table} na nuvem — a tabela fica para o próximo ciclo (nada é enviado às cegas).`);
+  }
+  return mapa;
+}
+
+/**
  * Consulta o mapa de timestamps remotos: true se a NUVEM for mais nova que o local
  * (→ push PULADO, preserva a versão remota). Lookup local, sem round-trip.
  * Mapa `null` (não deu para ler a nuvem) → true: não sabemos quem é mais novo,
@@ -2580,14 +2592,14 @@ export async function pushAllLocal(geracao?: number): Promise<void> {
     } catch {}
 
     // Timestamps remotos em LOTE (1 query por tabela) para o guard anti-regressão.
-    const tsOrcamentos = await carregarTimestampsRemotos('orcamentos', 'atualizado_em');
-    const tsAgendamentos = await carregarTimestampsRemotos('agendamentos', 'atualizado_em');
-    const tsOrdens = await carregarTimestampsRemotos('ordens_servico', 'atualizado_em');
-    const tsEquip = await carregarTimestampsRemotos('equipamentos', 'atualizado_em');
+    const tsOrcamentos = await timestampsRemotosOuAviso('orcamentos', 'atualizado_em');
+    const tsAgendamentos = await timestampsRemotosOuAviso('agendamentos', 'atualizado_em');
+    const tsOrdens = await timestampsRemotosOuAviso('ordens_servico', 'atualizado_em');
+    const tsEquip = await timestampsRemotosOuAviso('equipamentos', 'atualizado_em');
     // Desde o schema v3 estas seis também têm relógio, então ganham o MESMO guard.
     // Sem ele, uma cópia local ativa e velha (aparelho que ainda não puxou o
     // "excluir"/"restaurar" feito em outro) sobrescreveria a versão mais nova da nuvem.
-    const tsClientes = await carregarTimestampsRemotos('clientes', 'atualizado_em');
+    const tsClientes = await timestampsRemotosOuAviso('clientes', 'atualizado_em');
     const tsServicos = await carregarTimestampsRemotos('servicos', 'atualizado_em');
     const tsProdutos = await carregarTimestampsRemotos('produtos', 'atualizado_em');
     const tsRecibos = await carregarTimestampsRemotos('recibos', 'atualizado_em');

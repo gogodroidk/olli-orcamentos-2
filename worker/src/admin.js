@@ -43,7 +43,7 @@ import { apagarArquivosDoUsuario, cancelarAssinaturaStripe, excluirFeedbackDoUsu
 import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
-import { contextoContasInternas, origemExibida, resumirReceita } from './assinaturasPagantes.js';
+import { contextoContasInternas, origemParaLista, resumirReceita } from './assinaturasPagantes.js';
 import {
   ADMIN_DATA_POLICY_VERSION,
   camposAdmin,
@@ -428,7 +428,10 @@ async function users(env) {
     admins: admins.ok ? admins.dados : [],
   });
   const emailPorId = new Map(auth.map((u) => [u.id, u.email]));
-  for (const a of assinaturas) plano.set(a.user_id, origemExibida(a, emailPorId.get(a.user_id), contexto));
+  // Fail-closed (mesmo critério do bloco de receita): sem as DUAS listas internas, plano pago vira
+  // 'indeterminada' em vez de 'pagamento' — nunca infla Pagantes nem "Pagos sem uso 14d".
+  const leituraInternaOk = exclusoes.ok && admins.ok;
+  for (const a of assinaturas) plano.set(a.user_id, origemParaLista(a, emailPorId.get(a.user_id), contexto, leituraInternaOk));
   const apr = new Map();
   for (const o of orcs) {
     cnt.set(o.user_id, (cnt.get(o.user_id) || 0) + 1);
@@ -460,7 +463,7 @@ async function users(env) {
     ...resumirAtividade(u, porUsuario.get(u.id)),
   }));
   lista.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
-  return json({ ok: true, users: lista });
+  return json({ ok: true, users: lista, contasInternasLegiveis: leituraInternaOk });
 }
 
 async function userDetail(env, id, actor) {

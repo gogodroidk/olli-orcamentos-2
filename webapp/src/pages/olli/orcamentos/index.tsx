@@ -470,7 +470,14 @@ export default function OrcamentosPage() {
 
 	// O EMPURRÃO: rascunho completo parado há 1 h+ (regra em `orcamentosParados.ts`).
 	const [dispensados, setDispensados] = useState<Record<string, number>>(() => lerDispensados());
-	const paradas = useMemo(() => prontosParados(data ?? [], Date.now(), dispensados), [data, dispensados]);
+	// O relógio anda: sem este tick, um rascunho que completa 60 min com a aba aberta só virava faixa
+	// no próximo refetch. A cada minuto reavalia (barato: filtra uma lista já em memória).
+	const [agoraMs, setAgoraMs] = useState(() => Date.now());
+	useEffect(() => {
+		const id = setInterval(() => setAgoraMs(Date.now()), 60_000);
+		return () => clearInterval(id);
+	}, []);
+	const paradas = useMemo(() => prontosParados(data ?? [], agoraMs, dispensados), [data, agoraMs, dispensados]);
 
 	/**
 	 * VER O PDF — a ação PRINCIPAL da linha, e o pedido literal do dono: "clicar e ver

@@ -101,6 +101,19 @@ export function origemExibida(row, email, contexto, agoraMs = Date.now()) {
 }
 
 /**
+ * Origem exibida na LISTA de contas quando a leitura da lista de contas internas pode ter falhado.
+ * `leituraInternaOk = false` (funil_exclusoes ou admin_memberships ilegíveis): plano pago NÃO pode virar
+ * "pagamento" — sem a lista não dá para saber se é conta interna, e rotular como paga inflaria "Pagantes"
+ * e "Pagos sem uso 14d". Vira 'indeterminada' (o plano/acesso segue o entitlement). Mesmo critério
+ * fail-closed do bloco de receita em metrics().
+ */
+export function origemParaLista(row, email, contexto, leituraInternaOk, agoraMs = Date.now()) {
+  if (leituraInternaOk) return origemExibida(row, email, contexto, agoraMs);
+  const ent = derivarEntitlement(row, agoraMs);
+  return { plano: ent.plano, origem: ent.plano === 'gratis' ? ent.origem : 'indeterminada' };
+}
+
+/**
  * Bloco "receita" da visão geral (admin.js, metrics). Pura, para teste.
  *   pagantes / porPlano / mrrEstimado — só quem paga e não é conta interna;
  *   manuais  — plano com acesso que não paga (cortesia, demo, override, interna);

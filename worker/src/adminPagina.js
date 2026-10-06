@@ -745,7 +745,7 @@ function renderGeral(){
 }
 
 /* ── USUÁRIOS ── */
-function pillPlano(u){const pago=u.planoOrigem==='pagamento',man=u.planoOrigem==='admin';return el('span',{className:'pill '+(pago?'ok':man?'info':'')},u.plano==='gratis'?'Grátis':(u.plano==='pro'?'Pro':'Empresa')+(man?' · liberado':''));}
+function pillPlano(u){const pago=u.planoOrigem==='pagamento',man=u.planoOrigem==='admin',ind=u.planoOrigem==='indeterminada';return el('span',{className:'pill '+(pago?'ok':man?'info':'')},u.plano==='gratis'?'Grátis':(u.plano==='pro'?'Pro':'Empresa')+(man?' · liberado':ind?' · não confirmado':''));}
 function pillUso(u){const f=u.frequencia||'nunca';const m={frequente:['ok','Frequente'],ativo:['info','Ativo'],inativo:['warn','Inativo'],nunca:['','Nunca usou']}[f]||['',f];return el('span',{className:'pill '+m[0]},m[1]);}
 function pillSituacao(u){if(u.bloqueado)return el('span',{className:'pill dng'},u.bloqueadoAte&&Date.parse(u.bloqueadoAte)-Date.now()<366*DIA?'Bloqueado até '+fmtDate(u.bloqueadoAte):'Bloqueado');if(!u.emailConfirmado)return el('span',{className:'pill warn'},'E-mail não confirmado');return el('span',{className:'pill ok'},'Ativa');}
 function celConta(u){return el('div',{className:'conta'},el('div',{className:'av'},initials(u.nome||u.email)),el('div',{},el('b',{},u.email||'—'),el('span',{},u.nome||'sem nome')));}
