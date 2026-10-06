@@ -183,6 +183,20 @@ try {
     const r2 = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'staging:ativacao' }, { fetchImpl: g.fetchImpl, now: () => AGORA });
     assert.equal(r2.mode, 'off');
   });
+  await caso('lista de candidatos acima de 32 KB (o que parou a régua em 06/10) é lida inteira', async () => {
+    const cheios = Array.from({ length: 50 }, (_, i) => {
+      const c = contaNova(i + 1);
+      c.candidato.historico = { ativacao: [], cobranca: [], reengajamento: [] };
+      c.candidato.preenchimento = 'x'.repeat(900); // ~1 KB por candidato, como em produção
+      return c;
+    });
+    const f = fetchFalso({ candidatos: cheios });
+    const tamanho = JSON.stringify(cheios).length;
+    assert.ok(tamanho > 32 * 1024 && tamanho < 128 * 1024, `fixture deve ficar entre 32 e 128 KB, ficou ${tamanho}`);
+    const r = await processarLembretesEmail(ENV, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    assert.equal(r.motivo, 'ok');
+    assert.equal(r.candidatos, 50);
+  });
   await caso('Grátis ilimitado: 3, 5 ou 12 envios no mês não enfileiram e-mail nenhum', async () => {
     const f = fetchFalso({ candidatos: [gratisComEnvios(1, 3), gratisComEnvios(2, 5), gratisComEnvios(3, 12)] });
     const r = await processarLembretesEmail(ENV, { fetchImpl: f.fetchImpl, now: () => AGORA });
