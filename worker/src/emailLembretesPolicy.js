@@ -53,6 +53,29 @@ export const LEMBRETE_REENGAJAMENTO = Object.freeze({
   purpose: 'reengagement_reminder',
 });
 export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando']);
+/**
+ * Tipos de lembrete que a rodada pode enfileirar (chave EMAIL_LEMBRETES_TIPOS, 06/10/2026):
+ * ativacao (conta nova sem 1º orçamento), assinatura (renovação/vencimento) e reengajamento
+ * (última chamada, parou, trial acabando). Antes a régua era uma chave só (tudo ou nada).
+ */
+export const TIPOS_LEMBRETE = Object.freeze(new Set(['ativacao', 'assinatura', 'reengajamento']));
+
+/**
+ * Lê EMAIL_LEMBRETES_TIPOS ("ativacao,assinatura"). Ausente/vazio = todos (comportamento de
+ * sempre). Preenchido: vale SÓ o que for tipo conhecido; se nada for reconhecido, nada passa
+ * (fail-closed — erro de digitação não liga o que estava desligado).
+ */
+export function lerTiposPermitidos(valor) {
+  if (typeof valor !== 'string' || valor.trim() === '') return TIPOS_LEMBRETE;
+  const lidos = valor.toLowerCase().split(',').map((t) => t.trim()).filter((t) => TIPOS_LEMBRETE.has(t));
+  return Object.freeze(new Set(lidos));
+}
+
+function tipoDoPedido(p) {
+  if (p.template === LEMBRETE_ATIVACAO.template) return 'ativacao';
+  if (p.template === LEMBRETE_ASSINATURA.template) return 'assinatura';
+  return 'reengajamento';
+}
 const DIA_MS = 24 * 60 * 60 * 1000;
 const ATIVACAO_ULTIMA_MAX_DIAS = 120;
 
@@ -398,7 +421,7 @@ export function decidirLembreteEmail(candidato, { agora, precoProMensal, ativaca
  * Aplica a decisão a um lote: deduplica por conta e para no teto da rodada.
  * Devolve os pedidos na ordem recebida e a contagem por motivo (sem PII).
  */
-export function selecionarPedidos(candidatos, { agora, precoProMensal, ativacaoMaxDias, tetoRodada }) {
+export function selecionarPedidos(candidatos, { agora, precoProMensal, ativacaoMaxDias, tetoRodada, tiposPermitidos = TIPOS_LEMBRETE }) {
   const vistos = new Set();
   const pedidos = [];
   const motivos = {};
@@ -409,7 +432,9 @@ export function selecionarPedidos(candidatos, { agora, precoProMensal, ativacaoM
     const d = decidirLembreteEmail(c, { agora, precoProMensal, ativacaoMaxDias });
     let motivo = d.motivo;
     if (d.enfileirar) {
-      if (pedidos.length >= tetoRodada) motivo = 'teto_da_rodada';
+      // Tipo desligado não ocupa vaga do teto da rodada: o próximo candidato do tipo ligado ainda cabe.
+      if (!tiposPermitidos.has(tipoDoPedido(d.pedido))) motivo = 'tipo_desligado';
+      else if (pedidos.length >= tetoRodada) motivo = 'teto_da_rodada';
       else pedidos.push(d.pedido);
     }
     motivos[motivo] = (motivos[motivo] || 0) + 1;

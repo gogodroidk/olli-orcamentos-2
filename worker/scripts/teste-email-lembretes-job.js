@@ -46,6 +46,21 @@ function candidato(n) {
   };
 }
 
+/** Conta nova (80 h), sem orçamento: cai na janela activation_day_3 → e-mail de ativação. */
+function contaNova(n) {
+  const c = candidato(n);
+  return {
+    candidato: {
+      ...c.candidato,
+      confirmadoEm: new Date(AGORA.getTime() - 80 * H).toISOString(),
+      orcamentos: 0,
+      donoDoTenant: true,
+      assinatura: null,
+      oferta: { ...c.candidato.oferta, plano_efetivo: 'gratis', envios_usados: 0, trial_estado: 'available' },
+    },
+  };
+}
+
 /** Grátis com muitos envios: desde 01/10/2026 (ilimitado) não gera e-mail nenhum. */
 function gratisComEnvios(n, usados) {
   const c = candidato(n);
@@ -133,6 +148,37 @@ try {
     assert.deepEqual(enq[0].body.p_template_dados, {
       tipo: 'renovar_pix', plano: 'pro', venceEm: VENCE, momento: 'D-3', sequencia: `renovacao:${VENCE}`,
     });
+  });
+  await caso('EMAIL_LEMBRETES_TIPOS=ativacao: sai a ativação, a cobrança fica desligada e não ocupa vaga do teto', async () => {
+    const f = fetchFalso({ candidatos: [candidato(1), candidato(2), contaNova(3)] });
+    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MAX_POR_RODADA: '1', EMAIL_LEMBRETES_TIPOS: 'ativacao' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    assert.equal(r.enfileirados, 1);
+    assert.equal(r.decisoes.tipo_desligado, 2);
+    assert.equal(r.decisoes.teto_da_rodada, undefined);
+    const enq = f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email'));
+    assert.equal(enq.length, 1);
+    assert.equal(enq[0].body.p_template, 'lembrete_ativacao');
+  });
+  await caso('EMAIL_LEMBRETES_TIPOS=assinatura: a ativação fica desligada', async () => {
+    const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
+    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_TIPOS: 'assinatura' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    assert.equal(r.enfileirados, 1);
+    assert.equal(r.decisoes.tipo_desligado, 1);
+    assert.equal(f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email'))[0].body.p_template, 'lembrete_assinatura');
+  });
+  await caso('EMAIL_LEMBRETES_TIPOS ausente ou vazio = todos (comportamento de sempre)', async () => {
+    for (const valor of [undefined, '', '   ']) {
+      const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
+      const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_TIPOS: valor }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+      assert.equal(r.enfileirados, 2);
+    }
+  });
+  await caso('EMAIL_LEMBRETES_TIPOS com erro de digitação = NADA sai (fail-closed)', async () => {
+    const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
+    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_TIPOS: 'ativaçao, todos' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    assert.equal(r.enfileirados, 0);
+    assert.equal(r.decisoes.tipo_desligado, 2);
+    assert.equal(f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email')).length, 0);
   });
   await caso('Grátis ilimitado: 3, 5 ou 12 envios no mês não enfileiram e-mail nenhum', async () => {
     const f = fetchFalso({ candidatos: [gratisComEnvios(1, 3), gratisComEnvios(2, 5), gratisComEnvios(3, 12)] });
