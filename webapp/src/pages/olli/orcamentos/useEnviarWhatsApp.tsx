@@ -14,7 +14,7 @@
  *  5. ABRIR NÃO É ENVIAR: só depois de "Já enviei" o envio é confirmado e o orçamento vira
  *     "enviado" (e só se ainda for rascunho — nunca rebaixa quem já foi aprovado).
  */
-import type { Orcamento, StatusOrcamento } from "@dominio";
+import type { Orcamento } from "@dominio";
 import { avisoTrialAutomatico } from "@ativacao";
 import type { ReservaEnvioOrcamento } from "@limites-comerciais";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,11 +24,11 @@ import { supabase } from "@/lib/supabase";
 import { cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
 import { linkWhatsApp } from "@/olli/linkWhatsApp";
-import { useSalvar } from "@/olli/mutacoes";
 import { publicarLinkOrcamento } from "@/olli/publicarLink";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
+import { useMarcarEnviado } from "./useMarcarEnviado";
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from "../../../../../src/utils/mensagensOrcamento";
 
 interface Pendente {
@@ -45,7 +45,7 @@ interface Pendente {
 export function useEnviarWhatsApp() {
 	const qc = useQueryClient();
 	const exigirCadastro = usePortaDoCadastro();
-	const salvar = useSalvar("orcamentos");
+	const marcarEnviado = useMarcarEnviado();
 	const [pendente, setPendente] = useState<Pendente | null>(null);
 	const [preparando, setPreparando] = useState<string | null>(null);
 	const [confirmando, setConfirmando] = useState(false);
@@ -107,21 +107,10 @@ export function useEnviarWhatsApp() {
 			const confirmou = await confirmarEnvioOrcamento(p.orcamentoId, p.reserva.reservaToken);
 			void registrarEtapaAtivacao("orcamento_enviado");
 
-			// Status: relê o blob FRESCO e só move rascunho → enviado (nunca rebaixa aprovado/negociação).
-			let statusAtualizado = false;
-			let falhouStatus = false;
-			try {
-				const { data, error } = await supabase.from("orcamentos").select("dados").eq("id", p.orcamentoId).maybeSingle();
-				if (error) throw error;
-				const fresco = data?.dados as Orcamento | null | undefined;
-				if (!fresco || typeof fresco !== "object") throw new Error("sem dados");
-				if (fresco.status === "rascunho") {
-					await salvar.mutateAsync({ ...fresco, status: "enviado" as StatusOrcamento, atualizadoEm: new Date().toISOString() });
-					statusAtualizado = true;
-				}
-			} catch {
-				falhouStatus = true;
-			}
+			// Status: relê o blob FRESCO e só move rascunho → enviado (nunca rebaixa).
+			const resultado = await marcarEnviado(p.orcamentoId);
+			const statusAtualizado = resultado === "enviado";
+			const falhouStatus = resultado === "falhou";
 
 			if (falhouStatus) {
 				toast.warning("Envio registrado, mas não consegui atualizar o status", {
@@ -149,7 +138,7 @@ export function useEnviarWhatsApp() {
 			setConfirmando(false);
 			setPendente(null);
 		}
-	}, [pendente, confirmando, salvar, qc]);
+	}, [pendente, confirmando, marcarEnviado, qc]);
 
 	const copiarLink = useCallback(async () => {
 		if (!pendente?.url) return;
