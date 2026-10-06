@@ -166,9 +166,11 @@ ok(/reservarEnvioOrcamento\(orcamentoId, "whatsapp"\)/.test(hook), 'registra o e
 ok(/exigirCadastro\("orcamento"\)/.test(hook), 'passa pela porta do cadastro');
 const iAbrir = hook.indexOf('Abrir o WhatsApp');
 const iJa = hook.indexOf('const jaEnviei');
-const iStatus = hook.indexOf('status: "enviado"');
-ok(iAbrir > 0 && iJa > 0 && iStatus > iJa, 'o status só muda dentro de "Já enviei", nunca ao abrir o WhatsApp');
-ok(/fresco\.status === "rascunho"/.test(hook), 'só move rascunho → enviado (não rebaixa aprovado/negociação)');
+const iMarcar = hook.indexOf('await marcarEnviado(p.orcamentoId)');
+ok(iAbrir > 0 && iJa > 0 && iMarcar > iJa, 'o status só muda dentro de "Já enviei", nunca ao abrir o WhatsApp');
+// A regra do status mora em UM lugar (useMarcarEnviado), compartilhada com o "Já enviei" pós-PDF.
+const marcar = ler('webapp/src/pages/olli/orcamentos/useMarcarEnviado.ts');
+ok(/fresco\.status !== "rascunho"/.test(marcar),'só move rascunho → enviado (não rebaixa aprovado/negociação)');
 ok(/await cancelarReservaEnvioOrcamento\(p\.orcamentoId/.test(hook), 'cancelar/“Ainda não” devolve a reserva do envio');
 ok(/semLink|sem ele \(o cliente responde/.test(hook), 'sem link a mensagem sai sem link e o diálogo avisa');
 

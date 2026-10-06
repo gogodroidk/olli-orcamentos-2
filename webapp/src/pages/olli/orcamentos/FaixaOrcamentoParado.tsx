@@ -27,7 +27,7 @@ export function FaixaOrcamentoParado({ paradas, enviandoId, onEnviar, onDispensa
 	const ocupado = enviandoId === primeira.id;
 
 	return (
-		<Card className="flex flex-col gap-3 border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between" role="status">
+		<Card aria-live="polite" className="flex flex-col gap-3 border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between">
 			<div className="min-w-0">
 				<p className="text-sm font-semibold text-text-primary">
 					O orçamento nº {d.numero || "sem número"} de {d.clienteNome} está pronto e ainda não foi enviado.
