@@ -78,7 +78,8 @@ const marcar = ler('webapp/src/pages/olli/orcamentos/useMarcarEnviado.ts');
 const whats = ler('webapp/src/pages/olli/orcamentos/useEnviarWhatsApp.tsx');
 
 ok(/<FaixaOrcamentoParado/.test(lista) && /!isLoading && !isError && paradas\.length > 0/.test(lista), 'a faixa só aparece com a lista carregada e sem erro (erro nunca vira "nada parado")');
-ok(/prontosParados\(data \?\? \[\], Date\.now\(\), dispensados\)/.test(lista), 'a faixa usa a regra pura');
+ok(/prontosParados\(data \?\? \[\], agoraMs, dispensados\)/.test(lista), 'a faixa usa a regra pura com o relógio do estado');
+ok(/setInterval\(\(\) => setAgoraMs\(Date\.now\(\)\), 60_000\)/.test(lista) && /clearInterval/.test(lista), 'o relógio anda (tick de 1 min) e é limpo ao sair: o rascunho que completa 60 min com a aba aberta vira faixa');
 ok(/Enviar pelo WhatsApp/.test(faixa) && /Agora não/.test(faixa), 'a faixa oferece enviar e dispensar');
 ok(/label: "Enviar pelo WhatsApp"/.test(lista) && /label: "Já enviei"/.test(lista), 'depois do PDF a pessoa escolhe: enviar com link ou "Já enviei"');
 ok(/if \(linha\.status !== "rascunho"\) return;/.test(lista), 'a pergunta pós-PDF só aparece para rascunho');

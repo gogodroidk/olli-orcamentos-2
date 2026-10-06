@@ -29,6 +29,7 @@ import {
   motivoContaInterna,
   motivoNaoPagante,
   origemExibida,
+  origemParaLista,
   resumirReceita,
 } from '../worker/src/assinaturasPagantes.js';
 import { derivarEntitlement } from '../worker/src/entitlement.js';
@@ -162,6 +163,19 @@ const rotCli = origemExibida({ ...STRIPE_REAL, user_id: 'c1' }, 'c1@ex.test', ct
 checar('lista: cliente pagando = pagamento', rotCli.origem === 'pagamento');
 const rotGratis = origemExibida({ plano: 'gratis', status: 'canceled', current_period_end: null, user_id: 'g' }, 'g@ex.test', ctx, AGORA_MS);
 checar('lista: grátis = gratis', rotGratis.plano === 'gratis' && rotGratis.origem === 'gratis');
+
+// Fail-closed na LISTA (revisão 06/10): sem a lista de contas internas, plano pago NÃO vira "pagamento".
+const indCli = origemParaLista({ ...STRIPE_REAL, user_id: 'c1' }, 'c1@ex.test', ctx, false, AGORA_MS);
+checar('lista sem leitura interna: cliente pagando = indeterminada (não infla Pagantes)', indCli.plano === 'pro' && indCli.origem === 'indeterminada', JSON.stringify(indCli));
+const indDono = origemParaLista({ ...COMP, user_id: 'u-dono' }, 'dono@olli.test', ctx, false, AGORA_MS);
+checar('lista sem leitura interna: cortesia também indeterminada (o acesso segue o entitlement)', indDono.plano === 'empresa' && indDono.origem === 'indeterminada', JSON.stringify(indDono));
+const indGratis = origemParaLista({ plano: 'gratis', status: 'canceled', current_period_end: null, user_id: 'g' }, 'g@ex.test', ctx, false, AGORA_MS);
+checar('lista sem leitura interna: grátis continua grátis', indGratis.plano === 'gratis' && indGratis.origem === 'gratis');
+const okCli = origemParaLista({ ...STRIPE_REAL, user_id: 'c1' }, 'c1@ex.test', ctx, true, AGORA_MS);
+checar('lista COM leitura interna = igual a origemExibida', okCli.origem === 'pagamento');
+const adminSrc = readFileSync('worker/src/admin.js', 'utf8').split(String.fromCharCode(13)).join('');
+checar('users() exige as DUAS listas internas (exclusoes.ok && admins.ok)', /const leituraInternaOk = exclusoes\.ok && admins\.ok;/.test(adminSrc));
+checar('users() rotula cada conta por origemParaLista(..., leituraInternaOk) — sem a lista interna não há "pagamento"', /origemParaLista\(a, emailPorId\.get\(a\.user_id\), contexto, leituraInternaOk\)/.test(adminSrc));
 
 // ── SQL ─────────────────────────────────────────────────────────────────────
 const FUNIL = readFileSync('supabase/migrations/20260930120100_funil_receita.sql', 'utf8').replace(/\r\n/g, '\n');

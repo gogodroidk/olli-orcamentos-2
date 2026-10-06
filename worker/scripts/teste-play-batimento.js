@@ -6,6 +6,7 @@
  * números e rótulos (nada de token/e-mail); (3) estado erro/excecao vira status
  * 'falhou'; (4) falha de gravação não derruba nem muda o resultado do cron.
  */
+import assert from 'node:assert/strict';
 import { chaveDoBatimento, cronPlayComBatimento, resumoSeguro } from '../src/playBatimento.js';
 
 let ok = 0;
@@ -66,6 +67,15 @@ checar('chave fim', chaveDoBatimento('fim', quando), 'fim|2026-10-06T06:43');
   const fim = sb.linhas.get('play_cron/fim|2026-10-06T06:43');
   checar('fim com contagens', fim.payload, { tarefa: 'rtdn', estado: 'ok', recebidas: 3, confirmadas: 2, mantidas: 1, motivo: null });
   checar('fim processado', fim.status, 'processado');
+  checar('ini também sai de "recebido" quando o trabalho terminou', sb.linhas.get('play_cron/ini|2026-10-06T06:43').status, 'processado');
+}
+
+// 1b) quem MORREU no meio (executar lança) deixa o ini em "recebido" e nenhum fim — é o sinal que o índice procura
+{
+  const sb = falsoSupabase();
+  await assert.rejects(() => cronPlayComBatimento(env, quando, async () => { throw new Error('cpu'); }));
+  checar('morreu: ini continua "recebido"', sb.linhas.get('play_cron/ini|2026-10-06T06:43').status, 'recebido');
+  checar('morreu: não há fim', sb.linhas.has('play_cron/fim|2026-10-06T06:43'), false);
 }
 
 // 2) erro vira 'falhou' com rótulo
