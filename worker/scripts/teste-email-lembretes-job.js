@@ -149,9 +149,9 @@ try {
       tipo: 'renovar_pix', plano: 'pro', venceEm: VENCE, momento: 'D-3', sequencia: `renovacao:${VENCE}`,
     });
   });
-  await caso('EMAIL_LEMBRETES_TIPOS=ativacao: sai a ativação, a cobrança fica desligada e não ocupa vaga do teto', async () => {
+  await caso('MODE=production:ativacao: sai a ativação, a cobrança fica desligada e não ocupa vaga do teto', async () => {
     const f = fetchFalso({ candidatos: [candidato(1), candidato(2), contaNova(3)] });
-    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MAX_POR_RODADA: '1', EMAIL_LEMBRETES_TIPOS: 'ativacao' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'production:ativacao', EMAIL_LEMBRETES_MAX_POR_RODADA: '1' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
     assert.equal(r.enfileirados, 1);
     assert.equal(r.decisoes.tipo_desligado, 2);
     assert.equal(r.decisoes.teto_da_rodada, undefined);
@@ -159,26 +159,29 @@ try {
     assert.equal(enq.length, 1);
     assert.equal(enq[0].body.p_template, 'lembrete_ativacao');
   });
-  await caso('EMAIL_LEMBRETES_TIPOS=assinatura: a ativação fica desligada', async () => {
+  await caso('MODE=production:assinatura: a ativação fica desligada', async () => {
     const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
-    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_TIPOS: 'assinatura' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'production:assinatura' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
     assert.equal(r.enfileirados, 1);
     assert.equal(r.decisoes.tipo_desligado, 1);
     assert.equal(f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email'))[0].body.p_template, 'lembrete_assinatura');
   });
-  await caso('EMAIL_LEMBRETES_TIPOS ausente ou vazio = todos (comportamento de sempre)', async () => {
-    for (const valor of [undefined, '', '   ']) {
-      const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
-      const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_TIPOS: valor }, { fetchImpl: f.fetchImpl, now: () => AGORA });
-      assert.equal(r.enfileirados, 2);
-    }
-  });
-  await caso('EMAIL_LEMBRETES_TIPOS com erro de digitação = NADA sai (fail-closed)', async () => {
+  await caso('MODE=production puro (sem sufixo) = todos (comportamento de sempre)', async () => {
     const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
-    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_TIPOS: 'ativaçao, todos' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
-    assert.equal(r.enfileirados, 0);
-    assert.equal(r.decisoes.tipo_desligado, 2);
-    assert.equal(f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email')).length, 0);
+    const r = await processarLembretesEmail(ENV, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    assert.equal(r.enfileirados, 2);
+  });
+  await caso('MODE=production: com sufixo errado ou vazio = NADA sai (fail-closed)', async () => {
+    for (const modo of ['production:ativaçao, todos', 'production:', 'production:   ']) {
+      const f = fetchFalso({ candidatos: [contaNova(1), candidato(2)] });
+      const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: modo }, { fetchImpl: f.fetchImpl, now: () => AGORA });
+      assert.equal(r.enfileirados, 0);
+      assert.equal(r.decisoes.tipo_desligado, 2);
+      assert.equal(f.calls.filter((c) => c.url.endsWith('/rpc/enqueue_lembrete_email')).length, 0);
+    }
+    const g = fetchFalso({ candidatos: [contaNova(1)] });
+    const r2 = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'staging:ativacao' }, { fetchImpl: g.fetchImpl, now: () => AGORA });
+    assert.equal(r2.mode, 'off');
   });
   await caso('Grátis ilimitado: 3, 5 ou 12 envios no mês não enfileiram e-mail nenhum', async () => {
     const f = fetchFalso({ candidatos: [gratisComEnvios(1, 3), gratisComEnvios(2, 5), gratisComEnvios(3, 12)] });

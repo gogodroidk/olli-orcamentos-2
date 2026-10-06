@@ -71,13 +71,12 @@
     // 3 por rodada horária, 40 por dia no total.
     // RÉGUA PARCIAL (07/10/2026, decisão do Maestro): desde 04/10 estava toda "off" por causa do
     // teste do concierge com os sem-orçamento (a régua mandaria e-mail a 37 das 51 contas e
-    // contaminaria a medida). Agora EMAIL_LEMBRETES_TIPOS separa os tipos: LIGADO só "ativacao" e
+    // contaminaria a medida). Agora o sufixo de EMAIL_LEMBRETES_MODE separa os tipos (o worker está em 64/64 variáveis, chave nova não cabe): LIGADO só "ativacao" e
     // só para conta de até 7 dias (ATIVACAO_MAX_DIAS=7 — as antigas do concierge ficam de fora);
     // "assinatura" e "reengajamento" (última chamada, parou, fim de teste) seguem DESLIGADOS.
     // RELIGAR os demais (acrescentar na lista) até 13/10/2026: o aviso de fim de teste começa
     // em 14/10. Boas-vindas e e-mails de login não passam por aqui.
-    "EMAIL_LEMBRETES_MODE": "production",
-    "EMAIL_LEMBRETES_TIPOS": "ativacao",
+    "EMAIL_LEMBRETES_MODE": "production:ativacao",
     "EMAIL_LEMBRETES_MAX_POR_RODADA": "3",
     "EMAIL_LEMBRETES_TETO_DIARIO": "40",
     "EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS": "7",

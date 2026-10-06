@@ -54,20 +54,22 @@ export const LEMBRETE_REENGAJAMENTO = Object.freeze({
 });
 export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando']);
 /**
- * Tipos de lembrete que a rodada pode enfileirar (chave EMAIL_LEMBRETES_TIPOS, 06/10/2026):
+ * Tipos de lembrete que a rodada pode enfileirar (sufixo de EMAIL_LEMBRETES_MODE, 07/10/2026):
  * ativacao (conta nova sem 1º orçamento), assinatura (renovação/vencimento) e reengajamento
  * (última chamada, parou, trial acabando). Antes a régua era uma chave só (tudo ou nada).
  */
 export const TIPOS_LEMBRETE = Object.freeze(new Set(['ativacao', 'assinatura', 'reengajamento']));
 
 /**
- * Lê EMAIL_LEMBRETES_TIPOS ("ativacao,assinatura"). Ausente/vazio = todos (comportamento de
- * sempre). Preenchido: vale SÓ o que for tipo conhecido; se nada for reconhecido, nada passa
- * (fail-closed — erro de digitação não liga o que estava desligado).
+ * Lê a lista de tipos que vem DEPOIS dos dois pontos em EMAIL_LEMBRETES_MODE
+ * ("production:ativacao,assinatura"). A lista mora no sufixo do MODE porque o worker está no
+ * teto de 64 variáveis do plano grátis — uma chave nova não cabe. Sem sufixo ("production"):
+ * todos, como sempre. Com sufixo: vale SÓ o que for tipo conhecido; se nada for reconhecido
+ * (ou vier vazio), nada passa (fail-closed — erro de digitação não liga o que estava desligado).
  */
-export function lerTiposPermitidos(valor) {
-  if (typeof valor !== 'string' || valor.trim() === '') return TIPOS_LEMBRETE;
-  const lidos = valor.toLowerCase().split(',').map((t) => t.trim()).filter((t) => TIPOS_LEMBRETE.has(t));
+export function lerTiposPermitidos(sufixo) {
+  if (typeof sufixo !== 'string') return TIPOS_LEMBRETE;
+  const lidos = sufixo.toLowerCase().split(',').map((t) => t.trim()).filter((t) => TIPOS_LEMBRETE.has(t));
   return Object.freeze(new Set(lidos));
 }
 
