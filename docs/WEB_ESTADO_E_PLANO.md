@@ -75,6 +75,8 @@ cd ../webapp && npm run build
 npx wrangler pages deploy dist --project-name olli-painel-web --branch main
 ```
 
+**Armadilha do deploy do painel (06/10/2026):** NÃO abra o painel nem rode smoke nos ~60 s seguintes ao `pages deploy`. Um `.js` pedido antes de propagar cai no fallback de SPA (HTML) e a borda guarda isso como `immutable` por 1 ano: o cadastro quebra (`Failed to load module script ... MIME text/html`) e o token do CLOUDFLARE_API_TOKEN local não purga cache. Por isso o build define `OLLI_BUILD_ID` (`export OLLI_BUILD_ID="$(git rev-parse --short HEAD)-$(date -u +%Y%m%dT%H%MZ)"` antes do `pnpm run build`): muda o hash do chunk de entrada e dos que o importam a cada publicação, então a URL envenenada nunca é pedida de novo. Se acontecer, rebuild com outro ID e redeploy.
+
 **IndexNow (aviso de recrawl, só da landing):** o `plan` compara o `dist/` com o que está no ar e grava
 `web/.indexnow-plano.json` (só URLs novas ou alteradas; erro de rede fica de fora, nunca vira "alterada").
 O `ping` confere que `https://olliorcamentos.online/<chave>.txt` já está no ar e só então envia o lote a

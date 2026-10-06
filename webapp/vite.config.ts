@@ -78,6 +78,11 @@ export default defineConfig(({ mode }) => {
 		// então o código de tracing era peso morto que baixava junto. `__SENTRY_DEBUG__`
 		// tira os avisos de console que só servem em desenvolvimento.
 		define: {
+			// Identificador do build (commit + data): muda a cada publicação, então o hash do
+			// chunk de entrada — e dos que o importam — também muda. Assim uma cópia errada
+			// guardada na borda (ex.: HTML no lugar de um .js pedido antes de o deploy propagar)
+			// nunca é servida de novo: a URL nova nunca foi pedida.
+			__OLLI_BUILD__: JSON.stringify(process.env.OLLI_BUILD_ID || 'dev'),
 			__SENTRY_DEBUG__: JSON.stringify(false),
 			__SENTRY_TRACING__: JSON.stringify(false),
 		},
