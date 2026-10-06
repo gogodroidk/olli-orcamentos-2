@@ -31,6 +31,7 @@ import {
 	FileText,
 	Inbox,
 	Loader2,
+	MessageCircle,
 	MoreHorizontal,
 	Pencil,
 	Plus,
@@ -87,6 +88,7 @@ import { cn } from "@/utils";
 const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
 
 import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
+import { useEnviarWhatsApp } from "./useEnviarWhatsApp";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /**
@@ -161,6 +163,7 @@ function StatusDoOrcamento({ valor }: { valor: string | null }) {
  */
 function MenuDaLinha({
 	linha,
+	onEnviarWhatsApp,
 	onVerPdf,
 	onGerarContrato,
 	onEditar,
@@ -168,6 +171,7 @@ function MenuDaLinha({
 	onExcluir,
 }: {
 	linha: LinhaOrcamento;
+	onEnviarWhatsApp: (linha: LinhaOrcamento) => void;
 	/** O MESMO caminho do clique na linha — o menu não tem uma segunda versão da regra. */
 	onVerPdf: (linha: LinhaOrcamento) => void;
 	onGerarContrato: (linha: LinhaOrcamento) => void;
@@ -199,6 +203,12 @@ function MenuDaLinha({
 					</DropdownMenuItem>
 				) : (
 					<>
+						{/* ENVIAR AO CLIENTE: a ação que fecha o ciclo. O PDF é o arquivo do PRESTADOR;
+						    quem leva o orçamento ao cliente (com o link de aprovação) é esta. */}
+						<DropdownMenuItem onSelect={() => onEnviarWhatsApp(linha)}>
+							<MessageCircle className="mr-2 size-4" />
+							Enviar pelo WhatsApp
+						</DropdownMenuItem>
 						{/* PDF real: o MESMO gerador do app, impresso pelo navegador (Salvar como PDF).
 						    O cliente já recebe pelo portal /o/<token>; este é o arquivo do PRESTADOR.
 						    Vem PRIMEIRO e continua aqui mesmo sendo a ação do clique na linha: quem
@@ -245,6 +255,8 @@ function MenuDaLinha({
  */
 function AcoesDoOrcamento({
 	linha,
+	onEnviarWhatsApp,
+	enviando,
 	onVerPdf,
 	onGerarContrato,
 	onEditar,
@@ -252,6 +264,9 @@ function AcoesDoOrcamento({
 	onExcluir,
 }: {
 	linha: LinhaOrcamento;
+	onEnviarWhatsApp: (linha: LinhaOrcamento) => void;
+	/** `true` enquanto ESTA linha prepara o envio (link + mensagem). */
+	enviando: boolean;
 	onVerPdf: (linha: LinhaOrcamento) => void;
 	onGerarContrato: (linha: LinhaOrcamento) => void;
 	onEditar: (linha: LinhaOrcamento) => void;
@@ -261,6 +276,19 @@ function AcoesDoOrcamento({
 	const semBlob = blobDe(linha) === null;
 	return (
 		<div className="flex items-center justify-end gap-0.5">
+			{/* AÇÃO PRIMÁRIA: levar o orçamento ao cliente. Visível, fora do "…" — o painel só
+			    imprimia o PDF e nenhum link /o/ chegava ao cliente (06/10/2026). */}
+			<Button
+				variant="ghost"
+				size="icon"
+				className="text-success"
+				aria-label={`Enviar orçamento ${linha.numero ?? "sem número"} pelo WhatsApp`}
+				title="Enviar pelo WhatsApp"
+				disabled={semBlob || enviando}
+				onClick={() => onEnviarWhatsApp(linha)}
+			>
+				{enviando ? <Loader2 className="size-4 animate-spin" /> : <MessageCircle className="size-4" />}
+			</Button>
 			<Button
 				variant="ghost"
 				size="icon"
@@ -275,6 +303,7 @@ function AcoesDoOrcamento({
 			</Button>
 			<MenuDaLinha
 				linha={linha}
+				onEnviarWhatsApp={onEnviarWhatsApp}
 				onVerPdf={onVerPdf}
 				onGerarContrato={onGerarContrato}
 				onEditar={onEditar}
@@ -410,6 +439,19 @@ export default function OrcamentosPage() {
 		proximos.delete("cliente");
 		setSearchParams(proximos, { replace: true });
 	}, []);
+
+	const { enviar: enviarWhats, preparando: enviandoWhats, dialogo: dialogoWhats } = useEnviarWhatsApp();
+	/** ENVIAR PELO WHATSAPP — ver `useEnviarWhatsApp.tsx`. Sem o documento não há o que enviar. */
+	const enviarPorWhatsApp = (linha: LinhaOrcamento) => {
+		const blob = blobDe(linha);
+		if (!blob) {
+			toast.error("Este orçamento está sem os dados completos — abra-o no celular para enviar.", {
+				position: "top-center",
+			});
+			return;
+		}
+		void enviarWhats(linha.id, blob);
+	};
 
 	/**
 	 * VER O PDF — a ação PRINCIPAL da linha, e o pedido literal do dono: "clicar e ver
@@ -769,6 +811,8 @@ export default function OrcamentosPage() {
 												<td className="px-2 py-3.5 text-right">
 													<AcoesDoOrcamento
 														linha={l}
+														onEnviarWhatsApp={enviarPorWhatsApp}
+														enviando={enviandoWhats === l.id}
 														onVerPdf={verPdf}
 														onGerarContrato={gerarContrato}
 														onEditar={abrirEdicao}
@@ -826,6 +870,8 @@ export default function OrcamentosPage() {
 								</div>
 								<AcoesDoOrcamento
 									linha={l}
+									onEnviarWhatsApp={enviarPorWhatsApp}
+									enviando={enviandoWhats === l.id}
 									onVerPdf={verPdf}
 									onGerarContrato={gerarContrato}
 									onEditar={abrirEdicao}
@@ -849,6 +895,8 @@ export default function OrcamentosPage() {
 			)}
 
 			{/* ─────────────  Editor  ───────────── */}
+			{dialogoWhats}
+
 			{editor && (
 				<FormOrcamento
 					aberto

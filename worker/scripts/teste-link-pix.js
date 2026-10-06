@@ -464,8 +464,12 @@ await caso('app: republicar o link NÃO volta o status para "enviado" (leitura d
   // clienteLink.ts importa supabase/react-native e não carrega no node: a rede aqui é
   // ler o código. O caminho "reusado" tem de ser UPDATE do conteúdo, sem o status.
   const { readFileSync } = await import('node:fs');
-  const fonte = readFileSync(new URL('../../src/services/clienteLink.ts', import.meta.url), 'utf8');
-  const conteudo = /const conteudo = \{([\s\S]*?)\r?\n {2}\};/.exec(fonte);
+  const fonteLink = readFileSync(new URL('../../src/services/clienteLink.ts', import.meta.url), 'utf8');
+  // O conteúdo nasce em `conteudoDoLink` (clienteLinkSnapshot.ts), compartilhado com o painel.
+  const fonteSnap = readFileSync(new URL('../../src/services/clienteLinkSnapshot.ts', import.meta.url), 'utf8');
+  const fonte = `${fonteLink}\n${fonteSnap}`;
+  assert.match(fonteLink, /const conteudo = conteudoDoLink\(orc, empresa, cobranca\);/, 'o app monta o conteúdo por conteudoDoLink');
+  const conteudo = /export function conteudoDoLink[\s\S]*?return \{([\s\S]*?)\r?\n {2}\};/.exec(fonteSnap);
   assert.ok(conteudo, 'bloco `conteudo` existe');
   assert.doesNotMatch(conteudo[1], /status/, 'conteúdo republicado não leva status');
   assert.match(fonte, /\.update\(conteudo\)\s*\.eq\('token', reusado\)/);
