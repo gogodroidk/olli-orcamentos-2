@@ -88,7 +88,10 @@ import { cn } from "@/utils";
 const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
 
 import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
+import { FaixaOrcamentoParado } from "./FaixaOrcamentoParado";
+import { dispensarFaixa, lerDispensados, prontosParados } from "./orcamentosParados";
 import { useEnviarWhatsApp } from "./useEnviarWhatsApp";
+import { useMarcarEnviado } from "./useMarcarEnviado";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /**
@@ -453,6 +456,22 @@ export default function OrcamentosPage() {
 		void enviarWhats(linha.id, blob);
 	};
 
+	const marcarEnviado = useMarcarEnviado();
+	/** "Já enviei" depois do PDF: o PDF é arquivo do prestador; se ele mandou por fora, marca aqui. */
+	const marcarEnviadoPorFora = async (linha: LinhaOrcamento) => {
+		const r = await marcarEnviado(linha.id);
+		if (r === "enviado") toast.success("Orçamento marcado como enviado");
+		else if (r === "falhou") {
+			toast.warning("Não consegui marcar como enviado", {
+				description: "Mude o status no Quadro ou tente de novo em instantes.",
+			});
+		}
+	};
+
+	// O EMPURRÃO: rascunho completo parado há 1 h+ (regra em `orcamentosParados.ts`).
+	const [dispensados, setDispensados] = useState<Record<string, number>>(() => lerDispensados());
+	const paradas = useMemo(() => prontosParados(data ?? [], Date.now(), dispensados), [data, dispensados]);
+
 	/**
 	 * VER O PDF — a ação PRINCIPAL da linha, e o pedido literal do dono: "clicar e ver
 	 * o PDF, não clicar nos três pontinhos, gerar e esperar aparecer".
@@ -551,6 +570,20 @@ export default function OrcamentosPage() {
 			},
 			error: (erro) => (erro as Error).message || "Não consegui gerar o PDF agora. Tente de novo.",
 		});
+		// O PDF é o arquivo do PRESTADOR: gerar não é enviar. Se o orçamento ainda é rascunho, pergunta
+		// (com o caminho certo à mão) em vez de deixá-lo parado para sempre.
+		void tarefa.then(
+			() => {
+				if (linha.status !== "rascunho") return;
+				toast("O PDF é o seu arquivo — o cliente só recebe quando você envia", {
+					description: "Já mandou o orçamento? Marque como enviado, ou envie agora pelo WhatsApp com o link de aprovação.",
+					duration: 20_000,
+					action: { label: "Enviar pelo WhatsApp", onClick: () => enviarPorWhatsApp(linha) },
+					cancel: { label: "Já enviei", onClick: () => void marcarEnviadoPorFora(linha) },
+				});
+			},
+			() => undefined,
+		);
 	};
 
 	/**
@@ -646,6 +679,18 @@ export default function OrcamentosPage() {
 						Novo orçamento
 					</Button>
 				</div>
+
+				{!isLoading && !isError && paradas.length > 0 && (
+					<FaixaOrcamentoParado
+						paradas={paradas}
+						enviandoId={enviandoWhats}
+						onEnviar={(id) => {
+							const l = data?.find((x) => x.id === id);
+							if (l) enviarPorWhatsApp(l);
+						}}
+						onDispensar={(id) => setDispensados(dispensarFaixa(id, Date.now()))}
+					/>
+				)}
 
 				<div className="flex flex-col gap-2 sm:flex-row">
 					<div className="relative flex-1 sm:max-w-xs">
