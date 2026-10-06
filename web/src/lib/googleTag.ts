@@ -20,7 +20,7 @@
  *    conta dobrado.
  */
 
-import { consentimentoAtual } from "./consentimento.ts";
+import { consentimentoAtual, hostDeProducao } from "./consentimento.ts";
 import { urlTemSegredo } from "./metaPixel.ts";
 
 /** Tag do Google Ads da conta 779-101-4121. */
@@ -53,6 +53,8 @@ function urlAtualTemSegredo(): boolean {
  */
 export function iniciarGoogleTag(enviarPageView = true): boolean {
 	if (typeof window === "undefined" || typeof document === "undefined") return false;
+	// Só produção mede (ver `hostDeProducao`): dev e preview não geram conversão no Google Ads.
+	if (!hostDeProducao(window.location.hostname)) return false;
 	if (iniciado) return true;
 	if (!googleTagConfigurada()) {
 		console.info("[medição] Google tag desligada: ID do Google Ads não configurado.");
