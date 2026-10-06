@@ -41,7 +41,10 @@ export function paraBr(d: Date = new Date()): string {
 
 /** 'YYYY-MM-DD' → 'DD/MM/AAAA'. */
 export function ymdParaBr(ymd: string): string {
-	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+	// Aceita também ISO com hora (`2026-10-06T00:00:00+00:00`): o orçamento criado no painel guarda a
+	// emissão assim, e sem isto a lista mostrava o texto cru. O DIA é o do próprio texto (sem new Date,
+	// que deslocaria pelo fuso).
+	const m = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/.exec(ymd);
 	return m ? `${m[3]}/${m[2]}/${m[1]}` : ymd;
 }
 
