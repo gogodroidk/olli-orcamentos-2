@@ -1,5 +1,5 @@
 /**
- * Pendências da CAPI NO BANCO (migrations 20261005090000 + 20261007100000).
+ * Pendências da CAPI NO BANCO (migrations 20261005090000 + 20261007120000).
  *
  *     node scripts/teste-anuncios-conversoes-sql.ts
  *
@@ -37,7 +37,7 @@ await db.exec(`
 `);
 await db.exec(ler('../supabase/migrations/20261006090000_whatsapp_nao_contatar.sql')); // private.telefone_whatsapp_br
 await db.exec(ler('../supabase/migrations/20261005090000_anuncios_conversoes.sql'));
-const nova = ler('../supabase/migrations/20261007100000_anuncios_conversoes_lead_telefone.sql');
+const nova = ler('../supabase/migrations/20261007120000_anuncios_conversoes_lead_telefone.sql');
 await db.exec(nova);
 await db.exec(nova); // idempotente
 checks++;
