@@ -327,9 +327,11 @@ const PRECO_MENSAL = {
 };
 
 async function metrics(env) {
-  const [users, orcs, clientes, agend, atividades, assinaturas, exclusoes, admins] = await Promise.all([
+  const [users, orcsLeitura, clientes, agend, atividades, assinaturas, exclusoes, admins] = await Promise.all([
     listAuthUsers(env),
-    rest(env, 'orcamentos?select=user_id,valor_total,status,criado_em'),
+    // NÚMERO DE NEGÓCIO: 3 estados (ver comentário de lerEstado). rest() devolveria [] numa falha e o painel mostraria
+    // "R$ 0,00" / "0 orçamentos" como se fosse verdade.
+    lerEstado(env, 'orcamentos?select=user_id,valor_total,status,criado_em'),
     rest(env, 'clientes?select=id'),
     rest(env, 'agendamentos?select=id'),
     listarAtividades(env),
@@ -339,6 +341,9 @@ async function metrics(env) {
   ]);
   const now = Date.now();
   const DAY = 86400000;
+  // Orçamentos ilegíveis ≠ zero orçamentos: tudo o que deriva deles sai como `null` + `orcamentosEstado:'indisponivel'`.
+  const orcamentosOk = orcsLeitura.ok;
+  const orcs = orcamentosOk ? orcsLeitura.dados : [];
   const aprovados = orcs.filter((o) => o.status === 'aprovado');
   const faturamento = aprovados.reduce((s, o) => s + (Number(o.valor_total) || 0), 0);
   const ticket = aprovados.length ? faturamento / aprovados.length : 0;
@@ -389,8 +394,11 @@ async function metrics(env) {
 
   return json({
     ok: true, usuarios: users.length, ativos, novosHoje, novos7, novos30,
-    orcamentos: orcs.length, aprovados: aprovados.length, conversao,
-    clientes: clientes.length, agendamentos: agend.length, faturamento, ticket, spark,
+    orcamentosEstado: orcamentosOk ? 'ok' : 'indisponivel',
+    orcamentos: orcamentosOk ? orcs.length : null, aprovados: orcamentosOk ? aprovados.length : null,
+    conversao: orcamentosOk ? conversao : null,
+    clientes: clientes.length, agendamentos: agend.length,
+    faturamento: orcamentosOk ? faturamento : null, ticket: orcamentosOk ? ticket : null, spark,
     usando30: resumos.filter((item) => item.atividades30 > 0).length,
     frequentes: resumos.filter((item) => item.frequencia === 'frequente').length,
     nuncaUsaram: resumos.filter((item) => item.frequencia === 'nunca').length,
@@ -398,9 +406,9 @@ async function metrics(env) {
     atividade30: atividade30.length,
     atividadeLimitada: atividades.length >= ATIVIDADE_MAX_ROWS,
     dau, wau, mau,
-    ativados,
-    nuncaOrcaram: Math.max(0, users.length - ativados),
-    taxaAtivacao: users.length ? Math.round((ativados / users.length) * 100) : 0,
+    ativados: orcamentosOk ? ativados : null,
+    nuncaOrcaram: orcamentosOk ? Math.max(0, users.length - ativados) : null,
+    taxaAtivacao: orcamentosOk ? (users.length ? Math.round((ativados / users.length) * 100) : 0) : null,
     receita,
   });
 }
