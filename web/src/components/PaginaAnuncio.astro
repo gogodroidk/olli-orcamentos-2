@@ -34,9 +34,11 @@ interface Props {
 	imagemAlt: string;
 	/** Vai no `utm_content` do CTA: identifica a página na atribuição. */
 	utmContent: string;
+	/** Página de SEO do mesmo ofício (/para/<slug>/) que concentra o sinal de busca: vira o canonical desta. */
+	canonico: string;
 }
 
-const { titulo, descricao, h1, sub, imagem, imagemAlt, utmContent } = Astro.props;
+const { titulo, descricao, h1, sub, imagem, imagemAlt, utmContent, canonico } = Astro.props;
 
 // O UTM fixo sobrevive: `anexarAtribuicaoAoLink` só acrescenta o que o link não tem.
 const CTA_URL = `https://app.olliorcamentos.online/auth/login?modo=cadastro&utm_content=${encodeURIComponent(utmContent)}`;
@@ -49,7 +51,7 @@ const passos = [
 	{ n: "3", titulo: "O cliente aprova pelo celular", texto: "Ele toca em aprovar e a resposta aparece no seu OLLI. Sem áudio, sem foto de caderno." },
 ];
 ---
-<Layout titulo={titulo} descricao={descricao}>
+<Layout titulo={titulo} descricao={descricao} canonicalPath={canonico}>
   <header class="mx-auto flex max-w-5xl items-center px-6 pt-6">
     <OlliLogo size={34} />
   </header>
