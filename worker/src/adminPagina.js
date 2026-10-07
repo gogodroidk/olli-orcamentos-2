@@ -322,7 +322,7 @@ const BODY = String.raw`
 const SCRIPT = String.raw`
 const SB=CFG.sb,ANON=CFG.anon;
 let TOKEN='',ME=null,RENOVA=null,MET=null,USERS=null,USERS_ERRO='',FB=null,FB_ERRO='',TROCA=null,TROCA_ERRO='',VIEW='geral';
-let SEG='todos',BUSCA='',ORDEM='cadastro',PAG=0,ESCOPO='clientes',INTERNAS_OK=true,ORGS=null,ORGS_ERRO='';const POR_PAG=50;
+let SEG='todos',BUSCA='',ORDEM='cadastro',PAG=0,ESCOPO='clientes',INTERNAS_OK=true,FONTES={},ORGS=null,ORGS_ERRO='';const POR_PAG=50;
 let FBFILTER='abertos',TROCA_FILTRO='pendente',TROCA_MAX=CFG.trocaMax;
 let USER_ABERTO=null,DET=null,ABA='resumo';
 const DIA=86400000;
@@ -637,7 +637,7 @@ async function recarregar(silencioso){
  const tarefas=[];
  if(pode('admin')){
   tarefas.push(api('metrics').then(j=>{MET=j;}).catch(e=>{if(e.status!==401)MET={erro:mensagemErro(e)};}));
-  tarefas.push(api('users').then(j=>{USERS=j.users||[];USERS_ERRO='';INTERNAS_OK=j.contasInternasLegiveis!==false;}).catch(e=>{if(e.status!==401){USERS=null;USERS_ERRO=mensagemErro(e);}}));
+  tarefas.push(api('users').then(j=>{USERS=j.users||[];USERS_ERRO='';INTERNAS_OK=j.contasInternasLegiveis!==false;FONTES=j.fontes||{};}).catch(e=>{if(e.status!==401){USERS=null;USERS_ERRO=mensagemErro(e);}}));
  }
  if(pode('suporte'))tarefas.push(api('feedback').then(j=>{FB=j.feedback||[];FB_ERRO='';}).catch(e=>{if(e.status!==401){FB=null;FB_ERRO=mensagemErro(e);}}));
  if(pode('financeiro'))tarefas.push(carregarTrocaDados());
@@ -757,16 +757,18 @@ function renderGeral(){
 }
 
 /* ── USUÁRIOS ── */
-function pillPlano(u){const pago=u.planoOrigem==='pagamento',man=u.planoOrigem==='admin',ind=u.planoOrigem==='indeterminada';return el('span',{className:'pill '+(pago?'ok':man?'info':'')},u.plano==='gratis'?'Grátis':(u.plano==='pro'?'Pro':'Empresa')+(man?' · liberado':ind?' · não confirmado':''));}
+function pillPlano(u){if(u.planoOrigem===null||u.plano===null)return el('span',{className:'pill warn',title:'Não consegui ler as assinaturas: o plano é desconhecido, não grátis.'},'plano indisponível');const pago=u.planoOrigem==='pagamento',man=u.planoOrigem==='admin',ind=u.planoOrigem==='indeterminada';return el('span',{className:'pill '+(pago?'ok':man?'info':'')},u.plano==='gratis'?'Grátis':(u.plano==='pro'?'Pro':'Empresa')+(man?' · liberado':ind?' · não confirmado':''));}
 function pillUso(u){const f=u.frequencia||'nunca';const m={frequente:['ok','Frequente'],ativo:['info','Ativo'],inativo:['warn','Inativo'],nunca:['','Nunca usou']}[f]||['',f];return el('span',{className:'pill '+m[0]},m[1]);}
 function pillSituacao(u){if(u.bloqueado)return el('span',{className:'pill dng'},u.bloqueadoAte&&Date.parse(u.bloqueadoAte)-Date.now()<366*DIA?'Bloqueado até '+fmtDate(u.bloqueadoAte):'Bloqueado');if(!u.emailConfirmado)return el('span',{className:'pill warn'},'E-mail não confirmado');return el('span',{className:'pill ok'},'Ativa');}
 function celConta(u){return el('div',{className:'conta'},el('div',{className:'av'},initials(u.nome||u.email)),el('div',{},el('b',{},u.email||'—'),el('span',{},u.nome||'sem nome')));}
+const SEG_FONTE={pagantes:'assinaturas',manual:'assinaturas',risco:'assinaturas',nunca:'orcamentos'};
+const fonteIndisp=k=>FONTES[SEG_FONTE[k]]==='indisponivel';
 const SEGS=[
  ['todos','Todos',()=>true],
  ['pagantes','Pagantes',u=>u.planoOrigem==='pagamento'],
  ['manual','Plano liberado',u=>u.planoOrigem==='admin'],
  ['ativos','Ativos em 30 dias',u=>u.atividades30>0],
- ['nunca','Nunca orçaram',u=>!u.orcamentos],
+ ['nunca','Nunca orçaram',u=>u.orcamentos===0],
  ['novos','Novos (7 dias)',u=>Date.now()-Date.parse(u.criadoEm)<7*DIA],
  ['risco','Pagos sem uso 14d',u=>u.planoOrigem==='pagamento'&&(!u.ultimoUso||Date.now()-Date.parse(u.ultimoUso)>14*DIA)],
  ['inativos','Inativos',u=>u.frequencia==='inativo'],
@@ -789,8 +791,10 @@ function renderUsuarios(){
  const abas=el('div',{className:'chips',role:'group',ariaLabel:'Tipo de conta'});
  [['clientes','Clientes',nCli],['internas','Internas',nInt]].forEach(a=>abas.append(el('button',{type:'button',className:'chip',ariaPressed:String(ESCOPO===a[0]),onclick:()=>{ESCOPO=a[0];SEG='todos';PAG=0;renderUsuarios();}},a[1],el('span',{className:'n'},String(a[2])))));
  if(!INTERNAS_OK)box.append(el('div',{className:'card atencao'},estado('erro','Não consegui ler a lista de contas internas.','Por isso as abas Clientes e Internas não são confiáveis agora: todas as contas aparecem como clientes. Atualize; se persistir, não use estes números.')));
+ const indisp=[['assinaturas','planos e pagantes'],['orcamentos','orçamentos e faturamento'],['empresa','dados da empresa']].filter(f=>FONTES[f[0]]==='indisponivel').map(f=>f[1]);
+ if(indisp.length)box.append(el('div',{className:'card atencao'},estado('erro','Não consegui ler: '+indisp.join(', ')+'.','Esses campos aparecem como indisponíveis — não como Grátis nem como zero — e os segmentos que dependem deles não são contados. Atualize; se persistir, veja o status do Supabase.')));
  const chips=el('div',{className:'chips',role:'group',ariaLabel:'Segmentos'});
- SEGS.forEach(s=>{const n=USERS.filter(noEscopo).filter(s[2]).length;chips.append(el('button',{type:'button',className:'chip',ariaPressed:String(SEG===s[0]),onclick:()=>{SEG=s[0];PAG=0;renderUsuarios();}},s[1],el('span',{className:'n'},String(n))));});
+ SEGS.forEach(s=>{const n=fonteIndisp(s[0])?'—':String(USERS.filter(noEscopo).filter(s[2]).length);chips.append(el('button',{type:'button',className:'chip',ariaPressed:String(SEG===s[0]),title:fonteIndisp(s[0])?'Fonte indisponível agora: não dá para contar.':'',onclick:()=>{SEG=s[0];PAG=0;renderUsuarios();}},s[1],el('span',{className:'n'},n)));});
  const busca=el('input',{className:'inp',id:'busca',type:'search',placeholder:'Buscar por e-mail, nome, empresa, cidade ou ID  (Ctrl+K)',value:BUSCA,ariaLabel:'Buscar usuários'});
  busca.oninput=()=>{BUSCA=busca.value;PAG=0;desenharTabela();};
  const ordem=el('select',{className:'inp',style:'width:auto',ariaLabel:'Ordenar'});[['cadastro','Mais recentes'],['uso','Usou por último'],['orc','Mais orçamentos'],['nome','E-mail (A–Z)']].forEach(o=>ordem.append(el('option',{value:o[0],selected:ORDEM===o[0]},o[1])));
@@ -808,7 +812,7 @@ function desenharTabela(){
  const t=el('table'),tb=el('tbody');
  t.append(el('thead',{},el('tr',{},el('th',{},'Conta'),el('th',{className:'hideSm'},'Empresa'),el('th',{},'Plano'),el('th',{},'Uso'),el('th',{className:'num'},'Orçamentos'),el('th',{className:'hideSm'},'Cadastro'),el('th',{className:'hideSm'},'Situação'))));
  pg.forEach(u=>{const tr=el('tr',{className:'clic',tabIndex:0,onclick:()=>abrirUsuario(u),onkeydown:e=>{if(e.key==='Enter')abrirUsuario(u);}});
-  tr.append(el('td',{},celConta(u)),el('td',{className:'hideSm'},el('div',{},u.empresa||el('span',{className:'mut'},'sem empresa')),u.cidade?el('div',{className:'mut',style:'font-size:12.5px'},u.cidade):null),el('td',{},pillPlano(u)),el('td',{},pillUso(u),el('div',{className:'mut',style:'font-size:12px;margin-top:2px'},rel(u.ultimoUso))),el('td',{className:'num'},String(u.orcamentos),u.aprovados?el('div',{className:'mut',style:'font-size:12px'},u.aprovados+' aprov.'):null),el('td',{className:'hideSm mut'},fmtDate(u.criadoEm)),el('td',{className:'hideSm'},pillSituacao(u)));tb.append(tr);});
+  tr.append(el('td',{},celConta(u)),el('td',{className:'hideSm'},el('div',{},u.empresa||el('span',{className:'mut'},'sem empresa')),u.cidade?el('div',{className:'mut',style:'font-size:12.5px'},u.cidade):null),el('td',{},pillPlano(u)),el('td',{},pillUso(u),el('div',{className:'mut',style:'font-size:12px;margin-top:2px'},rel(u.ultimoUso))),el('td',{className:'num'},u.orcamentos===null?'—':String(u.orcamentos),u.aprovados?el('div',{className:'mut',style:'font-size:12px'},u.aprovados+' aprov.'):null),el('td',{className:'hideSm mut'},fmtDate(u.criadoEm)),el('td',{className:'hideSm'},pillSituacao(u)));tb.append(tr);});
  t.append(tb);card.append(el('div',{className:'tblWrap'},t));
  const tot=l.length,pags=Math.ceil(tot/POR_PAG);
  card.append(el('div',{className:'pag'},el('span',{},'Mostrando '+(ini+1)+'–'+Math.min(ini+POR_PAG,tot)+' de '+tot),el('div',{style:'display:flex;gap:8px'},el('button',{className:'btn sec',disabled:PAG===0,onclick:()=>{PAG--;desenharTabela();}},'Anterior'),el('button',{className:'btn sec',disabled:PAG>=pags-1,onclick:()=>{PAG++;desenharTabela();}},'Próxima'))));
@@ -871,7 +875,7 @@ async function exportarCsv(){
  try{await api('export/registrar',{method:'POST',body:JSON.stringify({motivo:v.motivo,linhas:l.length,filtro:SEG+(BUSCA?' + busca':''),requestId:crypto.randomUUID()})});}
  catch(e){toast(mensagemErro(e),'err');return;}
  const cab=['id','email','nome','empresa','cidade','segmento','plano','origem_plano','frequencia','orcamentos','aprovados','cadastro','ultimo_uso','bloqueado'];
- const linhas=[cab.join(';')].concat(l.map(u=>[u.id,u.email,u.nome,u.empresa,u.cidade,u.segmento,u.plano,u.planoOrigem,u.frequencia,u.orcamentos,u.aprovados,u.criadoEm,u.ultimoUso||'',u.bloqueado?'sim':'nao'].map(celCsv).join(';')));
+ const linhas=[cab.join(';')].concat(l.map(u=>[u.id,u.email,u.nome,u.empresa,u.cidade,u.segmento,u.plano===null?'indisponivel':u.plano,u.planoOrigem===null?'indisponivel':u.planoOrigem,u.frequencia,u.orcamentos===null?'indisponivel':u.orcamentos,u.aprovados===null?'indisponivel':u.aprovados,u.criadoEm,u.ultimoUso||'',u.bloqueado?'sim':'nao'].map(celCsv).join(';')));
  const blob=new Blob(['﻿'+linhas.join('\r\n')],{type:'text/csv;charset=utf-8'});
  const a=document.createElement('a'),href=URL.createObjectURL(blob);a.href=href;a.download='olli-usuarios-'+new Date().toISOString().slice(0,10)+'.csv';document.body.append(a);a.click();a.remove();URL.revokeObjectURL(href);
  toast('CSV baixado ('+l.length+' contas).');

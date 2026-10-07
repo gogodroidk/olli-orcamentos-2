@@ -436,15 +436,28 @@ async function metrics(env) {
 }
 
 async function users(env) {
-  const [auth, empresas, orcs, assinaturas, atividades, exclusoes, admins] = await Promise.all([
+  // Plano, orçamentos e empresa são lidos em 3 estados (lerEstado): rest() devolve [] em QUALQUER falha, e aí todo usuário
+  // virava plano 'gratis' / faturamento 0 sem aviso. Fonte ilegível => campo null + `fontes.<fonte>:'indisponivel'`.
+  const [auth, empresasLeitura, orcsLeitura, assinaturasLeitura, atividades, exclusoes, admins] = await Promise.all([
     listAuthUsers(env),
-    rest(env, 'empresa?select=user_id,dados'),
-    rest(env, 'orcamentos?select=user_id,status,valor_total'),
-    rest(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    lerEstado(env, 'empresa?select=user_id,dados'),
+    lerEstado(env, 'orcamentos?select=user_id,status,valor_total'),
+    lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
     listarAtividades(env),
     lerEstado(env, 'funil_exclusoes?select=user_id,email'),
     lerEstado(env, 'admin_memberships?select=user_id'),
   ]);
+  const empresasOk = empresasLeitura.ok;
+  const orcsOk = orcsLeitura.ok;
+  const assinaturasOk = assinaturasLeitura.ok;
+  const empresas = empresasOk ? empresasLeitura.dados : [];
+  const orcs = orcsOk ? orcsLeitura.dados : [];
+  const assinaturas = assinaturasOk ? assinaturasLeitura.dados : [];
+  const fontes = {
+    empresa: empresasOk ? 'ok' : 'indisponivel',
+    orcamentos: orcsOk ? 'ok' : 'indisponivel',
+    assinaturas: assinaturasOk ? 'ok' : 'indisponivel',
+  };
   const empByUser = new Map();
   for (const e of empresas) empByUser.set(e.user_id, (e.dados && typeof e.dados === 'object') ? e.dados : {});
   const cnt = new Map();
@@ -489,15 +502,16 @@ async function users(env) {
     // false e `contasInternasLegiveis:false` faz o painel avisar que as abas não são confiáveis.
     interna: leituraInternaOk && classificarConta(u.id, u.email, contexto).interna,
     internaMotivo: (leituraInternaOk && classificarConta(u.id, u.email, contexto).motivo) || '',
-    orcamentos: cnt.get(u.id) || 0,
-    aprovados: apr.get(u.id) || 0,
-    faturamento: fat.get(u.id) || 0,
-    plano: (plano.get(u.id) || {}).plano || 'gratis',
-    planoOrigem: (plano.get(u.id) || {}).origem || 'gratis',
+    // null = "não sei" (fonte ilegível), nunca 0 / 'gratis'.
+    orcamentos: orcsOk ? (cnt.get(u.id) || 0) : null,
+    aprovados: orcsOk ? (apr.get(u.id) || 0) : null,
+    faturamento: orcsOk ? (fat.get(u.id) || 0) : null,
+    plano: assinaturasOk ? ((plano.get(u.id) || {}).plano || 'gratis') : null,
+    planoOrigem: assinaturasOk ? ((plano.get(u.id) || {}).origem || 'gratis') : null,
     ...resumirAtividade(u, porUsuario.get(u.id)),
   }));
   lista.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
-  return json({ ok: true, users: lista, contasInternasLegiveis: leituraInternaOk });
+  return json({ ok: true, users: lista, contasInternasLegiveis: leituraInternaOk, fontes });
 }
 
 async function userDetail(env, id, actor) {
