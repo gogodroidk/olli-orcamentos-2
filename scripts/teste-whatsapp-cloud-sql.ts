@@ -134,12 +134,14 @@ for (const [texto, esperado] of pedidos) {
 const recusas = [
   'Me tira dessa lista', 'me tira da lista por favor', 'retire meu número da lista', 'Tirem meu nome do cadastro', 'chega de mensagem', 'Chega!', 'já chega',
   'não me mande mais', 'Nao manda mais', 'não manda nada', 'não me chame mais', 'pare de me mandar mensagem', 'para de me enviar isso', 'Parem de ligar',
+  'quero cancelar', 'Por favor, cancelar', 'pode cancelar a lista', 'gostaria de sair da lista', 'cancela tudo', 'cancele meus dados', 'remova meu número', 'queria me descadastrar',
   'bloqueei vocês', 'vou bloquear esse número', 'não tenho interesse', 'sem interesse, obrigado', 'não me interessa', 'não quero receber mais nada',
   'quero me descadastrar', 'me desinscreva', 'isso é spam', 'apague meus dados', 'exclua meu cadastro', 'vou denunciar',
 ];
 const conversas = [
   'o orçamento chega amanhã?', 'chega no sábado de manhã', 'não mande o orçamento por e-mail, mande por zap', 'pode me mandar o orçamento?', 'quanto custa para de ar condicionado split?',
   'tira uma dúvida da instalação?', 'bloqueio do compressor, quanto sai o reparo?', 'me manda o preço', 'sim, pode mandar', 'quero parar de usar planilha e ligar mais clientes',
+  'posso cancelar o plano depois?', 'quanto custa remover o split da parede?', 'o cliente vai cancelar a visita de amanhã?',
   'nao pode ligar agora, estou na obra', 'tenho interesse sim', 'sem problema, pode enviar', 'o spam do e-mail esta caindo na minha caixa e queria ajuda para configurar o filtro e o cadastro dos clientes novos hoje',
 ];
 for (const texto of recusas) igual((await um('select private.wa_texto_pede_sair($1) r', [texto])).r, true, `recusa "${texto}" vira SAIR`);

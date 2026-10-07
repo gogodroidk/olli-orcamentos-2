@@ -117,6 +117,11 @@ as $$
   )
   select
     n ~ '^ *(sair|sai|parar|pare|stop|cancelar|descadastrar|remover|nao quero)( [a-z0-9 ]{0,40})?$'
+    -- (1b) ACHADO DO REVISOR: a família 1 ancora o verbo no INÍCIO do texto, então "quero cancelar", "por favor, cancelar",
+    --      "cancela tudo", "cancele meus dados", "remova meu número" NÃO eram SAIR. Aqui o verbo aceita um prefixo de cortesia/
+    --      intenção ("quero", "por favor", "pode", "gostaria de"…) e as flexões imperativas. Só ACRESCENTA: nada da família 1 muda.
+    --      "parar"/"pare"/"stop" ficam de fora desta forma de propósito ("quero parar de usar planilha" é conversa).
+    or n ~ '^ *((por favor|pf|pfv|favor|quero|queria|gostaria de|preciso|pode|podem|vou|vamos|ja) )*(me )?(cancelar|cancela|cancele|cancelem|remover|remova|removam|sair|saia|saiam|descadastrar)( [a-z0-9 ]{0,40})?$'
     or (
       pg_catalog.char_length(n) <= 160 and (
         -- "me tira dessa lista", "retire meu número da lista", "tira meu nome do cadastro"
