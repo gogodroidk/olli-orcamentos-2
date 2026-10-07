@@ -49,6 +49,13 @@ OK humano: `POST /whatsapp/aprovar` `{ "marca": "OLLI", "telefone": "...", "por"
 `insert into public.wa_numeros (phone_number_id, waba_id, marca, segredo_token) values ('<id>', '<waba>', '<marca>', 'wa_access_token');` e `ativo = true`.
 Token próprio por número: criar outro segredo no Vault e apontar `segredo_token`. O app secret é do **app** (um só enquanto for o mesmo app).
 
+## CUSTO — o que a Meta cobra (fonte: developers.facebook.com/docs/whatsapp/pricing, lida em 07/10/2026; vale desde 01/07/2025)
+- Cobrança é **por mensagem de template ENTREGUE**, por categoria (marketing/utilidade/autenticação) e país do destinatário. Valor em BRL: ver o painel da Meta (a página de preços não traz o número; **não assumi nenhum**).
+- **Grátis:** qualquer mensagem que não seja template (texto, imagem…) dentro da janela de 24 h aberta pela PESSOA; template de **utilidade** dentro da janela; e **72 h de janela grátis (qualquer tipo)** quando a pessoa chega por anúncio Click-to-WhatsApp ou botão de Página e você responde em até 24 h.
+- **Pago:** template de marketing fora da janela; utilidade fora da janela; autenticação.
+- **Regra do projeto:** NENHUM template de marketing sai sem custo dito e OK do Igor. `teto_diario_templates` (padrão 40) é teto de segurança, não meta; para o piloto, baixar para o que o Igor autorizar (`update public.wa_numeros set teto_diario_templates = N …`).
+- Consequência de desenho: a abordagem barata é a PESSOA escrever primeiro (anúncio Click-to-WhatsApp → 72 h grátis, e o webhook traz o objeto `referral` com o anúncio de origem). Hoje `wa_autorizar_envio` usa 24 h; estender para 72 h quando houver `referral` + guardar o anúncio de origem é a próxima evolução (não feita).
+
 ## Privacidade (LGPD) e logs
 - Telefone, nome do perfil e texto de quem escreve ficam **só** em `wa_entrada`/`wa_contatos` (RLS ligada, sem policy, revogado de anon/authenticated).
 - Logs do worker levam só contagens e rótulos — **nunca** telefone, nome, texto, token ou corpo de erro da Meta (teste tranca isso).
