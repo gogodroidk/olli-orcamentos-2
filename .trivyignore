@@ -1,27 +1,10 @@
-# Linha de base do Trivy (05/10/2026): 21 achados ALTA (menos devalue e undici da web, corrigidos em 06/10/2026), 0 CRÍTICA. Cada um VENCE em 31/10/2026:
+# Linha de base do Trivy (atualizada em 07/10/2026): só restam os achados ALTA SEM CORREÇÃO publicada, 0 CRÍTICA. Cada um VENCE em 31/10/2026:
 # depois disso volta a reprovar o CI. CRÍTICA nunca entra aqui. Corrigir = atualizar a dependência.
+# Corrigidos em 07/10/2026 (saíram daqui): brace-expansion 5.0.9→5.0.12 (override da raiz + web) e axios 1.19.0→1.20.0 (webapp).
 
-# brace-expansion@5.0.9 -> 5.0.10, 3.0.7, 2.1.5, 1.1.19 (package-lock.json)
-CVE-2026-102276 exp:2026-10-31
-# brace-expansion@5.0.9 -> 5.0.11, 3.0.8, 2.1.6, 1.1.20 (package-lock.json)
-CVE-2026-102278 exp:2026-10-31
 # braces@3.0.3 -> sem correção (package-lock.json)
 CVE-2026-93687 exp:2026-10-31
 # node-forge@1.4.0 -> sem correção (package-lock.json)
 CVE-2026-85393 exp:2026-10-31
 # http-cache-semantics@4.2.0 -> sem correção (web/package-lock.json)
 CVE-2026-93748 exp:2026-10-31
-# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
-CVE-2026-101898 exp:2026-10-31
-# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
-CVE-2026-101901 exp:2026-10-31
-# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
-CVE-2026-101903 exp:2026-10-31
-# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
-CVE-2026-101905 exp:2026-10-31
-# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
-CVE-2026-101906 exp:2026-10-31
-# axios@1.19.0 -> 1.20.0 (webapp/pnpm-lock.yaml)
-CVE-2026-101907 exp:2026-10-31
-# axios@1.19.0 -> 0.34.0, 1.20.0 (webapp/pnpm-lock.yaml)
-CVE-2026-101909 exp:2026-10-31
