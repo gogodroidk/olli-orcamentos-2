@@ -15,7 +15,7 @@
  * SEGREDOS: ficam no Supabase Vault (o Workers Free está em 64/64 variáveis). Lidos por RPC de service_role
  * e guardados 60 s na memória do isolate. Segredo ausente = rota DESLIGADA (503), nunca aberta.
  *
- * REGRAS DE ENVIO (verdade única no banco, supabase/migrations/20261007090000_whatsapp_cloud_multinumero.sql):
+ * REGRAS DE ENVIO (verdade única no banco, supabase/migrations/20261007110000_whatsapp_cloud_multinumero.sql):
  * SAIR/opt-out, primeiro contato só com OK humano, fora da janela de 24 h só template, intervalo entre
  * templates, teto diário. Aqui o worker só traduz a decisão em HTTP e fala com a Graph API.
  *
@@ -29,6 +29,11 @@ export const GRAPH_VERSAO = 'v23.0';
 export const WEBHOOK_MAX_BYTES = 1024 * 1024;
 export const ENVIO_MAX_BYTES = 16 * 1024;
 const SEGREDOS_TTL_MS = 60_000;
+/** Limites das funções do banco (wa_registrar_entradas ≤ 100 itens, wa_registrar_statuses ≤ 200). */
+export const LOTE_ENTRADAS = 100;
+export const LOTE_STATUS = 200;
+/** Teto de chamadas ao banco por webhook (o Workers Free dá 50 subrequests por invocação). */
+export const MAX_LOTES_POR_WEBHOOK = 40;
 const TEXTO_MAX = 1600;
 
 function resposta(corpo, status = 200, extra = {}) {
@@ -115,6 +120,21 @@ function textoDaMensagem(m) {
   return null;
 }
 
+/** Fatia em lotes de no máximo `n` itens, sem descartar nenhum. */
+export function emLotes(lista, n) {
+  const saida = [];
+  for (let i = 0; i < lista.length; i += n) saida.push(lista.slice(i, i + n));
+  return saida;
+}
+
+/** Inteiro >= 0 ou lança: resposta vazia/estranha do banco NÃO é "zero", é "não sei" (a Meta reenvia). */
+function contagem(valor, campo) {
+  if (!Number.isInteger(valor) || valor < 0) {
+    throw Object.assign(new Error('resposta_invalida'), { codigo: `resposta_invalida_${campo}` });
+  }
+  return valor;
+}
+
 /**
  * Agrupa o que importa por phone_number_id. Devolve só dado já saneado:
  * { porNumero: Map<string, item[]>, statuses: item[], ignoradas: number }
@@ -126,8 +146,8 @@ export function normalizarWebhook(payload) {
   if (!payload || payload.object !== 'whatsapp_business_account' || !Array.isArray(payload.entry)) {
     return { porNumero, statuses, ignoradas: 0, valido: false };
   }
-  for (const entry of payload.entry.slice(0, 50)) {
-    for (const change of Array.isArray(entry?.changes) ? entry.changes.slice(0, 50) : []) {
+  for (const entry of payload.entry) {
+    for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== 'messages') continue;
       const v = change.value || {};
       const phoneNumberId = typeof v.metadata?.phone_number_id === 'string' ? v.metadata.phone_number_id : null;
@@ -139,7 +159,7 @@ export function normalizarWebhook(payload) {
       for (const c of Array.isArray(v.contacts) ? v.contacts : []) {
         if (typeof c?.wa_id === 'string' && typeof c?.profile?.name === 'string') perfis.set(c.wa_id, c.profile.name);
       }
-      for (const m of Array.isArray(v.messages) ? v.messages.slice(0, 100) : []) {
+      for (const m of Array.isArray(v.messages) ? v.messages : []) {
         const tipo = typeof m?.type === 'string' ? m.type.toLowerCase() : 'desconhecido';
         if (TIPOS_IGNORADOS.has(tipo) || typeof m?.id !== 'string' || typeof m?.from !== 'string') {
           ignoradas += 1;
@@ -156,7 +176,7 @@ export function normalizarWebhook(payload) {
         });
         porNumero.set(phoneNumberId, lista);
       }
-      for (const s of Array.isArray(v.statuses) ? v.statuses.slice(0, 200) : []) {
+      for (const s of Array.isArray(v.statuses) ? v.statuses : []) {
         if (typeof s?.id !== 'string' || typeof s?.status !== 'string') {
           ignoradas += 1;
           continue;
@@ -220,21 +240,38 @@ export async function handleWhatsappWebhook(request, env, dependencias = {}) {
   if (!n.valido) return resposta({ ok: true, ignorado: true });
 
   const total = { registradas: 0, duplicadas: 0, saiu: 0, ignoradas: n.ignoradas, status: 0 };
+  const lotesEntrada = [];
+  for (const [phoneNumberId, itens] of n.porNumero) {
+    for (const lote of emLotes(itens, LOTE_ENTRADAS)) lotesEntrada.push({ phoneNumberId, lote });
+  }
+  const lotesStatus = emLotes(n.statuses, LOTE_STATUS);
   try {
-    for (const [phoneNumberId, itens] of n.porNumero) {
-      const r = await chamarRpcServico(config, fetchImpl, 'wa_registrar_entradas', { p_phone_number_id: phoneNumberId, p_itens: itens });
-      total.registradas += Number(r?.registradas) || 0;
-      total.duplicadas += Number(r?.duplicadas) || 0;
-      total.saiu += Number(r?.saiu) || 0;
-      total.ignoradas += Number(r?.ignoradas) || 0;
+    // Mais chamadas do que o Workers Free aguenta: processa o que cabe e devolve 500 — a Meta reenvia e, como
+    // a gravação é idempotente, cada nova tentativa avança (nada é descartado nem fica em laço sem progresso).
+    if (lotesEntrada.length + lotesStatus.length > MAX_LOTES_POR_WEBHOOK) total.excedeu = true;
+    let restante = MAX_LOTES_POR_WEBHOOK;
+    for (const { phoneNumberId, lote } of lotesEntrada) {
+      if (restante <= 0) break;
+      restante -= 1;
+      const r = await chamarRpcServico(config, fetchImpl, 'wa_registrar_entradas', { p_phone_number_id: phoneNumberId, p_itens: lote });
+      total.registradas += contagem(r?.registradas, 'registradas');
+      total.duplicadas += contagem(r?.duplicadas, 'duplicadas');
+      total.saiu += contagem(r?.saiu, 'saiu');
+      total.ignoradas += contagem(r?.ignoradas, 'ignoradas');
     }
-    if (n.statuses.length > 0) {
-      total.status = Number(await chamarRpcServico(config, fetchImpl, 'wa_registrar_statuses', { p_itens: n.statuses })) || 0;
+    for (const lote of lotesStatus) {
+      if (restante <= 0) break;
+      restante -= 1;
+      total.status += contagem(await chamarRpcServico(config, fetchImpl, 'wa_registrar_statuses', { p_itens: lote }), 'status');
     }
   } catch (erro) {
     // 500 faz a Meta reenviar; a gravação é idempotente por wa_message_id, então reenviar é seguro.
     log('whatsapp_webhook', { resultado: 'falha_ao_gravar', codigo: String(erro?.codigo || 'erro').slice(0, 40) });
     return resposta({ ok: false, erro: 'falha_ao_gravar' }, 500);
+  }
+  if (total.excedeu) {
+    log('whatsapp_webhook', { resultado: 'excedeu_lotes', ...total });
+    return resposta({ ok: false, erro: 'excedeu_lotes' }, 500);
   }
   log('whatsapp_webhook', { resultado: 'ok', ...total });
   return resposta({ ok: true, ...total });
@@ -390,7 +427,9 @@ export async function handleWhatsappFila(request, env, dependencias = {}) {
     if (!atualizar) {
       const limite = Math.max(1, Math.min(200, Number(url.searchParams.get('limite')) || 50));
       const itens = await chamarRpcServico(config, fetchImpl, 'wa_fila_entrada', { p_limit: limite }, { limiteBytes: 1024 * 1024 });
-      return resposta({ ok: true, itens: Array.isArray(itens) ? itens : [] });
+      // Fila vazia chega como `[]`. Corpo vazio/estranho = "não sei" → 503 (erro nunca vira lista vazia).
+      if (!Array.isArray(itens)) return resposta({ ok: false, erro: 'indisponivel' }, 503);
+      return resposta({ ok: true, itens });
     }
     const lido = await lerJson(request, 2048);
     if (lido.erro) return lido.erro;
@@ -401,7 +440,9 @@ export async function handleWhatsappFila(request, env, dependencias = {}) {
     const ok = await chamarRpcServico(config, fetchImpl, 'wa_fila_atualizar', {
       p_id: id, p_estado: estado, p_atribuido_a: typeof atribuidoA === 'string' ? atribuidoA : null,
     });
-    return resposta({ ok: ok === true }, ok === true ? 200 : 404);
+    if (ok === true) return resposta({ ok: true });
+    if (ok === false) return resposta({ ok: false, erro: 'nao_encontrada' }, 404);
+    return resposta({ ok: false, erro: 'indisponivel' }, 503); // corpo vazio/estranho = "não sei", não "não achou"
   } catch {
     return resposta({ ok: false, erro: 'indisponivel' }, 503);
   }

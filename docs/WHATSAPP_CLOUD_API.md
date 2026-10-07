@@ -1,6 +1,6 @@
 # WhatsApp Cloud API — multi-número (worker `olli-diagnostico`)
 
-Código: `worker/src/whatsappCloud.js` · regras de envio: `supabase/migrations/20261007090000_whatsapp_cloud_multinumero.sql`
+Código: `worker/src/whatsappCloud.js` · regras de envio: `supabase/migrations/20261007110000_whatsapp_cloud_multinumero.sql`
 · testes: `worker/scripts/teste-whatsapp-cloud.js` (18) e `scripts/teste-whatsapp-cloud-sql.ts` (66, Postgres real).
 Opt-out já existente: `docs/WHATSAPP_NAO_CONTATAR.md` (`whatsapp_nao_contatar`).
 
@@ -17,7 +17,7 @@ Callback URL no app Meta (id 869290166155166 → WhatsApp → Configuration): `h
 campo assinado **messages**. Segredo ausente no Vault = rota responde **503** (desligada, nunca aberta).
 
 ## O que o MAESTRO precisa fazer (nada disso está feito)
-1. **Aplicar a migration** (zona de produção — só com aviso): `20261007090000_whatsapp_cloud_multinumero.sql`. Aditiva; cria `wa_numeros`
+1. **Aplicar a migration** (zona de produção — só com aviso): `20261007110000_whatsapp_cloud_multinumero.sql`. Aditiva; cria `wa_numeros`
    (com o número `1162487800287754`, WABA `2107349913458786`, marca OLLI, **`ativo = false`**), `wa_contatos`, `wa_entrada`, `wa_envios` e as funções.
 2. **Gravar 5 segredos no Vault** (SQL Editor/MCP; nunca no repo — o worker está em 64/64 variáveis, por isso Vault):
    ```sql
@@ -59,3 +59,15 @@ Token próprio por número: criar outro segredo no Vault e apontar `segredo_toke
 - Mensagens de mídia (imagem/áudio) entram na fila só como tipo (sem baixar o arquivo). Fica para quando houver necessidade.
 - Resposta automática de confirmação ao SAIR não é enviada (evita mensagem automática fora de template); o Bruno vê "saiu" na fila.
 - Termos 4.7 da Meta (vigentes 23/09/2026): IA como produto principal é proibida; aqui a fila é de atendimento humano.
+
+## PRÉ-REQUISITOS DO 2º TENANT (adiados de propósito — revisão do #181, 07/10/2026)
+Hoje há UMA empresa (a holding OLLI) e o atendimento é humano e interno; os itens abaixo só importam quando um **segundo dono/marca**
+passar a usar as mesmas rotas. Antes disso, NÃO abrir o serviço a terceiros:
+1. **Isolamento por tenant do `wa_envio_token` e da fila:** hoje 1 token serve a todos os números (`/whatsapp/fila` lista todas as marcas;
+   `/whatsapp/enviar` aceita qualquer `phone_number_id`/`marca` ativo). Precisa de token por número/marca (ou JWT com marca) e filtro por marca na fila.
+2. **Recuperação de envio `reservado`:** se o worker morrer entre `wa_autorizar_envio` e `wa_concluir_envio`, a linha fica `reservado` e conta no
+   ritmo/teto para sempre. Precisa de TTL (ex.: `reservado` há > 10 min vira `falhou` com `codigo_falha = 'expirou'`) — cron do banco ou na própria `wa_autorizar_envio`.
+3. **HMAC sobre bytes crus:** a assinatura é calculada sobre o corpo decodificado em texto UTF-8 (`lerCorpoLimitado`); como a Meta assina os bytes, um
+   corpo com sequência inválida pode divergir. Hoje o payload da Meta é JSON UTF-8 válido, então não falha; ler `ArrayBuffer` e validar sobre os bytes elimina o risco.
+4. **Janela anti-replay do webhook:** a assinatura não carrega timestamp; um POST antigo capturado e reenviado passa. A gravação é idempotente por
+   `wa_message_id` (reenvio não duplica), mas statuses antigos poderiam "rebaixar" — a função já não rebaixa estado. Avaliar descartar `timestamp` muito antigo.

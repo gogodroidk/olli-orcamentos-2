@@ -1,5 +1,5 @@
 /**
- * Regras de envio do WhatsApp Cloud API NO BANCO (supabase/migrations/20261007090000_whatsapp_cloud_multinumero.sql).
+ * Regras de envio do WhatsApp Cloud API NO BANCO (supabase/migrations/20261007110000_whatsapp_cloud_multinumero.sql).
  *
  *     node scripts/teste-whatsapp-cloud-sql.ts
  *
@@ -25,7 +25,7 @@ const igual = (atual: unknown, esperado: unknown, msg: string) => {
 
 const ler = (c: string) => readFileSync(new URL(c, import.meta.url), 'utf8').split(String.fromCharCode(13)).join('');
 const optout = ler('../supabase/migrations/20261006090000_whatsapp_nao_contatar.sql');
-const wa = ler('../supabase/migrations/20261007090000_whatsapp_cloud_multinumero.sql');
+const wa = ler('../supabase/migrations/20261007110000_whatsapp_cloud_multinumero.sql');
 
 const db = new PGlite();
 await db.exec(`

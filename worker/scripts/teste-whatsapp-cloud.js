@@ -195,6 +195,43 @@ try {
     const p = mensagensMeta({ itens: { messages: [{ id: 'wamid.A1', from: TEL, type: 'text', text: { body: 'oi' } }] } });
     assert.equal((await postWebhook(m, p)).status, 500);
   });
+  await caso('POST: corpo VAZIO do banco (status/entradas) é "não sei" → 500, nunca zero (a Meta reenvia)', async () => {
+    const comStatus = mensagensMeta({ itens: { statuses: [{ id: 'wamid.ENV1', status: 'delivered' }] } });
+    const m1 = mundo({ rpcs: { wa_registrar_statuses: () => null } });
+    assert.equal((await postWebhook(m1, comStatus)).status, 500);
+    limparCacheSegredos();
+    const comMsg = mensagensMeta({ itens: { messages: [{ id: 'wamid.A1', from: TEL, type: 'text', text: { body: 'oi' } }] } });
+    for (const estranho of [null, {}, { registradas: 'x', duplicadas: 0, saiu: 0, ignoradas: 0 }, { registradas: -1, duplicadas: 0, saiu: 0, ignoradas: 0 }]) {
+      limparCacheSegredos();
+      const m2 = mundo({ rpcs: { wa_registrar_entradas: () => estranho } });
+      assert.equal((await postWebhook(m2, comMsg)).status, 500, JSON.stringify(estranho));
+    }
+  });
+  await caso('POST: 250 mensagens e 450 status são fatiados em lotes (≤100 e ≤200) e NADA é descartado', async () => {
+    const msgs = Array.from({ length: 250 }, (_, i) => ({ id: `wamid.M${String(i).padStart(5, '0')}`, from: TEL, type: 'text', timestamp: '1790000000', text: { body: 'oi' } }));
+    const sts = Array.from({ length: 450 }, (_, i) => ({ id: `wamid.S${String(i).padStart(5, '0')}`, status: 'delivered' }));
+    const m = mundo({ rpcs: {
+      wa_registrar_entradas: ({ p_itens }) => ({ registradas: p_itens.length, duplicadas: 0, saiu: 0, ignoradas: 0 }),
+      wa_registrar_statuses: ({ p_itens }) => p_itens.length,
+    } });
+    const r = await postWebhook(m, mensagensMeta({ itens: { messages: msgs, statuses: sts } }));
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.deepEqual([j.registradas, j.status], [250, 450]);
+    const lotesE = m.rpc('wa_registrar_entradas').map((c) => c.corpo.p_itens.length);
+    const lotesS = m.rpc('wa_registrar_statuses').map((c) => c.corpo.p_itens.length);
+    assert.deepEqual(lotesE, [100, 100, 50]);
+    assert.deepEqual(lotesS, [200, 200, 50]);
+    const ids = m.rpc('wa_registrar_entradas').flatMap((c) => c.corpo.p_itens.map((i) => i.id));
+    assert.equal(new Set(ids).size, 250, 'nenhuma mensagem perdida nem duplicada');
+  });
+  await caso('POST: acima do teto de chamadas por webhook grava o que cabe e responde 500 (a Meta reenvia; idempotente)', async () => {
+    const msgs = Array.from({ length: 100 * 45 }, (_, i) => ({ id: `wamid.G${String(i).padStart(6, '0')}`, from: TEL, type: 'text', timestamp: '1790000000', text: { body: 'x' } }));
+    const m = mundo({ rpcs: { wa_registrar_entradas: ({ p_itens }) => ({ registradas: p_itens.length, duplicadas: 0, saiu: 0, ignoradas: 0 }) } });
+    const r = await postWebhook(m, mensagensMeta({ itens: { messages: msgs } }));
+    assert.equal(r.status, 500);
+    assert.equal(m.rpc('wa_registrar_entradas').length, 40);
+  });
   await caso('normalizarWebhook: phone_number_id inválido é ignorado e contado', () => {
     const n = normalizarWebhook(mensagensMeta({ phoneNumberId: 'abc', itens: { messages: [{ id: 'wamid.A1', from: TEL, type: 'text' }] } }));
     assert.equal(n.porNumero.size, 0);
@@ -321,6 +358,20 @@ try {
     assert.equal((await post({ id: 'x', estado: 'resolvido' })).status, 400);
   });
 
+  await caso('fila: corpo vazio do banco = 503 (erro nunca vira lista vazia); fila vazia de verdade [] = 200', async () => {
+    const get = (m) => handleWhatsappFila(new Request('https://x.test/whatsapp/fila', { headers: { Authorization: `Bearer ${SEGREDOS.envio_token}` } }), ENV, { fetchImpl: m.fetchImpl });
+    assert.equal((await get(mundo({ rpcs: { wa_fila_entrada: () => null } }))).status, 503);
+    limparCacheSegredos();
+    const vazia = await get(mundo({ rpcs: { wa_fila_entrada: () => [] } }));
+    assert.equal(vazia.status, 200);
+    assert.deepEqual((await vazia.json()).itens, []);
+    limparCacheSegredos();
+    const m = mundo({ rpcs: { wa_fila_atualizar: () => null } });
+    const post = await handleWhatsappFila(new Request('https://x.test/whatsapp/fila/atualizar', {
+      method: 'POST', headers: { Authorization: `Bearer ${SEGREDOS.envio_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 5, estado: 'resolvido' }),
+    }), ENV, { fetchImpl: m.fetchImpl });
+    assert.equal(post.status, 503, 'atualizar com corpo vazio = não sei, não "404 não achou"');
+  });
   await caso('roteador: só /whatsapp/* conhecidas; qualquer outra devolve null', () => {
     const m = mundo();
     assert.equal(rotearWhatsapp(new Request('https://x.test/whatsapp/nada'), ENV, { fetchImpl: m.fetchImpl }), null);
