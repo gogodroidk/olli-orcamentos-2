@@ -16,16 +16,19 @@ async function caso(nome, fn) {
 const env = { SUPABASE_URL: 'https://projeto.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service-secreta-xyz' };
 const as = (h, m) => new Date(Date.UTC(2026, 9, 8, h, m, 0));
 
-function capturarLog(fn) {
+async function capturarLog(fn) {
   const logs = [];
   const l = console.log;
   const e = console.error;
   console.log = (...a) => logs.push(a.join(' '));
   console.error = (...a) => logs.push(a.join(' '));
-  return fn().then(
-    (r) => ((console.log = l), (console.error = e), { r, logs }),
-    (x) => ((console.log = l), (console.error = e), Promise.reject(x)),
-  );
+  try {
+    const r = await fn();
+    return { r, logs };
+  } finally {
+    console.log = l;
+    console.error = e;
+  }
 }
 
 console.log('WhatsApp — retenção');
@@ -37,14 +40,20 @@ await caso('só o minuto 06:19 UTC conta', () => {
 
 await caso('fora do minuto: NÃO chama nada', async () => {
   let chamadas = 0;
-  const r = await limparWhatsappAntigo(env, as(10, 0), async () => (chamadas++, new Response('{}')));
+  const r = await limparWhatsappAntigo(env, as(10, 0), async () => {
+    chamadas += 1;
+    return new Response('{}');
+  });
   assert.equal(chamadas, 0);
   assert.equal(r.pulou, true);
 });
 
 await caso('sem configuração: não chama e diz que não rodou', async () => {
   let chamadas = 0;
-  const r = await limparWhatsappAntigo({}, as(6, 19), async () => (chamadas++, new Response('{}')));
+  const r = await limparWhatsappAntigo({}, as(6, 19), async () => {
+    chamadas += 1;
+    return new Response('{}');
+  });
   assert.equal(chamadas, 0);
   assert.deepEqual([r.ok, r.motivo], [false, 'sem_config']);
 });
