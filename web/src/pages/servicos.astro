@@ -1,0 +1,86 @@
+---
+/**
+ * /servicos — o "segundo andar" do OLLI: serviços com IA em 3 pacotes.
+ *
+ * Copy e valores vêm só de `data/servicos.ts` (que cita a fonte). Não é o produto de
+ * orçamentos: é a oferta de projeto sob contrato. Sem preço aprovado, o valor não aparece.
+ */
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Layout from "../layouts/Layout.astro";
+import { EMPRESA } from "../data/empresa";
+import { AVISO_REGULADAS, CONDICOES, NAO_INCLUSO, PACOTES, PRECOS_APROVADOS } from "../data/servicos";
+
+const reais = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const zap = (pacote: string) =>
+	`https://wa.me/${EMPRESA.whatsapp}?text=${encodeURIComponent(`Oi! Quero conversar sobre o pacote "${pacote}" do OLLI.`)}`;
+---
+<Layout
+  titulo="OLLI Serviços — site, atendimento no WhatsApp e sistema sob medida"
+  descricao="Três pacotes para o seu negócio de serviço: presença profissional, atendimento automático com IA e sistema sob medida. Prazo e escopo fechados em contrato."
+>
+  <Header>
+    <a href="/" class="inline-flex min-h-11 items-center px-3 text-sm font-medium text-slate hover:text-ink">← Voltar pra home</a>
+  </Header>
+
+  <main>
+    <section class="mx-auto max-w-5xl px-6 pb-10 pt-14 md:pt-20">
+      <p class="text-sm font-semibold text-brand-fg">OLLI Serviços</p>
+      <h1 class="mt-3 max-w-3xl text-[clamp(2rem,5.5vw,3.4rem)] font-extrabold leading-[1.08] tracking-tight text-ink">
+        Seu negócio aparece, atende e se organiza.
+      </h1>
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-slate">
+        Três pacotes com prazo e escopo fechados em contrato: do site ao atendimento no WhatsApp com IA e ao painel sob medida.
+      </p>
+    </section>
+
+    <section class="mx-auto grid max-w-5xl gap-5 px-6 pb-14 md:grid-cols-3" aria-label="Pacotes">
+      {PACOTES.map((p, i) => (
+        <article class={`flex min-w-0 flex-col rounded-2xl border bg-card p-6 ${p.destaque ? "border-brand shadow-lg shadow-brand/10" : "border-line"}`}>
+          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Pacote {i + 1}</p>
+          <h2 class="mt-1 text-xl font-bold text-ink">{p.nome}</h2>
+          <p class="mt-3 text-3xl font-extrabold text-ink">
+            {PRECOS_APROVADOS ? reais(p.preco) : "Sob consulta"}
+          </p>
+          <p class="mt-1 text-sm text-muted">{p.prazoDiasUteis} dias úteis · suporte de {p.suporteDias} dias</p>
+          <p class="mt-4 text-sm leading-relaxed text-slate">{p.paraQuem}</p>
+          <ul class="mt-4 space-y-2 text-sm leading-relaxed text-ink">
+            {p.inclui && <li class="font-semibold">Tudo do pacote “{p.inclui}”, mais:</li>}
+            {p.entrega.map((e) => (
+              <li class="flex gap-2"><span class="mt-0.5 text-check" aria-hidden="true">✓</span><span>{e}</span></li>
+            ))}
+          </ul>
+          <a
+            href={zap(p.nome)}
+            class="mt-auto inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-5 py-3 text-center text-base font-semibold text-white transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            style="margin-top:1.5rem"
+          >
+            Conversar sobre este pacote
+          </a>
+        </article>
+      ))}
+    </section>
+
+    <section class="border-t border-line bg-card/60">
+      <div class="mx-auto grid max-w-5xl gap-10 px-6 py-14 md:grid-cols-2">
+        <div>
+          <h2 class="text-lg font-bold text-ink">Como funciona</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-slate">
+            {CONDICOES.map((c) => <li>{c}</li>)}
+          </ul>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-ink">O que não está incluso</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-slate">
+            {NAO_INCLUSO.map((c) => <li>{c}</li>)}
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-5xl px-6 py-12">
+      <p class="max-w-3xl text-sm leading-relaxed text-muted">{AVISO_REGULADAS}</p>
+    </section>
+  </main>
+  <Footer />
+</Layout>
