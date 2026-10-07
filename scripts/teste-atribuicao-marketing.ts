@@ -411,9 +411,9 @@ assert.equal(valorDoPlano('gratis'), null);
 
 assert.deepEqual(await processarConversoesAnuncios({}, { forcar: true }), { estado: 'desligado' }, 'sem token = desligado, sem fingir');
 assert.deepEqual(await processarConversoesAnuncios({ META_CAPI_TOKEN: 'x' }, { agora: new Date('2026-10-05T12:04:00Z') }), { estado: 'fora_do_horario' });
-const chamadas: { url: string; corpo: EventoCapi }[] = [];
-const fetchFalso = async (url: string, opcoes: { body: string }) => {
-  chamadas.push({ url, corpo: JSON.parse(opcoes.body) });
+const chamadas: { url: string; corpo: EventoCapi; headers?: Record<string, string> }[] = [];
+const fetchFalso = async (url: string, opcoes: { body: string; headers?: Record<string, string> }) => {
+  chamadas.push({ url, corpo: JSON.parse(opcoes.body), headers: opcoes.headers });
   if (url.includes('pendentes')) return new Response(JSON.stringify([base]), { status: 200 });
   if (url.includes('graph.facebook.com')) return new Response(JSON.stringify({ events_received: 1, fbtrace_id: 'T' }), { status: 200 });
   return new Response('1', { status: 200 });
@@ -423,7 +423,10 @@ const res = (await processarConversoesAnuncios(envW, { agora: new Date(AGORA + 3
 assert.equal(res.estado, 'ok');
 assert.equal(res.enviados, 1);
 assert.equal(chamadas.length, 3, '3 subrequests: pendências, envio, registro');
-assert.match(chamadas[1].url, /\/v23\.0\/4793168394059665\/events\?access_token=tok$/);
+// Token no CABEÇALHO, nunca na URL (URL aparece em log de proxy e em mensagem de erro de rede) — #182.
+assert.equal(chamadas[1].url, 'https://graph.facebook.com/v23.0/4793168394059665/events');
+assert.doesNotMatch(chamadas[1].url, /access_token|tok/);
+assert.equal(chamadas[1].headers?.Authorization, 'Bearer tok');
 assert.equal(chamadas[1].corpo.test_event_code, undefined);
 assert.deepEqual(chamadas[2].corpo.p_itens.map((x: EventoCapi) => x.estado), ['enviado']);
 chamadas.length = 0;
@@ -434,7 +437,7 @@ assert.equal(resTeste.enviados, 0);
 
 // Token no Supabase Vault (Workers Free no teto de 64 variáveis): três estados.
 const envSemSegredo = { SUPABASE_URL: 'https://sb', SUPABASE_SERVICE_ROLE_KEY: 'k' };
-const fetchComVault = (respostaToken: Response) => async (url: string, opcoes: { body: string }) => {
+const fetchComVault = (respostaToken: Response) => async (url: string, opcoes: { body: string; headers?: Record<string, string> }) => {
   if (!url.includes('anuncios_meta_token')) return fetchFalso(url, opcoes);
   chamadas.push({ url, corpo: JSON.parse(opcoes.body) });
   return respostaToken.clone();
@@ -443,7 +446,8 @@ chamadas.length = 0;
 const resVault = (await processarConversoesAnuncios(envSemSegredo, { forcar: true, agora: new Date(AGORA), fetchImpl: fetchComVault(new Response(JSON.stringify('tok-vault'), { status: 200 })) as unknown as typeof fetch })) as EventoCapi;
 assert.equal(resVault.enviados, 1, 'token do Vault liga a CAPI');
 assert.equal(chamadas.length, 4, 'pendências, Vault, envio, registro');
-assert.match(chamadas[2].url, /access_token=tok-vault$/);
+assert.doesNotMatch(chamadas[2].url, /access_token|tok-vault/, 'token do Vault também só no cabeçalho');
+assert.equal(chamadas[2].headers?.Authorization, 'Bearer tok-vault');
 chamadas.length = 0;
 assert.deepEqual(await processarConversoesAnuncios(envSemSegredo, { forcar: true, agora: new Date(AGORA), fetchImpl: fetchComVault(new Response('null', { status: 200 })) as unknown as typeof fetch }), { estado: 'desligado' }, 'Vault vazio = desligado');
 assert.deepEqual(await processarConversoesAnuncios(envSemSegredo, { forcar: true, agora: new Date(AGORA), fetchImpl: fetchComVault(new Response('x', { status: 500 })) as unknown as typeof fetch }), { estado: 'erro_token' }, 'erro no Vault ≠ desligado');
