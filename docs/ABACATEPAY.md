@@ -412,3 +412,28 @@ if (url.pathname.startsWith('/abacate/')) return handleAbacate(request, env, url
 - Idempotência em **duas camadas**: `(origem,ref)` único no `credit_ledger` **e** `ref = log_…` do evento ⇒ reenvio da AbacatePay não credita duas vezes (409 → sucesso).
 - Autenticidade do webhook: trate o **`?webhookSecret=`** (seu, secreto) como a barreira real; o HMAC de chave pública compartilhada é complementar (⚠️ §5). Confirme com o suporte se o `secret` do webhook entra no HMAC antes de confiar só nele.
 - Todos os secrets ficam **no cofre do worker** (mesmo modelo de `STRIPE_SECRET_KEY`), nunca no app — e lembre que, conforme a memória do projeto, **todo push na `main` apaga os secrets do worker**: re-provisionar `ABACATEPAY_API_KEY` e `ABACATE_WEBHOOK_SECRET` após deploy.
+---
+
+## 9. Produtos cadastrados na AbacatePay + alarme do Pix (06/10/2026)
+
+### 9.1 Mapa produto → código interno
+Criados por `POST /v2/products/create` (avulsos, `cycle` nulo — o Pix do OLLI é período pago, sem recorrência; assinatura AbacatePay é CARD-only). Preço em centavos, **derivado de `src/services/precosPlanos.ts`** (mesmos valores de `PLANO_PIX` em `worker/src/mercadopago.js`). Nome em ASCII: a AbacatePay recusa "·" (ver `descricaoAbacate`).
+
+| externalId | Nome na AbacatePay | Centavos | Plano / período interno (`PLANO_PIX`) |
+|---|---|---|---|
+| `olli_pro_mensal` | OLLI Pro - 1 mes | 3900 | `pro_mensal` (pro, 1 mês) |
+| `olli_pro_anual` | OLLI Pro - 1 ano | 37440 | `pro_anual` (pro, 12 meses) |
+| `olli_empresa_mensal` | OLLI Empresa - 1 mes | 9900 | `empresa_mensal` (empresa, 1 mês) |
+| `olli_empresa_anual` | OLLI Empresa - 1 ano | 95040 | `empresa_anual` (empresa, 12 meses) |
+
+- Criados nas DUAS contas (chave `abc_dev_` e chave `abc_prod_`); a listagem anterior estava vazia nas duas. IDs `prod_…` ficam no painel/`GET /v2/products/list` — o código usa o `externalId`.
+- Hoje o fluxo `/abacate/plano/pix` cria QR avulso (`/transparents/create`) e **não referencia produto**; o catálogo existe para checkout hospedado/relatório. Se um dia o checkout hospedado entrar, referenciar pelo `externalId`.
+- **Pacotes de créditos de IA: NÃO cadastrados.** Não existem em `PLANOS_BASE`; só em `PACOTES` de `worker/src/mercadopago.js` (`creditos_50` 2490, `creditos_150` 4990, `creditos_400` 9990) e nenhuma tela do app os vende hoje. Cadastrar quando houver decisão de vender.
+- Script (idempotente: lista antes, não duplica): `Entregas Claude/OLLI/2026-10-07-trabalho/abacate-produtos.mjs <dev|prod>`.
+
+### 9.2 Alarme do Pix (`worker/src/alarmePix.js`)
+Roda 1×/dia às 11:23 UTC (08:23 BRT) dentro do cron do Play (`3,23,43`), só leitura. Duas checagens, três estados (`ok` | `alerta` | `indisponivel` — falha de leitura nunca vira "sem Pix"):
+- `sem_pix_na_janela`: nenhuma cobrança PAID em modo real nos últimos 7 dias (`GET /v2/transparents/list?status=PAID`).
+- `pago_sem_credito`: PAID no provedor há mais de 15 min **sem** linha `webhook_events` (`origem='abacate'`, `status='processado'`) — cliente pagou e o plano pode não ter ligado.
+Resultado: 1 linha/dia em `webhook_events` (`origem='alarme_pix'`, `event_id`=AAAA-MM-DD; `processado`=ok, `falhou`=alerta/indisponível, códigos em `erro`). Consulta: `select event_id,status,erro,payload from webhook_events where origem='alarme_pix' order by recebido_em desc;`. Não há push: quem lê é o checklist diário do FIN.
+Limite conhecido: lê até 100 cobranças PAID por execução (uma página); a divergência inversa (assinatura ativa por Pix sem cobrança paga) não é checada — `assinaturas` não guarda o provedor.
