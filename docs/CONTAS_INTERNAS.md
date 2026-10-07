@@ -39,5 +39,5 @@ as abas avisam que não são confiáveis e a receita continua escondida. Nunca s
 
 ## Passos de dados (não são migration — o Maestro/Igor faz depois da revisão)
 1. Aplicar a migration `20261007140000` (aditiva). **Ordem:** antes de ligar o WhatsApp do #181 e antes de aplicar o #182.
-2. No painel: marcar as contas do Igor/demo (aba Usuários → conta → "Marcar como conta interna") e a organização **GR Tech** (aba Organizações).
+2. As contas do dono e do demo **já vêm da semente** da migration. No painel: marcar a organização **GR Tech** (aba Organizações) e, se houver, outras contas da equipe (aba Usuários → conta → "Marcar como conta interna").
 3. Conferir: Usuários → **Internas** mostra as contas; Visão geral diz "N conta(s) interna(s) fora".
