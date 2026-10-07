@@ -11,6 +11,8 @@
  *    SÓ o que a org marcou;
  *  · interna NÃO entra em nenhuma contagem: medição do 1º orçamento (T1) e fila de e-mail (enqueue) a recusam;
  *    a lista de candidatos da régua carrega a cláusula, no lugar certo, uma vez só, e o remendo é idempotente;
+ *  · WhatsApp: `pode_contatar_whatsapp` (a pergunta do SALES antes de cada mensagem e do guarda do #181) recusa interna
+ *    pela conta e pelo telefone;
  *  · permissões: anon/authenticated não executam nada; service_role executa.
  */
 import assert from 'node:assert/strict';
@@ -60,6 +62,8 @@ await db.exec(`
   create function private.email_recebeu_ultimas_24h(p_user uuid, p_now timestamptz) returns boolean language sql as $$ select false $$;
 `);
 await db.exec(optout);
+// No Supabase o service_role executa as funções antigas por default privileges; no PGlite é preciso conceder.
+await db.exec('grant execute on function public.pode_contatar_whatsapp(uuid, text) to service_role');
 await db.exec(t1);
 // A régua REAL (as duas funções, extraídas da migration que as define por último).
 await db.exec(funcaoDe(regua, 'enqueue_lembrete_email'));
@@ -191,6 +195,19 @@ const eCliente = await enq(clienteSemOrc);
 igual([eCliente.enfileirado, eCliente.motivo], [true, 'enfileirado'], 'régua: cliente real continua sendo enfileirado');
 await db.exec('reset role');
 igual((await q(`select count(*)::int n from public.email_outbox where user_id = any($1::uuid[])`, [[igor, adminAtivo]]))[0].n, 0, 'nenhuma linha na outbox para interna');
+
+// 4b2) WhatsApp: o SALES (e o guarda do #181) perguntam `pode_contatar_whatsapp` antes de CADA mensagem
+await db.exec('set role service_role');
+const pode = async (u: string | null, tel: string | null) => (await um('select public.pode_contatar_whatsapp($1, $2) r', [u, tel])).r;
+const wInterna = await pode(igor, null);
+igual([wInterna.pode, wInterna.motivo], [false, 'conta_interna'], 'WhatsApp: conta interna (por id) NUNCA é abordada');
+igual((await pode(null, '+55 11 98765-4321')).motivo, 'conta_interna', 'WhatsApp: telefone de conta interna (outro formato) também não');
+igual((await pode(adminAtivo, null)).motivo, 'conta_interna', 'WhatsApp: administrador ativo também');
+const wCliente = await pode(clienteSemOrc, null);
+igual([wCliente.pode, wCliente.motivo], [true, 'liberado'], 'WhatsApp: cliente real segue liberado');
+igual((await pode(null, '(21) 99999-0000')).pode, true, 'WhatsApp: telefone de cliente segue liberado');
+igual((await pode(null, null)).motivo, 'sem_identificador', 'WhatsApp: sem identificador continua recusado');
+await db.exec('reset role');
 
 // 4c) a lista de candidatos carrega a cláusula (uma vez só, no CTE de usuários) e o remendo é idempotente
 const defLista = (await um(`select pg_get_functiondef(p.oid) d from pg_proc p where p.proname = 'listar_candidatos_lembrete_email'`)).d as string;

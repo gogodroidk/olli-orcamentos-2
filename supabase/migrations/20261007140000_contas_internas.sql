@@ -277,3 +277,30 @@ begin
   end if;
 end
 $patch_t1$;
+
+-- ─── 6) WhatsApp: conta interna nunca é abordada ─────────────────────────────────
+-- `pode_contatar_whatsapp` é a pergunta que o SALES faz antes de CADA mensagem (docs/WHATSAPP_NAO_CONTATAR.md) e que o
+-- guarda do #181 (wa_autorizar_envio) também chama: um ponto só cobre os dois. Recusa pela CONTA e pelo TELEFONE
+-- (um lead cujo número é o de uma conta interna também não é abordado).
+do $patch_whatsapp$
+declare
+  v_def  text;
+  v_novo text;
+  v_ancora constant text := 'if p_user_id is not null then';
+begin
+  select pg_get_functiondef(p.oid) into v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'pode_contatar_whatsapp';
+  if v_def is null then raise exception 'pode_contatar_whatsapp_ausente'; end if;
+  if position('public.conta_interna(' in v_def) = 0 then
+    if position(v_ancora in v_def) = 0 then raise exception 'pode_contatar_ancora_nao_encontrada'; end if;
+    v_novo := replace(v_def, v_ancora,
+      E'-- Conta INTERNA (equipe, demo, teste): nunca se aborda, pela conta ou pelo telefone (migration contas_internas).\n'
+      || E'  if (p_user_id is not null and public.conta_interna(p_user_id))\n'
+      || E'     or (v_tel is not null and public.conta_interna_por_telefone(v_tel)) then\n'
+      || E'    return pg_catalog.jsonb_build_object(''pode'', false, ''motivo'', ''conta_interna'');\n'
+      || E'  end if;\n\n  ' || v_ancora);
+    execute v_novo;
+  end if;
+end
+$patch_whatsapp$;
