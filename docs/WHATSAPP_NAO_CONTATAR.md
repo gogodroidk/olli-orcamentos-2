@@ -10,6 +10,7 @@ Privacidade (seção 3, item "Telefone (WhatsApp)", e seção 11) promete exatam
    select public.pode_contatar_whatsapp('<user_id ou null>', '<telefone ou null>');
    -- {"pode": true,  "motivo": "liberado"}            → pode enviar
    -- {"pode": false, "motivo": "pediu_sair" | ...}    → NÃO envie
+   -- motivo "conta_interna": equipe/demo/teste (docs/CONTAS_INTERNAS.md) — nunca se aborda
    ```
    Sem identificador, conta inexistente ou qualquer erro = **não envie**. Passe o `user_id` quando
    tiver: a função também confere o telefone do cadastro da conta.
