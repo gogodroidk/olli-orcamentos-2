@@ -5,8 +5,8 @@
  *
  * Roda o SQL REAL num Postgres de verdade (PGlite) com stubs só do que é do Supabase. Prova: só quem aceitou
  * o aviso ('sim') entra · conta interna fora (por id e por e-mail) · telefone sai normalizado (55+DDD+número) ·
- * `Lead` só do 1º orçamento ENVIADO real (não estimado, até 7 dias) · enviado/pulado não volta; erro volta até
- * 5 tentativas · a tabela aceita 'Lead' e continua recusando evento desconhecido · anon não executa.
+ * `OrcamentoEnviado` só do 1º orçamento ENVIADO real (não estimado, até 7 dias) · enviado/pulado não volta; erro volta até
+ * 5 tentativas · a tabela aceita 'OrcamentoEnviado' (e NÃO 'Lead', que é do navegador) e continua recusando evento desconhecido · anon não executa.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -37,7 +37,7 @@ await db.exec(`
 `);
 await db.exec(ler('../supabase/migrations/20261006090000_whatsapp_nao_contatar.sql')); // private.telefone_whatsapp_br
 await db.exec(ler('../supabase/migrations/20261005090000_anuncios_conversoes.sql'));
-const nova = ler('../supabase/migrations/20261007120000_anuncios_conversoes_lead_telefone.sql');
+const nova = ler('../supabase/migrations/20261007120000_anuncios_conversoes_orcamento_enviado_telefone.sql');
 await db.exec(nova);
 await db.exec(nova); // idempotente
 checks++;
@@ -61,37 +61,39 @@ igual(p.map((x) => x.evento + ':' + x.email).sort(), ['CompleteRegistration:sim@
 igual(p[0].telefone, '5511987654321', 'telefone sai normalizado 55+DDD+número (o worker faz o hash)');
 igual(p[0].event_id, `cadastro-${sim}`, 'event_id do cadastro = o do navegador (dedup)');
 
-// ─── Lead = 1º orçamento ENVIADO real ────────────────────────────────────────
+// ─── OrcamentoEnviado = 1º orçamento ENVIADO real ────────────────────────────────────────
 await db.exec(`insert into public.funil_marcos (user_id, marco, criado_em, estimado) values
   ('${sim}', 'perfil_empresa', now(), false),
   ('${nao}', 'orcamento_enviado', now(), false),
   ('${interno}', 'orcamento_enviado', now(), false)`);
 p = await pend();
-igual(p.filter((x) => x.evento === 'Lead').length, 0, 'sem aceite, conta interna e marco que não é "orçamento enviado" NÃO viram Lead');
+igual(p.filter((x) => x.evento === 'OrcamentoEnviado').length, 0, 'sem aceite, conta interna e marco que não é "orçamento enviado" NÃO viram OrcamentoEnviado');
 await db.exec(`insert into public.funil_marcos (user_id, marco, criado_em, estimado) values ('${sim}', 'orcamento_enviado', now(), true)`);
-igual((await pend()).filter((x) => x.evento === 'Lead').length, 0, 'marco ESTIMADO não vira Lead (só envio comprovado)');
+igual((await pend()).filter((x) => x.evento === 'OrcamentoEnviado').length, 0, 'marco ESTIMADO não vira OrcamentoEnviado (só envio comprovado)');
 await db.exec(`delete from public.funil_marcos where user_id = '${sim}' and marco = 'orcamento_enviado'; insert into public.funil_marcos (user_id, marco, criado_em, estimado) values ('${sim}', 'orcamento_enviado', now(), false)`);
 p = await pend();
-const lead = p.find((x) => x.evento === 'Lead');
-igual([lead?.event_id, lead?.telefone, lead?.plano], [`lead-${sim}`, '5511987654321', null], 'envio real de quem aceitou vira Lead com event_id próprio');
+const lead = p.find((x) => x.evento === 'OrcamentoEnviado');
+igual([lead?.event_id, lead?.telefone, lead?.plano], [`orcamento-enviado-${sim}`, '5511987654321', null], 'envio real de quem aceitou vira OrcamentoEnviado com event_id próprio');
 await db.exec(`update public.funil_marcos set criado_em = now() - interval '8 days' where marco = 'orcamento_enviado' and user_id = '${sim}'`);
-igual((await pend()).filter((x) => x.evento === 'Lead').length, 0, 'Lead com mais de 7 dias sai da fila (a CAPI recusaria)');
+igual((await pend()).filter((x) => x.evento === 'OrcamentoEnviado').length, 0, 'OrcamentoEnviado com mais de 7 dias sai da fila (a CAPI recusaria)');
 await db.exec(`update public.funil_marcos set criado_em = now() where marco = 'orcamento_enviado' and user_id = '${sim}'`);
 
 // ─── Estado do envio ──────────────────────────────────────────────────────────
 const registrar = async (itens: unknown[]) => (await q('select public.anuncios_conversoes_registrar($1::jsonb) r', [JSON.stringify(itens)]))[0].r;
 await registrar([{ event_id: `cadastro-${sim}`, user_id: sim, evento: 'CompleteRegistration', estado: 'enviado', detalhe: 'fbtrace x' }]);
-igual((await pend()).map((x) => x.evento), ['Lead'], 'enviado não volta para a fila');
-for (let i = 0; i < 2; i++) await registrar([{ event_id: `lead-${sim}`, user_id: sim, evento: 'Lead', estado: 'erro', detalhe: 'HTTP 500' }]);
-igual((await pend()).map((x) => x.evento), ['Lead'], 'erro volta a tentar (2 tentativas)');
-for (let i = 0; i < 3; i++) await registrar([{ event_id: `lead-${sim}`, user_id: sim, evento: 'Lead', estado: 'erro', detalhe: 'HTTP 500' }]);
+igual((await pend()).map((x) => x.evento), ['OrcamentoEnviado'], 'enviado não volta para a fila');
+for (let i = 0; i < 2; i++) await registrar([{ event_id: `orcamento-enviado-${sim}`, user_id: sim, evento: 'OrcamentoEnviado', estado: 'erro', detalhe: 'HTTP 500' }]);
+igual((await pend()).map((x) => x.evento), ['OrcamentoEnviado'], 'erro volta a tentar (2 tentativas)');
+for (let i = 0; i < 3; i++) await registrar([{ event_id: `orcamento-enviado-${sim}`, user_id: sim, evento: 'OrcamentoEnviado', estado: 'erro', detalhe: 'HTTP 500' }]);
 igual((await pend()).length, 0, 'depois de 5 tentativas com erro, para de insistir');
-igual((await q(`select tentativas from public.anuncios_conversoes where event_id = 'lead-${sim}'`))[0].tentativas, 5, 'tentativas contadas');
+igual((await q(`select tentativas from public.anuncios_conversoes where event_id = 'orcamento-enviado-${sim}'`))[0].tentativas, 5, 'tentativas contadas');
 
 // ─── Constraint e permissões ──────────────────────────────────────────────────
 await assert.rejects(() => db.query(`insert into public.anuncios_conversoes (event_id, user_id, evento, estado) values ('x-1', $1, 'Purchase', 'enviado')`, [sim]), /check/i, 'evento desconhecido continua recusado');
 checks++;
-await db.query(`insert into public.anuncios_conversoes (event_id, user_id, evento, estado) values ('x-2', $1, 'Lead', 'pulado')`, [calado]);
+await assert.rejects(() => db.query(`insert into public.anuncios_conversoes (event_id, user_id, evento, estado) values ('x-3', $1, 'Lead', 'enviado')`, [sim]), /check/i, "'Lead' é do navegador: o servidor não pode gravar esse nome");
+checks++;
+await db.query(`insert into public.anuncios_conversoes (event_id, user_id, evento, estado) values ('x-2', $1, 'OrcamentoEnviado', 'pulado')`, [calado]);
 checks++;
 igual((await q(`select has_function_privilege('anon', 'public.anuncios_conversoes_pendentes(integer)', 'execute') a, has_function_privilege('authenticated', 'public.anuncios_conversoes_pendentes(integer)', 'execute') b, has_function_privilege('service_role', 'public.anuncios_conversoes_pendentes(integer)', 'execute') c`))[0], { a: false, b: false, c: true }, 'só service_role executa');
 

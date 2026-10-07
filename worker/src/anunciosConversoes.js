@@ -9,12 +9,13 @@
  *                          (web/src/lib/... → webapp/src/lib/marketing.ts)
  *   Subscribe             event_id 'assinatura-<user_id>' — só o servidor sabe que pagou
  *                          (funil_marcos 'pagou', que já descarta teste e fictício)
- *   Lead                  event_id 'lead-<user_id>' — ATIVAÇÃO: 1º orçamento ENVIADO (funil_marcos
- *                          'orcamento_enviado', sem estimativa). Só o servidor sabe. O nome do evento é
- *                          a constante EVENTO_ATIVACAO (decisão do MKT). ATENÇÃO: a landing JÁ dispara um
- *                          `Lead` no navegador a cada clique em CTA de cadastro (web/src/scripts/marketing.ts,
- *                          `rastrear("Lead", …)`, via fbq em web/src/lib/metaPixel.ts) — é OUTRO sinal (clique,
- *                          sem event_id) com o mesmo nome; o painel de anúncios mistura os dois.
+ *   OrcamentoEnviado      event_id 'orcamento-enviado-<user_id>' — ATIVAÇÃO: 1º orçamento ENVIADO
+ *                          (funil_marcos 'orcamento_enviado', sem estimativa). Só o servidor sabe. EVENTO
+ *                          CUSTOM, sem value/currency, de propósito: a landing JÁ dispara `Lead` no navegador
+ *                          a cada clique em CTA de cadastro (web/src/scripts/marketing.ts, `rastrear("Lead", …)`,
+ *                          via fbq em web/src/lib/metaPixel.ts). Dois eventos `Lead` (clique × ativação real)
+ *                          misturariam sinais no mesmo Pixel e o algoritmo otimizaria em cima do clique. O nome
+ *                          do evento do servidor é a constante EVENTO_ATIVACAO.
  *
  * QUEM ENTRA: só quem aceitou o aviso de cookies (`medicao_anuncios.consentimento =
  * 'sim'`) e não está em `funil_exclusoes` — o filtro mora no SQL
@@ -40,7 +41,7 @@ import { PRECO_EMPRESA, PRECO_PRO } from '../../src/services/precosPlanos.ts';
 
 export const META_PIXEL_ID = '4793168394059665';
 /** Evento de ATIVAÇÃO (1º orçamento enviado). Trocar o nome aqui muda só o que a Meta recebe. */
-export const EVENTO_ATIVACAO = 'Lead';
+export const EVENTO_ATIVACAO = 'OrcamentoEnviado';
 const GRAPH_VERSAO = 'v23.0';
 const SETE_DIAS_S = 7 * 24 * 60 * 60;
 
@@ -125,7 +126,7 @@ export async function montarEventoMeta(item, agoraMs = Date.now()) {
   if (item.evento === 'CompleteRegistration') {
     evento.custom_data = { status: true };
   } else if (item.evento === EVENTO_ATIVACAO) {
-    evento.custom_data = { content_name: 'orcamento_enviado' };
+    // Custom e sem value/currency: não finge ser receita nem lead de clique.
   } else {
     const valor = valorDoPlano(item.plano);
     evento.custom_data = { currency: 'BRL', ...(valor ? { value: valor } : {}), ...(item.plano ? { content_name: item.plano } : {}) };

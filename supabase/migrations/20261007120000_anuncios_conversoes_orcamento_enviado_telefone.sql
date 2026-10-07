@@ -1,4 +1,4 @@
--- CAPI server-side: telefone (hash no worker) e evento de ATIVAÇÃO "Lead" (07/10/2026).
+-- CAPI server-side: telefone (hash no worker) e evento de ATIVAÇÃO "OrcamentoEnviado" (07/10/2026).
 --
 -- Diagnóstico de 07/10 (produção): a CAPI NÃO estava quebrada — 2 CompleteRegistration já entregues, token
 -- no Vault, 0 pendências. O que limita o volume é o CONSENTIMENTO (regra do projeto: sem "sim" nada de
@@ -7,17 +7,18 @@
 --
 --   1. `telefone` (normalizado 55+DDD+número) vai para o worker, que manda só o SHA-256 (`ph`) — mais
 --      chance de a Meta casar o cadastro com o anúncio clicado (e-mail sozinho casa pouco).
---   2. `Lead` = ATIVAÇÃO: o primeiro orçamento ENVIADO de quem aceitou (funil_marcos 'orcamento_enviado',
---      sem estimativa). O cadastro sozinho não paga a conta (47/60 nunca orçaram): a Meta passa a ter o sinal
---      de quem de fato usa o produto. event_id 'lead-<user_id>'. (Nome do evento = decisão do MKT; é a
---      constante EVENTO_ATIVACAO em worker/src/anunciosConversoes.js.)
+--   2. `OrcamentoEnviado` = ATIVAÇÃO: o primeiro orçamento ENVIADO de quem aceitou (funil_marcos
+--      'orcamento_enviado', sem estimativa). O cadastro sozinho não paga a conta (47/60 nunca orçaram): a Meta
+--      passa a ter o sinal de quem de fato usa o produto. event_id 'orcamento-enviado-<user_id>'. É um evento
+--      CUSTOM, sem value/currency, DE PROPÓSITO: a landing já dispara `Lead` no navegador a cada clique em CTA
+--      (web/src/scripts/marketing.ts:70); dois `Lead` no mesmo Pixel misturariam clique com ativação real.
 --
 -- Mesmo filtro de antes: consentimento 'sim', fora de `funil_exclusoes`, janela de 7 dias, 1 envio por event_id.
 -- Idempotente.
 
 alter table public.anuncios_conversoes drop constraint if exists anuncios_conversoes_evento_check;
 alter table public.anuncios_conversoes
-  add constraint anuncios_conversoes_evento_check check (evento in ('CompleteRegistration', 'Subscribe', 'Lead'));
+  add constraint anuncios_conversoes_evento_check check (evento in ('CompleteRegistration', 'Subscribe', 'OrcamentoEnviado'));
 
 drop function if exists public.anuncios_conversoes_pendentes(integer);
 
@@ -72,8 +73,8 @@ as $$
       and u.raw_user_meta_data -> 'medicao_anuncios' ->> 'consentimento' = 'sim'
     union all
     select
-      'lead-' || u.id::text,
-      'Lead',
+      'orcamento-enviado-' || u.id::text,
+      'OrcamentoEnviado',
       u.id,
       u.email::text,
       private.telefone_whatsapp_br(u.raw_user_meta_data ->> 'phone'),

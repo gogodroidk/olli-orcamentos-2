@@ -3,7 +3,7 @@
  *     node worker/scripts/teste-anuncios-conversoes.js
  * Exit 0 = passou; 1 = falhou.
  * Tranca: e-mail e telefone saem SÓ como SHA-256 (nada em claro no corpo) · formato do telefone ·
- * Lead = ativação com event_id próprio · token no cabeçalho e NUNCA na URL · rodada vazia gasta 1 subrequest ·
+ * OrcamentoEnviado = ativação (custom, sem valor) com event_id próprio · token no cabeçalho e NUNCA na URL · rodada vazia gasta 1 subrequest ·
  * resultado errado da Meta não fecha a pendência · LOG sem e-mail, telefone, id de conta nem corpo da Meta.
  */
 import assert from 'node:assert/strict';
@@ -69,12 +69,13 @@ await caso('e-mail com maiúsculas e espaço faz o MESMO hash; telefone fora do 
   assert.equal('em' in semEmail.evento.user_data, false);
 });
 
-await caso('Lead = ativação: event_id lead-<user>, sem valor, com content_name; Subscribe segue com valor do plano', async () => {
-  assert.equal(EVENTO_ATIVACAO, 'Lead');
-  const { evento } = await montarEventoMeta(pendencia({ event_id: `lead-${USER}`, evento: 'Lead' }), AGORA.getTime());
-  assert.equal(evento.event_name, 'Lead');
-  assert.equal(evento.event_id, `lead-${USER}`);
-  assert.deepEqual(evento.custom_data, { content_name: 'orcamento_enviado' });
+await caso('OrcamentoEnviado = ativação: evento CUSTOM, event_id próprio, SEM value/currency (não se mistura com o Lead do navegador)', async () => {
+  assert.equal(EVENTO_ATIVACAO, 'OrcamentoEnviado');
+  assert.notEqual(EVENTO_ATIVACAO, 'Lead', 'o Lead de clique da landing é outro sinal');
+  const { evento } = await montarEventoMeta(pendencia({ event_id: `orcamento-enviado-${USER}`, evento: 'OrcamentoEnviado' }), AGORA.getTime());
+  assert.equal(evento.event_name, 'OrcamentoEnviado');
+  assert.equal(evento.event_id, `orcamento-enviado-${USER}`);
+  assert.equal('custom_data' in evento, false, 'sem value/currency/custom_data');
   assert.equal(evento.event_source_url, 'https://app.olliorcamentos.online/');
   const sub = await montarEventoMeta(pendencia({ event_id: `assinatura-${USER}`, evento: 'Subscribe', plano: 'pro' }), AGORA.getTime());
   assert.equal(sub.evento.custom_data.currency, 'BRL');
@@ -129,7 +130,7 @@ try {
   });
 
   await caso('envio: token do Vault vai no CABEÇALHO, nunca na URL; corpo sem dado em claro; resultado registrado', async () => {
-    const r = rede({ pendencias: [pendencia(), pendencia({ event_id: `lead-${USER}`, evento: 'Lead' })] });
+    const r = rede({ pendencias: [pendencia(), pendencia({ event_id: `orcamento-enviado-${USER}`, evento: 'OrcamentoEnviado' })] });
     const out = await processarConversoesAnuncios(ENV, { agora: AGORA, fetchImpl: r.fetchImpl });
     assert.deepEqual([out.estado, out.enviados], ['ok', 2]);
     const g = r.chamadas.find((c) => c.url.includes('graph.facebook.com'));
@@ -137,11 +138,11 @@ try {
     assert.equal(g.url.includes(TOKEN), false);
     assert.equal(g.url.includes('access_token'), false);
     assert.equal(g.headers.Authorization, `Bearer ${TOKEN}`);
-    assert.deepEqual(g.corpo.data.map((e) => e.event_name), ['CompleteRegistration', 'Lead']);
+    assert.deepEqual(g.corpo.data.map((e) => e.event_name), ['CompleteRegistration', 'OrcamentoEnviado']);
     const claro = JSON.stringify(g.corpo.data.map(({ event_id: _id, ...e }) => e));
     for (const x of [EMAIL, TEL, USER]) assert.equal(claro.includes(x), false);
     const reg = r.rpc('anuncios_conversoes_registrar')[0].corpo.p_itens;
-    assert.deepEqual(reg.map((i) => [i.evento, i.estado]), [['CompleteRegistration', 'enviado'], ['Lead', 'enviado']]);
+    assert.deepEqual(reg.map((i) => [i.evento, i.estado]), [['CompleteRegistration', 'enviado'], ['OrcamentoEnviado', 'enviado']]);
     assert.equal(r.chamadas.length, 4, 'pendências + token + envio + registro');
   });
 
