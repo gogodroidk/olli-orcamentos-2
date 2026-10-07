@@ -45,6 +45,27 @@ function lastmodPorRota() {
 
 const LASTMOD = lastmodPorRota();
 
+/**
+ * LASTMOD DAS PÁGINAS FIXAS — data da ÚLTIMA MUDANÇA DE CONTEÚDO (última edição do arquivo na main), não do build:
+ * frescor falso é pior que nenhum. Ao editar uma dessas páginas, atualize a data aqui. /para/* compartilha o mesmo
+ * molde (`pages/para/[oficio].astro`).
+ */
+const LASTMOD_PAGINAS = new Map([
+  ['/', '2026-10-01'],
+  ['/planos/', '2026-10-01'],
+  ['/ajuda/', '2026-10-02'],
+  ['/legal/privacidade/', '2026-09-29'],
+  ['/legal/termos/', '2026-09-29'],
+]);
+const LASTMOD_PARA = '2026-10-01';
+
+/**
+ * VARIANTES DE ANÚNCIO: /eletricista/ e /refrigeracao/ são as páginas de destino dos anúncios (mesmo ofício de
+ * /para/eletricista/ e /para/climatizacao-e-refrigeracao/). Elas continuam no ar (o anúncio aponta para lá) e têm
+ * canonical para a página de SEO, então NÃO entram no sitemap — duas URLs do mesmo ofício disputavam a mesma busca.
+ */
+const VARIANTES_DE_ANUNCIO = ['/eletricista/', '/refrigeracao/'];
+
 // Site de marketing da OLLI — separado do app (react-native-web). Aqui mora o
 // design extraordinário: SSG p/ SEO + Lighthouse alto, ilhas React só onde há
 // interação, Motion p/ 85% do movimento, 3D só no hero (lazy + fallback).
@@ -90,13 +111,14 @@ export default defineConfig({
         // adianta pedir ao crawler para indexar e depois contradizer no HTML:
         // elas ficam fora do sitemap desde a origem.
         if (['/admin/', '/404/', '/excluir-conta/'].includes(caminho)) return false;
+        if (VARIANTES_DE_ANUNCIO.includes(caminho)) return false;
         if (!caminho.startsWith('/blog/')) return true;
         const numero = caminho.match(/\/(\d+)\/$/);
         return !numero || Number(numero[1]) <= 2;
       },
       serialize: (item) => {
         const caminho = new URL(item.url).pathname;
-        const data = LASTMOD.get(caminho);
+        const data = LASTMOD.get(caminho) ?? LASTMOD_PAGINAS.get(caminho) ?? (caminho.startsWith('/para/') ? LASTMOD_PARA : undefined);
         return data ? { ...item, lastmod: data } : item;
       },
     }),

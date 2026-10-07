@@ -130,6 +130,50 @@ for (const [texto, esperado] of pedidos) {
   igual((await um('select private.wa_texto_pede_sair($1) r', [texto])).r, esperado, `"${texto}" ${esperado ? 'pede' : 'NÃO pede'} para sair`);
 }
 
+// PARECER LEGAL (item 3): variações de recusa que a regex antiga não pegava + o que NÃO pode virar saída
+const recusas = [
+  'Me tira dessa lista', 'me tira da lista por favor', 'retire meu número da lista', 'Tirem meu nome do cadastro', 'chega de mensagem', 'Chega!', 'já chega',
+  'não me mande mais', 'Nao manda mais', 'não manda nada', 'não me chame mais', 'pare de me mandar mensagem', 'para de me enviar isso', 'Parem de ligar',
+  'bloqueei vocês', 'vou bloquear esse número', 'não tenho interesse', 'sem interesse, obrigado', 'não me interessa', 'não quero receber mais nada',
+  'quero me descadastrar', 'me desinscreva', 'isso é spam', 'apague meus dados', 'exclua meu cadastro', 'vou denunciar',
+];
+const conversas = [
+  'o orçamento chega amanhã?', 'chega no sábado de manhã', 'não mande o orçamento por e-mail, mande por zap', 'pode me mandar o orçamento?', 'quanto custa para de ar condicionado split?',
+  'tira uma dúvida da instalação?', 'bloqueio do compressor, quanto sai o reparo?', 'me manda o preço', 'sim, pode mandar', 'quero parar de usar planilha e ligar mais clientes',
+  'nao pode ligar agora, estou na obra', 'tenho interesse sim', 'sem problema, pode enviar', 'o spam do e-mail esta caindo na minha caixa e queria ajuda para configurar o filtro e o cadastro dos clientes novos hoje',
+];
+for (const texto of recusas) igual((await um('select private.wa_texto_pede_sair($1) r', [texto])).r, true, `recusa "${texto}" vira SAIR`);
+for (const texto of conversas) igual((await um('select private.wa_texto_pede_sair($1) r', [texto])).r, false, `conversa "${texto}" NÃO vira SAIR`);
+igual((await um('select private.wa_texto_pede_sair($1) r', ['me tira da lista ' + 'x'.repeat(200)])).r, false, 'mensagem longa (> 160) é conversa: quem lê é o Bruno, não a regex');
+
+// ─── RETENÇÃO (parecer LEGAL, item 2): 180 d resolvido/saiu · 12 m parado · envios 12 m ─────────────────────
+await db.exec(`
+  delete from public.wa_entrada; delete from public.wa_envios; delete from public.wa_contatos;
+  insert into public.wa_entrada (phone_number_id, wa_message_id, telefone, perfil_nome, tipo, texto, recebido_em, estado) values
+    ('${PID}', 'wamid.RET001', '${A}', 'Ana', 'text', 'resolvida velha',  now() - interval '181 days', 'resolvido'),
+    ('${PID}', 'wamid.RET002', '${A}', 'Ana', 'text', 'resolvida nova',   now() - interval '179 days', 'resolvido'),
+    ('${PID}', 'wamid.RET003', '${B}', 'Bia', 'text', 'saiu velha',       now() - interval '200 days', 'saiu'),
+    ('${PID}', 'wamid.RET004', '${C}', 'Caio','text', 'nova parada 8m',   now() - interval '8 months', 'novo'),
+    ('${PID}', 'wamid.RET005', '${C}', 'Caio','text', 'nova parada 13m',  now() - interval '13 months', 'novo'),
+    ('${PID}', 'wamid.RET006', '${C}', 'Caio','text', 'atendimento 13m',  now() - interval '13 months', 'em_atendimento');
+  insert into public.wa_envios (phone_number_id, telefone, tipo, estado, criado_em) values
+    ('${PID}', '${A}', 'template', 'entregue', now() - interval '13 months'),
+    ('${PID}', '${A}', 'template', 'entregue', now() - interval '11 months');
+  insert into public.wa_contatos (phone_number_id, telefone, ultima_entrada_em, criado_em) values
+    ('${PID}', '${A}', now() - interval '14 months', now() - interval '14 months'),
+    ('${PID}', '${B}', now() - interval '14 months', now() - interval '14 months'),
+    ('${PID}', '${C}', now() - interval '1 month',   now() - interval '14 months');
+`);
+const ret = (await um('select public.wa_retencao_limpar() r')).r;
+igual(ret.ok, true, 'retenção devolve ok');
+igual([ret.entrada_resolvida_180d, ret.entrada_parada_12m, ret.envios_12m], [2, 2, 1], 'apagou: resolvido/saiu > 180 d (2), parado > 12 m (2), envio > 12 m (1)');
+igual((await q(`select wa_message_id from public.wa_entrada order by wa_message_id`)).map((r) => r.wa_message_id), ['wamid.RET002', 'wamid.RET004'], 'ficaram só a resolvida de 179 d e a parada de 8 m');
+igual((await um('select count(*)::int n from public.wa_envios')).n, 1, 'o envio de 11 meses fica (prova de quem foi contatado)');
+igual((await q(`select telefone from public.wa_contatos order by telefone`)).map((r) => r.telefone), [A, C].sort(), 'contato de 14 m sem nenhuma linha (B) saiu; A (tem envio) e C (entrada recente) ficam');
+igual((await um("select (public.wa_retencao_limpar()->>'entrada_resolvida_180d')::int n")).n, 0, 'idempotente: 2ª rodada não apaga nada');
+const supr = await um(`select count(*)::int n from public.whatsapp_nao_contatar`);
+ok(supr.n >= 1, 'a lista de supressão (SAIR) NÃO é tocada pela retenção');
+
 // ─── status da Meta nunca rebaixa ─────────────────────────────────────────────
 await db.exec(`insert into public.wa_envios (phone_number_id, telefone, tipo, estado, wa_message_id) values ('${PID}', '${A}', 'texto', 'reservado', 'wamid.ENV0001')`);
 const st = async (estado: string, codigo: string | null = null) =>
@@ -164,6 +208,8 @@ for (const t of ['wa_numeros', 'wa_contatos', 'wa_entrada', 'wa_envios']) {
   const row = await um(`select relrowsecurity rls, (select count(*)::int from pg_policies where tablename = $1) pol from pg_class where relname = $1`, [t]);
   igual([row.rls, row.pol], [true, 0], `${t}: RLS ligada e SEM policy (só servidor lê)`);
 }
+const retPriv = await um(`select has_function_privilege('anon', 'public.wa_retencao_limpar(timestamptz)', 'execute') a, has_function_privilege('authenticated', 'public.wa_retencao_limpar(timestamptz)', 'execute') b, has_function_privilege('service_role', 'public.wa_retencao_limpar(timestamptz)', 'execute') c`);
+igual([retPriv.a, retPriv.b, retPriv.c], [false, false, true], 'wa_retencao_limpar: só service_role executa');
 const exec = await q(`select has_function_privilege('anon', 'public.wa_autorizar_envio(text,text,text,text,uuid)', 'execute') a, has_function_privilege('authenticated', 'public.wa_segredos()', 'execute') b`);
 igual([exec[0].a, exec[0].b], [false, false], 'anon/authenticated não executam o guarda nem leem segredos');
 

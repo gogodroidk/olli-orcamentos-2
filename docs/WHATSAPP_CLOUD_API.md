@@ -59,7 +59,14 @@ Token próprio por número: criar outro segredo no Vault e apontar `segredo_toke
 ## Privacidade (LGPD) e logs
 - Telefone, nome do perfil e texto de quem escreve ficam **só** em `wa_entrada`/`wa_contatos` (RLS ligada, sem policy, revogado de anon/authenticated).
 - Logs do worker levam só contagens e rótulos — **nunca** telefone, nome, texto, token ou corpo de erro da Meta (teste tranca isso).
-- **Retenção: ainda não há rotina de limpeza** (pendente: definir prazo com o jurídico, ex.: apagar `wa_entrada` resolvida após 180 dias).
+- **Retenção (parecer LEGAL 07/10/2026): rotina diária no ar no código** — `public.wa_retencao_limpar()` chamada pelo worker às 06:19 UTC
+  (`worker/src/whatsappRetencao.js`). Apaga `wa_entrada` resolvida/saiu após 180 dias, `wa_entrada` parada (novo/em_atendimento) e `wa_envios`
+  após 12 meses e `wa_contatos` sem nenhuma linha após 12 meses; a lista de supressão (SAIR) não é tocada. Sem rotina rodando, **não ligar** `ativo=true`.
+- **SAIR ampliado (parecer item 3a):** além de palavras soltas (sair, pare, stop…), mensagens curtas (≤ 160 caracteres) como "me tira dessa lista",
+  "não me mande mais", "chega de mensagem", "pare de me enviar", "bloqueei", "não tenho interesse", "apague meus dados" viram opt-out. Mensagem longa
+  é conversa: **regra humana (3b)** — o Bruno lê toda resposta em `novo` e, se parecer recusa, marca `saiu` à mão com `registrar_nao_contatar_whatsapp`.
+- **Ainda fora (recomendações do parecer):** `wa_apagar_titular(telefone)` (art. 18), resposta automática de 1 linha ao SAIR dentro da janela, anti-replay do webhook.
+- **Antes de `ativo=true`:** (1) parágrafo de política de privacidade (texto do jurídico, OK do Igor); (2) esta rotina rodando em produção (worker publicado + migration aplicada); (3) regex ampliada (feita aqui) + regra humana do Bruno.
 - A política de privacidade já promete o opt-out; confirmar com o Dr. Paulo o texto sobre "mensagens recebidas pelo WhatsApp" antes de ligar.
 
 ## Limites conhecidos

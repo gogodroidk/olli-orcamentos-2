@@ -93,17 +93,56 @@ alter table public.wa_entrada  enable row level security;
 alter table public.wa_envios   enable row level security;
 revoke all on public.wa_numeros, public.wa_contatos, public.wa_entrada, public.wa_envios from anon, authenticated;
 
--- ─── "Pede para sair?" — texto da pessoa → opt-out (casa no começo; na dúvida, sai) ──────────
+-- ─── "Pede para sair?" — texto da pessoa → opt-out ("na dúvida, sai") ─────────────────────────
+-- PARECER LEGAL 07/10/2026 (item 3): a política promete que QUALQUER variação de recusa é SAIR. Duas famílias:
+--   (1) o texto INTEIRO é uma palavra de saída (sair, pare, stop, cancelar, descadastrar, remover, "não quero …"), até 40
+--       caracteres depois; (2) frases de recusa em mensagem CURTA (≤ 160 caracteres, depois de tirar acento/pontuação):
+--       "me tira dessa lista", "não me mande mais", "chega de mensagem", "pare de me enviar", "bloqueei", "não tenho
+--       interesse", "isso é spam", "apague meus dados"… Mensagem longa é conversa: quem lê é o Bruno (regra humana do
+--       parecer, item 3b: se parecer recusa, marcar `saiu` à mão com `registrar_nao_contatar_whatsapp`).
+-- Falso positivo custa um lead (o envio fica bloqueado); falso negativo custa uma mensagem indesejada — por isso na dúvida sai.
+-- Fica FORA de propósito: "chega" solto em frase ("o orçamento chega amanhã"), "parar de ligar" no meio de conversa,
+-- "não mande o orçamento por e-mail" (recusa de um canal, não de contato).
 create or replace function private.wa_texto_pede_sair(p_texto text)
 returns boolean
 language sql
 immutable
 set search_path to ''
 as $$
-  select pg_catalog.regexp_replace(
-           pg_catalog.translate(pg_catalog.lower(coalesce(p_texto, '')), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc'),
-           '[^a-z0-9 ]', '', 'g'
-         ) ~ '^ *(sair|sai|parar|pare|stop|cancelar|descadastrar|remover|nao quero)( [a-z0-9 ]{0,40})?$';
+  with t as (
+    select pg_catalog.regexp_replace(
+             pg_catalog.translate(pg_catalog.lower(coalesce(p_texto, '')), 'áàâãäéèêëíìîïóòôõöúùûüç', 'aaaaaeeeeiiiiooooouuuuc'),
+             '[^a-z0-9 ]', '', 'g'
+           ) as n
+  )
+  select
+    n ~ '^ *(sair|sai|parar|pare|stop|cancelar|descadastrar|remover|nao quero)( [a-z0-9 ]{0,40})?$'
+    or (
+      pg_catalog.char_length(n) <= 160 and (
+        -- "me tira dessa lista", "retire meu número da lista", "tira meu nome do cadastro"
+        n ~ '(^| )(tira|tire|tirem|retira|retire|retirem|exclui|exclua|excluam|remove|remova|removam)( [a-z0-9]+){0,3} (da|dessa|desta|de|do|dos|das) (lista|cadastro|grupo|mensagens|contatos|transmissao)'
+        -- "apague meus dados", "exclua meu cadastro" (pedido de eliminação = não contatar)
+        or n ~ '(^| )(exclua|excluam|apague|apaguem|delete|deletem)( [a-z0-9]+){0,3} (cadastro|numero|contato|dados|nome)'
+        -- "não me mande mais", "não manda mais", "não manda nada", "não me chame"
+        or n ~ '(^| )(nao|n) (me )?(mande|manda|mandem|envie|envia|enviem|chame|chama|escreva|escreve|ligue|liga|perturbe|incomode) (mais|nada|msg|mensagem|mensagens)'
+        or n ~ '(^| )(nao|n) me (mande|manda|mandem|envie|envia|enviem|chame|chama|escreva|escreve|ligue|liga|perturbe|incomode)'
+        -- "pare de me mandar mensagem", "para de me enviar isso" (imperativo; "parar" no meio de conversa não conta)
+        or n ~ '(^| )(pare|para|parem) de (me )?(mandar|enviar|chamar|escrever|ligar|incomodar|perturbar|mensagem|mensagens|msg)'
+        -- "chega", "já chega", "chega de mensagem"
+        or n ~ '^ *(ja )?chega( de [a-z0-9 ]{0,30})?$'
+        or n ~ '(^| )chega de (mensagem|mensagens|msg|spam|ligacao|ligacoes|propaganda)'
+        -- "bloqueei", "vou bloquear", "denunciar"
+        or n ~ '(^| )(bloqueei|vou bloquear|estou bloqueando|bloqueando voces|denunci)'
+        -- "não tenho interesse", "sem interesse", "não me interessa"
+        or n ~ '(^| )(nao tenho|nao tem|sem|nao me) (interesse|interessa)'
+        -- "não quero/preciso (mais) receber / mensagens / nada / isso"
+        or n ~ '(^| )(nao|n) (quero|preciso) (mais )?(receber|mensagem|mensagens|msg|msgs|nada|isso)'
+        -- "descadastrar", "me desinscreva", "isso é spam"
+        or n ~ '(descadastr|desinscrev)'
+        or n ~ '(^| )(isso|e|parece|sao|tudo) (e |um |so )?spam( |$)'
+      )
+    )
+  from t;
 $$;
 revoke all on function private.wa_texto_pede_sair(text) from public, anon, authenticated;
 
@@ -440,3 +479,52 @@ end;
 $$;
 revoke all on function public.wa_fila_atualizar(bigint, text, text) from public, anon, authenticated;
 grant execute on function public.wa_fila_atualizar(bigint, text, text) to service_role;
+
+-- ─── Retenção (PARECER LEGAL 07/10/2026, item 2; LGPD art. 6º III e art. 16) ──────────────────────────────
+-- Prazos definidos pelo jurídico:
+--   wa_entrada `resolvido`/`saiu` ........ 180 dias (apaga a linha inteira: telefone, nome do perfil e texto; quem pediu
+--                                           para sair continua na lista de supressão `whatsapp_nao_contatar`, que NÃO é tocada);
+--   wa_entrada `novo`/`em_atendimento` ... 12 meses parado;
+--   wa_envios ............................ 12 meses (prova de quem foi contatado e com qual template);
+--   wa_contatos .......................... 12 meses sem entrada, sem envio e sem linha na fila.
+-- Sem esta rotina o número NÃO liga (`ativo=true`). Roda 1×/dia pelo worker (06:19 UTC); idempotente; só service_role.
+create or replace function public.wa_retencao_limpar(p_agora timestamptz default pg_catalog.now())
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  v_resolvidas integer;
+  v_paradas integer;
+  v_envios integer;
+  v_contatos integer;
+begin
+  delete from public.wa_entrada
+   where estado in ('resolvido', 'saiu') and recebido_em < p_agora - interval '180 days';
+  get diagnostics v_resolvidas = row_count;
+
+  delete from public.wa_entrada
+   where estado in ('novo', 'em_atendimento') and recebido_em < p_agora - interval '12 months';
+  get diagnostics v_paradas = row_count;
+
+  delete from public.wa_envios where criado_em < p_agora - interval '12 months';
+  get diagnostics v_envios = row_count;
+
+  delete from public.wa_contatos c
+   where coalesce(c.ultima_entrada_em, c.criado_em) < p_agora - interval '12 months'
+     and not exists (select 1 from public.wa_entrada e where e.phone_number_id = c.phone_number_id and e.telefone = c.telefone)
+     and not exists (select 1 from public.wa_envios v where v.phone_number_id = c.phone_number_id and v.telefone = c.telefone);
+  get diagnostics v_contatos = row_count;
+
+  return pg_catalog.jsonb_build_object(
+    'ok', true,
+    'entrada_resolvida_180d', v_resolvidas,
+    'entrada_parada_12m', v_paradas,
+    'envios_12m', v_envios,
+    'contatos_12m', v_contatos
+  );
+end;
+$$;
+revoke all on function public.wa_retencao_limpar(timestamptz) from public, anon, authenticated;
+grant execute on function public.wa_retencao_limpar(timestamptz) to service_role;
