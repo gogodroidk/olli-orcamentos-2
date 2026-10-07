@@ -116,13 +116,30 @@ as $$
            ) as n
   )
   select
-    n ~ '^ *(sair|sai|parar|pare|stop|cancelar|descadastrar|remover|nao quero)( [a-z0-9 ]{0,40})?$'
+    -- (1) palavras de saída SEM ambiguidade, no começo do texto (até 40 caracteres depois).
+    n ~ '^ *(sair|sai|parar|pare|stop|descadastrar|nao quero)( [a-z0-9 ]{0,40})?$'
+    -- (1b) "cancelar"/"remover" SÃO AMBÍGUOS: "cancelar pedido", "cancelar meu orcamento", "cancelar inscricao no curso",
+    --      "remover foto de perfil", "remover essa cobertura do plano" são conversa de cliente, NÃO pedido de descadastro
+    --      (achado do Revisor: a família 1 ancorava ^(cancelar|remover) no texto inteiro e suprimia o contato indevidamente).
+    --      Só viram SAIR quando há OBJETO de descadastro ou intenção explícita; o resto cai para o HUMANO (o Bruno lê toda
+    --      resposta em `novo` e marca `saiu` à mão se for recusa). O verbo SOZINHO ("Cancelar") também é ambíguo => humano.
+    --      (i) verbo + objeto de opt-out em até 5 palavras: "cancelar as mensagens", "remover da lista", "pode cancelar a lista";
+    --      (ii) verbo + dado pessoal com possessivo: "cancele meus dados", "remova meu número" ("remover foto de perfil" não tem);
+    --      (iii) intenção + verbo sozinho: "quero cancelar", "por favor, cancelar"; ou verbo + tudo/isso: "cancela tudo".
+    or n ~ '^ *(cancelar|cancela|cancele|cancelem|remover|remova|removam)( [a-z0-9]+){0,5} (mensagens|msg|msgs|transmissao|notificacoes|grupo|lista(?! de ))( |$)'
+    or n ~ '^ *((por favor|pf|pfv|favor|quero|queria|gostaria de|preciso|pode|podem|vou|vamos|ja) )*(me )?(cancelar|cancela|cancele|cancelem|remover|remova|removam)( [a-z0-9]+){0,5} (mensagens|msg|msgs|transmissao|notificacoes|grupo|lista(?! de ))( |$)'
+    or n ~ '^ *((por favor|pf|pfv|favor|quero|queria|gostaria de|preciso|pode|podem|vou|vamos|ja) )*(me )?(cancelar|cancela|cancele|cancelem|remover|remova|removam)( [a-z0-9]+){0,2} (meu|minha|meus|minhas) (numero|contato|dados|cadastro|nome|email|telefone|whatsapp|zap)( |$)'
+    or n ~ '^ *((por favor|pf|pfv|favor|quero|queria|gostaria de|preciso|pode|podem|vou|vamos|ja) )+(me )?(cancelar|cancela|cancele|cancelem|remover|remova|removam)$'
+    or n ~ '^ *(me )?(cancelar|cancela|cancele|cancelem|remover|remova|removam) (tudo|isso|tudo isso|isso tudo)$'
+    -- (1c) sair COM intenção, sozinho ou com objeto de lista: "quero sair", "gostaria de sair da lista".
+    --      ("quero sair mais cedo" fica de fora: continuação sem objeto de lista => humano.)
+    or n ~ '^ *((por favor|pf|pfv|favor|quero|queria|gostaria de|preciso|pode|podem|vou|vamos|ja) )+(me )?(sair|saia|saiam)( (da|do|de|dessa|desse|desta|deste) (lista|grupo|cadastro|mensagens|transmissao|contatos?))?$'
     or (
       pg_catalog.char_length(n) <= 160 and (
         -- "me tira dessa lista", "retire meu número da lista", "tira meu nome do cadastro"
         n ~ '(^| )(tira|tire|tirem|retira|retire|retirem|exclui|exclua|excluam|remove|remova|removam)( [a-z0-9]+){0,3} (da|dessa|desta|de|do|dos|das) (lista|cadastro|grupo|mensagens|contatos|transmissao)'
         -- "apague meus dados", "exclua meu cadastro" (pedido de eliminação = não contatar)
-        or n ~ '(^| )(exclua|excluam|apague|apaguem|delete|deletem)( [a-z0-9]+){0,3} (cadastro|numero|contato|dados|nome)'
+        or n ~ '(^| )(exclua|excluam|apague|apaguem|delete|deletem)( [a-z0-9]+){0,2} (meu|meus|minha|minhas) (cadastro|numero|contato|dados|nome)'
         -- "não me mande mais", "não manda mais", "não manda nada", "não me chame"
         or n ~ '(^| )(nao|n) (me )?(mande|manda|mandem|envie|envia|enviem|chame|chama|escreva|escreve|ligue|liga|perturbe|incomode) (mais|nada|msg|mensagem|mensagens)'
         or n ~ '(^| )(nao|n) me (mande|manda|mandem|envie|envia|enviem|chame|chama|escreva|escreve|ligue|liga|perturbe|incomode)'

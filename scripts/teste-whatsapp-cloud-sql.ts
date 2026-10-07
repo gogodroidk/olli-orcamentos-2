@@ -123,7 +123,7 @@ igual((await um('select estado from public.wa_entrada where wa_message_id = \'wa
 const bloqueado = await autorizar(B, 'template', 'boas_vindas_olli');
 igual([bloqueado.pode, bloqueado.motivo, bloqueado.detalhe], [false, 'nao_contatar', 'pediu_sair'], 'depois do SAIR NENHUM envio passa, nem com OK humano antigo');
 const pedidos: Array<[string, boolean]> = [
-  ['Sair', true], ['PARE', true], ['  parar  ', true], ['Não quero', true], ['nao quero mais receber', true], ['Cancelar!', true], ['STOP', true],
+  ['Sair', true], ['PARE', true], ['  parar  ', true], ['Não quero', true], ['nao quero mais receber', true], ['STOP', true],
   ['sair da lista por favor', true], ['quero um orçamento', false], ['pode parar de ligar? não, pode ligar sim', false], ['saiu o pedido?', false], ['', false],
 ];
 for (const [texto, esperado] of pedidos) {
@@ -134,12 +134,21 @@ for (const [texto, esperado] of pedidos) {
 const recusas = [
   'Me tira dessa lista', 'me tira da lista por favor', 'retire meu número da lista', 'Tirem meu nome do cadastro', 'chega de mensagem', 'Chega!', 'já chega',
   'não me mande mais', 'Nao manda mais', 'não manda nada', 'não me chame mais', 'pare de me mandar mensagem', 'para de me enviar isso', 'Parem de ligar',
+  'quero cancelar', 'Por favor, cancelar', 'pode cancelar a lista', 'gostaria de sair da lista', 'cancela tudo', 'cancele meus dados', 'remova meu número', 'queria me descadastrar',
   'bloqueei vocês', 'vou bloquear esse número', 'não tenho interesse', 'sem interesse, obrigado', 'não me interessa', 'não quero receber mais nada',
   'quero me descadastrar', 'me desinscreva', 'isso é spam', 'apague meus dados', 'exclua meu cadastro', 'vou denunciar',
 ];
+// ACHADO DO REVISOR (os 5 falsos-positivos EXATOS): "cancelar"/"remover" ambíguos NÃO podem virar SAIR automático — caem para o humano.
+// "Cancelar" sozinho também é ambíguo (decisão do Maestro): humano lê.
+const ambiguas = [
+  'cancelar pedido', 'cancelar meu orcamento', 'remover foto de perfil', 'remover essa cobertura do plano', 'cancelar inscricao no curso',
+  'Cancelar', 'Cancelar!', 'remover', 'cancelar o orçamento', 'cancelar a visita de amanhã', 'remover o split da parede', 'cancelar a lista de materiais', 'quero cancelar o pedido 123', 'quero sair mais cedo hoje',
+];
+for (const texto of ambiguas) igual((await um('select private.wa_texto_pede_sair($1) r', [texto])).r, false, `ambígua "${texto}" NÃO vira SAIR (cai para o humano)`);
 const conversas = [
   'o orçamento chega amanhã?', 'chega no sábado de manhã', 'não mande o orçamento por e-mail, mande por zap', 'pode me mandar o orçamento?', 'quanto custa para de ar condicionado split?',
   'tira uma dúvida da instalação?', 'bloqueio do compressor, quanto sai o reparo?', 'me manda o preço', 'sim, pode mandar', 'quero parar de usar planilha e ligar mais clientes',
+  'posso cancelar o plano depois?', 'quanto custa remover o split da parede?', 'o cliente vai cancelar a visita de amanhã?',
   'nao pode ligar agora, estou na obra', 'tenho interesse sim', 'sem problema, pode enviar', 'o spam do e-mail esta caindo na minha caixa e queria ajuda para configurar o filtro e o cadastro dos clientes novos hoje',
 ];
 for (const texto of recusas) igual((await um('select private.wa_texto_pede_sair($1) r', [texto])).r, true, `recusa "${texto}" vira SAIR`);
