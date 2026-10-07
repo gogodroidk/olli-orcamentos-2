@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '4 de outubro de 2026',
+  atualizadoEm: '7 de outubro de 2026',
   aviso:
-    'Documento atualizado em 4 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 7 de outubro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -184,7 +184,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Medição de anúncios no Meta e no Google (só se você aceitar)',
-          finalidade: 'Informar ao Meta (Facebook/Instagram) e ao Google Ads que uma visita, um cadastro ou uma assinatura veio de um anúncio deles, para medir e melhorar os anúncios do OLLI. No site e nas telas de entrada do painel web carregamos o Meta Pixel e a tag do Google; no cadastro e na assinatura o nosso servidor também avisa o Meta, com o identificador da sua conta e o seu e-mail transformados em código irreversível (hash SHA-256), os cookies de anúncio e o navegador usado. Nunca enviamos nome, telefone nem dados dos seus clientes.',
+          finalidade: 'Informar ao Meta (Facebook/Instagram) e ao Google Ads que uma visita, um cadastro ou uma assinatura veio de um anúncio deles, para medir e melhorar os anúncios do OLLI. No site e nas telas de entrada do painel web carregamos o Meta Pixel e a tag do Google; no cadastro e na assinatura o nosso servidor também avisa o Meta, com o identificador da sua conta e o seu e-mail transformados em código (hash SHA-256), que o Meta consegue comparar com os próprios cadastros, os cookies de anúncio e o navegador usado. Nunca enviamos nome, telefone nem dados dos seus clientes. Você pode desligar essa medição quando quiser em Configurações → Medição de anúncios; o que o Meta já recebeu fica com ele (ele é controlador próprio desse dado), e o pedido de eliminação deve ser feito também a ele.',
           base: 'Consentimento (art. 7º, I), dado no aviso de cookies. Você pode recusar ali, apagar os cookies a qualquer momento ou ativar Do Not Track / Global Privacy Control no navegador: sem consentimento, nada disso é carregado ou enviado.',
         },
         {

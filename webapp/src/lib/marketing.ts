@@ -5,7 +5,16 @@ import {
 	montarOrigemUtm,
 	type OrigemUtm,
 } from "@atribuicao";
-import { consentimentoAtual, mostrarBannerConsentimento } from "@consentimento";
+import {
+	consentimentoAtual,
+	gravarConsentimento,
+	interpretarMedicao,
+	type MedicaoAnunciosMeta,
+	montarMedicaoAtualizada,
+	mostrarBannerConsentimento,
+	type EstadoMedicao,
+	VERSAO_TEXTO_BANNER,
+} from "@consentimento";
 import { googleConversaoCadastro, googlePageView, iniciarGoogleTag } from "@google-tag";
 import { iniciarPixel, pageView, rastrear } from "@meta-pixel";
 import { supabase } from "@/lib/supabase";
@@ -59,17 +68,16 @@ export function iniciarMarketing(): void {
 }
 
 /** Marcador gravado em TODO cadastro do painel (ver "três estados" acima). */
-export interface MedicaoAnuncios {
-	versao: number;
-	/** "sim" | "nao" | "sem_resposta" — o servidor só manda CAPI com "sim". */
-	consentimento: "sim" | "nao" | "sem_resposta";
-	/** User agent do navegador do cadastro: exigido pela Conversions API. Só com "sim". */
-	ua?: string;
-}
+export type MedicaoAnuncios = MedicaoAnunciosMeta;
 
 function montarMedicao(): MedicaoAnuncios {
 	const consentimento = consentimentoAtual() ?? "sem_resposta";
 	const medicao: MedicaoAnuncios = { versao: VERSAO_MEDICAO, consentimento };
+	// Prova do consentimento (LGPD art. 8º §2º): quando e com qual texto. "sem_resposta" não é decisão: sem carimbo.
+	if (consentimento !== "sem_resposta") {
+		medicao.consentimento_em = new Date().toISOString();
+		medicao.versao_texto = VERSAO_TEXTO_BANNER;
+	}
 	if (consentimento === "sim" && typeof navigator !== "undefined") medicao.ua = navigator.userAgent.slice(0, 400);
 	return medicao;
 }
@@ -153,4 +161,30 @@ export async function registrarNovaContaSocial(user: UsuarioAuth): Promise<void>
 	} catch {
 		// idem
 	}
+}
+
+/**
+ * MEDIÇÃO DE ANÚNCIOS NA CONTA (parecer LEGAL, ajuste 3): o aceite do cadastro ficava congelado em `user_metadata` e o
+ * evento de assinatura pode sair semanas depois; quem recusava depois não chegava ao servidor. Ler e mudar daqui.
+ */
+export async function lerMedicaoDaConta(): Promise<{ estado: EstadoMedicao; consentimentoEm?: string; versaoTexto?: number }> {
+	const { data, error } = await supabase.auth.getUser();
+	// Erro ou sem usuário NÃO é "desligada": é "não consegui ler".
+	if (error || !data?.user) return { estado: "indisponivel" };
+	return interpretarMedicao((data.user.user_metadata ?? {}) as Record<string, unknown>);
+}
+
+/**
+ * Liga ou desliga a medição de anúncios da conta. Grava primeiro na conta (o servidor decide por ela) e só depois
+ * ajusta o cookie do navegador; se gravar falhar, LANÇA e nada muda. `updateUser` troca o objeto `medicao_anuncios`
+ * inteiro, que já vem de `montarMedicaoAtualizada` com o conteúdo anterior preservado.
+ */
+export async function definirMedicaoDaConta(valor: "sim" | "nao"): Promise<void> {
+	const { data, error } = await supabase.auth.getUser();
+	if (error || !data?.user) throw new Error("conta_indisponivel");
+	const atual = (data.user.user_metadata?.medicao_anuncios ?? null) as Record<string, unknown> | null;
+	const novo = montarMedicaoAtualizada(atual, valor, new Date(), typeof navigator !== "undefined" ? navigator.userAgent : undefined);
+	const { error: erroGravar } = await supabase.auth.updateUser({ data: { medicao_anuncios: novo } });
+	if (erroGravar) throw erroGravar;
+	gravarConsentimento(valor);
 }

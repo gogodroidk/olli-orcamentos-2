@@ -25,6 +25,78 @@ const ID_BANNER = "olli-consentimento";
 export type Consentimento = "sim" | "nao" | null;
 
 /**
+ * TEXTO DO BANNER E SUA VERSÃO (parecer LEGAL de 07/10/2026, ajuste 1 e 3). O consentimento LGPD tem de ser informado e
+ * para finalidade determinada (art. 5º XII, 8º §4º, 9º): o banner antigo falava só em "cookies", mas a Conversions API
+ * também manda do servidor o e-mail e o ID da conta em hash, no cadastro e na assinatura. A frase nova diz isso.
+ * QUALQUER mudança no texto sobe `VERSAO_TEXTO_BANNER` — a prova do aceite (art. 8º §2º) guarda a versão que a pessoa viu.
+ */
+export const VERSAO_TEXTO_BANNER = 2;
+export const TEXTO_BANNER =
+	"Usamos cookies do Meta e do Google para medir nossos anúncios. Se você criar conta ou assinar, avisamos o Meta com o seu e-mail em código (hash). ";
+
+/** Marcador `medicao_anuncios` gravado na conta (user_metadata). */
+export interface MedicaoAnunciosMeta {
+	versao: number;
+	/** "sim" | "nao" | "sem_resposta" — o servidor só manda CAPI com "sim". */
+	consentimento: "sim" | "nao" | "sem_resposta";
+	/** Prova do aceite/recusa (ISO 8601) e a versão do texto do banner que a pessoa viu. */
+	consentimento_em?: string;
+	versao_texto?: number;
+	/** User agent do navegador: exigido pela Conversions API. Só existe com "sim". */
+	ua?: string;
+}
+
+/** Estado da medição de anúncios de uma conta. "indisponivel" = não consegui ler (≠ desligada). */
+export type EstadoMedicao = "ligada" | "desligada" | "sem_resposta" | "indisponivel";
+
+/**
+ * Lê `medicao_anuncios` do user_metadata em 3 estados. `meta === undefined` = a leitura falhou (erro nunca vira
+ * "desligada"); objeto sem `medicao_anuncios` = conta anterior à medição ou do app = "sem_resposta".
+ */
+export function interpretarMedicao(meta: Record<string, unknown> | null | undefined): {
+	estado: EstadoMedicao;
+	consentimentoEm?: string;
+	versaoTexto?: number;
+} {
+	if (meta === undefined || meta === null) return { estado: "indisponivel" };
+	const m = meta.medicao_anuncios;
+	if (!m || typeof m !== "object") return { estado: "sem_resposta" };
+	const o = m as Record<string, unknown>;
+	const base = {
+		consentimentoEm: typeof o.consentimento_em === "string" ? o.consentimento_em : undefined,
+		versaoTexto: typeof o.versao_texto === "number" ? o.versao_texto : undefined,
+	};
+	if (o.consentimento === "sim") return { estado: "ligada", ...base };
+	if (o.consentimento === "nao") return { estado: "desligada", ...base };
+	return { estado: "sem_resposta", ...base };
+}
+
+/**
+ * Novo `medicao_anuncios` para quando a pessoa liga/desliga (ou aceita/recusa): preserva o que já existe, carimba
+ * `consentimento_em` e `versao_texto` e SÓ mantém o user agent com "sim". O banco já exige `consentimento = 'sim'`
+ * no momento do envio, então gravar "nao" faz o evento pendente (ex.: a assinatura semanas depois) parar de sair.
+ */
+export function montarMedicaoAtualizada(
+	atual: Record<string, unknown> | null | undefined,
+	valor: "sim" | "nao",
+	agora: Date,
+	userAgent?: string,
+): MedicaoAnunciosMeta {
+	const base = atual && typeof atual === "object" ? { ...atual } : {};
+	const versao = typeof base.versao === "number" ? base.versao : 1;
+	const novo: MedicaoAnunciosMeta = {
+		...(base as Partial<MedicaoAnunciosMeta>),
+		versao,
+		consentimento: valor,
+		consentimento_em: agora.toISOString(),
+		versao_texto: VERSAO_TEXTO_BANNER,
+	};
+	if (valor === "sim" && userAgent) novo.ua = userAgent.slice(0, 400);
+	else delete novo.ua;
+	return novo;
+}
+
+/**
  * Só `olliorcamentos.online` e subdomínios medem anúncio (Pixel, Google tag, CAPI). Qualquer
  * outro host — `127.0.0.1`/`localhost` do desenvolvimento, `*.pages.dev` de preview, o `.workers.dev`
  * — é ambiente de teste e não pode gerar evento no Pixel nem conversão no Google Ads reais.
@@ -119,7 +191,7 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 
 	const texto = document.createElement("p");
 	texto.style.cssText = "margin:0;flex:1 1 260px";
-	texto.append("Usamos cookies do Meta e do Google para medir nossos anúncios. ");
+	texto.append(TEXTO_BANNER);
 	const link = document.createElement("a");
 	link.href = linkPrivacidade;
 	link.textContent = "Saiba mais";

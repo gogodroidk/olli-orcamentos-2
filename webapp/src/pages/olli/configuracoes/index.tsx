@@ -16,6 +16,7 @@ import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import { BotaoPortalStripe, listarFaturasStripe, obterMetodoStripe, obterStatusPortalStripe } from "../planos/portal";
+import { MedicaoAnunciosCard } from "./MedicaoAnunciosCard";
 import { ResumoEmailCard } from "./ResumoEmailCard";
 
 const dinheiro = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -96,6 +97,7 @@ export default function ConfiguracoesPage() {
 			</div>
 
 			<ResumoEmailCard />
+			<MedicaoAnunciosCard />
 
 			<Card className="p-5">
 				<div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
