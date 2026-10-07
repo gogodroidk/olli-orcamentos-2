@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { EVENTO_ATIVACAO, META_PIXEL_ID, montarEventoMeta, processarConversoesAnuncios } from '../src/anunciosConversoes.js';
+import { detalheSeguroMeta, EVENTO_ATIVACAO, META_PIXEL_ID, montarEventoMeta, processarConversoesAnuncios } from '../src/anunciosConversoes.js';
 
 let ok = 0;
 async function caso(nome, fn) {
@@ -152,6 +152,39 @@ try {
     const r2 = rede({ pendencias: [pendencia()], graph: () => ({ status: 400, json: { error: { message: 'Invalid parameter' } } }) });
     await processarConversoesAnuncios(ENV, { agora: AGORA, fetchImpl: r2.fetchImpl });
     assert.equal(r2.rpc('anuncios_conversoes_registrar')[0].corpo.p_itens[0].estado, 'erro');
+  });
+
+  await caso('pendências que NÃO são lista (corpo vazio, objeto, HTML) = erro, nunca "nada"; lista vazia = nada', async () => {
+    for (const corpo of [null, {}, { erro: 'x' }, '<html>502</html>', 42]) {
+      const chamadas = [];
+      const fetchImpl = async (url) => {
+        chamadas.push(String(url));
+        return new Response(corpo === null ? null : JSON.stringify(corpo), { status: corpo === null ? 200 : 200 });
+      };
+      const out = await processarConversoesAnuncios(ENV, { agora: AGORA, fetchImpl });
+      assert.equal(out.estado, 'erro_pendencias', JSON.stringify(corpo));
+      assert.equal(chamadas.length, 1);
+    }
+    const vazio = await processarConversoesAnuncios(ENV, { agora: AGORA, fetchImpl: rede({ pendencias: [] }).fetchImpl });
+    assert.equal(vazio.estado, 'nada');
+  });
+
+  await caso('detalhe gravado no banco: só códigos e números — a mensagem da Meta e o texto de erro de rede NUNCA entram', async () => {
+    const msgMeta = `(#100) Invalid parameter user_data.em ${sha(EMAIL)} para maria.teste@exemplo.com.br tel ${TEL}`;
+    const r = rede({ pendencias: [pendencia()], graph: () => ({ status: 400, json: { error: { message: msgMeta, code: 100, error_subcode: 2804009, fbtrace_id: 'AbC123' } } }) });
+    await processarConversoesAnuncios(ENV, { agora: AGORA, fetchImpl: r.fetchImpl });
+    const item = r.rpc('anuncios_conversoes_registrar')[0].corpo.p_itens[0];
+    assert.equal(item.detalhe, 'HTTP 400 code 100 sub 2804009');
+    for (const x of [EMAIL, TEL, sha(EMAIL), 'Invalid parameter']) assert.equal(item.detalhe.includes(x), false);
+    // falha de rede: o texto do erro pode carregar URL/dados — vira só "rede"
+    const r2 = rede({ pendencias: [pendencia()] });
+    const f2 = async (url, init) => (String(url).startsWith('https://graph.facebook.com/') ? Promise.reject(new Error(`fetch failed for ${EMAIL} ${TEL}`)) : r2.fetchImpl(url, init));
+    await processarConversoesAnuncios(ENV, { agora: AGORA, fetchImpl: f2 });
+    assert.equal(r2.rpc('anuncios_conversoes_registrar')[0].corpo.p_itens[0].detalhe, 'rede');
+    // sucesso: só trace sanitizado e contagem
+    assert.equal(detalheSeguroMeta({ status: 200, json: { events_received: 2, fbtrace_id: 'ok_Trace-9' } }), 'fbtrace ok_Trace-9 recebidos 2');
+    assert.equal(detalheSeguroMeta({ status: 200, json: { events_received: 1, fbtrace_id: 'ruim <script> com espaço' } }), 'fbtrace - recebidos 1');
+    assert.equal(detalheSeguroMeta({ status: 500, json: null }), 'HTTP 500');
   });
 
   await caso('sem user agent: pendência pulada sem chamar a Meta', async () => {
