@@ -682,7 +682,7 @@ function renderGeral(){
  if(ab)att.push(['info',ab+(ab===1?' mensagem':' mensagens')+' de clientes sem resposta','Ler',()=>{FBFILTER='abertos';location.hash='suporte';}]);
  if(r.estado==='ok'&&r.emRisco)att.push(['warn',r.emRisco+(r.emRisco===1?' conta pagante está':' contas pagantes estão')+' sem usar o app há 14 dias','Ver contas',()=>irSegmento('risco')]);
  if(m.novosHoje)att.push(['ok',m.novosHoje+(m.novosHoje===1?' cadastro novo':' cadastros novos')+' nas últimas 24 h','Ver',()=>irSegmento('novos')]);
- if(m.nuncaOrcaram)att.push(['info',m.nuncaOrcaram+' de '+m.usuarios+' contas nunca criaram um orçamento — são as que mais precisam de um empurrão','Ver contas',()=>irSegmento('nunca')]);
+ if(m.orcamentosEstado!=='indisponivel'&&m.nuncaOrcaram)att.push(['info',m.nuncaOrcaram+' de '+m.usuarios+' contas nunca criaram um orçamento — são as que mais precisam de um empurrão','Ver contas',()=>irSegmento('nunca')]);
  box.append(secTit('Precisa de você'));
  const lista=el('div',{className:'card atencao'});
  if(!att.length)lista.append(estado('ok','Tudo em dia.','Nada esperando por você agora.'));
@@ -702,8 +702,12 @@ function renderGeral(){
  // Ativação
  box.append(secTit('Uso e ativação'));
  box.append(el('div',{className:'kpis'},
-  kpi({ico:'doc',l:'Fizeram o 1º orçamento',v:m.taxaAtivacao+'%',h:fmtNum(m.ativados)+' de '+fmtNum(m.usuarios)+' contas',tom:m.taxaAtivacao>=40?'ok':m.taxaAtivacao<20?'warn':'',dica:'Ativação: contas que criaram pelo menos 1 orçamento.'}),
-  kpi({ico:'alert',l:'Nunca orçaram',v:fmtNum(m.nuncaOrcaram),h:'clique para ver quem são',tom:m.nuncaOrcaram?'warn':'',onclick:()=>irSegmento('nunca')}),
+  m.orcamentosEstado==='indisponivel'
+   ?kpi({ico:'doc',l:'Fizeram o 1º orçamento',v:'indisponível',h:'não consegui ler os orçamentos agora',tom:'warn',dica:'A leitura dos orçamentos falhou: não é zero, é desconhecido. Atualize.'})
+   :kpi({ico:'doc',l:'Fizeram o 1º orçamento',v:m.taxaAtivacao+'%',h:fmtNum(m.ativados)+' de '+fmtNum(m.usuarios)+' contas',tom:m.taxaAtivacao>=40?'ok':m.taxaAtivacao<20?'warn':'',dica:'Ativação: contas que criaram pelo menos 1 orçamento.'}),
+  m.orcamentosEstado==='indisponivel'
+   ?kpi({ico:'alert',l:'Nunca orçaram',v:'indisponível',h:'não consegui ler os orçamentos agora',tom:'warn'})
+   :kpi({ico:'alert',l:'Nunca orçaram',v:fmtNum(m.nuncaOrcaram),h:'clique para ver quem são',tom:m.nuncaOrcaram?'warn':'',onclick:()=>irSegmento('nunca')}),
   kpi({ico:'activity',l:'Usaram hoje',v:fmtNum(m.dau),h:'contas diferentes nas últimas 24 h',dica:'DAU — usuários ativos no dia.'}),
   kpi({ico:'activity',l:'Usaram na semana',v:fmtNum(m.wau),h:'últimos 7 dias',dica:'WAU — usuários ativos na semana.'}),
   kpi({ico:'activity',l:'Usaram no mês',v:fmtNum(m.mau),h:m.mau?('na semana, '+Math.round(m.wau/m.mau*100)+'% deles voltaram'):'últimos 30 dias',dica:'MAU — usuários ativos em 30 dias.',onclick:()=>irSegmento('ativos')})
@@ -721,8 +725,12 @@ function renderGeral(){
  // Movimento dos prestadores
  box.append(secTit('Movimento dos prestadores','dinheiro dos clientes deles — não é receita da OLLI'));
  box.append(el('div',{className:'kpis'},
-  kpi({ico:'doc',l:'Orçamentos criados',v:fmtNum(m.orcamentos),h:fmtNum(m.aprovados)+' aprovados ('+m.conversao+'%)'}),
-  kpi({ico:'coin',l:'Valor aprovado',v:fmtBRL(m.faturamento),h:'ticket médio '+fmtBRL(m.ticket),dica:'Soma dos orçamentos aprovados pelos clientes dos prestadores.'}),
+  m.orcamentosEstado==='indisponivel'
+   ?kpi({ico:'doc',l:'Orçamentos criados',v:'indisponível',h:'não consegui ler os orçamentos agora',tom:'warn'})
+   :kpi({ico:'doc',l:'Orçamentos criados',v:fmtNum(m.orcamentos),h:fmtNum(m.aprovados)+' aprovados ('+m.conversao+'%)'}),
+  m.orcamentosEstado==='indisponivel'
+   ?kpi({ico:'coin',l:'Valor aprovado',v:'indisponível',h:'não é R$ 0,00: a leitura falhou',tom:'warn',dica:'A leitura dos orçamentos falhou; o valor é desconhecido, não zero. Atualize.'})
+   :kpi({ico:'coin',l:'Valor aprovado',v:fmtBRL(m.faturamento),h:'ticket médio '+fmtBRL(m.ticket),dica:'Soma dos orçamentos aprovados pelos clientes dos prestadores.'}),
   kpi({ico:'users',l:'Clientes cadastrados',v:fmtNum(m.clientes),h:'pelos prestadores'}),
   kpi({ico:'calendar',l:'Agendamentos',v:fmtNum(m.agendamentos),h:'visitas e serviços marcados'})
  ));

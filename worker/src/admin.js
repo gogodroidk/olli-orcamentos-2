@@ -328,9 +328,11 @@ const PRECO_MENSAL = {
 };
 
 async function metrics(env) {
-  const [todosUsuarios, todosOrcs, todosClientes, agendTodos, todasAtividades, assinaturas, exclusoes, admins] = await Promise.all([
+  const [todosUsuarios, orcsLeitura, todosClientes, agendTodos, todasAtividades, assinaturas, exclusoes, admins] = await Promise.all([
     listAuthUsers(env),
-    rest(env, 'orcamentos?select=user_id,valor_total,status,criado_em'),
+    // NÚMERO DE NEGÓCIO: 3 estados (ver comentário de lerEstado). rest() devolveria [] numa falha e o painel mostraria
+    // "R$ 0,00" / "0 orçamentos" como se fosse verdade.
+    lerEstado(env, 'orcamentos?select=user_id,valor_total,status,criado_em'),
     rest(env, 'clientes?select=id,user_id'),
     rest(env, 'agendamentos?select=id,user_id'),
     listarAtividades(env),
@@ -340,6 +342,9 @@ async function metrics(env) {
   ]);
   const now = Date.now();
   const DAY = 86400000;
+  // Orçamentos ilegíveis ≠ zero orçamentos: tudo o que deriva deles sai como `null` + `orcamentosEstado:'indisponivel'`.
+  const orcamentosOk = orcsLeitura.ok;
+  const todosOrcs = orcamentosOk ? orcsLeitura.dados : [];
   // Contas INTERNAS (Igor, GR Tech, demo, administradores) ficam FORA de todo número abaixo. Sem a lista legível o
   // escopo é 'indeterminado' e o painel avisa (erro nunca vira "só clientes").
   const internasLegiveis = exclusoes.ok && admins.ok;
@@ -411,8 +416,11 @@ async function metrics(env) {
     // os números incluem todas as contas e o painel avisa.
     escopo: particao.escopo, contasInternas: particao.internas.length, internasLegiveis,
     usuarios: users.length, ativos, novosHoje, novos7, novos30,
-    orcamentos: orcs.length, aprovados: aprovados.length, conversao,
-    clientes: clientes.length, agendamentos: agend.length, faturamento, ticket, spark,
+    orcamentosEstado: orcamentosOk ? 'ok' : 'indisponivel',
+    orcamentos: orcamentosOk ? orcs.length : null, aprovados: orcamentosOk ? aprovados.length : null,
+    conversao: orcamentosOk ? conversao : null,
+    clientes: clientes.length, agendamentos: agend.length,
+    faturamento: orcamentosOk ? faturamento : null, ticket: orcamentosOk ? ticket : null, spark,
     usando30: resumos.filter((item) => item.atividades30 > 0).length,
     frequentes: resumos.filter((item) => item.frequencia === 'frequente').length,
     nuncaUsaram: resumos.filter((item) => item.frequencia === 'nunca').length,
@@ -420,9 +428,9 @@ async function metrics(env) {
     atividade30: atividade30.length,
     atividadeLimitada: atividades.length >= ATIVIDADE_MAX_ROWS,
     dau, wau, mau,
-    ativados,
-    nuncaOrcaram: Math.max(0, users.length - ativados),
-    taxaAtivacao: users.length ? Math.round((ativados / users.length) * 100) : 0,
+    ativados: orcamentosOk ? ativados : null,
+    nuncaOrcaram: orcamentosOk ? Math.max(0, users.length - ativados) : null,
+    taxaAtivacao: orcamentosOk ? (users.length ? Math.round((ativados / users.length) * 100) : 0) : null,
     receita,
   });
 }
