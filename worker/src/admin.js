@@ -44,6 +44,7 @@ import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
 import { contextoContasInternas, origemParaLista, resumirReceita } from './assinaturasPagantes.js';
+import { classificarConta, ehUuid, montarPreviaOrg, particionarContas, soDeClientes, validarPedidoOrg } from './contasInternas.js';
 import {
   ADMIN_DATA_POLICY_VERSION,
   camposAdmin,
@@ -327,11 +328,11 @@ const PRECO_MENSAL = {
 };
 
 async function metrics(env) {
-  const [users, orcs, clientes, agend, atividades, assinaturas, exclusoes, admins] = await Promise.all([
+  const [todosUsuarios, todosOrcs, todosClientes, agendTodos, todasAtividades, assinaturas, exclusoes, admins] = await Promise.all([
     listAuthUsers(env),
     rest(env, 'orcamentos?select=user_id,valor_total,status,criado_em'),
-    rest(env, 'clientes?select=id'),
-    rest(env, 'agendamentos?select=id'),
+    rest(env, 'clientes?select=id,user_id'),
+    rest(env, 'agendamentos?select=id,user_id'),
     listarAtividades(env),
     lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
     lerEstado(env, 'funil_exclusoes?select=user_id,email'),
@@ -339,6 +340,20 @@ async function metrics(env) {
   ]);
   const now = Date.now();
   const DAY = 86400000;
+  // Contas INTERNAS (Igor, GR Tech, demo, administradores) ficam FORA de todo número abaixo. Sem a lista legível o
+  // escopo é 'indeterminado' e o painel avisa (erro nunca vira "só clientes").
+  const internasLegiveis = exclusoes.ok && admins.ok;
+  const contextoInternas = contextoContasInternas({
+    emailsDono: emailsForaDoFunil(env),
+    exclusoes: exclusoes.ok ? exclusoes.dados : [],
+    admins: admins.ok ? admins.dados : [],
+  });
+  const particao = particionarContas(todosUsuarios, contextoInternas, internasLegiveis);
+  const users = particao.clientes;
+  const orcs = soDeClientes(todosOrcs, particao.idsInternas);
+  const clientes = soDeClientes(todosClientes, particao.idsInternas);
+  const atividades = soDeClientes(todasAtividades, particao.idsInternas);
+  const agend = soDeClientes(agendTodos, particao.idsInternas);
   const aprovados = orcs.filter((o) => o.status === 'aprovado');
   const faturamento = aprovados.reduce((s, o) => s + (Number(o.valor_total) || 0), 0);
   const ticket = aprovados.length ? faturamento / aprovados.length : 0;
@@ -355,6 +370,7 @@ async function metrics(env) {
     if (d >= 0 && d < 14) spark[13 - d]++;
   }
   const porUsuario = agruparAtividade(atividades);
+  const porUsuarioTodos = agruparAtividade(todasAtividades);
   const resumos = users.map((u) => resumirAtividade(u, porUsuario.get(u.id), now));
   const atividade30 = atividades.filter((row) => row && Date.parse(row.criado_em) >= now - 30 * DAY);
   const unicos = (dias) => new Set(
@@ -376,7 +392,9 @@ async function metrics(env) {
   if (assinaturas.ok && exclusoes.ok && admins.ok) {
     receita = resumirReceita({
       assinaturas: assinaturas.dados,
-      usuarios: users.map((u, i) => ({ id: u.id, email: u.email, ultimoUso: resumos[i].ultimoUso })),
+      // A receita olha TODAS as contas (o plano pago de uma conta interna cai em "manuais", não some): o que a exclui de
+      // pagantes/MRR é o `contexto` abaixo, não o escopo de clientes das demais métricas.
+      usuarios: todosUsuarios.map((u) => ({ id: u.id, email: u.email, ultimoUso: resumirAtividade(u, porUsuarioTodos.get(u.id), now).ultimoUso })),
       contexto: contextoContasInternas({
         emailsDono: emailsForaDoFunil(env),
         exclusoes: exclusoes.dados,
@@ -388,7 +406,11 @@ async function metrics(env) {
   }
 
   return json({
-    ok: true, usuarios: users.length, ativos, novosHoje, novos7, novos30,
+    ok: true,
+    // Escopo dos números: 'confirmado' = só CLIENTES (internas fora); 'indeterminado' = a lista de internas não foi lida,
+    // os números incluem todas as contas e o painel avisa.
+    escopo: particao.escopo, contasInternas: particao.internas.length, internasLegiveis,
+    usuarios: users.length, ativos, novosHoje, novos7, novos30,
     orcamentos: orcs.length, aprovados: aprovados.length, conversao,
     clientes: clientes.length, agendamentos: agend.length, faturamento, ticket, spark,
     usando30: resumos.filter((item) => item.atividades30 > 0).length,
@@ -455,6 +477,10 @@ async function users(env) {
     ultimoAcesso: u.last_sign_in_at || '',
     bloqueado: !!(u.banned_until && new Date(u.banned_until) > new Date()),
     bloqueadoAte: u.banned_until || null,
+    // Interna × cliente (mesma regra do funil de receita). Sem a lista legível, NÃO se afirma nada: `interna` fica
+    // false e `contasInternasLegiveis:false` faz o painel avisar que as abas não são confiáveis.
+    interna: leituraInternaOk && classificarConta(u.id, u.email, contexto).interna,
+    internaMotivo: (leituraInternaOk && classificarConta(u.id, u.email, contexto).motivo) || '',
     orcamentos: cnt.get(u.id) || 0,
     aprovados: apr.get(u.id) || 0,
     faturamento: fat.get(u.id) || 0,
@@ -942,6 +968,92 @@ async function setExclusaoFunil(env, actor, id, body = {}) {
   return json({ ok: true, auditoria });
 }
 
+// ─── organizações internas ────────────────────────────────────
+// Marcar uma ORGANIZAÇÃO como interna marca os membros dela (prévia + confirmação + salvaguarda, tudo no banco:
+// public.admin_previa_org_interna / admin_marcar_org_interna / admin_desmarcar_org_interna). O worker traduz e AUDITA.
+
+/** RPC que devolve OBJETO (lerEstado só aceita lista). Três estados: ok / sem_migration (404) / indisponível. */
+async function rpcObjeto(env, nome, corpo) {
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${nome}`, {
+      method: 'POST',
+      headers: svc(env, { 'Content-Type': 'application/json' }),
+      body: JSON.stringify(corpo),
+    });
+    if (!r.ok) return { ok: false, status: r.status };
+    const dados = await r.json().catch(() => undefined);
+    if (!dados || typeof dados !== 'object' || Array.isArray(dados)) return { ok: false, status: 502 };
+    return { ok: true, dados };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+const orgsErro = (status) => json({ ok: false, erro: status === 404 ? 'orgs_sem_migration' : 'orgs_indisponivel' }, 503);
+
+async function listarOrgs(env) {
+  const [orgs, internas, membros] = await Promise.all([
+    lerEstado(env, 'organizacoes?select=id,nome,owner_user_id,criado_em&order=criado_em.asc'),
+    lerEstado(env, 'organizacoes_internas?select=org_id,motivo,marcado_em'),
+    lerEstado(env, 'organizacao_membros?select=org_id,user_id,ativo'),
+  ]);
+  if (!orgs.ok) return orgsErro(orgs.status);
+  if (!internas.ok) return orgsErro(internas.status);
+  if (!membros.ok) return orgsErro(membros.status);
+  const auth = await listAuthUsers(env);
+  const emailPorId = new Map(auth.map((u) => [u.id, u.email || '']));
+  const marcadas = new Map(internas.dados.map((x) => [x.org_id, x]));
+  const lista = orgs.dados.map((o) => {
+    const ativos = membros.dados.filter((m) => m.org_id === o.id && m.ativo !== false).length;
+    const marca = marcadas.get(o.id);
+    return {
+      id: o.id,
+      nome: String(o.nome || ''),
+      dono: emailPorId.get(o.owner_user_id) || '',
+      membros: ativos,
+      interna: Boolean(marca),
+      motivo: marca ? String(marca.motivo || '') : '',
+      marcadaEm: marca ? marca.marcado_em || null : null,
+    };
+  });
+  return json({ ok: true, orgs: lista });
+}
+
+async function previaOrg(env, orgId) {
+  if (!ehUuid(orgId)) return json({ ok: false, erro: 'sem_id' }, 400);
+  const r = await rpcObjeto(env, 'admin_previa_org_interna', { p_org_id: orgId });
+  if (!r.ok) return orgsErro(r.status);
+  if (r.dados.ok === false && r.dados.erro === 'org_inexistente') return json({ ok: false, erro: 'org_inexistente' }, 404);
+  const auth = await listAuthUsers(env);
+  const previa = montarPreviaOrg(r.dados, new Map(auth.map((u) => [u.id, u.email || ''])));
+  if (!previa) return json({ ok: false, erro: 'previa_invalida' }, 502);
+  return json({ ok: true, previa });
+}
+
+async function setOrgInterna(env, actor, body = {}) {
+  const v = validarPedidoOrg(body);
+  if (v.erro) return json({ ok: false, erro: v.erro }, 400);
+  const r = v.interna
+    ? await rpcObjeto(env, 'admin_marcar_org_interna', { p_org_id: v.id, p_confirmar: v.confirmar, p_motivo: v.motivo, p_por: actor.id })
+    : await rpcObjeto(env, 'admin_desmarcar_org_interna', { p_org_id: v.id });
+  if (!r.ok) return orgsErro(r.status);
+  if (v.interna && r.dados.ok !== true) {
+    // previa_mudou / confirmacao_obrigatoria / motivo_invalido / org_inexistente: nada foi marcado.
+    return json({ ok: false, erro: String(r.dados.erro || 'recusado'), seraoMarcadas: r.dados.serao_marcadas ?? null }, 409);
+  }
+  const contagens = v.interna
+    ? { marcadas: r.dados.marcadas ?? 0, preservadas: r.dados.preservadas ?? 0, jaMarcada: r.dados.ja_marcada === true }
+    : { desmarcadas: r.dados.desmarcadas ?? 0, estavaMarcada: r.dados.estava_marcada === true };
+  const auditoria = await auditar(env, actor, {
+    acao: v.interna ? 'org_interna_marcada' : 'org_interna_desmarcada',
+    targetUserId: null,
+    motivo: v.interna ? v.motivo : (v.motivo || 'desfeito pelo administrador'),
+    depois: { orgId: v.id, ...contagens },
+    requestId: body.requestId,
+  });
+  return json({ ok: true, ...contagens, auditoria });
+}
+
 // ─── roteador ────────────────────────────────────────────────
 export async function handleAdmin(request, env, url) {
   if (url.pathname === '/admin' || url.pathname === '/admin/') {
@@ -1080,6 +1192,16 @@ export async function handleAdmin(request, env, url) {
     }
     if (m === 'POST' && p === '/admin/api/funil/exclusao') {
       return exigir(user, 'admin', { aal2: true }) || setExclusaoFunil(env, user, id, body);
+    }
+    // Organizações internas (prévia → confirmação → marcar; desfazer em 1 clique). Mesmo gate do funil.
+    if (m === 'GET' && p === '/admin/api/orgs') {
+      return exigir(user, 'admin', { aal2: true }) || listarOrgs(env);
+    }
+    if (m === 'GET' && p === '/admin/api/org/previa') {
+      return exigir(user, 'admin', { aal2: true }) || previaOrg(env, id);
+    }
+    if (m === 'POST' && p === '/admin/api/org/interna') {
+      return exigir(user, 'admin', { aal2: true }) || setOrgInterna(env, user, body);
     }
     // Crédito de troca: concessão de plano → mesmo gate do "Conceder Pro" manual
     // (financeiro/admin/owner + AAL2). Ver o comprovante também exige isso: é
