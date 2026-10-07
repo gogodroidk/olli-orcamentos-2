@@ -95,6 +95,7 @@ import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
+import { rotearWhatsapp } from './whatsappCloud.js';
 import { processarResumoDinheiro } from './resumoDinheiroJob.js';
 import { modoMotorContratos, processarContratos } from './contratosJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
@@ -964,6 +965,15 @@ const handler = {
     // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
     if (url.pathname === '/resend/webhook') {
       return handleResendWebhook(request, env);
+    }
+
+    // ── WHATSAPP CLOUD API (multi-número): webhook da Meta + rotas internas de envio/fila ──
+    // Servidor-a-servidor. O webhook autentica por X-Hub-Signature-256 (app secret) e as rotas
+    // internas por Bearer; segredos no Vault do Supabase (sem variável nova: o worker está em
+    // 64/64). Sem segredo = 503 (desligada, nunca aberta). Ver worker/src/whatsappCloud.js.
+    if (url.pathname.startsWith('/whatsapp/')) {
+      const respostaWhatsapp = rotearWhatsapp(request, env);
+      if (respostaWhatsapp) return respostaWhatsapp;
     }
 
     // ── E-MAILS DE AUTENTICAÇÃO (Send Email Hook do Supabase → Resend) ──
