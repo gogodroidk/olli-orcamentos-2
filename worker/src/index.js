@@ -60,6 +60,7 @@ import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
 import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
 import { cronPlayComBatimento } from './playBatimento.js';
+import { horaDoAlarmePix, rodarAlarmePix } from './alarmePix.js';
 import { handleResendWebhook } from './resendWebhook.js';
 import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
@@ -902,6 +903,9 @@ const handler = {
     if (controller?.cron === CRON_PLAY) {
       const quando = Number.isFinite(controller?.scheduledTime) ? new Date(controller.scheduledTime) : new Date();
       ctx.waitUntil(cronPlayComBatimento(env, quando, () => tarefaPlayDoCron(env, { agora: quando })));
+      // Alarme do Pix (1x/dia, 11:23 UTC): "sem Pix pago em N dias" + "pago no provedor e sem
+      // crédito na tabela". Só lê e grava uma linha em webhook_events. Ver alarmePix.js.
+      if (horaDoAlarmePix(quando)) ctx.waitUntil(rodarAlarmePix(env, { agora: quando }));
       return;
     }
     // Dispatch da outbox (boas-vindas + lembretes): fail-closed pelo
