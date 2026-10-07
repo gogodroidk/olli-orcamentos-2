@@ -81,8 +81,8 @@ export const NAO_INCLUSO = [
 export const CONDICOES = [
 	"50% na assinatura por Pix e 50% na entrega.",
 	"1 rodada de ajuste incluída.",
-	"Contrato assinado antes de começar.",
 ];
 
+/** Texto de advocacia/clínica ainda aguarda conferência do LEGAL (Dr. Paulo) antes de divulgação a leads dessas áreas. */
 export const AVISO_REGULADAS =
 	"Advocacia, clínicas e consultórios: o conteúdo segue as regras de publicidade da OAB, do CFM e do CRO, e quem revisa e responde pelo texto é o profissional. Não usamos dado de cliente real nas demonstrações.";
