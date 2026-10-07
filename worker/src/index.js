@@ -54,6 +54,7 @@ import * as Sentry from '@sentry/cloudflare';
 import { limparBreadcrumbSentry, limparEventoSentry } from '../../src/services/sentryScrub.ts';
 import { capturarExcecao, conectarSentry } from '../../src/services/sentryCaptura.ts';
 import { limparEventosAntigos, registrarSinal, renderLinkPage, responderLink } from './link.js';
+import { limparWhatsappAntigo } from './whatsappRetencao.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
@@ -96,6 +97,7 @@ import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
+import { rotearWhatsapp } from './whatsappCloud.js';
 import { processarResumoDinheiro } from './resumoDinheiroJob.js';
 import { modoMotorContratos, processarContratos } from './contratosJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
@@ -931,6 +933,8 @@ const handler = {
     // Termômetro do orçamento (LGPD): apaga eventos de interação com mais de 180
     // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
     ctx.waitUntil(limparEventosAntigos(env, agendado));
+    // Retenção do WhatsApp (parecer LEGAL 07/10): fila de entrada 180 dias/12 meses, envios 12 meses; uma vez por dia (06:19 UTC).
+    ctx.waitUntil(limparWhatsappAntigo(env, agendado));
     // Conversões de anúncio pelo servidor (Meta CAPI: cadastro e assinatura de quem
     // aceitou o aviso de cookies). A cada 10 min, 1 a 4 subrequests. Sem token (segredo
     // ou Vault do Supabase), desligado (e diz isso no log). Ver anunciosConversoes.js.
@@ -968,6 +972,15 @@ const handler = {
     // assinatura RESEND_WEBHOOK_SECRET antes de qualquer parse ou persistência.
     if (url.pathname === '/resend/webhook') {
       return handleResendWebhook(request, env);
+    }
+
+    // ── WHATSAPP CLOUD API (multi-número): webhook da Meta + rotas internas de envio/fila ──
+    // Servidor-a-servidor. O webhook autentica por X-Hub-Signature-256 (app secret) e as rotas
+    // internas por Bearer; segredos no Vault do Supabase (sem variável nova: o worker está em
+    // 64/64). Sem segredo = 503 (desligada, nunca aberta). Ver worker/src/whatsappCloud.js.
+    if (url.pathname.startsWith('/whatsapp/')) {
+      const respostaWhatsapp = rotearWhatsapp(request, env);
+      if (respostaWhatsapp) return respostaWhatsapp;
     }
 
     // ── E-MAILS DE AUTENTICAÇÃO (Send Email Hook do Supabase → Resend) ──

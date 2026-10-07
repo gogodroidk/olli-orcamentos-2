@@ -117,7 +117,9 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   const DELEGADAS_EXATAS = ['/admin'];
   // `/play/` (worker/src/play.js: /play/config e /play/verificar) responde o próprio
   // 405, como as demais rotas de dinheiro. `/revenuecat/` saiu junto com o RevenueCat.
-  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/'];
+  // `/whatsapp/` (worker/src/whatsappCloud.js: webhook, enviar, fila, aprovar) também responde o próprio 405 por
+  // rota (webhook GET+POST, as demais POST/GET) e retorna antes da tabela — por isso é delegada, não tabelada.
+  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/whatsapp/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/'];
 
   // Rotas resolvidas no roteador de topo por igualdade de path.
   const exatas = new Set(
