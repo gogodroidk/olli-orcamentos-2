@@ -23,6 +23,12 @@ interface Props {
 	noindex?: boolean;
 	/** Redirecionamento HTML para portas estáticas, com link visível de fallback. */
 	redirectUrl?: string;
+	/**
+	 * Caminho canônico quando a página é uma VARIANTE de outra (ex.: página de anúncio /eletricista/ → /para/eletricista/).
+	 * Só muda o <link rel="canonical"> e o og:url; a página continua acessível e INDEXÁVEL no sentido do robots
+	 * (o Pixel/UTM de `scripts/marketing.ts` morre em página noindex). Deve ser um caminho absoluto com barra final.
+	 */
+	canonicalPath?: string;
 }
 const {
 	schemas = [],
@@ -30,9 +36,10 @@ const {
 	descricao = "A plataforma de orçamentos para quem trabalha com serviços: orçamento, ordem de serviço e recibo no celular e no computador — com ferramentas por ofício e IA assistida. Grátis para começar.",
 	noindex = false,
 	redirectUrl,
+	canonicalPath,
 } = Astro.props;
 const canonical = new URL(
-	Astro.url.pathname,
+	canonicalPath ?? Astro.url.pathname,
 	Astro.site ?? "https://olliorcamentos.online",
 ).href;
 /**
