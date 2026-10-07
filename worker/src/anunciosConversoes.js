@@ -9,6 +9,10 @@
  *                          (web/src/lib/... → webapp/src/lib/marketing.ts)
  *   Subscribe             event_id 'assinatura-<user_id>' — só o servidor sabe que pagou
  *                          (funil_marcos 'pagou', que já descarta teste e fictício)
+ *   Lead                  event_id 'lead-<user_id>' — ATIVAÇÃO: 1º orçamento ENVIADO (funil_marcos
+ *                          'orcamento_enviado', sem estimativa). Só o servidor sabe. O nome do evento é
+ *                          a constante EVENTO_ATIVACAO (decisão do MKT; o `Lead` do navegador na landing
+ *                          é outro sinal — clique no botão — e não tem este event_id).
  *
  * QUEM ENTRA: só quem aceitou o aviso de cookies (`medicao_anuncios.consentimento =
  * 'sim'`) e não está em `funil_exclusoes` — o filtro mora no SQL
@@ -24,13 +28,17 @@
  * cron de minuto): roda 1 vez a cada 10 min. Rodada vazia = 1 subrequest (pendências);
  * com o que enviar = até 4 (pendências, token no Vault, envio em lote, registro).
  *
- * PRIVACIDADE: e-mail e id da conta vão como SHA-256 (exigência do Meta e da nossa
- * política); nome, telefone e dados dos clientes nunca saem.
+ * PRIVACIDADE: e-mail, telefone (55+DDD+número) e id da conta vão como SHA-256 (exigência do Meta e
+ * da nossa política); nome e dados dos clientes do prestador nunca saem. O token vai no cabeçalho
+ * Authorization, NUNCA na URL (URL aparece em log de proxy e em mensagem de erro de rede).
+ * Log só com contagens: nada de e-mail, telefone, id de conta nem corpo de resposta da Meta.
  */
 
 import { PRECO_EMPRESA, PRECO_PRO } from '../../src/services/precosPlanos.ts';
 
 export const META_PIXEL_ID = '4793168394059665';
+/** Evento de ATIVAÇÃO (1º orçamento enviado). Trocar o nome aqui muda só o que a Meta recebe. */
+export const EVENTO_ATIVACAO = 'Lead';
 const GRAPH_VERSAO = 'v23.0';
 const SETE_DIAS_S = 7 * 24 * 60 * 60;
 
@@ -72,6 +80,10 @@ export async function montarEventoMeta(item, agoraMs = Date.now()) {
   const userData = { client_user_agent: ua, external_id: [await sha256(String(item.user_id))] };
   const email = texto(item.email, 320);
   if (email) userData.em = [await sha256(email.toLowerCase())];
+  // Telefone já normalizado pelo banco (55 + DDD + número, só dígitos): é o formato que a Meta pede
+  // antes do hash. Qualquer outra forma é descartada em vez de adivinhada.
+  const telefone = texto(item.telefone, 20);
+  if (telefone && /^55[0-9]{10,11}$/.test(telefone)) userData.ph = [await sha256(telefone)];
   const fbp = texto(item?.origem?.fbp, 200);
   const fbc = texto(item?.origem?.fbc, 300);
   if (fbp) userData.fbp = fbp;
@@ -90,6 +102,8 @@ export async function montarEventoMeta(item, agoraMs = Date.now()) {
   };
   if (item.evento === 'CompleteRegistration') {
     evento.custom_data = { status: true };
+  } else if (item.evento === EVENTO_ATIVACAO) {
+    evento.custom_data = { content_name: 'orcamento_enviado' };
   } else {
     const valor = valorDoPlano(item.plano);
     evento.custom_data = { currency: 'BRL', ...(valor ? { value: valor } : {}), ...(item.plano ? { content_name: item.plano } : {}) };
@@ -164,9 +178,9 @@ export async function processarConversoesAnuncios(env, { agora = new Date(), for
       let estado = 'erro';
       let detalhe = '';
       try {
-        const r = await f(`https://graph.facebook.com/${GRAPH_VERSAO}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
+        const r = await f(`https://graph.facebook.com/${GRAPH_VERSAO}/${META_PIXEL_ID}/events`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(corpo),
         });
         const json = await r.json().catch(() => ({}));
