@@ -13,12 +13,31 @@
 --   4. régua de e-mail: `listar_candidatos_lembrete_email` e `enqueue_lembrete_email` passam a recusar conta interna
 --      (a lista e, de novo, o ponto onde o e-mail é enfileirado).
 --
--- Nenhum e-mail fixo aqui: quem é interno entra pelo painel ADM (marcar conta/organização), nunca por migration.
+-- SEMENTE (decisão do Igor/Maestro, 07/10/2026): o DONO e as contas de uso diário (gogodroidk@gmail.com, igoreluisa@gmail.com,
+-- demo@grtech.com.br) entram em `funil_exclusoes` por esta migration, por id E por e-mail — o banco não pode depender de
+-- ADMIN_EMAIL (uma env que só o worker vê) para saber quem é o dono. Os demais internos entram pelo painel ADM.
 -- Leitura/escrita só service_role. Idempotente.
 
 -- ─── origem da marcação por organização ───────────────────────────────────────
 alter table public.funil_exclusoes add column if not exists org_id uuid;
 create index if not exists funil_exclusoes_org_idx on public.funil_exclusoes (org_id) where org_id is not null;
+
+-- ─── 0) SEMENTE: o dono e as contas conhecidas ────────────────────────────────
+-- Por ID (as contas que já existem) e por E-MAIL (vale também para uma conta recriada com o mesmo e-mail, e para o
+-- e-mail em qualquer caixa). `criado_por` fica NULL: a coluna é uuid e não há usuário-autor ("sistema"); o motivo diz a origem.
+-- Idempotente: rodar de novo não duplica. Linhas por organização NÃO são mexidas (org_id = null = marcação própria).
+insert into public.funil_exclusoes (user_id, motivo)
+select u.id, 'dono/interna (semente)'
+  from auth.users u
+ where lower(u.email) in ('gogodroidk@gmail.com', 'igoreluisa@gmail.com', 'demo@grtech.com.br')
+   and not exists (select 1 from public.funil_exclusoes f where f.user_id = u.id)
+on conflict do nothing;
+
+insert into public.funil_exclusoes (email, motivo)
+select e, 'dono/interna (semente)'
+  from (values ('gogodroidk@gmail.com'), ('igoreluisa@gmail.com'), ('demo@grtech.com.br')) as v(e)
+ where not exists (select 1 from public.funil_exclusoes f where lower(f.email) = v.e)
+on conflict do nothing;
 
 create table if not exists public.organizacoes_internas (
   org_id      uuid primary key references public.organizacoes (id) on delete cascade,
@@ -164,8 +183,10 @@ begin
     return pg_catalog.jsonb_build_object('ok', false, 'erro', 'confirmacao_obrigatoria');
   end if;
 
-  -- Uma marcação por vez na mesma organização.
-  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('olli.org_interna:' || p_org_id::text, 0));
+  -- Uma marcação/desfazer por vez em TODO o sistema (não só por organização): duas organizações que compartilham
+  -- membro, marcadas em paralelo, estouravam 23505 no índice único de funil_exclusoes. Com a trava global a segunda
+  -- enxerga o que a primeira fez; o ON CONFLICT abaixo cobre ainda uma marcação individual feita no meio do caminho.
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('olli.org_interna', 0));
 
   v_prev := public.admin_previa_org_interna(p_org_id);
   if (v_prev ->> 'ok')::boolean is not true then
@@ -186,8 +207,9 @@ begin
 
   insert into public.funil_exclusoes (user_id, motivo, criado_por, org_id)
   select u, pg_catalog.left(pg_catalog.btrim(p_motivo), 200), p_por, p_org_id
-    from pg_catalog.unnest(v_ids) u;
-  get diagnostics v_n = row_count;
+    from pg_catalog.unnest(v_ids) u
+  on conflict do nothing;
+  get diagnostics v_n = row_count; -- só as linhas realmente inseridas (quem já tinha marca própria não conta)
 
   return pg_catalog.jsonb_build_object('ok', true, 'marcadas', v_n, 'preservadas', (v_prev ->> 'preservadas')::integer);
 end;
@@ -206,8 +228,31 @@ declare
   v_n integer;
   v_tinha boolean;
 begin
-  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('olli.org_interna:' || p_org_id::text, 0));
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('olli.org_interna', 0));
   select exists (select 1 from public.organizacoes_internas oi where oi.org_id = p_org_id) into v_tinha;
+  -- Quem também é membro/dono de OUTRA organização que continua interna NÃO volta a ser cliente: a marca passa para ela.
+  update public.funil_exclusoes f
+     set org_id = (
+       select oi.org_id
+         from public.organizacoes_internas oi
+        where oi.org_id <> p_org_id
+          and (
+            exists (select 1 from public.organizacao_membros m where m.org_id = oi.org_id and m.user_id = f.user_id and m.ativo)
+            or exists (select 1 from public.organizacoes o where o.id = oi.org_id and o.owner_user_id = f.user_id)
+          )
+        order by oi.marcado_em
+        limit 1
+     )
+   where f.org_id = p_org_id
+     and exists (
+       select 1
+         from public.organizacoes_internas oi
+        where oi.org_id <> p_org_id
+          and (
+            exists (select 1 from public.organizacao_membros m where m.org_id = oi.org_id and m.user_id = f.user_id and m.ativo)
+            or exists (select 1 from public.organizacoes o where o.id = oi.org_id and o.owner_user_id = f.user_id)
+          )
+     );
   delete from public.funil_exclusoes f where f.org_id = p_org_id;
   get diagnostics v_n = row_count;
   delete from public.organizacoes_internas oi where oi.org_id = p_org_id;

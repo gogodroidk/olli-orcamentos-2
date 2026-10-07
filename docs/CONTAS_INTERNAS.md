@@ -9,6 +9,11 @@ Uma conta é **interna** se: está em `funil_exclusoes` (por id ou por e-mail �
 **administrador ativo** (`admin_memberships`) ou tem o e-mail do dono (`ADMIN_EMAIL`, só no worker). No banco a pergunta é uma só:
 `public.conta_interna(user_id)`; para telefone, `public.conta_interna_por_telefone(telefone)`.
 
+## O dono já nasce interno NO BANCO (semente)
+`ADMIN_EMAIL` é uma env que só o worker enxerga; o banco não pode depender dela. A migration semeia `funil_exclusoes` (idempotente, por **id** e por
+**e-mail** em qualquer caixa — vale também para uma conta recriada) com: `gogodroidk@gmail.com`, `igoreluisa@gmail.com`, `demo@grtech.com.br`
+(motivo `dono/interna (semente)`; `criado_por` fica NULL — a coluna é uuid e não há usuário-autor). Os demais internos entram pelo painel.
+
 ## Onde já vale
 | O quê | Como |
 |---|---|
@@ -25,7 +30,8 @@ Painel → **Organizações** → "Marcar como interna…":
 2. **salvaguarda:** quem também é dono/membro de OUTRA organização *cliente* **não** é marcado (suporte convidado num cliente continua cliente);
 3. exige **motivo** e **digitar o N** da prévia; se a organização mudar entre a prévia e o clique, o banco recusa (`previa_mudou`);
 4. tudo vai para a **auditoria** (`org_interna_marcada` / `org_interna_desmarcada`);
-5. **Desfazer** (1 clique + motivo) remove só o que aquela organização marcou (`funil_exclusoes.org_id`); quem já era interno por conta própria continua.
+5. **Desfazer** (1 clique + motivo) remove só o que aquela organização marcou (`funil_exclusoes.org_id`); quem já era interno por conta própria continua, e quem também pertence a OUTRA organização que segue interna **não** volta a cliente (a marca passa para ela);
+6. marcar/desfazer são **serializados** no banco (trava global) e o INSERT usa `ON CONFLICT DO NOTHING`: duas organizações que compartilham membro, ou uma marcação própria no meio do caminho, não estouram `23505` e só se conta o que foi realmente inserido.
 
 ## Erro nunca vira "só clientes"
 Se a lista de internas não puder ser lida, o painel mostra **escopo indeterminado** (números incluem todas as contas e há aviso),

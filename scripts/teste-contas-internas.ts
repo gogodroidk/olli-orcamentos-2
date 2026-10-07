@@ -68,8 +68,11 @@ await db.exec(t1);
 // A régua REAL (as duas funções, extraídas da migration que as define por último).
 await db.exec(funcaoDe(regua, 'enqueue_lembrete_email'));
 await db.exec(funcaoDe(regua, 'listar_candidatos_lembrete_email'));
+// As contas do DONO já existem quando a migration roda (como em produção): a SEMENTE tem de marcá-las, sem ninguém clicar.
+const doDono = await Promise.all(['gogodroidk@gmail.com', 'IgorELuisa@Gmail.com', 'demo@grtech.com.br'].map(async (e) =>
+  (await db.query(`insert into auth.users (email, email_confirmed_at) values ($1, now() - interval '5 days') returning id`, [e])).rows[0].id as string));
 await db.exec(mig);
-await db.exec(mig); // idempotente (inclusive os remendos)
+await db.exec(mig); // idempotente (inclusive os remendos e a semente)
 checks++;
 
 const q = async (sql: string, p: unknown[] = []) => (await db.query(sql, p)).rows as any[];
@@ -108,7 +111,19 @@ igual([await ehInterna(luisa), await ehInterna(donoCliente), await ehInterna(adm
   [true, true, true, false, false], 'interna = lista por id, lista por e-mail (sem diferenciar caixa), administrador ATIVO; admin inativo e cliente não');
 igual([(await um('select public.conta_interna(null) r')).r, (await um('select public.conta_interna(gen_random_uuid()) r')).r], [false, false], 'null e conta inexistente = não é interna');
 await db.exec('reset role');
-await q(`delete from public.funil_exclusoes where email is not null`); // o e-mail do "dono cliente" era só para o teste acima
+await q(`delete from public.funil_exclusoes where lower(email) = 'dono@cliente.test'`); // só a linha criada para o teste acima (a semente fica)
+
+// ─── 1b) SEMENTE: o dono é interno NO BANCO, sem env e sem clique ───────────────
+await db.exec('set role service_role');
+igual(await Promise.all(doDono.map((u) => ehInterna(u))), [true, true, true], 'semente: gogodroidk, igoreluisa (em qualquer caixa) e demo@grtech são internas assim que a migration roda');
+await db.exec('reset role');
+const sementes = await q(`select count(*) filter (where user_id is not null)::int por_id, count(*) filter (where email is not null)::int por_email from public.funil_exclusoes where motivo = 'dono/interna (semente)'`);
+igual([sementes[0].por_id, sementes[0].por_email], [3, 3], 'a semente grava 3 por id e 3 por e-mail, e rodar a migration 2 vezes NÃO duplica');
+const recriada = (await q(`insert into auth.users (email, email_confirmed_at) values ('GOGODROIDK@gmail.com', now()) returning id`))[0].id as string;
+await db.exec('set role service_role');
+igual(await ehInterna(recriada), true, 'uma conta RECRIADA com o e-mail do dono (id novo) também é interna (a linha por e-mail)');
+await db.exec('reset role');
+await q(`delete from auth.users where id = $1`, [recriada]);
 
 // ─── 2) telefone ──────────────────────────────────────────────────────────────
 await q(`insert into public.funil_exclusoes (user_id, motivo) values ($1, 'teste')`, [igor]);
@@ -170,6 +185,54 @@ igual((await um('select public.admin_marcar_org_interna($1, 1, $2, $3) r', [oInt
 const pB = (await um('select public.admin_previa_org_interna($1) r', [oOutra])).r;
 igual([pB.serao_marcadas, pB.preservadas], [2, 0], 'Interna B: a org A agora é interna e NÃO protege o s — marca o1 e s');
 await db.exec('reset role');
+
+// duas organizações que COMPARTILHAM membro, marcadas em sequência (sem 23505), e o desfazer de uma NÃO derruba a marca
+// que a outra ainda sustenta. Ordem: B primeiro (o membro comum fica preservado porque A ainda é cliente) e depois A (com B
+// interna, o comum deixa de ser protegido e a marca dele passa a ser de A). Desfazer A tem de transferir a marca para B.
+await db.exec('reset role');
+const pa = await novo('pa@interno.test');
+const pb = await novo('pb@interno.test');
+const comum = await novo('comum@interno.test');
+const orgPA = await org('Par A', pa, [comum]);
+const orgPB = await org('Par B', pb, [comum]);
+await db.exec('set role service_role');
+const mPB = (await um('select public.admin_marcar_org_interna($1, 1, $2, $3) r', [orgPB, 'par B', igor])).r;
+igual([mPB.ok, mPB.marcadas, mPB.preservadas], [true, 1, 1], 'Par B primeiro: marca o dono; o membro comum fica preservado (também está na org A, ainda cliente)');
+igual(await ehInterna(comum), false, 'o comum ainda é cliente');
+const prevPA = (await um('select public.admin_previa_org_interna($1) r', [orgPA])).r;
+igual([prevPA.serao_marcadas, prevPA.preservadas], [2, 0], 'Par A: com B já interna, o comum deixa de ser protegido');
+const mPA = (await um('select public.admin_marcar_org_interna($1, 2, $2, $3) r', [orgPA, 'par A', igor])).r;
+igual([mPA.ok, mPA.marcadas], [true, 2], 'Par A: marca pa e o comum sem estourar 23505');
+igual(await ehInterna(comum), true, 'o membro comum é interno');
+const dPA = (await um('select public.admin_desmarcar_org_interna($1) r', [orgPA])).r;
+igual(dPA.desmarcadas, 1, 'desfazer A remove só pa — a marca do comum PASSA para a org B (que ainda o sustenta)');
+igual([await ehInterna(comum), await ehInterna(pa), await ehInterna(pb)], [true, false, true], 'comum segue interno (B o sustenta); pa volta a cliente; pb segue interno');
+const dPB = (await um('select public.admin_desmarcar_org_interna($1) r', [orgPB])).r;
+igual(dPB.desmarcadas, 2, 'desfazer B remove pb e o comum (a marca agora era dele)');
+igual([await ehInterna(comum), await ehInterna(pb), await ehInterna(pa)], [false, false, false], 'tudo volta a cliente');
+await db.exec('reset role');
+
+// corrida SIMULADA: outro processo marca o mesmo membro (marca própria) no meio do INSERT da organização. Sem ON CONFLICT
+// isto era um 23505 que derrubava a marcação inteira.
+const cx = await novo('cx@interno.test');
+const orgC = await org('Corrida', cx);
+await db.exec(`
+  create function public.simula_corrida() returns trigger language plpgsql as $$ begin
+    if new.org_id is not null and not exists (select 1 from public.funil_exclusoes f where f.user_id = new.user_id and f.org_id is null) then
+      insert into public.funil_exclusoes (user_id, motivo) values (new.user_id, 'marca própria que chegou antes');
+    end if;
+    return new; end $$;
+  create trigger simula_corrida before insert on public.funil_exclusoes for each row execute function public.simula_corrida();
+`);
+await db.exec('set role service_role');
+const corrida = (await um('select public.admin_marcar_org_interna($1, 1, $2, $3) r', [orgC, 'corrida', igor])).r;
+igual([corrida.ok, corrida.marcadas], [true, 0], 'corrida: o INSERT conflitou, a marcação NÃO estourou 23505 e só conta o que foi inserido (0)');
+igual(await ehInterna(cx), true, 'a conta segue interna (pela marca própria que chegou antes)');
+const dCorrida = (await um('select public.admin_desmarcar_org_interna($1) r', [orgC])).r;
+igual([dCorrida.ok, dCorrida.desmarcadas], [true, 0], 'desfazer a org não derruba a marca própria');
+igual(await ehInterna(cx), true, '… e a conta continua interna');
+await db.exec('reset role');
+await db.exec('drop trigger simula_corrida on public.funil_exclusoes; drop function public.simula_corrida()');
 
 // ─── 4) interna NÃO entra em nenhuma contagem ─────────────────────────────────
 // 4a) medição do 1º orçamento (T1): conta interna não aparece na lista por conta
