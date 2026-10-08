@@ -92,3 +92,7 @@ supabase/.temp/
 
 # Canvas do Maestri (pastas de papel dos agentes) — local, nunca vai pro repo
 .maestri/
+
+# E2E (Playwright): builds e capturas locais
+.e2e-dist/
+.e2e-out/
