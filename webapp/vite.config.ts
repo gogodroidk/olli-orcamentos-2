@@ -42,6 +42,7 @@ const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import
 const playBillingRegrasFonte = fileURLToPath(new URL("../src/services/playBillingRegras.ts", import.meta.url));
 // Marketing (origem UTM + Meta Pixel): a MESMA fonte da landing — ver tsconfig.json.
 const atribuicaoFonte = fileURLToPath(new URL("../web/src/lib/atribuicao.ts", import.meta.url));
+const indicacaoRefFonte = fileURLToPath(new URL("../web/src/lib/indicacaoRef.ts", import.meta.url));
 const metaPixelFonte = fileURLToPath(new URL("../web/src/lib/metaPixel.ts", import.meta.url));
 const consentimentoFonte = fileURLToPath(new URL("../web/src/lib/consentimento.ts", import.meta.url));
 const googleTagFonte = fileURLToPath(new URL("../web/src/lib/googleTag.ts", import.meta.url));
@@ -110,6 +111,7 @@ export default defineConfig(({ mode }) => {
 				"@ajuda": ajudaFonte,
 				"@play-billing-regras": playBillingRegrasFonte,
 				"@atribuicao": atribuicaoFonte,
+				"@indicacaoRef": indicacaoRefFonte,
 				"@meta-pixel": metaPixelFonte,
 				"@consentimento": consentimentoFonte,
 				"@google-tag": googleTagFonte,

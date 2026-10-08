@@ -67,6 +67,7 @@ import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
+import { handleIndicacao } from './indicacao.js';
 import { receberPedidoEtiqueta, renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { renderConfirmacao, responderConfirmacao } from './confirmacaoVisita.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
@@ -1045,6 +1046,11 @@ const handler = {
     // no 404 do gate de IA (rota não listada em IA_ROUTES).
     if (url.pathname.startsWith('/conta/')) {
       return handleConta(request, env, url);
+    }
+
+    // ── INDICAÇÃO (colega indica colega; JWT por rota, ver indicacao.js) ──
+    if (url.pathname.startsWith('/indicacao/')) {
+      return handleIndicacao(request, env, url);
     }
 
     // ── LINK PÚBLICO DO CLIENTE (sem login, antes do gate da IA) ──
