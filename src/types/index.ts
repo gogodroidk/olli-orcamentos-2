@@ -244,6 +244,10 @@ export interface Cliente {
   estado?: string;
   cidade?: string;
   cep?: string;
+  /** E-mail principal do cliente. Ausente = não informado (nunca string vazia). */
+  email?: string;
+  /** E-mail secundário (ex.: sócio, financeiro). Só existe com `email` preenchido; orçamento/recibo vão para os dois. */
+  email2?: string;
   criadoEm: string;
   /** LIXEIRA (Frente 1): ISO do momento em que foi excluido (soft delete). Ausente/undefined = ATIVO. */
   excluidoEm?: string;

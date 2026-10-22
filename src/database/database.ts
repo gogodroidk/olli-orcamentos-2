@@ -257,6 +257,8 @@ async function initDb(database: SQLite.SQLiteDatabase) {
       criado_em TEXT NOT NULL,
       excluido_em TEXT,
       atualizado_em TEXT,
+      email TEXT,
+      email2 TEXT,
       lat REAL,
       lon REAL,
       ibge TEXT,
@@ -648,7 +650,7 @@ async function initDb(database: SQLite.SQLiteDatabase) {
 // adicionando um bloco `if (v < N)` em runMigrations. Sem isto, CREATE TABLE IF NOT
 // EXISTS é no-op em bancos JÁ instalados e a coluna nova nunca chega ao campo →
 // crash "no such column" em produção. O framework agora existe; basta usá-lo.
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 /**
  * Adiciona uma coluna SÓ se ela ainda não existir (defensivo). Em instalação nova
@@ -793,6 +795,13 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
     await addColumnIfMissing(database, 'ordens_servico', 'materiais', 'TEXT');
   }
 
+  // v < 14 — E-MAIL DO CLIENTE (principal + secundário; espelha a migration da nuvem
+  // 20261022090000). NULL = "não informado". Sem backfill.
+  if (v < 14) {
+    await addColumnIfMissing(database, 'clientes', 'email', 'TEXT');
+    await addColumnIfMissing(database, 'clientes', 'email2', 'TEXT');
+  }
+
   await database.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
 
@@ -915,13 +924,14 @@ export async function saveCliente(cliente: Cliente): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
      (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em,
-      lat, lon, ibge, geo_precisao)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      lat, lon, ibge, geo_precisao, email, email2)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [salvo.id, salvo.nome, salvo.telefone, salvo.cpf ?? null,
      salvo.cnpj ?? null, salvo.endereco ?? null, salvo.complemento ?? null,
      salvo.estado ?? null, salvo.cidade ?? null, salvo.cep ?? null,
      salvo.criadoEm, salvo.excluidoEm ?? null, agora,
-     geo.lat, geo.lon, geo.ibge, geo.geo_precisao]
+     geo.lat, geo.lon, geo.ibge, geo.geo_precisao,
+     salvo.email ?? null, salvo.email2 ?? null]
   );
   mirrorPush('clientes', salvo);
   // Onde fica o cliente: DEPOIS de gravar, em segundo plano. Salvar nunca espera
@@ -1025,6 +1035,7 @@ function rowToCliente(r: any): Cliente {
     cep: r.cep ?? undefined, criadoEm: r.criado_em,
     excluidoEm: r.excluido_em ?? undefined,
     atualizadoEm: r.atualizado_em ?? undefined,
+    email: r.email ?? undefined, email2: r.email2 ?? undefined,
     // Ponto pela metade ou fora do planeta = sem ponto (nunca 0,0).
     ...lerGeoDaLinha(r),
   };
@@ -3052,11 +3063,12 @@ export async function importAllData(data: Partial<BackupSnapshot>, opts: { pushT
       await db.runAsync(
         `INSERT OR REPLACE INTO clientes
          (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, atualizado_em,
-          lat, lon, ibge, geo_precisao)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          lat, lon, ibge, geo_precisao, email, email2)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [c.id, c.nome, c.telefone, c.cpf ?? null, c.cnpj ?? null, c.endereco ?? null,
          c.complemento ?? null, c.estado ?? null, c.cidade ?? null, c.cep ?? null, c.criadoEm,
-         c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao],
+         c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao,
+         c.email ?? null, c.email2 ?? null],
       );
     }
     for (const s of servicos) {

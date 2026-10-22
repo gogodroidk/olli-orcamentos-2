@@ -11,6 +11,7 @@ import { saveCliente, deleteCliente } from '../../database/database';
 import { useCepLookup } from '../../services/cep';
 import { AvisoCep } from '../../components/AvisoCep';
 import { isValidCPF, isValidCNPJ } from '../../utils/masks';
+import { normalizarEmail, validarEmailsCliente } from '../../utils/emailsCliente';
 import { generateId } from '../../utils/id';
 import { nowISO } from '../../utils/date';
 import { Cliente } from '../../types';
@@ -23,7 +24,7 @@ interface Props {
   aoSalvar: () => void;
 }
 
-type Erros = { cpf?: string; cnpj?: string; telefone?: string };
+type Erros = { cpf?: string; cnpj?: string; telefone?: string; email?: string; email2?: string };
 
 /**
  * Painel lateral direito (420px) de criação/edição de cliente — usado pela
@@ -75,7 +76,9 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
     if (cpfDigits.length > 0 && !isValidCPF(form.cpf!)) proximosErros.cpf = 'CPF inválido';
     if (cnpjDigits.length > 0 && !isValidCNPJ(form.cnpj!)) proximosErros.cnpj = 'CNPJ inválido';
     if (telDigits.length > 0 && telDigits.length < 10) proximosErros.telefone = 'Telefone incompleto (informe DDD + número)';
-    if (proximosErros.cpf || proximosErros.cnpj || proximosErros.telefone) {
+    const erroEmail = validarEmailsCliente(form.email, form.email2);
+    if (erroEmail) proximosErros[erroEmail.campo] = erroEmail.mensagem;
+    if (proximosErros.cpf || proximosErros.cnpj || proximosErros.telefone || proximosErros.email || proximosErros.email2) {
       setErros(proximosErros);
       vibrar('erro');
       return;
@@ -89,6 +92,7 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
       cpf: form.cpf, cnpj: form.cnpj,
       endereco: form.endereco, complemento: form.complemento,
       cidade: form.cidade, estado: form.estado, cep: form.cep,
+      email: normalizarEmail(form.email), email2: normalizarEmail(form.email2),
       criadoEm: form.criadoEm ?? nowISO(),
     };
     setSalvando(true);
@@ -157,6 +161,26 @@ export function PainelCliente({ cliente, visivel, aoFechar, aoSalvar }: Props) {
               placeholder="(11) 99999-9999"
               leftIcon="phone"
               error={erros.telefone}
+            />
+            <OlliInput
+              label="E-mail"
+              value={form.email ?? ''}
+              onChangeText={(v) => { setForm((p) => ({ ...p, email: v })); setErros((e) => (e.email ? { ...e, email: undefined } : e)); }}
+              placeholder="cliente@email.com"
+              leftIcon="email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              error={erros.email}
+            />
+            <OlliInput
+              label="Segundo e-mail (opcional)"
+              value={form.email2 ?? ''}
+              onChangeText={(v) => { setForm((p) => ({ ...p, email2: v })); setErros((e) => (e.email2 ? { ...e, email2: undefined } : e)); }}
+              placeholder="financeiro@email.com"
+              leftIcon="email-multiple"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              error={erros.email2}
             />
             <OlliInput
               label="CPF"

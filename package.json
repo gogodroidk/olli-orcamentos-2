@@ -86,6 +86,7 @@
     "test:recibo-data": "node scripts/teste-recibo-data.ts",
     "test:orcamento-nome-avulso": "node scripts/teste-orcamento-nome-avulso.ts",
     "test:og-oficios": "node scripts/teste-og-oficios.ts",
+    "test:cliente-email": "node scripts/teste-cliente-email.ts",
     "test:chat-creditos": "node scripts/teste-chat-creditos.ts",
     "test:identidade-portatil": "node scripts/teste-identidade-portatil.ts",
     "test:numero-web": "node scripts/teste-numero-web.ts",
