@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { Badge } from "@/ui/badge";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
-import { linkWhatsapp, listarParados, paramStatus, STATUS_EM_JOGO, WHATSAPP_TEXTO, WHATSAPP_VERDE } from "./financeiro";
+import { contarRascunhos, linkWhatsapp, listarParados, paramStatus, STATUS_EM_JOGO, WHATSAPP_TEXTO, WHATSAPP_VERDE } from "./financeiro";
 import { formatBRL, metaStatus, type OrcamentoRow, plural } from "./helpers";
 
 interface Props {
@@ -40,6 +40,7 @@ const MOSTRAR = 5;
 export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Props) {
 	const parados = useMemo(() => (rows ? listarParados(rows, DIAS_MINIMO) : []), [rows]);
 	const visiveis = parados.slice(0, MOSTRAR);
+	const rascunhos = useMemo(() => (rows ? contarRascunhos(rows, DIAS_MINIMO) : 0), [rows]);
 
 	return (
 		<Card className="h-full gap-0 overflow-hidden p-0 shadow-sm">
@@ -100,10 +101,13 @@ export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Prop
 						<span className="grid size-12 place-items-center rounded-full bg-success/10 text-success">
 							<CheckCircle2 className="size-6" />
 						</span>
-						<p className="text-sm font-semibold text-text-primary">Nada parado por aqui</p>
+						<p className="text-sm font-semibold text-text-primary">
+							{rascunhos > 0 ? "Nenhuma proposta enviada parada" : "Nada parado por aqui"}
+						</p>
 						<p className="max-w-[260px] text-xs text-text-secondary">
 							Nenhum orçamento enviado está sem resposta há mais de {DIAS_MINIMO} dias.
 						</p>
+						{rascunhos > 0 && <RascunhosAviso total={rascunhos} />}
 					</div>
 				) : (
 					<ul className="divide-y divide-border/50">
@@ -161,7 +165,27 @@ export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Prop
 						})}
 					</ul>
 				)}
+				{!isLoading && !isError && visiveis.length > 0 && rascunhos > 0 && (
+					<div className="mt-2 flex justify-center border-t border-border/50 pt-3">
+						<RascunhosAviso total={rascunhos} />
+					</div>
+				)}
 			</div>
 		</Card>
+	);
+}
+
+/**
+ * Rascunho não é "parado de cobrar" (o cliente nunca viu), mas é dinheiro na gaveta:
+ * orçamento montado e não enviado. Link direto para a lista já filtrada.
+ */
+function RascunhosAviso({ total }: { total: number }) {
+	return (
+		<Link
+			to="/orcamentos?status=rascunho"
+			className="rounded-lg px-2.5 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+		>
+			{plural(total, "rascunho")} sem enviar há mais de {DIAS_MINIMO} dias — ver
+		</Link>
 	);
 }

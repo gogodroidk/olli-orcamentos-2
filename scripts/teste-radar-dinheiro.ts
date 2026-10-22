@@ -22,6 +22,7 @@ import {
   servicosConcluidosDasLinhas,
   listarDinheiroParado,
   listarPropostasParadas,
+  contarRascunhosEsquecidos,
   resumirDinheiroParado,
   valorOrcamento,
   type EntradaResumoDinheiro,
@@ -93,6 +94,29 @@ checar('valor: coluna → blob → subtotal', [
   valorOrcamento({ subtotal: 30 }),
   valorOrcamento({ dados: { valorTotal: '40' } }),
 ], [10, 20, 30, null]);
+
+console.log('\nRascunhos esquecidos (gaveta que "Nada parado" escondia)');
+{
+  const linhas = [
+    { id: 'r1', status: 'rascunho', atualizado_em: diasAtras(10) },
+    { id: 'r2', status: 'Rascunho', atualizado_em: diasAtras(3) },
+    { id: 'r3', status: 'rascunho', atualizado_em: diasAtras(1) },
+    { id: 'r4', status: 'rascunho', atualizado_em: 'lixo', criado_em: null },
+    { id: 'e1', status: 'enviado', atualizado_em: diasAtras(30) },
+    { id: 'a1', status: 'aprovado', atualizado_em: diasAtras(30) },
+  ];
+  checar('conta só rascunho com >= 3 dias (maiúscula incluída)', contarRascunhosEsquecidos(linhas, 3, AGORA), 2);
+  checar('rascunho de ontem não conta', contarRascunhosEsquecidos([linhas[2]], 3, AGORA), 0);
+  checar('data ilegível não vira 0 dias nem entra', contarRascunhosEsquecidos([linhas[3]], 3, AGORA), 0);
+  checar('enviado/aprovado nunca contam como rascunho', contarRascunhosEsquecidos([linhas[4], linhas[5]], 3, AGORA), 0);
+  checar('30 de 39 em rascunho antigos => 30 (cenário do bug)',
+    contarRascunhosEsquecidos([
+      ...Array.from({ length: 30 }, (_, i) => ({ id: `d${i}`, status: 'rascunho', atualizado_em: diasAtras(5) })),
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `x${i}`, status: 'enviado', atualizado_em: diasAtras(1) })),
+    ], 3, AGORA), 30);
+  checar('propostas paradas segue ignorando rascunho (regra compartilhada intacta)',
+    listarPropostasParadas(linhas, 3, AGORA).length, 1);
+}
 
 console.log('\nPropostas paradas');
 {

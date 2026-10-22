@@ -326,6 +326,28 @@ export function listarPropostasParadas(
   return parados.sort((a, b) => b.dias - a.dias);
 }
 
+/**
+ * Rascunhos ESQUECIDOS: orçamento que o prestador montou e NUNCA mandou ao cliente,
+ * sem mexer há `minDias` ou mais. Não entra em `listarPropostasParadas` de propósito
+ * (o cliente nem viu — não há o que "cobrar" por WhatsApp), mas a tela não pode dizer
+ * "nada parado" com um monte deles na gaveta: é o "buraco do envio". Data ilegível
+ * fica de fora (mesma regra das propostas paradas: não inventamos "0 dias").
+ */
+export function contarRascunhosEsquecidos(
+  orcamentos: readonly OrcamentoRadarLinha[],
+  minDias: number = LIMIAR_PROPOSTA_PARADA_DIAS,
+  agora: Date = new Date(),
+): number {
+  let n = 0;
+  for (const o of orcamentos) {
+    if (slug(o.status) !== 'rascunho') continue;
+    const t = ultimaMexidaMs(o);
+    if (!Number.isFinite(t)) continue;
+    if (Math.floor((agora.getTime() - t) / MS_POR_DIA) >= minDias) n += 1;
+  }
+  return n;
+}
+
 // ─── 3. CLIENTES PARA LEMBRAR (pós-venda) ───────────────────────────────────
 
 export interface EntradaClientesParaLembrar {
