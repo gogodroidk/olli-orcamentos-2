@@ -556,7 +556,7 @@ function Editor({
 					base = {
 						...blobFresco,
 						clienteId: orc.clienteId,
-						clienteNome: orc.clienteNome,
+						clienteNome: orc.clienteNome.trim(),
 						clienteTelefone: orc.clienteTelefone,
 						clienteCpfCnpj: orc.clienteCpfCnpj,
 						clienteEndereco: orc.clienteEndereco,
