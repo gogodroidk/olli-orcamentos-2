@@ -5,6 +5,7 @@ import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring
 import { scheduleOnRN } from 'react-native-worklets';
 import { PaperProvider } from 'react-native-paper';
 import { registerTranslation, pt as ptDatas } from 'react-native-paper-dates';
+import { telaMudou } from './src/services/rastreioTelas';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -586,6 +587,7 @@ function AppConteudo() {
               <NavigationContainer
                 ref={navigationRef}
                 linking={linkingConfig}
+                onStateChange={() => telaMudou(navigationRef.getCurrentRoute()?.name)}
                 // GATE DETERMINÍSTICO (web): com `linking`, a URL inicial tem
                 // precedência sobre initialRouteName — sem isto, um visitante
                 // deslogado abrindo '/' ou '/orcamentos' cairia DENTRO das Tabs
