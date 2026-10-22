@@ -57,7 +57,9 @@ export function useEnviarWhatsApp() {
 			const semLinkWa = linkWhatsApp(blob.clienteTelefone, "");
 			if (!semLinkWa) {
 				toast.error(`Informe o WhatsApp de ${blob.clienteNome || "o cliente"} com DDD`, {
-					description: "Edite o orçamento (ou o cadastro do cliente) e salve o número. Sem ele não dá para abrir a conversa.",
+					description: blob.clienteId
+						? "Edite o orçamento (ou o cadastro do cliente) e salve o número. Sem ele não dá para abrir a conversa."
+						: "Este orçamento tem só o nome do cliente. Abra o orçamento, escolha ou cadastre o cliente (com WhatsApp) e salve; depois é só enviar.",
 					position: "top-center",
 				});
 				return;
