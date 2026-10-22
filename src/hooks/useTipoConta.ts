@@ -8,6 +8,7 @@ import {
   resetarAtividadeUsuario,
   type Organizacao,
 } from '../services/equipe';
+import { limparFilaEventosServidor } from '../services/analyticsServidor';
 import { sessaoAtiva } from '../services/supabase';
 
 /**
@@ -120,6 +121,7 @@ export async function limparCacheTipoConta(): Promise<void> {
 export function resetarTipoConta(): void {
   acessoRegistradoParaOrg = null;
   resetarAtividadeUsuario();
+  limparFilaEventosServidor();
   definir({ tipo: 'pessoal', org: null, carregando: true, resolvido: false, atualizadoEm: 0 });
 }
 

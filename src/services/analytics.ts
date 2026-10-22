@@ -1,5 +1,6 @@
 import { insertEvento } from '../database/database';
 import { generateId } from '../utils/id';
+import { enfileirarEventoServidor } from './analyticsServidor';
 import { analyticsRemotoLigado, enviarEvento, pseudonimo } from './analyticsRemoto';
 import { getCurrentUser } from './supabase';
 
@@ -71,6 +72,8 @@ export function track(evento: EventoNome, props?: Record<string, unknown>): void
   // sem PII, com id pseudonimizado. As duas pontas divergirem em conteúdo é o
   // desenho, não um bug: são públicos diferentes.
   void enviarRemoto(evento, props);
+  // Espelho no NOSSO banco (app_eventos), sem terceiro: vale mesmo com o PostHog desligado.
+  enfileirarEventoServidor(evento, props);
 }
 
 /**
