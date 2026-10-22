@@ -86,7 +86,7 @@ select e.evento,
        max(e.criado_em) as ultima_vez
   from public.app_eventos e
  where e.criado_em > now() - interval '30 days'
-   and not exists (select 1 from public.funil_exclusoes f where f.user_id = e.user_id)
+   and not public.conta_interna(e.user_id)
  group by e.evento
  order by contas desc;
 

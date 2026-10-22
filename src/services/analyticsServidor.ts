@@ -12,12 +12,23 @@ const INTERVALO_MS = 10_000;
 
 type Item = { e: string; p: Record<string, unknown> };
 
+/**
+ * TRAVA DE LIBERAÇÃO: nasce DESLIGADO. Só liga com EXPO_PUBLIC_TELEMETRIA_SERVIDOR=1,
+ * depois que a política de privacidade (Dr. Paulo) disser que o uso do app vai ao
+ * servidor. Desligado, nada sai do aparelho (o SQLite local segue igual).
+ */
+export function telemetriaServidorLigada(): boolean {
+  return process.env.EXPO_PUBLIC_TELEMETRIA_SERVIDOR === '1';
+}
+
 let fila: Item[] = [];
+// Sobe a cada logout: lote em voo de uma conta nunca é gravado na sessão da próxima.
+let geracao = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 export function enfileirarEventoServidor(evento: string, props?: Record<string, unknown>): void {
   try {
-    if (!supabase) return;
+    if (!supabase || !telemetriaServidorLigada()) return;
     fila.push({ e: nomeEventoSeguro(evento), p: limparProps(props) });
     if (fila.length >= LOTE_MAX) {
       void descarregarEventosServidor();
@@ -36,14 +47,16 @@ export async function descarregarEventosServidor(): Promise<void> {
   }
   const lote = fila.splice(0, 50);
   if (lote.length === 0 || !supabase) return;
+  const minha = geracao;
   try {
     const user = await getCurrentUser();
-    if (!user?.id) return; // sem sessão não há dono: descarta
+    if (!user?.id || minha !== geracao) return; // sem dono, ou a conta mudou: descarta
     const { Platform } = require('react-native');
     const plataforma = ['web', 'ios', 'android'].includes(Platform.OS) ? Platform.OS : 'unknown';
+    if (minha !== geracao) return;
     const { error } = await supabase.rpc('registrar_eventos_app', { p_eventos: lote, p_plataforma: plataforma });
-    // falha de rede: devolve até um teto, sem crescer sem limite
-    if (error && fila.length < 200) fila.unshift(...lote);
+    // falha de rede: devolve até um teto, sem crescer sem limite (e só na mesma conta)
+    if (error && minha === geracao && fila.length < 200) fila.unshift(...lote);
   } catch {
     // best-effort
   }
@@ -51,6 +64,7 @@ export async function descarregarEventosServidor(): Promise<void> {
 
 /** Logout: não deixa eventos de uma conta vazarem para a próxima. */
 export function limparFilaEventosServidor(): void {
+  geracao += 1;
   fila = [];
   if (timer) {
     clearTimeout(timer);

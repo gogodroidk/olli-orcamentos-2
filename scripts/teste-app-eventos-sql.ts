@@ -33,6 +33,9 @@ grant execute on function auth.uid() to authenticated, service_role;
 grant usage on schema public to authenticated, service_role;
 create table public.funil_exclusoes (user_id uuid, criado_em timestamptz default now());
 grant select on public.funil_exclusoes to service_role;
+-- stub do predicado real (20261007140000_contas_internas.sql): aqui, interna = está em funil_exclusoes
+create function public.conta_interna(p uuid) returns boolean language sql stable as $$ select exists (select 1 from public.funil_exclusoes where user_id = p) $$;
+grant execute on function public.conta_interna(uuid) to service_role;
 insert into auth.users values ('${U1}'), ('${U2}');
 `);
 await db.exec(SQL);
