@@ -105,6 +105,8 @@ caso('passo inicial: criando com cliente ligado abre em Itens; edição e resto 
   assert.equal(passoInicial({ edicao: false, clienteLigado: true }), 'itens');
   assert.equal(passoInicial({ edicao: false, clienteLigado: false }), 'cliente');
   assert.equal(passoInicial({ edicao: true, clienteLigado: true }), 'cliente');
+  assert.equal(passoInicial({ edicao: false, clienteLigado: false, exemplo: true }), 'itens');
+  assert.equal(passoInicial({ edicao: true, clienteLigado: false, exemplo: true }), 'cliente');
 });
 caso('rótulo do botão diz o que acontece', () => {
   assert.equal(rotuloDoBotaoPrincipal('cliente', false), 'Escolher itens');
@@ -127,6 +129,8 @@ caso('item R$ 0,00 sem confirmação trava (com o nome); confirmado libera', () 
   assert.match(motivoBloqueio('itens', { clienteNome: 'Ana', itens }, new Set()) ?? '', /"Visita" está sem valor/);
   assert.equal(motivoBloqueio('itens', { clienteNome: 'Ana', itens }, new Set(['z'])), null);
   assert.match(motivoBloqueio('revisar', { clienteNome: 'Ana', itens }, new Set()) ?? '', /sem valor/);
+  assert.match(motivoBloqueio('revisar', { clienteNome: ' ', itens }, new Set(['z'])) ?? '', /para quem/);
+  assert.equal(motivoBloqueio('itens', { clienteNome: '', itens }, new Set(['z'])), null);
 });
 caso('dois itens sem valor viram contagem', () => {
   const itens = [item({ id: 'a', preco: 0 }), item({ id: 'b', preco: 0 })];
