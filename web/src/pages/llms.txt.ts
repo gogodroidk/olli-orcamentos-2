@@ -38,6 +38,7 @@ import {
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
 import { FRASE_GRATIS } from "../data/recursos";
+import { postsPublicados } from "./blog/_dados";
 
 const ORIGEM = "https://olliorcamentos.online";
 
@@ -73,6 +74,11 @@ const NOTA_DOZE =
 		: "";
 
 export async function GET() {
+	// Guias do blog: só os publicados (o mesmo filtro `!rascunho` do site), com a
+	// descrição do próprio frontmatter. Rascunho não vaza para a IA.
+	const guias = (await postsPublicados())
+		.map((p) => `- [${p.data.titulo}](${ORIGEM}/blog/${p.id}/): ${p.data.descricao}`)
+		.join("\n");
 	const oficios = [...VERTICAIS, { ...OFICIO_GERAL, cnaes: [], ferramentas: [] }].map((v) => {
 		const slug = SLUG_POR_OFICIO[v.id];
 		const profissao = PROFISSAO_POR_OFICIO[v.id];
@@ -133,6 +139,12 @@ Comparativo completo dos planos: ${ORIGEM}/planos/
 
 ${oficios}
 
+## Guias práticos (blog)
+
+${guias}
+
+Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
+
 ## O que a OLLI faz
 
 - Orçamento com itens, fotos, desconto e link de aprovação para o cliente.
@@ -157,6 +169,9 @@ ${oficios}
 
 - [Site](${ORIGEM}/)
 - [Planos e preços](${ORIGEM}/planos/)
+- [OLLI por profissão](${ORIGEM}/para/)
+- [Blog](${ORIGEM}/blog/)
+- [llms-full.txt (guias completos)](${ORIGEM}/llms-full.txt)
 - [Central de Ajuda](${ORIGEM}/ajuda/)
 - [Manifesto público para agentes](${ORIGEM}/agent-manifest.json)
 - [Termos de Uso](${ORIGEM}/legal/termos/)
