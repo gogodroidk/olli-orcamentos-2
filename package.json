@@ -143,6 +143,7 @@
     "test:assinaturas-pagantes": "node scripts/teste-assinaturas-pagantes.ts",
     "test:funil-credito-troca-sql": "node scripts/teste-funil-credito-troca-sql.ts",
     "test:ativacao-eventos-sql": "node scripts/teste-ativacao-eventos-sql.ts",
+    "test:eventos-uso-sql": "node scripts/teste-eventos-uso-sql.ts",
     "test:contrato-recorrente": "node scripts/teste-contrato-recorrente.ts",
     "test:contrato-recorrente-sql": "node scripts/teste-contrato-recorrente-sql.ts",
     "test:radar-dinheiro": "node scripts/teste-radar-dinheiro.ts",
