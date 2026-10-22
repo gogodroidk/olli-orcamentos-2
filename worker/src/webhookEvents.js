@@ -46,7 +46,7 @@ export async function reivindicarEvento(env, { origem, eventId, tipo, payload })
   try {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/webhook_events`, {
       method: 'POST',
-      headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+      headers: sbHeaders(env, { 'Content-Type': 'application/json', Prefer: 'return=representation' }),
       body: JSON.stringify({
         origem,
         event_id: String(eventId),
@@ -55,7 +55,7 @@ export async function reivindicarEvento(env, { origem, eventId, tipo, payload })
         payload: payload ?? null,
       }),
     });
-    if (r.ok) return { ok: true, duplicado: false }; // primeiro a ver este evento
+    if (r.ok) return comAncora({ ok: true, duplicado: false }, await lerRecebidoEmDaResposta(r)); // primeiro a ver este evento
 
     // 409 = já existe linha para (origem,event_id). E AQUI MORA A ARMADILHA:
     // "já reivindicado" NÃO é "já processado". Se a primeira tentativa morreu no
@@ -93,17 +93,35 @@ async function estadoDoEvento(env, origem, eventId) {
     const url =
       `${env.SUPABASE_URL}/rest/v1/webhook_events` +
       `?origem=eq.${encodeURIComponent(origem)}&event_id=eq.${encodeURIComponent(String(eventId))}` +
-      `&select=status&limit=1`;
+      `&select=status,recebido_em&limit=1`;
     const r = await fetch(url, { headers: sbHeaders(env, { Accept: 'application/json' }) });
     if (!r.ok) return { ok: false, duplicado: false };
     const linhas = await r.json();
     const status = Array.isArray(linhas) && linhas.length ? linhas[0].status : null;
     if (!status) return { ok: false, duplicado: false }; // sumiu entre o 409 e o GET
+    const recebidoEm = Date.parse(linhas[0].recebido_em);
     if (status === 'processado') return { ok: true, duplicado: true }; // concluído: pular
-    // 'recebido' ou 'falhou' → a tentativa anterior não terminou. Reprocessa.
-    return { ok: true, duplicado: false, retentativa: true };
+    // 'recebido' ou 'falhou' → a tentativa anterior não terminou. Reprocessa. A âncora de
+    // quem pagou (primeira vez que o evento foi visto) vem junto: não depende de 2º GET.
+    return comAncora({ ok: true, duplicado: false, retentativa: true }, Number.isFinite(recebidoEm) ? recebidoEm : null);
   } catch {
     return { ok: false, duplicado: false };
+  }
+}
+
+/** Só acrescenta `recebidoEm` quando existe: o contrato dos outros chamadores (Stripe, MP, Play) não muda. */
+function comAncora(resultado, recebidoEm) {
+  return Number.isFinite(recebidoEm) ? { ...resultado, recebidoEm } : resultado;
+}
+
+/** `recebido_em` (ms) da linha que o insert acabou de criar; null se a resposta não trouxe. */
+async function lerRecebidoEmDaResposta(r) {
+  try {
+    const linhas = await r.json();
+    const t = Array.isArray(linhas) && linhas.length ? Date.parse(linhas[0].recebido_em) : NaN;
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
   }
 }
 

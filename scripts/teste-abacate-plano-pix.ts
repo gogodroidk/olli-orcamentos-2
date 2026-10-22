@@ -71,6 +71,9 @@ let eventos: Record<string, any> = {};
 // Falhas injetadas: 'insert' (banco fora ao reivindicar), 'patch' (não fecha o
 // consumo) e 'assinatura' (upsert do plano falha).
 let falhar: Set<string> = new Set();
+// recebido_em que o banco falso grava ao reivindicar (hora em que o pagamento foi visto).
+let recebidoEmMock = '2026-09-29T18:00:31.802Z';
+let preferPost = '';
 let logs: string[] = [];
 
 function reset(): void {
@@ -81,6 +84,7 @@ function reset(): void {
   chamadasAbacate = 0;
   eventos = {};
   falhar = new Set();
+  recebidoEmMock = '2026-09-29T18:00:31.802Z';
   logs = [];
 }
 
@@ -112,15 +116,18 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
       const corpo = JSON.parse(init.body);
       const chave = `${corpo.origem}|${corpo.event_id}`;
       if (eventos[chave]) return resposta({ code: '23505' }, 409);
-      eventos[chave] = { ...corpo };
-      return new Response(null, { status: 201 });
+      eventos[chave] = { ...corpo, recebido_em: recebidoEmMock };
+      preferPost = String(init.headers?.Prefer || '');
+      // return=representation: o PostgREST devolve a linha criada (é daí que vem a âncora da vigência).
+      if (falhar.has('sem_recebido_em')) return new Response(null, { status: 201 });
+      return resposta([{ recebido_em: recebidoEmMock }], 201);
     }
     if (metodo === 'PATCH') {
       if (falhar.has('patch')) return resposta({ message: 'banco fora' }, 500);
       if (eventos[chaveQ]) Object.assign(eventos[chaveQ], JSON.parse(init.body));
       return new Response(null, { status: 204 });
     }
-    return resposta(eventos[chaveQ] ? [{ status: eventos[chaveQ].status }] : []);
+    return resposta(eventos[chaveQ] ? [{ status: eventos[chaveQ].status, recebido_em: eventos[chaveQ].recebido_em }] : []);
   }
   if (url.includes('/rest/v1/assinaturas')) {
     if ((init.method || 'GET') === 'GET') return resposta(linhaAssinatura ? [linhaAssinatura] : []);
@@ -202,6 +209,7 @@ console.log('\n2. criar cobrança');
   checar('descrição sem "·" nem acento (a API recusa)', criadas[0]?.data?.description, 'OLLI Pro - 1 mes');
   checar('descrição cabe em 37', descricaoAbacate('OLLI Empresa · 1 ano ' + 'x'.repeat(50)).length, 37);
   checar('criar NÃO libera plano', escritas.length, 0);
+  checar('o QR Pix vale 24 h', criadas[0]?.data?.expiresIn, 86400);
   checar('sem plano ativo, o período começa agora', Math.abs(Date.parse(criadas[0]?.data?.metadata?.inicio) - Date.now()) < 60_000, true);
 
   // Renovação antecipada: Pro ativo até daqui a 5 dias → o novo mês começa no fim.
@@ -227,7 +235,39 @@ console.log('\n3. polling (/status)');
   const pago = await chamar(envProd, 'GET', '/abacate/status?id=pix_pago', { jwt: 'jwt-user' });
   checar('pago (status do check, não do get em cache) = liberado', pago.corpo, { ok: true, pago: true, liberado: true });
   checar('grava Pro ativo', [escritas[0]?.user_id, escritas[0]?.plano, escritas[0]?.status], [USER, 'pro', 'active']);
-  checar('vigência = criação da cobrança + 1 mês (data fixa)', escritas[0]?.current_period_end, '2026-10-29T18:00:30.289Z');
+  checar('vigência = pagamento visto + 1 mês (data fixa)', escritas[0]?.current_period_end, '2026-10-29T18:00:31.802Z');
+
+  reset();
+  recebidoEmMock = '2026-09-30T14:00:00.000Z'; // pagou 20 h depois (Pix de 24 h)
+  cobranca('pix_tarde', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_tarde', { jwt: 'jwt-user' });
+  checar('Pix pago 20 h depois: vigência conta do pagamento (não perde o dia)', escritas[0]?.current_period_end, '2026-10-30T14:00:00.000Z');
+
+  reset();
+  recebidoEmMock = '2026-10-05T00:00:00.000Z'; // fora da janela de 25 h
+  cobranca('pix_fora_janela', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_fora_janela', { jwt: 'jwt-user' });
+  checar('pagamento visto fora da janela: cai na criação (nunca dá tempo a mais)', escritas[0]?.current_period_end, '2026-10-29T18:00:30.289Z');
+
+  reset();
+  recebidoEmMock = '2026-09-30T14:00:00.000Z'; // pagou 20 h depois
+  cobranca('pix_ancora_no_claim', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_ancora_no_claim', { jwt: 'jwt-user' });
+  checar('âncora vem do próprio claim (return=representation), sem 2º GET', /return=representation/.test(preferPost), true);
+  checar('vigência conta do recebido_em devolvido pelo claim', escritas[0]?.current_period_end, '2026-10-30T14:00:00.000Z');
+
+  // Claim que não devolve recebido_em: NÃO concede com a data da criação (tiraria até 24 h de
+  // quem pagou tarde, em silêncio). Fecha 'falhou'; a retentativa lê a âncora e concede certo.
+  reset();
+  recebidoEmMock = '2026-09-30T14:00:00.000Z';
+  falhar = new Set(['sem_recebido_em']);
+  cobranca('pix_sem_ancora', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_sem_ancora', { jwt: 'jwt-user' });
+  checar('sem recebido_em no claim: nada é concedido', escritas.length, 0);
+  checar('e o evento fica falhou (reprocessável)', eventos['abacate|pix_sem_ancora']?.status, 'falhou');
+  falhar = new Set();
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_sem_ancora', { jwt: 'jwt-user' });
+  checar('retentativa lê a âncora na própria checagem e concede do pagamento visto', escritas[0]?.current_period_end, '2026-10-30T14:00:00.000Z');
 
   reset();
   cobranca('pix_de_outro', USER, 'pro_mensal', 3900);
@@ -257,7 +297,7 @@ console.log('\n3. polling (/status)');
   reset();
   cobranca('pix_inicio_absurdo', USER, 'pro_mensal', 3900, 'PAID', false, '2030-01-01T00:00:00.000Z');
   await chamar(envProd, 'GET', '/abacate/status?id=pix_inicio_absurdo', { jwt: 'jwt-user' });
-  checar('início fora da janela é ignorado (usa a criação)', escritas[0]?.current_period_end, '2026-10-29T18:00:30.289Z');
+  checar('início fora da janela é ignorado (usa o pagamento visto)', escritas[0]?.current_period_end, '2026-10-29T18:00:31.802Z');
 }
 
 console.log('\n4. webhook');
@@ -345,7 +385,8 @@ console.log('\n5. consumo único (cobrança não reativa plano revogado)');
 
   reset();
   cobranca('pix_meio', USER, 'pro_mensal', 3900);
-  eventos['abacate|pix_meio'] = { origem: 'abacate', event_id: 'pix_meio', status: 'recebido' };
+  // toda linha real tem recebido_em (not null default now()); a retentativa o lê junto do status
+  eventos['abacate|pix_meio'] = { origem: 'abacate', event_id: 'pix_meio', status: 'recebido', recebido_em: recebidoEmMock };
   const meio = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_meio') });
   checar('tentativa anterior que morreu no meio (recebido) é reprocessada', [meio.status, escritas.length, eventos['abacate|pix_meio']?.status], [200, 1, 'processado']);
 
