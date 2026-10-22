@@ -22,8 +22,9 @@ for (const slug of OG_PROPRIO_POR_SLUG) {
   assert.equal(bytes.readUInt32BE(20), 630, `${slug}: altura`);
   assert.ok(statSync(arq).size < 300 * 1024, `${slug}: passa de 300 KB (WhatsApp ignora og:image maior)`);
 }
-// Climatização fica no genérico até o card ser refeito (nome 'Clínica Bem Estar' sob 'Cliente exemplo').
-assert.equal(OG_PROPRIO_POR_SLUG.has('climatizacao-e-refrigeracao'), false);
+// Os 10 ofícios têm card próprio (climatização refeita: sem 'Clínica Bem Estar' sob 'Cliente exemplo').
+assert.equal(OG_PROPRIO_POR_SLUG.size, 10);
+assert.equal(OG_PROPRIO_POR_SLUG.has('climatizacao-e-refrigeracao'), true);
 
 // A página passa a imagem ao Layout e o Layout usa nos dois metas.
 const pagina = readFileSync(new URL('../web/src/pages/para/[oficio].astro', import.meta.url), 'utf8');

@@ -141,11 +141,12 @@ export const SLUG_POR_OFICIO: Record<VerticalId, string> = {
 
 /**
  * Slugs que têm card de compartilhamento próprio em `web/public/og/<slug>.png` (1200×630, <300 KB).
- * Os demais usam o banner genérico. Climatização fica FORA até o card ser refeito: o print mostra
- * "Clínica Bem Estar" por baixo de "Cliente exemplo" (nome não verificado como fictício).
+ * Os demais usam o banner genérico. Todos os 10 ofícios têm card; o de climatização foi refeito
+ * (o primeiro mostrava "Clínica Bem Estar" por baixo de "Cliente exemplo").
  * Travado por `scripts/teste-og-oficios.ts` (arquivo existe, tamanho e dimensões).
  */
 export const OG_PROPRIO_POR_SLUG: ReadonlySet<string> = new Set([
+  'climatizacao-e-refrigeracao',
   'eletricista',
   'encanador',
   'pintor',
