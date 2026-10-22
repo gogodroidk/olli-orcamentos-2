@@ -480,7 +480,10 @@ function Editor({
 
 	/** Devolve a 1ª pendência que impede o documento de existir — ou null. */
 	function validar(): string | null {
-		if (!orc.clienteId || !orc.clienteNome.trim()) return "Escolha o cliente deste orçamento.";
+		// Rascunho só precisa de um NOME (igual ao app: `nomeAvulso`). O cliente CADASTRADO (com WhatsApp)
+		// só é exigido na hora de ENVIAR pelo WhatsApp (useEnviarWhatsApp). Antes isto era o 1º campo e
+		// barrava quem só queria testar o orçamento (2 contas paradas aqui em 21/10).
+		if (!orc.clienteNome.trim()) return "Informe o cliente: escolha um cadastrado ou digite só o nome.";
 		if (orc.itens.length === 0) return "Adicione pelo menos um item — um orçamento sem itens não é um orçamento.";
 
 		const semNome = orc.itens.find((i) => !i.nome.trim());
@@ -646,9 +649,23 @@ function Editor({
 						<SeletorCliente
 							valor={orc.clienteId ? orc : null}
 							aoSelecionar={escolherCliente}
-							invalido={!orc.clienteId && !!erro}
+							invalido={!orc.clienteNome.trim() && !!erro}
 						/>
 					</Campo>
+					{!orc.clienteId && (
+						<Campo
+							rotulo="Ou só o nome do cliente"
+							dica="Para começar sem cadastrar. Para enviar pelo WhatsApp, escolha ou cadastre o cliente (precisa do número)."
+						>
+							<Input
+								value={orc.clienteNome}
+								onChange={(ev) => patch({ clienteNome: ev.target.value })}
+								placeholder="Ex.: Maria Souza"
+								maxLength={160}
+								aria-invalid={!orc.clienteNome.trim() && !!erro}
+							/>
+						</Campo>
+					)}
 					{orc.clienteEndereco && (
 						<p className="-mt-2 text-xs text-text-secondary">
 							{orc.clienteEndereco}
