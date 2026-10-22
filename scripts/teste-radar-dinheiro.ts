@@ -23,6 +23,7 @@ import {
   listarDinheiroParado,
   listarPropostasParadas,
   contarRascunhosEsquecidos,
+  textoEstadoCalmo,
   resumirDinheiroParado,
   valorOrcamento,
   type EntradaResumoDinheiro,
@@ -97,26 +98,36 @@ checar('valor: coluna → blob → subtotal', [
 
 console.log('\nRascunhos esquecidos (gaveta que "Nada parado" escondia)');
 {
+  // Mede desde a CRIAÇÃO: editar um rascunho velho não o enviou.
   const linhas = [
-    { id: 'r1', status: 'rascunho', atualizado_em: diasAtras(10) },
-    { id: 'r2', status: 'Rascunho', atualizado_em: diasAtras(3) },
-    { id: 'r3', status: 'rascunho', atualizado_em: diasAtras(1) },
-    { id: 'r4', status: 'rascunho', atualizado_em: 'lixo', criado_em: null },
-    { id: 'e1', status: 'enviado', atualizado_em: diasAtras(30) },
-    { id: 'a1', status: 'aprovado', atualizado_em: diasAtras(30) },
+    { id: 'r1', status: 'rascunho', criado_em: diasAtras(10), atualizado_em: diasAtras(10) },
+    { id: 'r2', status: 'Rascunho', criado_em: diasAtras(3), atualizado_em: diasAtras(3) },
+    { id: 'r3', status: 'rascunho', criado_em: diasAtras(1), atualizado_em: diasAtras(1) },
+    { id: 'r4', status: 'rascunho', criado_em: 'lixo', atualizado_em: diasAtras(30) },
+    { id: 'e1', status: 'enviado', criado_em: diasAtras(30), atualizado_em: diasAtras(30) },
+    { id: 'a1', status: 'aprovado', criado_em: diasAtras(30), atualizado_em: diasAtras(30) },
+    { id: 'r5', status: 'rascunho', criado_em: diasAtras(20), atualizado_em: diasAtras(1) },
+    { id: 'r6', status: 'rascunho', criado_em: null, dados: { criadoEm: diasAtras(8) }, atualizado_em: diasAtras(0) },
   ];
-  checar('conta só rascunho com >= 3 dias (maiúscula incluída)', contarRascunhosEsquecidos(linhas, 3, AGORA), 2);
-  checar('rascunho de ontem não conta', contarRascunhosEsquecidos([linhas[2]], 3, AGORA), 0);
-  checar('data ilegível não vira 0 dias nem entra', contarRascunhosEsquecidos([linhas[3]], 3, AGORA), 0);
+  checar('conta rascunho criado há >= 3 dias (maiúscula, blob e editado ontem incluídos)', contarRascunhosEsquecidos(linhas, 3, AGORA), 4);
+  checar('rascunho velho EDITADO ontem continua contando (o bug do P2)', contarRascunhosEsquecidos([linhas[6]], 3, AGORA), 1);
+  checar('rascunho criado ontem não conta', contarRascunhosEsquecidos([linhas[2]], 3, AGORA), 0);
+  checar('criação ilegível não vira 0 dias nem entra (mesmo com edição antiga)', contarRascunhosEsquecidos([linhas[3]], 3, AGORA), 0);
   checar('enviado/aprovado nunca contam como rascunho', contarRascunhosEsquecidos([linhas[4], linhas[5]], 3, AGORA), 0);
   checar('30 de 39 em rascunho antigos => 30 (cenário do bug)',
     contarRascunhosEsquecidos([
-      ...Array.from({ length: 30 }, (_, i) => ({ id: `d${i}`, status: 'rascunho', atualizado_em: diasAtras(5) })),
-      ...Array.from({ length: 9 }, (_, i) => ({ id: `x${i}`, status: 'enviado', atualizado_em: diasAtras(1) })),
+      ...Array.from({ length: 30 }, (_, i) => ({ id: `d${i}`, status: 'rascunho', criado_em: diasAtras(5), atualizado_em: diasAtras(0) })),
+      ...Array.from({ length: 9 }, (_, i) => ({ id: `x${i}`, status: 'enviado', criado_em: diasAtras(1), atualizado_em: diasAtras(1) })),
     ], 3, AGORA), 30);
   checar('propostas paradas segue ignorando rascunho (regra compartilhada intacta)',
     listarPropostasParadas(linhas, 3, AGORA).length, 1);
 }
+
+console.log('\nTexto do estado calmo (paridade app/painel)');
+checar('zero rascunho apurado => "Nada parado"', textoEstadoCalmo(0).startsWith('Nada parado'), true);
+checar('com rascunho => NÃO diz "Nada parado" e conta no plural', [textoEstadoCalmo(30).includes('Nada parado'), textoEstadoCalmo(30).includes('30 rascunhos criados há mais de 3 dias e ainda sem enviar')], [false, true]);
+checar('1 rascunho => singular', textoEstadoCalmo(1).includes('1 rascunho criado há mais de 3 dias'), true);
+checar('não sei (null/undefined) => nunca afirma "Nada parado"', [textoEstadoCalmo(null).includes('Nada parado'), textoEstadoCalmo(undefined).includes('Nada parado')], [false, false]);
 
 console.log('\nPropostas paradas');
 {

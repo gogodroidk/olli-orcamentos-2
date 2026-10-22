@@ -225,7 +225,7 @@ export function listarParados(orcamentos: OrcamentoRow[], minDias = 3, agora: Da
 }
 
 /**
- * Rascunhos que o dono montou e nunca mandou (mexidos há `minDias` ou mais). Não são
+ * Rascunhos que o dono montou e ainda não mandou (CRIADOS há `minDias` ou mais). Não são
  * "parados" de cobrar — o cliente nem viu —, mas a tela não pode afirmar "nada parado"
  * com eles na gaveta. Regra única em `src/services/radarDinheiro.ts`.
  */

@@ -40,7 +40,7 @@ import { getOrcamentos, getClientes, getEmpresa, getRecibos } from '../database/
 import { montarMensagemFollowUpOrcamento } from '../utils/mensagensOrcamento';
 import { formatCurrency } from '../utils/currency';
 import type { Empresa } from '../types';
-import { LIMIAR_PROPOSTA_PARADA_DIAS } from './radarDinheiro';
+import { LIMIAR_PROPOSTA_PARADA_DIAS, contarRascunhosEsquecidos } from './radarDinheiro';
 import { montarMensagemPropostaVencida, selecionarFollowUp, validaAteYmd, type OrcamentoParaFollowUp } from './radarFollowUpRegra';
 import { termometrosSeLiberado } from './termometro';
 import { mensagemDaAcao, type EstadoTermometro } from './termometroRegra';
@@ -82,6 +82,19 @@ export async function orcamentosParaFollowUp(): Promise<OrcamentoParaFollowUp[]>
     sinaisCache = mapa ?? new Map();
   });
   return lista;
+}
+
+/**
+ * Rascunhos esquecidos (criados há >= 3 dias e ainda não enviados): a MESMA regra do
+ * painel (`contarRascunhosEsquecidos`), em cima do SQLite do aparelho. Propaga erro de
+ * leitura — quem chama decide o estado (nunca vira "0 rascunhos" por falha).
+ */
+export async function rascunhosEsquecidos(): Promise<number> {
+  const orcamentos = await getOrcamentos();
+  return contarRascunhosEsquecidos(
+    orcamentos.map((o) => ({ status: o.status, criado_em: o.criadoEm, atualizado_em: o.atualizadoEm })),
+    DIAS_LIMIAR,
+  );
 }
 
 /**

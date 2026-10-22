@@ -177,7 +177,7 @@ export function ParadosCard({ rows, isLoading, isError, onRetry, empresa }: Prop
 
 /**
  * Rascunho não é "parado de cobrar" (o cliente nunca viu), mas é dinheiro na gaveta:
- * orçamento montado e não enviado. Link direto para a lista já filtrada.
+ * orçamento montado e não enviado. Conta desde a CRIAÇÃO (editar não enviou). Link direto para a lista já filtrada.
  */
 function RascunhosAviso({ total }: { total: number }) {
 	return (
@@ -185,7 +185,7 @@ function RascunhosAviso({ total }: { total: number }) {
 			to="/orcamentos?status=rascunho"
 			className="rounded-lg px-2.5 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
 		>
-			{plural(total, "rascunho")} sem enviar há mais de {DIAS_MINIMO} dias — ver
+			{total === 1 ? "1 rascunho criado" : `${plural(total, "rascunho")} criados`} há mais de {DIAS_MINIMO} dias e ainda sem enviar — ver
 		</Link>
 	);
 }

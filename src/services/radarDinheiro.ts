@@ -150,6 +150,16 @@ export function valorRecibo(r: ReciboRadarLinha): number | null {
   return null;
 }
 
+/** Criação (criado_em → blob). NaN quando nenhuma é legível — nunca vira "hoje". */
+export function criadoEmMs(o: OrcamentoRadarLinha): number {
+  for (const iso of [o.criado_em, o.dados?.criadoEm]) {
+    if (!iso) continue;
+    const t = new Date(iso).getTime();
+    if (Number.isFinite(t)) return t;
+  }
+  return Number.NaN;
+}
+
 /** Última mexida (atualizado_em → criado_em, coluna antes do blob). NaN quando nenhuma é legível. */
 export function ultimaMexidaMs(o: OrcamentoRadarLinha): number {
   for (const iso of [o.atualizado_em, o.dados?.atualizadoEm, o.criado_em, o.dados?.criadoEm]) {
@@ -327,10 +337,13 @@ export function listarPropostasParadas(
 }
 
 /**
- * Rascunhos ESQUECIDOS: orçamento que o prestador montou e NUNCA mandou ao cliente,
- * sem mexer há `minDias` ou mais. Não entra em `listarPropostasParadas` de propósito
+ * Rascunhos ESQUECIDOS: orçamento que o prestador montou e AINDA NÃO mandou ao cliente,
+ * criado há `minDias` ou mais. Mede desde a CRIAÇÃO (não desde a última edição): o
+ * dinheiro está parado enquanto o orçamento não sai, e mexer no texto de um rascunho
+ * velho não o enviou — medir a edição faria o aviso sumir justamente quando o dono
+ * "mexeu" e mesmo assim não mandou. Não entra em `listarPropostasParadas` de propósito
  * (o cliente nem viu — não há o que "cobrar" por WhatsApp), mas a tela não pode dizer
- * "nada parado" com um monte deles na gaveta: é o "buraco do envio". Data ilegível
+ * "nada parado" com um monte deles na gaveta: é o "buraco do envio". Criação ilegível
  * fica de fora (mesma regra das propostas paradas: não inventamos "0 dias").
  */
 export function contarRascunhosEsquecidos(
@@ -341,11 +354,26 @@ export function contarRascunhosEsquecidos(
   let n = 0;
   for (const o of orcamentos) {
     if (slug(o.status) !== 'rascunho') continue;
-    const t = ultimaMexidaMs(o);
+    const t = criadoEmMs(o);
     if (!Number.isFinite(t)) continue;
     if (Math.floor((agora.getTime() - t) / MS_POR_DIA) >= minDias) n += 1;
   }
   return n;
+}
+
+/**
+ * Texto do estado calmo. "Nada parado" só com ZERO rascunho apurado: com rascunho
+ * esquecido a frase seria mentira por omissão (o dinheiro está na gaveta, não no
+ * cliente), e sem saber (null) não afirmamos nada além do que foi lido.
+ */
+export function textoEstadoCalmo(rascunhos: number | null | undefined): string {
+  if (rascunhos === 0) {
+    return 'Nada parado: todo orçamento aprovado já foi recebido e nenhuma proposta está sem resposta.';
+  }
+  const base = 'Todo orçamento aprovado já foi recebido e nenhuma proposta enviada está sem resposta.';
+  if (rascunhos == null) return base;
+  const qtd = rascunhos === 1 ? '1 rascunho criado' : `${rascunhos} rascunhos criados`;
+  return `${base} ${qtd} há mais de ${LIMIAR_PROPOSTA_PARADA_DIAS} dias e ainda sem enviar.`;
 }
 
 // ─── 3. CLIENTES PARA LEMBRAR (pós-venda) ───────────────────────────────────
