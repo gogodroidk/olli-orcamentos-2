@@ -82,6 +82,7 @@
     "test:particao": "node scripts/teste-particao.ts",
     "test:banco-conexao": "node scripts/teste-banco-conexao.ts",
     "test:recibo-data": "node scripts/teste-recibo-data.ts",
+    "test:og-oficios": "node scripts/teste-og-oficios.ts",
     "test:chat-creditos": "node scripts/teste-chat-creditos.ts",
     "test:identidade-portatil": "node scripts/teste-identidade-portatil.ts",
     "test:numero-web": "node scripts/teste-numero-web.ts",

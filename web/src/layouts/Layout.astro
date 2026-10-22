@@ -21,6 +21,8 @@ interface Props {
 	 * Sem isso o buscador pode indexar uma página de erro como se fosse conteúdo.
 	 */
 	noindex?: boolean;
+	/** Imagem de compartilhamento (og:image/twitter:image) própria da página, caminho absoluto no site (`/og/eletricista.png`). Sem ela, o banner genérico. 1200×630, <300 KB (limite do WhatsApp). */
+	ogImagem?: string;
 	/** Redirecionamento HTML para portas estáticas, com link visível de fallback. */
 	redirectUrl?: string;
 	/**
@@ -35,6 +37,7 @@ const {
 	titulo = "OLLI — do orçamento ao recibo, sem planilha",
 	descricao = "A plataforma de orçamentos para quem trabalha com serviços: orçamento, ordem de serviço e recibo no celular e no computador — com ferramentas por ofício e IA assistida. Grátis para começar.",
 	noindex = false,
+	ogImagem = "/og-image.png",
 	redirectUrl,
 	canonicalPath,
 } = Astro.props;
@@ -178,7 +181,7 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
     <meta property="og:description" content={descricao} />
     <meta property="og:locale" content="pt_BR" />
     <meta property="og:url" content={canonical} />
-    <meta property="og:image" content={new URL('/og-image.png', Astro.site ?? 'https://olliorcamentos.online').href} />
+    <meta property="og:image" content={new URL(ogImagem, Astro.site ?? 'https://olliorcamentos.online').href} />
     <meta property="og:image:alt" content="OLLI — do orçamento ao recibo, sem planilha" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
@@ -186,7 +189,7 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, schemaApp, ...schemas];
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={titulo} />
     <meta name="twitter:description" content={descricao} />
-    <meta name="twitter:image" content={new URL('/og-image.png', Astro.site ?? 'https://olliorcamentos.online').href} />
+    <meta name="twitter:image" content={new URL(ogImagem, Astro.site ?? 'https://olliorcamentos.online').href} />
     {jsonLd.map((schema) => (
       <script type="application/ld+json" set:html={JSON.stringify(schema)} />
     ))}
