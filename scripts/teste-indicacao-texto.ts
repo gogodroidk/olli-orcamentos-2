@@ -18,10 +18,9 @@ checar('ligada: cita o valor e o teto', textoPromessa(10).includes('10 créditos
 checar('mensagem desligada leva o link e nenhuma promessa', mensagemWhatsApp('https://x/?ref=ABC234', 0).includes('https://x/?ref=ABC234') && !/ganhamos/.test(mensagemWhatsApp('l', 0)));
 checar('mensagem ligada cita o ganho', mensagemWhatsApp('l', 5).includes('5 créditos de IA'));
 checar('resumo null (não sei) = null, não "0 colegas"', textoResumo(null) === null);
-checar('resumo sem cadastros = null', textoResumo({ cadastraram: 0, recompensadas: 0 }) === null);
-checar('resumo 1 colega', textoResumo({ cadastraram: 1, recompensadas: 0 }) === '1 colega entrou');
-checar('resumo plural com orçaram', textoResumo({ cadastraram: 3, recompensadas: 2 }) === '3 colegas entraram · 2 já orçaram');
-checar('resumo singular orçou', textoResumo({ cadastraram: 2, recompensadas: 1 }) === '2 colegas entraram · 1 já orçou');
+checar('resumo sem recompensados = null', textoResumo({ recompensadas: 0 }) === null);
+checar('resumo 1 colega', textoResumo({ recompensadas: 1 }) === '1 colega já orçou');
+checar('resumo plural', textoResumo({ recompensadas: 3 }) === '3 colegas já orçaram');
 
 console.log(`\n${ok} ok, ${falhas} falhas`);
 process.exit(falhas ? 1 : 0);

@@ -161,6 +161,15 @@ begin
   if exists (select 1 from public.indicacoes where indicador_id = p_indicado and indicado_id = v_indicador) then
     return 'ciclo';
   end if;
+  -- já vinculado (a qualquer indicador): não gasta vaga de ninguém
+  if exists (select 1 from public.indicacoes where indicado_id = p_indicado) then return 'ja_vinculado'; end if;
+  -- teto no VÍNCULO: o 6º colega não entra (e o app sabe, em vez de ser barrado em silêncio
+  -- só na recompensa). Serializa por indicador, igual à recompensa.
+  perform 1 from public.indicacao_codigos where user_id = v_indicador for update;
+  if (select count(*) from public.indicacoes
+       where indicador_id = v_indicador and estado in ('cadastrou', 'recompensado')) >= 5 then
+    return 'teto_indicador';
+  end if;
   insert into public.indicacoes (indicador_id, indicado_id, codigo)
   values (v_indicador, p_indicado, v_codigo)
   on conflict (indicado_id) do nothing;
@@ -243,7 +252,8 @@ security definer
 set search_path to ''
 as $$
   select jsonb_build_object(
-    'cadastraram',   count(*),
+    -- só RECOMPENSADOS: cadastro sozinho é farmável (contas novas sem orçamento) e não
+    -- pode inflar o contador do cartão.
     'recompensadas', count(*) filter (where estado = 'recompensado'),
     'teto',          5
   ) from public.indicacoes where indicador_id = p_user;

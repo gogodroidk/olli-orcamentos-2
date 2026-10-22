@@ -10,7 +10,7 @@
  *  - Todas exigem JWT do Supabase validado em /auth/v1/user. O id do usuário é
  *    SEMPRE o do JWT — nunca vem do corpo. (O rascunho anterior aceitava
  *    `indicador_id` no corpo com service_role: qualquer um criava/lia código alheio.)
- *  - Quem decide é o Postgres (RPCs indicacao_*, só service_role): conta nova (≤ 48 h),
+ *  - Quem decide é o Postgres (RPCs indicacao_*, só service_role): conta nova (≤ 7 dias), teto de 5 já no vínculo,
  *    não é o próprio indicador, 1º orçamento REAL, fora de funil_exclusoes, teto de 5 por
  *    indicador, tudo numa transação sob lock. O worker só repassa.
  *  - /verificar pode ser chamado à vontade pelo cliente: a verdade (o orçamento existe?)
@@ -133,7 +133,8 @@ export async function handleMeu(request, env) {
     link: `${LINK_BASE}${codigo}`,
     // 0 = recompensa desligada; o cartão não pode prometer nada.
     creditos: INDICACAO_CREDITOS > 0 ? INDICACAO_CREDITOS : 0,
-    resumo: resumo.ok && resumo.data && typeof resumo.data === 'object' ? resumo.data : null,
+    // Desligado (INDICACAO_CREDITOS=0): sem contador. Ligado: só recompensados contam.
+    resumo: INDICACAO_CREDITOS > 0 && resumo.ok && resumo.data && typeof resumo.data === 'object' ? resumo.data : null,
   });
 }
 

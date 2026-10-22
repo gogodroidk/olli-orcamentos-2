@@ -141,19 +141,24 @@ await orc(D, REAL);
 checar('indicador em funil_exclusoes (por id) não paga', (await recompensar(D, 10)).motivo === 'conta_interna');
 checar('conta interna não ganhou nada', (await saldo(Int)) === 0 && (await saldo(D)) === 0);
 
-console.log('teto de 5 por indicador');
+console.log('teto de 5 por indicador (no vínculo)');
 const T = await conta(100);
 const cT = await codigoDe(T);
-const status: string[] = [];
+const vinc: string[] = [];
+const filhos: string[] = [];
 for (let i = 0; i < 7; i++) {
   const x = await conta(1);
-  await vincular(x, cT);
-  await orc(x, REAL);
-  const r = await recompensar(x, 10);
-  status.push(r.status === 'sem_recompensa' ? `sem:${r.motivo}` : r.status);
+  vinc.push(await vincular(x, cT));
+  filhos.push(x);
 }
-checar('5 pagam, o 6º e o 7º batem no teto', status.filter((s) => s === 'recompensado').length === 5 && status.slice(5).every((s) => s === 'sem:teto_indicador'), status.join(','));
+checar('5 vinculam, o 6º e o 7º batem no teto', vinc.slice(0, 5).every((s) => s === 'vinculado') && vinc.slice(5).every((s) => s === 'teto_indicador'), vinc.join(','));
+checar('quem foi barrado não ficou vinculado', (await um<number>(`select count(*)::int from public.indicacoes where indicador_id=$1`, [T])) === 5);
+const resumoAntes = await um<any>(`select public.indicacao_resumo($1)`, [T]);
+checar('7 contas novas sem orçamento: contador = 0 recompensadas', resumoAntes.recompensadas === 0 && resumoAntes.cadastraram === undefined, JSON.stringify(resumoAntes));
+for (const x of filhos.slice(0, 5)) { await orc(x, REAL); await recompensar(x, 10); }
 checar('indicador recebeu exatamente 5 × 10', (await saldo(T)) === 50);
+const resumoDepois = await um<any>(`select public.indicacao_resumo($1)`, [T]);
+checar('contador conta só recompensados (5 de teto 5)', resumoDepois.recompensadas === 5 && resumoDepois.teto === 5, JSON.stringify(resumoDepois));
 
 console.log('permissões');
 async function como(papel: string, sql: string): Promise<boolean> {
