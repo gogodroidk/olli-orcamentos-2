@@ -11,6 +11,7 @@
 #   CI_LOCAL_SEM_INSTALAR=1 bash scripts/ci-local.sh   # pula npm ci / pnpm i
 #
 # Jobs (nomes iguais aos do ci.yml): segredos, dependencias, app-gate, painel, landing, worker, lint.
+# Extra só local: sql-aviso (sqlfluff nas migrations alteradas; SEMPRE verde, é aviso).
 # Sai com código != 0 se QUALQUER job falhar. Um job que falha não impede os
 # outros de rodar (igual ao Actions, onde os jobs são independentes).
 #
@@ -35,7 +36,7 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # O Actions não tem .env; o worker e o build não podem depender de segredo local.
 export FORCE_COLOR=0
 
-TODOS_JOBS=(segredos dependencias app-gate painel landing worker lint)
+TODOS_JOBS=(segredos dependencias app-gate painel landing worker lint sql-aviso)
 if [ "$#" -gt 0 ]; then
   JOBS=("$@")
 else
@@ -209,6 +210,11 @@ job_worker() {
 job_lint() {
   instalar_raiz_uma_vez || return 1
   passo "Lint sem erro novo" . npm run lint
+}
+
+job_sql_aviso() {
+  # Modo aviso: scripts/sql-lint.sh sempre sai 0. Só migrations alteradas vs origin/main.
+  bash scripts/sql-lint.sh origin/main
 }
 
 declare -A RESULTADO

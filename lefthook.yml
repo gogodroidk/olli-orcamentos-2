@@ -1,0 +1,7 @@
+# lefthook — hooks locais. Instalar: npx lefthook install (ou lefthook install).
+pre-commit:
+  commands:
+    sql-lint:
+      # sqlfluff em modo AVISO (sempre exit 0), só nas migrations .sql que entram no commit.
+      glob: "supabase/migrations/*.sql"
+      run: bash scripts/sql-lint.sh --staged
