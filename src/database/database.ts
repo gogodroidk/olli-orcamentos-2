@@ -796,7 +796,7 @@ async function runMigrations(database: SQLite.SQLiteDatabase): Promise<void> {
   }
 
   // v < 14 — E-MAIL DO CLIENTE (principal + secundário; espelha a migration da nuvem
-  // 20261022090000). NULL = "não informado". Sem backfill.
+  // 20261022130000). NULL = "não informado". Sem backfill.
   if (v < 14) {
     await addColumnIfMissing(database, 'clientes', 'email', 'TEXT');
     await addColumnIfMissing(database, 'clientes', 'email2', 'TEXT');

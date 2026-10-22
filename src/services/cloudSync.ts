@@ -173,7 +173,7 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
 const COLUNAS_CLIENTE_GEO = ['lat', 'lon', 'ibge', 'geo_precisao'] as const;
 let clientesSemColunasGeo = false;
 
-/** Servidor sem a migration 20261022090000: o push reenvia sem `email`/`email2` (e o pull não os lê). */
+/** Servidor sem a migration 20261022130000: o push reenvia sem `email`/`email2` (e o pull não os lê). */
 const COLUNAS_CLIENTE_EMAIL = ['email', 'email2'] as const;
 let clientesSemColunasEmail = false;
 
