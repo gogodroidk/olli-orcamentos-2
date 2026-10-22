@@ -60,6 +60,7 @@ import { getCurrentUser } from '../services/supabase';
 import { aplicarEscopo, resolverEscopoAgenda, type EntradaEscopo, type EscopoAgenda } from '../utils/agendaDominio';
 import { EXPO_PUBLIC_MAPS_KEY } from '../config';
 import { numeroWhatsAppBR } from '../utils/telefoneWhatsapp';
+import { destinatariosEmail } from '../utils/emailsCliente';
 import { abrirWhatsApp, exportarHtmlComoPdf } from '../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { retornoDoOficio } from '../utils/posVenda';
@@ -359,7 +360,7 @@ export default function ClienteDetalheScreen() {
   // ─── RENDER ────────────────────────────────────────────────────────────────
   const proximaVisitaId = dados?.kpis.proximaVisita?.agendamentoId ?? null;
   const subtitulo = cliente
-    ? [cliente.telefone?.trim(), [cliente.cidade, cliente.estado].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || undefined
+    ? [cliente.telefone?.trim(), ...destinatariosEmail(cliente), [cliente.cidade, cliente.estado].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || undefined
     : undefined;
 
   return (

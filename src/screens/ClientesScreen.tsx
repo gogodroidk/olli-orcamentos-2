@@ -34,6 +34,7 @@ import { Cliente } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
+import { normalizarEmail, validarEmailsCliente } from '../utils/emailsCliente';
 import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -196,7 +197,7 @@ export default function ClientesScreen() {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<Cliente> | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
+  const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string; email?: string; email2?: string }>({});
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -314,7 +315,7 @@ export default function ClientesScreen() {
       return;
     }
 
-    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string } = {};
+    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string; email?: string; email2?: string } = {};
     const cpfDigits = (editing.cpf ?? '').replace(/\D/g, '');
     const cnpjDigits = (editing.cnpj ?? '').replace(/\D/g, '');
     const telDigits = (editing.telefone ?? '').replace(/\D/g, '');
@@ -327,7 +328,9 @@ export default function ClientesScreen() {
     if (telDigits.length > 0 && telDigits.length < 10) {
       nextErrors.telefone = 'Telefone incompleto (informe DDD + número)';
     }
-    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone) {
+    const erroEmail = validarEmailsCliente(editing.email, editing.email2);
+    if (erroEmail) nextErrors[erroEmail.campo] = erroEmail.mensagem;
+    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone || nextErrors.email || nextErrors.email2) {
       setErrors(nextErrors);
       vibrar('erro');
       return;
@@ -341,6 +344,7 @@ export default function ClientesScreen() {
       cpf: editing.cpf, cnpj: editing.cnpj,
       endereco: editing.endereco, complemento: editing.complemento,
       cidade: editing.cidade, estado: editing.estado, cep: editing.cep,
+      email: normalizarEmail(editing.email), email2: normalizarEmail(editing.email2),
       criadoEm: editing.criadoEm ?? nowISO(),
     };
     setSalvando(true);
@@ -630,6 +634,8 @@ export default function ClientesScreen() {
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <OlliInput label="Nome completo" required autoFocus={isNew} value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: João da Silva" leftIcon="account" />
               <OlliInput label="Telefone / WhatsApp" mask="phone" value={editing.telefone ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, telefone: v } : p); setErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={errors.telefone} />
+              <OlliInput label="E-mail" value={editing.email ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, email: v } : p); setErrors(e => e.email ? { ...e, email: undefined } : e); }} placeholder="cliente@email.com" leftIcon="email" keyboardType="email-address" autoCapitalize="none" error={errors.email} />
+              <OlliInput label="Segundo e-mail (opcional)" value={editing.email2 ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, email2: v } : p); setErrors(e => e.email2 ? { ...e, email2: undefined } : e); }} placeholder="financeiro@email.com" leftIcon="email-multiple" keyboardType="email-address" autoCapitalize="none" error={errors.email2} />
               <AvisoClienteDuplicado duplicados={duplicados} erro={carregandoErro} onAbrirExistente={abrirClienteExistente} />
               <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cpf: v } : p); setErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={errors.cpf} />
               <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cnpj: v } : p); setErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={errors.cnpj} />
