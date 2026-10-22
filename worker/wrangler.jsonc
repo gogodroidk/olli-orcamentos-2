@@ -73,7 +73,7 @@
     // (a régua mandaria e-mail a 37 das 51 contas e contaminaria a medida). Em 07/10/2026 virou régua
     // parcial ("production:ativacao", só ativação e só para conta de até 7 dias).
     // ESTADO ATUAL: 21/10/2026 (T-029, atrasado 8 dias): teste do concierge encerrado -> MODE="production" = régua COMPLETA,
-    // LIGADOS todos os tipos: ativação, assinatura (fim de teste) e reengajamento (última chamada, parou).
+    // LIGADOS todos os tipos: ativação, assinatura (renovação/cobrança: D-3, D0, D+1) e reengajamento (última chamada, parou, fim de teste).
     // Ativação segue limitada a conta de até 7 dias (ATIVACAO_MAX_DIAS=7 — as antigas do concierge ficam de fora).
     // O sufixo de EMAIL_LEMBRETES_MODE ("production:tipo1,tipo2") ainda restringe os tipos (worker em 64/64 variáveis, chave nova não cabe).
     // Boas-vindas e e-mails de login não passam por aqui.
