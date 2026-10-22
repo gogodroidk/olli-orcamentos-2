@@ -15,7 +15,7 @@ export interface MeuLinkIndicacao {
   link: string;
   /** 0 = recompensa desligada no servidor: não prometer nada. */
   creditos: number;
-  resumo: { cadastraram: number; recompensadas: number; teto: number } | null;
+  resumo: { recompensadas: number; teto: number } | null;
 }
 
 async function chamar(caminho: string, metodo: 'GET' | 'POST', corpo?: unknown): Promise<any | null> {

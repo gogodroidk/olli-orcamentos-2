@@ -83,13 +83,13 @@ checar('OPTIONS = 204', r.status === 204);
 
 console.log('GET /indicacao/meu');
 reset();
-rpcs = { indicacao_codigo: 'K7M2QX', indicacao_resumo: { cadastraram: 2, recompensadas: 1, teto: 5 } };
+rpcs = { indicacao_codigo: 'K7M2QX', indicacao_resumo: { recompensadas: 1, teto: 5 } };
 r = await rodar(req('/indicacao/meu'));
 let j = await r.json();
 checar('devolve código e link', r.status === 200 && j.codigo === 'K7M2QX' && j.link === `${LINK_BASE}K7M2QX`, JSON.stringify(j));
 checar('id da RPC vem do JWT', JSON.parse(rpcChamado('indicacao_codigo').init.body).p_user === USER.id);
 checar('créditos reflete a constante (0 = desligado)', j.creditos === (INDICACAO_CREDITOS > 0 ? INDICACAO_CREDITOS : 0));
-checar('resumo repassado', j.resumo?.cadastraram === 2);
+checar('resumo: repassado só com recompensa ligada; desligada = null', INDICACAO_CREDITOS > 0 ? j.resumo?.recompensadas === 1 : j.resumo === null);
 reset();
 rpcs = { indicacao_codigo: 'erro' };
 r = await rodar(req('/indicacao/meu'));

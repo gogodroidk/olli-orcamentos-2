@@ -74,7 +74,8 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
     setQr((v) => !v);
   }
 
-  const resumo = textoResumo(dados?.resumo ?? null);
+  // Recurso desligado (creditos = 0): sem contador, não há o que acumular.
+  const resumo = dados && dados.creditos > 0 ? textoResumo(dados.resumo) : null;
 
   return (
     <Modal visible={visivel} transparent animationType="fade" onRequestClose={aoFechar}>

@@ -28,10 +28,11 @@ export function mensagemWhatsApp(link: string, creditos: number): string {
   return `Oi! Uso o OLLI para fazer orçamento rápido pelo celular. Se você também orça, dá uma olhada: ${link}${ganho}`;
 }
 
-/** Resumo curto para o rodapé do cartão; `null` (não sei) não vira "0 colegas". */
-export function textoResumo(r: { cadastraram: number; recompensadas: number } | null): string | null {
-  if (!r || !Number.isFinite(r.cadastraram) || r.cadastraram <= 0) return null;
-  const c = r.cadastraram === 1 ? '1 colega entrou' : `${r.cadastraram} colegas entraram`;
-  if (!(r.recompensadas > 0)) return c;
-  return `${c} · ${r.recompensadas === 1 ? '1 já orçou' : `${r.recompensadas} já orçaram`}`;
+/**
+ * Resumo curto para o rodapé do cartão. Conta só colegas que JÁ ORÇARAM (recompensados):
+ * cadastro sozinho é farmável. `null` (não sei) ou zero não viram "0 colegas".
+ */
+export function textoResumo(r: { recompensadas: number } | null): string | null {
+  if (!r || !Number.isFinite(r.recompensadas) || r.recompensadas <= 0) return null;
+  return r.recompensadas === 1 ? '1 colega já orçou' : `${r.recompensadas} colegas já orçaram`;
 }
