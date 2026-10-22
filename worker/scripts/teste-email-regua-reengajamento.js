@@ -174,6 +174,11 @@ caso('trial: preço e benefícios vêm de PRECO_PRO e frasePro()', () => {
   assert.ok(e.text.includes(`${reais(PRECO_PRO.mensalCentavos)}/mês`));
   assert.ok(e.text.includes(frasePro()));
   assert.ok(e.text.includes('não renova sozinho'));
+  // Anual: preço e desconto derivados da fonte; sem parcelado 12x (sai mais caro que o anual).
+  assert.ok(e.text.includes(reais(PRECO_PRO.anualCentavos)));
+  const pct = Math.round((PRECO_PRO.economiaAnualCentavos / (PRECO_PRO.mensalCentavos * 12)) * 100);
+  assert.ok(e.text.includes(`${pct}% a menos`));
+  assert.equal(/12x|12 x|parcel/i.test(e.text), false);
   assert.ok(e.html.includes('/planos'));
 });
 caso('última chamada: frase do Grátis vem de FRASE_GRATIS', () => {
