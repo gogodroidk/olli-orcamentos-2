@@ -58,7 +58,7 @@ import { sha256Hex } from './googleAuth.js';
 import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
 import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
-import { lerRecebidoEm, marcarEvento, reivindicarEvento } from './webhookEvents.js';
+import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
 const ORIGEM_CONSUMO = 'abacate';
@@ -203,7 +203,8 @@ async function inicioDoPeriodo(env, userId, planoAlvo) {
 
 /** Validade do QR Pix do plano: 24 h (testado na AbacatePay em 22/10). */
 const PIX_EXPIRA_S = 86400;
-/** Folga máxima entre a criação do Pix e o pagamento visto: validade + 1 h de margem. */
+/** Folga máxima entre a criação do Pix e o pagamento visto: validade + 1 h de margem
+ *  (relógio do gateway e atraso do webhook/polling). Passou disso, a data não é confiável e cai na criação. */
 const PAGO_MAX_MS = (PIX_EXPIRA_S + 3600) * 1000;
 
 /**
@@ -298,6 +299,15 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   });
   if (!claim.ok) return { estado: 'indisponivel' };
   if (claim.duplicado) return { estado: 'liberado', registrado: true, jaConsumida: true };
+  // A âncora da vigência é o `recebido_em` que o PRÓPRIO claim devolveu (insert novo ou
+  // retentativa). Sem ela não dá para saber quanto tempo o cliente pagou depois da criação:
+  // NÃO cai na criação em silêncio (quem pagou 20 h depois perderia até 24 h). Fecha
+  // 'falhou' e pede reenvio/nova leitura.
+  if (!Number.isFinite(claim.recebidoEm)) {
+    console.error('[olli-abacate] claim sem recebido_em — não concede; aguardando reenvio');
+    await marcarEvento(env, { ...consumo, status: 'falhou', erro: 'sem_recebido_em' });
+    return { estado: 'indisponivel' };
+  }
 
   // Vigência a partir de uma data GRAVADA na cobrança (o início do período, ou a
   // criação) — nunca de "agora" nem do `updatedAt` (que vem em cache). Data fixa =
@@ -306,7 +316,7 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const res = await concederPlanoPeriodo(env, {
     userId: vinculo.userId,
     planoKey: vinculo.planoKey,
-    dataAprovacao: baseDaVigencia(cobranca, await lerRecebidoEm(env, ORIGEM_CONSUMO, idCobranca)),
+    dataAprovacao: baseDaVigencia(cobranca, claim.recebidoEm),
   });
   if (!res.ok) {
     // 'falhou' deixa a próxima tentativa reprocessar (ver estadoDoEvento).
@@ -352,7 +362,12 @@ async function criarPixPlano(request, env) {
       },
     }),
   });
-  if (!data || !data.brCode) return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  if (!data || !data.brCode) {
+    // Sem rastro, toda venda de plano viraria 502 mudo (ex.: gateway recusando expiresIn).
+    // Só plano e o que veio (nada de segredo, brCode ou dado do usuário).
+    console.error('[olli-abacate] criar Pix falhou —', JSON.stringify({ plano: plano.id, expiresIn: PIX_EXPIRA_S, resposta: data ? 'sem_brCode' : 'nula' }));
+    return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  }
 
   return json({
     ok: true,

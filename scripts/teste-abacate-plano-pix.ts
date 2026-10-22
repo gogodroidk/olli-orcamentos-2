@@ -73,6 +73,7 @@ let eventos: Record<string, any> = {};
 let falhar: Set<string> = new Set();
 // recebido_em que o banco falso grava ao reivindicar (hora em que o pagamento foi visto).
 let recebidoEmMock = '2026-09-29T18:00:31.802Z';
+let preferPost = '';
 let logs: string[] = [];
 
 function reset(): void {
@@ -116,7 +117,10 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
       const chave = `${corpo.origem}|${corpo.event_id}`;
       if (eventos[chave]) return resposta({ code: '23505' }, 409);
       eventos[chave] = { ...corpo, recebido_em: recebidoEmMock };
-      return new Response(null, { status: 201 });
+      preferPost = String(init.headers?.Prefer || '');
+      // return=representation: o PostgREST devolve a linha criada (é daí que vem a âncora da vigência).
+      if (falhar.has('sem_recebido_em')) return new Response(null, { status: 201 });
+      return resposta([{ recebido_em: recebidoEmMock }], 201);
     }
     if (metodo === 'PATCH') {
       if (falhar.has('patch')) return resposta({ message: 'banco fora' }, 500);
@@ -246,6 +250,26 @@ console.log('\n3. polling (/status)');
   checar('pagamento visto fora da janela: cai na criação (nunca dá tempo a mais)', escritas[0]?.current_period_end, '2026-10-29T18:00:30.289Z');
 
   reset();
+  recebidoEmMock = '2026-09-30T14:00:00.000Z'; // pagou 20 h depois
+  cobranca('pix_ancora_no_claim', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_ancora_no_claim', { jwt: 'jwt-user' });
+  checar('âncora vem do próprio claim (return=representation), sem 2º GET', /return=representation/.test(preferPost), true);
+  checar('vigência conta do recebido_em devolvido pelo claim', escritas[0]?.current_period_end, '2026-10-30T14:00:00.000Z');
+
+  // Claim que não devolve recebido_em: NÃO concede com a data da criação (tiraria até 24 h de
+  // quem pagou tarde, em silêncio). Fecha 'falhou'; a retentativa lê a âncora e concede certo.
+  reset();
+  recebidoEmMock = '2026-09-30T14:00:00.000Z';
+  falhar = new Set(['sem_recebido_em']);
+  cobranca('pix_sem_ancora', USER, 'pro_mensal', 3900);
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_sem_ancora', { jwt: 'jwt-user' });
+  checar('sem recebido_em no claim: nada é concedido', escritas.length, 0);
+  checar('e o evento fica falhou (reprocessável)', eventos['abacate|pix_sem_ancora']?.status, 'falhou');
+  falhar = new Set();
+  await chamar(envProd, 'GET', '/abacate/status?id=pix_sem_ancora', { jwt: 'jwt-user' });
+  checar('retentativa lê a âncora na própria checagem e concede do pagamento visto', escritas[0]?.current_period_end, '2026-10-30T14:00:00.000Z');
+
+  reset();
   cobranca('pix_de_outro', USER, 'pro_mensal', 3900);
   const alheia = await chamar(envProd, 'GET', '/abacate/status?id=pix_de_outro', { jwt: 'jwt-outro' });
   checar('id de outra conta = 404', alheia.status, 404);
@@ -361,7 +385,8 @@ console.log('\n5. consumo único (cobrança não reativa plano revogado)');
 
   reset();
   cobranca('pix_meio', USER, 'pro_mensal', 3900);
-  eventos['abacate|pix_meio'] = { origem: 'abacate', event_id: 'pix_meio', status: 'recebido' };
+  // toda linha real tem recebido_em (not null default now()); a retentativa o lê junto do status
+  eventos['abacate|pix_meio'] = { origem: 'abacate', event_id: 'pix_meio', status: 'recebido', recebido_em: recebidoEmMock };
   const meio = await chamar(envProd, 'POST', WH, { corpo: evtPago('pix_meio') });
   checar('tentativa anterior que morreu no meio (recebido) é reprocessada', [meio.status, escritas.length, eventos['abacate|pix_meio']?.status], [200, 1, 'processado']);
 
