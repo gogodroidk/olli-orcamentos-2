@@ -73,6 +73,19 @@ export function lerTiposPermitidos(sufixo) {
   return Object.freeze(new Set(lidos));
 }
 
+const PRIORIDADE = Object.freeze({
+  assinatura: 0,
+  ativacao: 1,
+  trial_acabando: 2,
+  trial_encerrado: 3,
+  parou: 4,
+  ativacao_ultima: 5,
+});
+function prioridadeDoPedido(p) {
+  const chave = p.template === LEMBRETE_REENGAJAMENTO.template ? p.dados?.tipo : tipoDoPedido(p);
+  return chave in PRIORIDADE ? PRIORIDADE[chave] : 9;
+}
+
 function tipoDoPedido(p) {
   if (p.template === LEMBRETE_ATIVACAO.template) return 'ativacao';
   if (p.template === LEMBRETE_ASSINATURA.template) return 'assinatura';
@@ -425,21 +438,33 @@ export function decidirLembreteEmail(candidato, { agora, precoProMensal, ativaca
  */
 export function selecionarPedidos(candidatos, { agora, precoProMensal, ativacaoMaxDias, tetoRodada, tiposPermitidos = TIPOS_LEMBRETE }) {
   const vistos = new Set();
-  const pedidos = [];
+  const aplicaveis = [];
   const motivos = {};
   for (const c of Array.isArray(candidatos) ? candidatos : []) {
     const id = objeto(c) ? c.userId : null;
     if (typeof id === 'string' && vistos.has(id)) continue;
     if (typeof id === 'string') vistos.add(id);
     const d = decidirLembreteEmail(c, { agora, precoProMensal, ativacaoMaxDias });
-    let motivo = d.motivo;
-    if (d.enfileirar) {
-      // Tipo desligado não ocupa vaga do teto da rodada: o próximo candidato do tipo ligado ainda cabe.
-      if (!tiposPermitidos.has(tipoDoPedido(d.pedido))) motivo = 'tipo_desligado';
-      else if (pedidos.length >= tetoRodada) motivo = 'teto_da_rodada';
-      else pedidos.push(d.pedido);
+    // Tipo desligado não ocupa vaga do teto da rodada: o próximo candidato do tipo ligado ainda cabe.
+    if (d.enfileirar && !tiposPermitidos.has(tipoDoPedido(d.pedido))) {
+      motivos.tipo_desligado = (motivos.tipo_desligado || 0) + 1;
+    } else if (d.enfileirar) {
+      aplicaveis.push({ pedido: d.pedido, motivo: d.motivo });
+    } else {
+      motivos[d.motivo] = (motivos[d.motivo] || 0) + 1;
     }
-    motivos[motivo] = (motivos[motivo] || 0) + 1;
+  }
+  // O teto vale por PRIORIDADE (dinheiro primeiro), não por ordem de chegada: teste do Pro
+  // acabando não pode esperar atrás de "última chamada" (a janela de 24–72 h fecha).
+  // sort é estável: dentro da mesma prioridade, vale a ordem recebida.
+  const ordenados = aplicaveis
+    .map(({ pedido, motivo }, ordem) => ({ pedido, motivo, ordem, rank: prioridadeDoPedido(pedido) }))
+    .sort((a, b) => a.rank - b.rank || a.ordem - b.ordem);
+  const pedidos = [];
+  for (const { pedido, motivo } of ordenados) {
+    const m = pedidos.length >= tetoRodada ? 'teto_da_rodada' : motivo;
+    if (m === motivo) pedidos.push(pedido);
+    motivos[m] = (motivos[m] || 0) + 1;
   }
   return Object.freeze({ pedidos: Object.freeze(pedidos), motivos: Object.freeze(motivos) });
 }
