@@ -38,7 +38,10 @@ const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" 
 function horaBr(iso: string | null): string | null {
 	if (!iso) return null;
 	const d = new Date(iso);
-	return Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+	if (Number.isNaN(d.getTime())) return null;
+	const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+	// O Pix vale 24 h: sem o dia, "até 14:32" pareceria ser hoje.
+	return d.toDateString() === new Date().toDateString() ? hora : `amanhã, ${hora}`;
 }
 
 function passou(iso: string | null): boolean {
@@ -246,7 +249,7 @@ export function DialogPix({ plano, nomePlano, aoFechar, aoPago, linkWhatsApp }: 
 							Este Pix expirou
 						</p>
 						<p className="mt-1 text-sm text-text-secondary">
-							O Pix vale por 1 hora. Nenhuma cobrança foi feita — gere um novo para pagar.
+							O Pix vale por 24 horas. Nenhuma cobrança foi feita — gere um novo para pagar.
 						</p>
 						<Button className="mt-3 min-h-[44px] w-full" onClick={() => setGeracao((n) => n + 1)}>
 							<RotateCw className="size-4" aria-hidden />
