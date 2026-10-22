@@ -108,6 +108,27 @@ async function estadoDoEvento(env, origem, eventId) {
 }
 
 /**
+ * Quando o evento foi visto pela PRIMEIRA vez (`recebido_em`, gravado pelo banco e
+ * imutável em reenvio). Serve de âncora fixa para quem precisa de "hora do
+ * pagamento" sem confiar em cache do gateway. Falha → null (quem chama decide).
+ */
+export async function lerRecebidoEm(env, origem, eventId) {
+  try {
+    const url =
+      `${env.SUPABASE_URL}/rest/v1/webhook_events` +
+      `?origem=eq.${encodeURIComponent(origem)}&event_id=eq.${encodeURIComponent(String(eventId))}` +
+      `&select=recebido_em&limit=1`;
+    const r = await fetch(url, { headers: sbHeaders(env, { Accept: 'application/json' }) });
+    if (!r.ok) return null;
+    const linhas = await r.json();
+    const t = Array.isArray(linhas) && linhas.length ? Date.parse(linhas[0].recebido_em) : NaN;
+    return Number.isFinite(t) ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fecha o evento. Best-effort DE PROPÓSITO: a idempotência já foi garantida pelo
  * insert, então uma falha aqui não pode derrubar um webhook que JÁ processou o
  * pagamento — o efeito de negócio está feito; isto é a trilha.

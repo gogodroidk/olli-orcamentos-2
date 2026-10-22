@@ -58,7 +58,7 @@ import { sha256Hex } from './googleAuth.js';
 import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
 import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
-import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
+import { lerRecebidoEm, marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
 const ORIGEM_CONSUMO = 'abacate';
@@ -201,17 +201,28 @@ async function inicioDoPeriodo(env, userId, planoAlvo) {
   return new Date(agora).toISOString();
 }
 
+/** Validade do QR Pix do plano: 24 h (testado na AbacatePay em 22/10). */
+const PIX_EXPIRA_S = 86400;
+/** Folga máxima entre a criação do Pix e o pagamento visto: validade + 1 h de margem. */
+const PAGO_MAX_MS = (PIX_EXPIRA_S + 3600) * 1000;
+
 /**
- * Data-base da vigência, lida da cobrança: `metadata.inicio` quando é coerente com
- * a criação (não antes dela, nem mais de ~13 meses depois); senão `createdAt`.
+ * Data-base da vigência, lida da cobrança.
+ *  - Renovação do mesmo plano: `metadata.inicio` no futuro (fim do período atual) vale.
+ *  - Plano novo/troca: o início gravado é "a criação"; como o Pix vale 24 h, o
+ *    cliente pode pagar horas depois — conta a partir do pagamento VISTO
+ *    (`pagoEm` = `recebido_em` do evento, fixo em reenvio), limitado a
+ *    [criação, criação + validade + 1 h]. Sem `pagoEm` → criação (nunca dá tempo a mais).
  */
-function baseDaVigencia(cobranca) {
+function baseDaVigencia(cobranca, pagoEm) {
   const criado = Date.parse(cobranca.createdAt);
   const inicio = Date.parse(cobranca.metadata && cobranca.metadata.inicio);
-  if (Number.isFinite(criado) && Number.isFinite(inicio) && inicio >= criado - 60_000 && inicio - criado <= INICIO_MAX_MS) {
-    return new Date(inicio).toISOString();
+  const inicioOk = Number.isFinite(criado) && Number.isFinite(inicio) && inicio >= criado - 60_000 && inicio - criado <= INICIO_MAX_MS;
+  if (inicioOk && inicio - criado > 60_000) return new Date(inicio).toISOString(); // renovação futura
+  if (Number.isFinite(criado) && Number.isFinite(pagoEm) && pagoEm >= criado && pagoEm - criado <= PAGO_MAX_MS) {
+    return new Date(pagoEm).toISOString();
   }
-  return cobranca.createdAt;
+  return inicioOk ? new Date(inicio).toISOString() : cobranca.createdAt;
 }
 
 /**
@@ -290,12 +301,12 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
 
   // Vigência a partir de uma data GRAVADA na cobrança (o início do período, ou a
   // criação) — nunca de "agora" nem do `updatedAt` (que vem em cache). Data fixa =
-  // liberar de novo dá a mesma vigência (ver concederPlanoPeriodo). A criação fica
-  // a no máximo 1h do pagamento, porque o Pix expira em 1h.
+  // liberar de novo dá a mesma vigência (ver concederPlanoPeriodo). O Pix vale 24 h, então a
+  // vigência conta do pagamento visto (recebido_em do consumo), não da criação.
   const res = await concederPlanoPeriodo(env, {
     userId: vinculo.userId,
     planoKey: vinculo.planoKey,
-    dataAprovacao: baseDaVigencia(cobranca),
+    dataAprovacao: baseDaVigencia(cobranca, await lerRecebidoEm(env, ORIGEM_CONSUMO, idCobranca)),
   });
   if (!res.ok) {
     // 'falhou' deixa a próxima tentativa reprocessar (ver estadoDoEvento).
@@ -334,7 +345,7 @@ async function criarPixPlano(request, env) {
       method: 'PIX',
       data: {
         amount: centavos(plano),
-        expiresIn: 3600,
+        expiresIn: PIX_EXPIRA_S,
         description: descricaoAbacate(plano.nome),
         externalId,
         metadata: { externalId, inicio },
