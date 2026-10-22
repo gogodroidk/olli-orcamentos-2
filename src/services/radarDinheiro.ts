@@ -344,27 +344,42 @@ export function listarPropostasParadas(
  * "mexeu" e mesmo assim não mandou. Não entra em `listarPropostasParadas` de propósito
  * (o cliente nem viu — não há o que "cobrar" por WhatsApp), mas a tela não pode dizer
  * "nada parado" com um monte deles na gaveta: é o "buraco do envio". Criação ilegível
- * fica de fora (mesma regra das propostas paradas: não inventamos "0 dias").
+ * nunca vira "0 dias" nem zero: esse rascunho não entra na conta e, se não houver nenhum
+ * legível que prove o contrário, o resultado é `null` ("não sei"), não 0.
  */
 export function contarRascunhosEsquecidos(
   orcamentos: readonly OrcamentoRadarLinha[],
   minDias: number = LIMIAR_PROPOSTA_PARADA_DIAS,
   agora: Date = new Date(),
-): number {
+): number | null {
   let n = 0;
+  let semData = 0;
   for (const o of orcamentos) {
     if (slug(o.status) !== 'rascunho') continue;
     const t = criadoEmMs(o);
-    if (!Number.isFinite(t)) continue;
+    if (!Number.isFinite(t)) {
+      semData += 1;
+      continue;
+    }
     if (Math.floor((agora.getTime() - t) / MS_POR_DIA) >= minDias) n += 1;
   }
+  // NÃO SEI ≠ ZERO: se algum rascunho não tem data legível e nenhum dos legíveis
+  // provou o contrário, não dá para afirmar "zero esquecidos" — devolve null.
+  if (n === 0 && semData > 0) return null;
   return n;
+}
+
+/** "N rascunhos criados há mais de 3 dias e ainda sem enviar" — a MESMA frase no app e no painel. */
+export function fraseRascunhosEsquecidos(n: number, minDias: number = LIMIAR_PROPOSTA_PARADA_DIAS): string {
+  const qtd = n === 1 ? '1 rascunho criado' : `${n} rascunhos criados`;
+  return `${qtd} há mais de ${minDias} dias e ainda sem enviar`;
 }
 
 /**
  * Texto do estado calmo. "Nada parado" só com ZERO rascunho apurado: com rascunho
  * esquecido a frase seria mentira por omissão (o dinheiro está na gaveta, não no
- * cliente), e sem saber (null) não afirmamos nada além do que foi lido.
+ * cliente), e sem saber (null/ausente: carregando, leitura falhou ou rascunhos sem
+ * data legível) não afirmamos nada além do que foi lido.
  */
 export function textoEstadoCalmo(rascunhos: number | null | undefined): string {
   if (rascunhos === 0) {
@@ -372,8 +387,7 @@ export function textoEstadoCalmo(rascunhos: number | null | undefined): string {
   }
   const base = 'Todo orçamento aprovado já foi recebido e nenhuma proposta enviada está sem resposta.';
   if (rascunhos == null) return base;
-  const qtd = rascunhos === 1 ? '1 rascunho criado' : `${rascunhos} rascunhos criados`;
-  return `${base} ${qtd} há mais de ${LIMIAR_PROPOSTA_PARADA_DIAS} dias e ainda sem enviar.`;
+  return `${base} ${fraseRascunhosEsquecidos(rascunhos)}.`;
 }
 
 // ─── 3. CLIENTES PARA LEMBRAR (pós-venda) ───────────────────────────────────

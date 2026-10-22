@@ -18,6 +18,8 @@ import type { Orcamento } from "@dominio";
 import {
 	contarRascunhosEsquecidos,
 	type DinheiroParadoLinha,
+	fraseRascunhosEsquecidos,
+	LIMIAR_PROPOSTA_PARADA_DIAS,
 	listarDinheiroParado as listarDinheiroParadoRegra,
 	listarPropostasParadas,
 	type PropostaParada,
@@ -227,11 +229,14 @@ export function listarParados(orcamentos: OrcamentoRow[], minDias = 3, agora: Da
 /**
  * Rascunhos que o dono montou e ainda não mandou (CRIADOS há `minDias` ou mais). Não são
  * "parados" de cobrar — o cliente nem viu —, mas a tela não pode afirmar "nada parado"
- * com eles na gaveta. Regra única em `src/services/radarDinheiro.ts`.
+ * com eles na gaveta. Regra única em `src/services/radarDinheiro.ts`. `null` = não sei
+ * (rascunhos sem data legível): nunca vira zero.
  */
-export function contarRascunhos(orcamentos: OrcamentoRow[], minDias = 3, agora: Date = new Date()): number {
+export function contarRascunhos(orcamentos: OrcamentoRow[], minDias = LIMIAR_PROPOSTA_PARADA_DIAS, agora: Date = new Date()): number | null {
 	return contarRascunhosEsquecidos(orcamentos, minDias, agora);
 }
+
+export { fraseRascunhosEsquecidos, LIMIAR_PROPOSTA_PARADA_DIAS };
 
 /* ─────────────────────────  WHATSAPP  ───────────────────────── */
 

@@ -73,6 +73,16 @@ let sinaisCache: ReadonlyMap<string, EstadoTermometro> = new Map();
  * decide o estado de erro (3 estados).
  */
 export async function orcamentosParaFollowUp(): Promise<OrcamentoParaFollowUp[]> {
+  return (await radarPropostas()).followUp;
+}
+
+/**
+ * Follow-up + rascunhos esquecidos numa LEITURA só do SQLite (a Home precisa dos dois e
+ * lia `orcamentos` duas vezes). `rascunhos` é a MESMA regra do painel
+ * (`contarRascunhosEsquecidos`): `null` = não sei (rascunhos sem data legível), nunca 0.
+ * Propaga erro de leitura — quem chama decide o estado.
+ */
+export async function radarPropostas(): Promise<{ followUp: OrcamentoParaFollowUp[]; rascunhos: number | null }> {
   const [orcamentos, clientes, empresa, recibos] = await Promise.all([
     getOrcamentos(), getClientes(), getEmpresa(), getRecibos(),
   ]);
@@ -81,20 +91,11 @@ export async function orcamentosParaFollowUp(): Promise<OrcamentoParaFollowUp[]>
   void termometrosSeLiberado(lista.map((i) => i.orcamento)).then((mapa) => {
     sinaisCache = mapa ?? new Map();
   });
-  return lista;
-}
-
-/**
- * Rascunhos esquecidos (criados há >= 3 dias e ainda não enviados): a MESMA regra do
- * painel (`contarRascunhosEsquecidos`), em cima do SQLite do aparelho. Propaga erro de
- * leitura — quem chama decide o estado (nunca vira "0 rascunhos" por falha).
- */
-export async function rascunhosEsquecidos(): Promise<number> {
-  const orcamentos = await getOrcamentos();
-  return contarRascunhosEsquecidos(
+  const rascunhos = contarRascunhosEsquecidos(
     orcamentos.map((o) => ({ status: o.status, criado_em: o.criadoEm, atualizado_em: o.atualizadoEm })),
     DIAS_LIMIAR,
   );
+  return { followUp: lista, rascunhos };
 }
 
 /**

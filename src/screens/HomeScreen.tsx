@@ -56,7 +56,7 @@ import { useClimaDoDia } from '../services/clima';
 import { useReservaClima, type LeituraCadastro } from '../services/climaReserva';
 import { clientesParaReconquistar, lembrarNoWhatsApp, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
 import { orcamentosParaCobrar, cobrarNoWhatsApp as cobrarItemNoWhatsApp, OrcamentoParaCobrar } from '../services/radarCobranca';
-import { orcamentosParaFollowUp, mensagemFollowUp, rascunhosEsquecidos, type OrcamentoParaFollowUp } from '../services/radarFollowUp';
+import { radarPropostas, mensagemFollowUp, type OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { LIMIAR_PROPOSTA_PARADA_DIAS } from '../services/radarDinheiro';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
@@ -426,10 +426,7 @@ export default function HomeScreen() {
     if (!veDinheiro) return; // fora da régua do papel: nem lê
     setFollowUpErro(false);
     try {
-      const [lista, rascunhos] = await Promise.all([
-        orcamentosParaFollowUp(),
-        rascunhosEsquecidos().catch(() => null),
-      ]);
+      const { followUp: lista, rascunhos } = await radarPropostas();
       setFollowUp(lista);
       setRascunhosParados(rascunhos);
       if (lista.length > 0) registrarEventoDica('primeiro_orcamento_parado');
