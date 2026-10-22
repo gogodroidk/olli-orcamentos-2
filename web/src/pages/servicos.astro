@@ -8,12 +8,10 @@
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import Layout from "../layouts/Layout.astro";
-import { EMPRESA } from "../data/empresa";
 import { AVISO_REGULADAS, CONDICOES, NAO_INCLUSO, PACOTES, PRECOS_APROVADOS } from "../data/servicos";
 
 const reais = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const zap = (pacote: string) =>
-	`https://wa.me/${EMPRESA.whatsapp}?text=${encodeURIComponent(`Oi! Quero conversar sobre o pacote "${pacote}" do OLLI.`)}`;
+const PEDIDO_URL = "https://diagnostico.olliorcamentos.online/servicos/pedido";
 ---
 <Layout
   titulo="OLLI Serviços — site, atendimento no WhatsApp e sistema sob medida"
@@ -52,14 +50,54 @@ const zap = (pacote: string) =>
             ))}
           </ul>
           <a
-            href={zap(p.nome)}
+            href="#diagnostico"
             class="mt-auto inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-5 py-3 text-center text-base font-semibold text-white transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             style="margin-top:1.5rem"
           >
-            Conversar sobre este pacote
+            Pedir diagnóstico grátis
           </a>
         </article>
       ))}
+    </section>
+
+    <section id="diagnostico" class="mx-auto max-w-2xl px-6 pb-14">
+      <h2 class="text-2xl font-bold text-ink">Pedir diagnóstico grátis</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate">
+        A gente estuda o seu negócio (site, Google, redes) e volta com um diagnóstico e uma proposta com preço
+        feito para o seu caso. Não há tabela fixa: o valor depende do que o seu negócio precisa.
+      </p>
+      <form id="form-pedido" class="mt-6 space-y-4" data-url={PEDIDO_URL} novalidate>
+        <div>
+          <label for="p-negocio" class="block text-sm font-semibold text-ink">Nome do negócio</label>
+          <input id="p-negocio" name="negocio" required maxlength="120" autocomplete="organization" class="mt-1 min-h-12 w-full rounded-acao border border-line bg-card px-4 text-base text-ink" />
+        </div>
+        <div>
+          <label for="p-cidade" class="block text-sm font-semibold text-ink">Cidade</label>
+          <input id="p-cidade" name="cidade" required maxlength="80" autocomplete="address-level2" class="mt-1 min-h-12 w-full rounded-acao border border-line bg-card px-4 text-base text-ink" />
+        </div>
+        <div>
+          <label for="p-dor" class="block text-sm font-semibold text-ink">Qual é a sua maior dor hoje?</label>
+          <textarea id="p-dor" name="dor" required maxlength="600" rows="3" class="mt-1 w-full rounded-acao border border-line bg-card px-4 py-3 text-base text-ink"></textarea>
+        </div>
+        <div>
+          <label for="p-whatsapp" class="block text-sm font-semibold text-ink">WhatsApp (com DDD)</label>
+          <input id="p-whatsapp" name="whatsapp" required type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 98765-4321" class="mt-1 min-h-12 w-full rounded-acao border border-line bg-card px-4 text-base text-ink" />
+        </div>
+        <div aria-hidden="true" style="position:absolute;left:-9999px;height:0;overflow:hidden">
+          <label>Não preencha <input name="site_web" tabindex="-1" autocomplete="off" /></label>
+        </div>
+        <label class="flex gap-3 text-sm leading-relaxed text-slate">
+          <input id="p-aceite" name="aceite" type="checkbox" required class="mt-1 size-5 shrink-0" />
+          <span>
+            Autorizo a OLLI a usar esses dados e informações públicas do meu negócio para preparar o diagnóstico
+            e me responder por WhatsApp. Posso pedir para apagar a qualquer momento (<a href="/privacidade/" class="underline">privacidade</a>).
+          </span>
+        </label>
+        <p id="p-status" role="status" aria-live="polite" class="min-h-6 text-sm"></p>
+        <button type="submit" id="p-enviar" class="inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+          Pedir diagnóstico grátis
+        </button>
+      </form>
     </section>
 
     <section class="border-t border-line bg-card/60">
@@ -84,4 +122,55 @@ const zap = (pacote: string) =>
     </section>
   </main>
   <Footer />
+<script>
+  const form = document.getElementById("form-pedido") as HTMLFormElement | null;
+  const status = document.getElementById("p-status");
+  const botao = document.getElementById("p-enviar") as HTMLButtonElement | null;
+  function dizer(texto: string, erro: boolean) {
+    if (!status) return;
+    status.textContent = texto;
+    status.className = `min-h-6 text-sm ${erro ? "text-red-700" : "text-ink"}`;
+  }
+  const MENSAGENS: Record<string, string> = {
+    negocio_obrigatorio: "Informe o nome do negócio.",
+    cidade_obrigatoria: "Informe a cidade.",
+    dor_obrigatoria: "Conte em uma frase a sua maior dor.",
+    whatsapp_invalido: "WhatsApp inválido. Use DDD + número.",
+    aceite_obrigatorio: "Marque a autorização para continuar.",
+    muitas_requisicoes: "Muitas tentativas. Espere um minuto e tente de novo.",
+  };
+  form?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!form || !botao) return;
+    const d = new FormData(form);
+    const corpo = {
+      negocio: String(d.get("negocio") ?? ""),
+      cidade: String(d.get("cidade") ?? ""),
+      dor: String(d.get("dor") ?? ""),
+      whatsapp: String(d.get("whatsapp") ?? ""),
+      site_web: String(d.get("site_web") ?? ""),
+      aceite: d.get("aceite") === "on",
+    };
+    botao.disabled = true;
+    dizer("Enviando…", false);
+    try {
+      const r = await fetch(form.dataset.url ?? "", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.ok === true) {
+        form.reset();
+        dizer("Recebido! Vamos estudar o seu negócio e responder no WhatsApp informado.", false);
+      } else {
+        dizer(MENSAGENS[j?.erro as string] ?? "Não consegui enviar agora. Tente de novo em alguns minutos.", true);
+      }
+    } catch {
+      dizer("Sem conexão. O pedido NÃO foi enviado; tente de novo.", true);
+    } finally {
+      botao.disabled = false;
+    }
+  });
+</script>
 </Layout>

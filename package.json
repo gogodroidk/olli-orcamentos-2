@@ -100,6 +100,7 @@
     "test:ai-provider": "node worker/scripts/teste-ai-provider.ts",
     "test:ia-importacao-worker": "node worker/scripts/teste-ia-importacao.js",
     "test:ia-autopilot": "node worker/scripts/teste-ia-autopilot.js",
+    "test:pedido-diagnostico": "node worker/scripts/teste-pedido-diagnostico.js",
     "test:ia-autopilot-web": "node scripts/teste-ia-autopilot-web.ts",
     "test:ia-autopilot-mobile": "node scripts/teste-ia-autopilot-mobile.ts",
     "test:chat-historico-seguro": "node scripts/teste-chat-historico-seguro.ts",

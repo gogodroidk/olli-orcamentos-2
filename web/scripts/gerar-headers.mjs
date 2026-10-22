@@ -87,13 +87,16 @@ const scriptSrc = ["'self'", CF_ANALYTICS_SCRIPT, META_SCRIPT, ...GOOGLE_SCRIPT,
 // style-src precisa de 'unsafe-inline': o Astro/Tailwind emitem atributos style=""
 // e o CSP não tem como "hashear" atributo. Estilo inline não executa código —
 // o risco é ordens de magnitude menor que o de script inline, que ficou fechado.
+// Pedido de diagnóstico da página /servicos/ (POST para o worker, rota /servicos/pedido).
+const WORKER_PEDIDO = "https://diagnostico.olliorcamentos.online";
+
 const csp = [
 	"default-src 'self'",
 	`script-src ${scriptSrc}`,
 	"style-src 'self' 'unsafe-inline'",
 	`img-src 'self' data: ${META_EVENTOS} ${GOOGLE_EVENTOS.join(" ")}`,
 	"font-src 'self' data:",
-	`connect-src 'self' ${CF_ANALYTICS_BEACON} ${SENTRY_INGEST} ${META_EVENTOS} ${META_SCRIPT} ${GOOGLE_EVENTOS.join(" ")}`,
+	`connect-src 'self' ${WORKER_PEDIDO} ${CF_ANALYTICS_BEACON} ${SENTRY_INGEST} ${META_EVENTOS} ${META_SCRIPT} ${GOOGLE_EVENTOS.join(" ")}`,
 	`frame-src ${GOOGLE_FRAME.join(" ")}`,
 	"form-action 'self'",
 	"base-uri 'self'",
