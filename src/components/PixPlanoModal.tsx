@@ -7,6 +7,7 @@ import { OlliButton } from './OlliButton';
 import { qrSvg } from '../utils/qrcode';
 import { formatCurrency } from '../utils/currency';
 import { textoValidadePix } from '../utils/pixValidade';
+import { textoArrependimentoCurto } from '../content/legal/arrependimento';
 import { checarPixPlano, type CobrancaPixPlano } from '../services/pixPlano';
 
 /**
@@ -136,6 +137,7 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
                 <Text style={styles.aguardandoTxt}>Aguardando o pagamento…</Text>
               </View>
               <Text style={styles.nota}>Pode fechar o app e pagar depois: o plano libera sozinho quando o banco confirmar.</Text>
+              <Text style={styles.nota}>{textoArrependimentoCurto()}</Text>
               <Text style={styles.nota}>
                 Pix não renova sozinho: perto do vencimento você paga de novo{cobranca.plano.meses >= 12 ? '.' : ' (no anual, só 1 vez por ano).'}
               </Text>

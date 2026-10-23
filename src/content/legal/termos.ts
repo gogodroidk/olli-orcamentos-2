@@ -1,3 +1,4 @@
+import { ARTIGO_ARREPENDIMENTO, DIAS_ARREPENDIMENTO } from './arrependimento';
 /**
  * Termos de Uso do OLLI — conteúdo tipado, renderizado pela LegalScreen no app
  * (tema escuro) e na web (mesma tela).
@@ -96,8 +97,8 @@ export const TERMOS: LegalDoc = {
           'assinaturas” (ou pelo botão “Gerenciar na Google Play” do aplicativo); o plano continua até o ' +
           'fim do período já pago. Reembolsos dessas compras são processados pela Google Play, conforme ' +
           'a política de reembolso dela.',
-        'Nas compras à distância, você tem direito de arrependimento em até 7 dias corridos a contar ' +
-          'da contratação, conforme o art. 49 do Código de Defesa do Consumidor. Fora desse prazo, ' +
+        `Nas compras à distância, você tem direito de arrependimento em até ${DIAS_ARREPENDIMENTO} dias corridos a contar ` +
+          `da contratação, conforme o ${ARTIGO_ARREPENDIMENTO}. Fora desse prazo, ` +
           'valores de períodos já iniciados, em regra, não são reembolsados, salvo disposição legal ' +
           'ou promocional em contrário. Para pedir reembolso, fale com a gente pelo WhatsApp abaixo.',
       ],
