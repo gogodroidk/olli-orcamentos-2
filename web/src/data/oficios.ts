@@ -139,6 +139,25 @@ export const SLUG_POR_OFICIO: Record<VerticalId, string> = {
   geral: 'prestador-de-servico',
 };
 
+/**
+ * Slugs que têm card de compartilhamento próprio em `web/public/og/<slug>.png` (1200×630, <300 KB).
+ * Os demais usam o banner genérico. Todos os 10 ofícios têm card; o de climatização foi refeito
+ * (o primeiro mostrava "Clínica Bem Estar" por baixo de "Cliente exemplo").
+ * Travado por `scripts/teste-og-oficios.ts` (arquivo existe, tamanho e dimensões).
+ */
+export const OG_PROPRIO_POR_SLUG: ReadonlySet<string> = new Set([
+  'climatizacao-e-refrigeracao',
+  'eletricista',
+  'encanador',
+  'pintor',
+  'dedetizadora',
+  'limpeza-de-caixa-dagua',
+  'piscineiro',
+  'recarga-de-extintores',
+  'jardinagem',
+  'prestador-de-servico',
+]);
+
 /** Como o profissional se chama (entra no H1 e no title). */
 export const PROFISSAO_POR_OFICIO: Record<VerticalId, string> = {
   refrigeracao: 'climatização e refrigeração',
