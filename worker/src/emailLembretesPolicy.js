@@ -75,15 +75,15 @@ export function lerTiposPermitidos(sufixo) {
 
 const PRIORIDADE = Object.freeze({
   assinatura: 0,
-  ativacao: 1,
-  trial_acabando: 2,
+  trial_acabando: 1,
+  ativacao: 2,
   trial_encerrado: 3,
   parou: 4,
   ativacao_ultima: 5,
 });
 function prioridadeDoPedido(p) {
   const chave = p.template === LEMBRETE_REENGAJAMENTO.template ? p.dados?.tipo : tipoDoPedido(p);
-  return chave in PRIORIDADE ? PRIORIDADE[chave] : 9;
+  return Object.hasOwn(PRIORIDADE, chave) ? PRIORIDADE[chave] : 9;
 }
 
 function tipoDoPedido(p) {
