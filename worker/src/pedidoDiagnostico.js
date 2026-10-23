@@ -10,6 +10,8 @@
  * LGPD: guarda o mínimo (negócio, cidade, dor, WhatsApp), exige o aceite e
  * grava quando e com qual texto de aviso foi dado.
  */
+import { lerCorpoLimitado } from './bodyLimit.js';
+import { cabeNoTeto } from './rateLimit.js';
 import { numeroWhatsAppBR } from './telefoneWhatsapp.js';
 
 export const AVISO_VERSAO = 'diagnostico-v1';
@@ -63,11 +65,13 @@ export async function handlePedidoDiagnostico(request, env) {
     }
   }
 
+  // Limite ANTES de bufferizar: Content-Length mentiroso ou chunked não enchem a memória do Worker.
+  if (!cabeNoTeto(request, MAX_BYTES).ok) return json({ ok: false, erro: 'payload_grande' }, 413);
+  const lido0 = await lerCorpoLimitado(request, MAX_BYTES);
+  if (lido0.grande) return json({ ok: false, erro: 'payload_grande' }, 413);
   let body = null;
   try {
-    const raw = await request.text();
-    if (raw.length > MAX_BYTES) return json({ ok: false, erro: 'payload_grande' }, 413);
-    body = raw ? JSON.parse(raw) : null;
+    body = lido0.raw ? JSON.parse(lido0.raw) : null;
   } catch {
     body = null;
   }

@@ -37,3 +37,12 @@ assert.equal((await handlePedidoDiagnostico(new Request('https://x', { method: '
 assert.equal((await handlePedidoDiagnostico(req(null, 'GET'), {})).status, 405);
 assert.equal((await handlePedidoDiagnostico(req(null, 'OPTIONS'), {})).status, 204);
 console.log('teste-pedido-diagnostico: todas as verificações passaram');
+
+// corpo grande: 413 antes de bufferizar (Content-Length honesto E chunked sem header)
+const grande = JSON.stringify({ ...bom, dor: 'x'.repeat(5000) });
+const rG = await handlePedidoDiagnostico(new Request('https://x/servicos/pedido', { method: 'POST', body: grande }), { SUPABASE_URL: 'https://s.co', SUPABASE_SERVICE_ROLE_KEY: 'k' });
+assert.equal(rG.status, 413);
+const stream = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(grande)); c.close(); } });
+const rC = await handlePedidoDiagnostico(new Request('https://x/servicos/pedido', { method: 'POST', body: stream, duplex: 'half' }), { SUPABASE_URL: 'https://s.co', SUPABASE_SERVICE_ROLE_KEY: 'k' });
+assert.equal(rC.status, 413);
+console.log('teste-pedido-diagnostico: corpo grande 413 ok');
