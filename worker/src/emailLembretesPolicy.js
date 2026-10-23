@@ -369,7 +369,9 @@ function decidirTrialAcabando(c, agora, historico) {
 
 /** Teste do Pro já terminou (0–7 dias): 1 aviso por teste, sem dado do cliente. */
 function decidirTrialEncerrado(c, agora, historico) {
-  if (!c.donoDoTenant || !objeto(c.oferta) || c.oferta.trial_estado !== 'ended') return null;
+  // Quem JÁ PAGA depois do teste (Pix/Play/cartão) segue com a linha do teste 'active' e vencida:
+  // o plano efetivo é a verdade. Só 'gratis' recebe "voltou ao plano Grátis".
+  if (!c.donoDoTenant || !objeto(c.oferta) || c.oferta.trial_estado !== 'ended' || c.oferta.plano_efetivo !== 'gratis') return null;
   const termina = data(c.oferta.trial_termina_em);
   if (!termina) return null;
   const horas = (agora.getTime() - termina.getTime()) / HORA_MS;

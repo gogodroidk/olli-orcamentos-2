@@ -132,6 +132,12 @@ caso('teste acabou há 2 dias → trial_encerrado (1 por teste)', () => {
   assert.deepEqual({ ...d.pedido.dados }, { tipo: 'trial_encerrado', terminaEm: antes(48 * H) });
   assert.match(d.pedido.idempotencyKey, /:trial_encerrado:/);
 });
+caso('trial_encerrado: quem já paga (plano efetivo pro) NÃO recebe "voltou ao Grátis"', () => {
+  const pago = encerrado(48, { oferta: { plano_efetivo: 'pro', trial_estado: 'ended', trial_termina_em: antes(48 * H) } });
+  assert.notEqual(decidirLembreteEmail(pago, OPTS).motivo, 'reengajamento_trial_encerrado');
+  const semPlano = encerrado(48, { oferta: { plano_efetivo: null, trial_estado: 'ended', trial_termina_em: antes(48 * H) } });
+  assert.notEqual(decidirLembreteEmail(semPlano, OPTS).motivo, 'reengajamento_trial_encerrado');
+});
 caso('trial_encerrado: fora de 0–7 dias, não-dono e já enviado → nada', () => {
   assert.notEqual(decidirLembreteEmail(encerrado(8 * 24), OPTS).motivo, 'reengajamento_trial_encerrado');
   assert.equal(decidirLembreteEmail(encerrado(48, { donoDoTenant: false }), OPTS).enfileirar, false);

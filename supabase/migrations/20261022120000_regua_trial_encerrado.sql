@@ -1,180 +1,23 @@
--- Régua: e-mail `trial_encerrado` (22/10/2026). Teste do Pro que terminou há até 7 dias
--- e não converteu: UM e-mail por teste. Copy: Entregas Claude/OLLI/2026-10-22-copy-trial-encerrado
--- (Bia v2 + Dr. Paulo). Só amplia a lista de tipos aceitos e acrescenta a conferência
--- do banco para o tipo novo; o resto de enqueue_lembrete_email é idêntico ao de
--- 20261005090000. Ligar o envio é decisão do dono (deploy do worker).
-
-create or replace function public.enqueue_lembrete_email(
-  p_user_id uuid,
-  p_template text,
-  p_template_version text,
-  p_purpose text,
-  p_idempotency_key text,
-  p_template_dados jsonb,
-  p_teto_diario integer default 40,
-  p_now timestamptz default now()
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path to ''
-as $function$
+-- Régua: e-mail `trial_encerrado` (22/10/2026). Teste do Pro que terminou há até 7 dias, sem conversão e com o plano
+-- efetivo ainda GRÁTIS: UM e-mail por teste. Copy: Entregas Claude/OLLI/2026-10-22-copy-trial-encerrado (Bia v2 + Dr. Paulo).
+--
+-- Como em 20261007140000 (contas internas), as duas funções são grandes e já estão em produção COM remendos posteriores
+-- (conta_interna). Em vez de reescrevê-las e arriscar divergir da versão viva (revisão independente: a cópia antiga
+-- apagaria a trava de conta interna), o patch troca/insere TRECHOS sobre o texto real (pg_get_functiondef) e FALHA EM
+-- VOZ ALTA se uma âncora não for encontrada. Idempotente: não repete se `trial_encerrado` já estiver na função.
+--
+-- ORDEM OBRIGATÓRIA: esta migration ANTES do deploy do worker que escolhe `trial_encerrado` (sem ela, o enqueue antigo
+-- levanta 'lembrete_dados_invalidos' e a rodada aborta).
+do $patch_trial_encerrado$
 declare
-  v_email      text;
-  v_orcamentos bigint;
-  v_sequencia  text;
-  v_prefixo    text;
-  v_tipo       text;
-  v_ultimo     timestamptz;
-  v_dias       numeric;
-begin
-  if p_user_id is null
-     or p_idempotency_key is null
-     or p_idempotency_key !~ '^[A-Za-z0-9._:-]{1,240}$'
-     or p_template_dados is null
-     or pg_catalog.jsonb_typeof(p_template_dados) <> 'object'
-     or pg_catalog.pg_column_size(p_template_dados) > 1024
-     or p_teto_diario is null or p_teto_diario < 1 or p_teto_diario > 500
-     or p_now is null
-     or p_now > pg_catalog.now() + interval '5 minutes'
-     or p_now < pg_catalog.now() - interval '1 hour'
-  then
-    raise exception 'lembrete_argumentos_invalidos';
-  end if;
-
-  if (p_template, p_template_version, p_purpose) = ('lembrete_ativacao', 'lembrete_ativacao.v1', 'activation_reminder') then
-    v_prefixo := 'onboarding:' || p_user_id::text || ':';
-  elsif (p_template, p_template_version, p_purpose) = ('lembrete_assinatura', 'lembrete_assinatura.v1', 'billing_reminder') then
-    v_prefixo := 'lembrete:assinatura:' || p_user_id::text || ':';
-  elsif (p_template, p_template_version, p_purpose) = ('lembrete_reengajamento', 'lembrete_reengajamento.v1', 'reengagement_reminder') then
-    v_prefixo := 'reengajamento:' || p_user_id::text || ':';
-    v_tipo := p_template_dados ->> 'tipo';
-    if v_tipo is null or v_tipo not in ('ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado') then
-      raise exception 'lembrete_dados_invalidos';
-    end if;
-  else
-    raise exception 'lembrete_template_invalido';
-  end if;
-
-  -- A chave carrega a conta: não dá para gravar um lembrete de A com a chave de B.
-  if pg_catalog.left(p_idempotency_key, pg_catalog.length(v_prefixo)) <> v_prefixo then
-    raise exception 'lembrete_chave_divergente';
-  end if;
-
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('olli.email_lembrete:' || p_user_id::text, 0)
-  );
-
-  if exists (select 1 from public.email_outbox o where o.idempotency_key = p_idempotency_key) then
-    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'duplicado');
-  end if;
-
-  select u.email
-    into v_email
-  from auth.users u
-  where u.id = p_user_id
-    and u.email is not null
-    and pg_catalog.btrim(u.email) <> ''
-    and u.email_confirmed_at is not null
-    and u.deleted_at is null
-    and (u.banned_until is null or u.banned_until <= p_now);
-
-  if v_email is null
-     or v_email !~* '^[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+$'
-     or pg_catalog.length(v_email) > 254
-  then
-    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'conta_indisponivel');
-  end if;
-
-  if exists (select 1 from public.email_supressoes s where s.user_id = p_user_id) then
-    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'suprimido');
-  end if;
-
-  -- Teto de frequência do dono: 1 e-mail por pessoa a cada 24 h, qualquer tipo.
-  if private.email_recebeu_ultimas_24h(p_user_id, p_now) then
-    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'teto_pessoa_dia');
-  end if;
-
-  select pg_catalog.count(*), pg_catalog.max(o.criado_em)
-    into v_orcamentos, v_ultimo
-  from public.orcamentos o
-  where (o.user_id = p_user_id or o.criado_por = p_user_id)
-    and o.excluido_em is null;
-
-  if p_purpose = 'activation_reminder' then
-    if v_orcamentos > 0 then
-      return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'ja_tem_orcamento');
-    end if;
-    if (
-      select pg_catalog.count(*) from public.email_outbox o
-      where o.user_id = p_user_id and o.purpose = 'activation_reminder'
-    ) >= 2 then
-      return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'teto_ativacao');
-    end if;
-    if exists (
-      select 1 from public.email_outbox o
-      where o.user_id = p_user_id
-        and o.purpose = 'activation_reminder'
-        and o.created_at > p_now - interval '48 hours'
-    ) then
-      return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'intervalo_minimo');
-    end if;
-
-  elsif p_purpose = 'billing_reminder' then
-    -- Conta nova sem orçamento nunca recebe cobrança.
-    if v_orcamentos < 1 then
-      return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'conta_sem_orcamento');
-    end if;
-    v_sequencia := p_template_dados ->> 'sequencia';
-    if exists (
-      select 1 from public.email_outbox o
-      where o.user_id = p_user_id
-        and o.purpose = 'billing_reminder'
-        and o.created_at > p_now - interval '7 days'
-        and (v_sequencia is null or (o.template_dados ->> 'sequencia') is distinct from v_sequencia)
-    ) then
-      return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'limite_semanal');
-    end if;
-
-  else -- reengagement_reminder: reconfere o segmento AGORA, sob a trava.
-    if v_tipo = 'ativacao_ultima' then
-      if v_orcamentos > 0 then
-        return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'ja_tem_orcamento');
-      end if;
-      if exists (
-        select 1 from public.email_outbox o
-        where o.user_id = p_user_id and o.purpose = 'reengagement_reminder'
-          and o.template_dados ->> 'tipo' = 'ativacao_ultima'
-      ) then
-        return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'ja_enviado');
-      end if;
-
-    elsif v_tipo = 'parou' then
-      if v_orcamentos < 1 or v_ultimo is null then
-        return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'conta_sem_orcamento');
-      end if;
-      -- Orçamento novo depois do pedido = episódio vencido (a pessoa voltou).
-      if (p_template_dados ->> 'ultimoOrcamentoEm') is distinct from
-         pg_catalog.to_char(v_ultimo at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') then
-        return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'episodio_vencido');
-      end if;
-      v_dias := extract(epoch from (p_now - v_ultimo)) / 86400.0;
-      if not ((p_template_dados ->> 'etapa' = 'd7' and v_dias >= 7 and v_dias < 14)
-              or (p_template_dados ->> 'etapa' = 'd14' and v_dias >= 14 and v_dias < 30)) then
-        return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'fora_da_janela');
-      end if;
-      if (
-        select pg_catalog.count(*) from public.email_outbox o
-        where o.user_id = p_user_id and o.purpose = 'reengagement_reminder'
-          and o.template_dados ->> 'tipo' = 'parou'
-          and o.template_dados ->> 'ultimoOrcamentoEm' = p_template_dados ->> 'ultimoOrcamentoEm'
-      ) >= 2 then
-        return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'teto_episodio');
-      end if;
-
-    elsif v_tipo = 'trial_encerrado' then
-      -- Teste que terminou há até 7 dias, não convertido: 1 aviso por teste (a chave
-      -- carrega o termina_em, e o outbox tem índice único na chave).
+  v_def  text;
+  v_novo text;
+  v_ancora_tipos constant text := $a$v_tipo not in ('ativacao_ultima', 'parou', 'trial_acabando')$a$;
+  v_ancora_enq   constant text := $a$else -- trial_acabando$a$;
+  v_ancora_lista constant text := $a$-- Reengajamento — teste do Pro terminando em 24–72 h.$a$;
+  v_ramo_enq constant text := $r$elsif v_tipo = 'trial_encerrado' then
+      -- Teste que terminou há até 7 dias e a conta segue no plano GRÁTIS (quem pagou depois do teste não entra:
+      -- a linha do teste fica 'active' e vencida mesmo para quem paga, então o plano efetivo é a verdade).
       if not exists (
         select 1 from public.trials_comerciais t
         where t.owner_user_id = p_user_id
@@ -184,315 +27,47 @@ begin
           and t.termina_em > p_now - interval '7 days'
           and pg_catalog.to_char(t.termina_em at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
               = p_template_dados ->> 'terminaEm'
+          and public.plano_comercial_efetivo(p_user_id, t.tenant_id, p_now) = 'gratis'
       ) then
         return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'trial_fora_da_janela');
       end if;
 
-    else -- trial_acabando
-      if not exists (
-        select 1 from public.trials_comerciais t
-        where t.owner_user_id = p_user_id
-          and t.estado = 'active'
-          and t.termina_em > p_now + interval '24 hours'
-          and t.termina_em <= p_now + interval '72 hours'
-          and pg_catalog.to_char(t.termina_em at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-              = p_template_dados ->> 'terminaEm'
-      ) then
-        return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'trial_fora_da_janela');
-      end if;
-    end if;
-  end if;
-
-  if (
-    select pg_catalog.count(*) from public.email_outbox o
-    where o.purpose in ('activation_reminder', 'billing_reminder', 'reengagement_reminder')
-      and o.created_at > p_now - interval '24 hours'
-  ) >= p_teto_diario then
-    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'teto_diario');
-  end if;
-
-  insert into public.email_outbox (
-    event_id, user_id, tenant_id, idempotency_key, template, template_version,
-    purpose, recipient, next_attempt_at, template_dados
-  ) values (
-    p_idempotency_key,
-    p_user_id,
-    null,
-    p_idempotency_key,
-    p_template,
-    p_template_version,
-    p_purpose,
-    pg_catalog.lower(pg_catalog.btrim(v_email)),
-    p_now,
-    p_template_dados
-  ) on conflict (idempotency_key) do nothing;
-
-  if not found then
-    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'duplicado');
-  end if;
-  return pg_catalog.jsonb_build_object('enfileirado', true, 'motivo', 'enfileirado');
-end;
-$function$;
-
-revoke all on function public.enqueue_lembrete_email(uuid, text, text, text, text, jsonb, integer, timestamptz) from public, anon, authenticated;
-
--- Lista de candidatos: sem esta ramificação o teste encerrado nunca entra na lista
--- (os 5 trials vencidos de 17–22/10 ficaram de fora em produção).
-create or replace function public.listar_candidatos_lembrete_email(
-  p_now timestamptz default now(),
-  p_ativacao_max_dias integer default 30,
-  p_limit integer default 50
-)
-returns table(candidato jsonb)
-language plpgsql
-stable
-security definer
-set search_path to ''
-as $function$
-declare
-  v_periodo date;
-begin
-  if p_now is null
-     or p_now > pg_catalog.now() + interval '5 minutes'
-     or p_now < pg_catalog.now() - interval '1 day'
-     or p_ativacao_max_dias is null or p_ativacao_max_dias < 7 or p_ativacao_max_dias > 60
-     or p_limit is null or p_limit < 1 or p_limit > 200
-  then
-    raise exception 'candidatos_argumentos_invalidos';
-  end if;
-
-  v_periodo := pg_catalog.date_trunc('month', pg_catalog.timezone('UTC', p_now))::date;
-
-  return query
-  with usuarios as (
-    select u.id as user_id, u.email_confirmed_at
-    from auth.users u
-    where u.email is not null
-      and pg_catalog.btrim(u.email) <> ''
-      and u.email_confirmed_at is not null
-      and u.email_confirmed_at <= p_now
-      and u.deleted_at is null
-      and (u.banned_until is null or u.banned_until <= p_now)
-      and coalesce(u.is_anonymous, false) = false
-      and not exists (select 1 from public.email_supressoes s where s.user_id = u.id)
-      -- Teto de 1 e-mail/dia por pessoa: quem já recebeu nem entra na lista
-      -- (senão ocuparia as vagas da rodada à toa).
-      and not private.email_recebeu_ultimas_24h(u.id, p_now)
-  ), base as (
-    select
-      us.user_id,
-      us.email_confirmed_at,
-      oc.orcamentos,
-      oc.ultimo_orcamento,
-      (select pg_catalog.count(*) from public.organizacoes o where o.owner_user_id = us.user_id) as orgs_dono,
-      (
-        select pg_catalog.count(*)
-        from public.organizacao_membros m
-        where m.user_id = us.user_id and m.ativo
-      ) as membro_ativo
-    from usuarios us
-    cross join lateral (
-      select pg_catalog.count(*) as orcamentos, pg_catalog.max(o.criado_em) as ultimo_orcamento
-      from public.orcamentos o
-      where (o.user_id = us.user_id or o.criado_por = us.user_id)
-        and o.excluido_em is null
-    ) oc
-  ), contexto as (
-    -- Mesmo desenho de contexto_comercial_atual(): dono de 1 org = tenant da org;
-    -- sem org e sem equipe = conta solo (tenant = a própria conta); membro de
-    -- equipe alheia ou ambíguo = sem tenant próprio (não recebe cobrança).
-    select
-      b.*,
-      case
-        when b.orgs_dono = 1 then (
-          select o.id from public.organizacoes o where o.owner_user_id = b.user_id limit 1
-        )
-        when b.orgs_dono = 0 and b.membro_ativo = 0 then b.user_id
-        else null
-      end as tenant_id
-    from base b
-  ), enriquecido as (
-    select
-      c.*,
-      a.plano as a_plano,
-      a.status as a_status,
-      a.current_period_end as a_period_end,
-      a.admin_plano_override as a_override,
-      a.admin_override_ativo as a_override_ativo,
-      a.admin_override_ate as a_override_ate,
-      (a.user_id is not null) as tem_assinatura,
-      (
-        coalesce(pg_catalog.btrim(a.stripe_subscription_id), '') <> ''
-        or coalesce(pg_catalog.btrim(a.mp_preapproval_id), '') <> ''
-        -- Google Play (Play Billing direto): a Play renova sozinha e cobra pela
-        -- conta Google. "Renove com Pix" aqui seria cobrança em dobro (e, dentro
-        -- do Android, pagamento fora da Play). Vínculo = hash do purchaseToken.
-        or exists (
-          select 1 from public.play_compras p
-           where p.token_sha256 = a.revenuecat_transacao_id
-             and p.auto_renovacao is true
-             and p.estado in ('SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD')
-        )
-      ) as recorrente,
-      (
-        select pg_catalog.count(*)
-        from public.orcamento_envios_gratis e
-        where c.tenant_id is not null
-          and e.tenant_id = c.tenant_id
-          and e.periodo = v_periodo
-          and (e.estado = 'confirmado' or e.reserva_expira_em > p_now)
-      ) as envios_usados,
-      t.estado as t_estado,
-      t.termina_em as t_termina_em
-    from contexto c
-    left join public.assinaturas a on a.user_id = c.user_id
-    left join public.trials_comerciais t on t.tenant_id = c.tenant_id
-  ), filtrado as (
-    select e.*
-    from enriquecido e
-    where
-      -- Ativação: conta solo/dona, zero orçamento, confirmada entre 3 e N dias.
-      (
-        e.orcamentos = 0
-        and not (e.orgs_dono = 0 and e.membro_ativo > 0)
-        and e.email_confirmed_at >= p_now - pg_catalog.make_interval(days => p_ativacao_max_dias)
-        and e.email_confirmed_at <= p_now - interval '72 hours'
-        and (
-          select pg_catalog.count(*)
-          from public.email_outbox o
-          where o.user_id = e.user_id and o.purpose = 'activation_reminder'
-        ) < 2
-      )
-      or
-      -- Reengajamento — última chamada: zero orçamento, conta entre N e 120 dias.
-      (
-        e.orcamentos = 0
-        and not (e.orgs_dono = 0 and e.membro_ativo > 0)
-        and e.email_confirmed_at < p_now - pg_catalog.make_interval(days => p_ativacao_max_dias)
-        and e.email_confirmed_at >= p_now - interval '120 days'
-        and not exists (
-          select 1 from public.email_outbox o
-          where o.user_id = e.user_id and o.purpose = 'reengagement_reminder'
-            and o.template_dados ->> 'tipo' = 'ativacao_ultima'
-        )
-      )
-      or
-      -- Assinatura: dono do tenant, já tem orçamento, e perto do VENCIMENTO.
-      (
-        e.orcamentos >= 1
-        and e.tenant_id is not null
-        and e.tem_assinatura
-        and e.a_period_end is not null
-        and e.a_period_end between p_now - interval '4 days' and p_now + interval '4 days'
-      )
-      or
-      -- Reengajamento — orçou e parou: último orçamento entre 7 e 30 dias atrás.
-      (
-        e.orcamentos >= 1
-        and e.tenant_id is not null
-        and e.ultimo_orcamento <= p_now - interval '7 days'
-        and e.ultimo_orcamento > p_now - interval '30 days'
-      )
-      or
-      -- Reengajamento — teste do Pro terminando em 24–72 h.
-      (
+    $r$;
+  v_ramo_lista constant text := $l$(
         e.tenant_id is not null
-        and e.t_estado = 'active'
-        and e.t_termina_em > p_now + interval '24 hours'
-        and e.t_termina_em <= p_now + interval '72 hours'
-      )
-      or
-      -- Reengajamento — teste do Pro que terminou há até 7 dias e não converteu
-      -- (o estado fica 'active' na linha; a oferta devolve 'ended' pela data).
-      (
-        e.tenant_id is not null
+        and e.orcamentos >= 1
         and e.t_estado in ('active', 'ended')
         and e.t_termina_em <= p_now
         and e.t_termina_em > p_now - interval '7 days'
-        and e.orcamentos >= 1
+        and public.plano_comercial_efetivo(e.user_id, e.tenant_id, p_now) = 'gratis'
       )
-  )
-  select pg_catalog.jsonb_build_object(
-    'userId', f.user_id,
-    'confirmadoEm', f.email_confirmed_at,
-    'orcamentos', least(f.orcamentos, 1000),
-    'ultimoOrcamentoEm', case when f.ultimo_orcamento is null then null
-      else pg_catalog.to_char(f.ultimo_orcamento at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') end,
-    -- Quem recebeu e-mail nas últimas 24 h já ficou fora da lista; o campo existe
-    -- para a política conferir a mesma regra sem depender da ordem dos filtros.
-    'ultimoEmailEm', (
-      select pg_catalog.max(o.created_at) from public.email_outbox o
-      where o.user_id = f.user_id and o.status <> 'dead_letter'
-    ),
-    'membroDeEquipe', (f.orgs_dono = 0 and f.membro_ativo > 0),
-    'donoDoTenant', (f.tenant_id is not null),
-    'assinatura', case when f.tem_assinatura then pg_catalog.jsonb_build_object(
-      'plano', f.a_plano,
-      'status', f.a_status,
-      'current_period_end', f.a_period_end,
-      'admin_plano_override', f.a_override,
-      'admin_override_ativo', f.a_override_ativo,
-      'admin_override_ate', f.a_override_ate,
-      'recorrente', f.recorrente
-    ) else null end,
-    'oferta', case when f.tenant_id is null then null else (
-      select pg_catalog.jsonb_build_object(
-        'plano_efetivo', pl.plano,
-        'limite_envios', null,
-        'envios_usados', f.envios_usados,
-        'envios_restantes', null,
-        'trial_estado', case
-          when f.t_estado = 'active' and f.t_termina_em <= p_now then 'ended'
-          else coalesce(f.t_estado, 'unstarted')
-        end,
-        'trial_termina_em', case when f.t_termina_em is null then null
-          else pg_catalog.to_char(f.t_termina_em at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') end,
-        'trial_dias', 14
-      )
-      from (select public.plano_comercial_efetivo(f.user_id, f.tenant_id, p_now) as plano) pl
-    ) end,
-    'historico', pg_catalog.jsonb_build_object(
-      'ativacao', coalesce((
-        select pg_catalog.jsonb_agg(
-          pg_catalog.jsonb_build_object(
-            'chave', o.idempotency_key,
-            'janela', o.template_dados ->> 'janela',
-            'em', o.created_at
-          ) order by o.created_at, o.id
-        )
-        from public.email_outbox o
-        where o.user_id = f.user_id and o.purpose = 'activation_reminder'
-      ), '[]'::jsonb),
-      'cobranca', coalesce((
-        select pg_catalog.jsonb_agg(
-          pg_catalog.jsonb_build_object(
-            'chave', o.idempotency_key,
-            'sequencia', o.template_dados ->> 'sequencia',
-            'em', o.created_at
-          ) order by o.created_at, o.id
-        )
-        from public.email_outbox o
-        where o.user_id = f.user_id
-          and o.purpose = 'billing_reminder'
-          and o.created_at > p_now - interval '7 days'
-      ), '[]'::jsonb),
-      'reengajamento', coalesce((
-        select pg_catalog.jsonb_agg(
-          pg_catalog.jsonb_build_object(
-            'chave', o.idempotency_key,
-            'tipo', o.template_dados ->> 'tipo',
-            'em', o.created_at
-          ) order by o.created_at, o.id
-        )
-        from public.email_outbox o
-        where o.user_id = f.user_id and o.purpose = 'reengagement_reminder'
-      ), '[]'::jsonb)
-    )
-  )
-  from filtrado f
-  order by f.email_confirmed_at, f.user_id
-  limit p_limit;
-end;
-$function$;
+      or
+      $l$;
+begin
+  -- a) o enqueue: aceita o tipo novo e reconfere o segmento sob a trava
+  select pg_get_functiondef(p.oid) into v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'enqueue_lembrete_email';
+  if v_def is null then raise exception 'enqueue_lembrete_email_ausente'; end if;
+  if position('trial_encerrado' in v_def) = 0 then
+    if position(v_ancora_tipos in v_def) = 0 then raise exception 'enqueue_ancora_tipos_nao_encontrada'; end if;
+    if position(v_ancora_enq in v_def) = 0 then raise exception 'enqueue_ancora_trial_nao_encontrada'; end if;
+    v_novo := replace(v_def, v_ancora_tipos,
+      $t$v_tipo not in ('ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado')$t$);
+    v_novo := replace(v_novo, v_ancora_enq, v_ramo_enq || v_ancora_enq);
+    execute v_novo;
+  end if;
 
-revoke all on function public.listar_candidatos_lembrete_email(timestamptz, integer, integer) from public, anon, authenticated;
+  -- b) a lista de candidatos: trial vencido entra (sem isto o tipo novo nunca aparece)
+  select pg_get_functiondef(p.oid) into v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'listar_candidatos_lembrete_email';
+  if v_def is null then raise exception 'listar_candidatos_lembrete_email_ausente'; end if;
+  if position('trial_encerrado' in v_def) = 0 and position('Reengajamento — teste do Pro que terminou' in v_def) = 0 then
+    if position(v_ancora_lista in v_def) = 0 then raise exception 'listar_candidatos_ancora_nao_encontrada'; end if;
+    v_novo := replace(v_def, v_ancora_lista,
+      E'-- Reengajamento — teste do Pro que terminou há até 7 dias e segue no plano grátis.\n      ' || v_ramo_lista || v_ancora_lista);
+    execute v_novo;
+  end if;
+end
+$patch_trial_encerrado$;
