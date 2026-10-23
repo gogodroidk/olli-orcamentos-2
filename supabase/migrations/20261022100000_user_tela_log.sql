@@ -34,7 +34,7 @@ revoke all on public.user_tela_log from public, anon, authenticated;
 create or replace function public.registrar_telas_usuario(p_itens jsonb, p_plataforma text default 'unknown')
 returns void
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $$
 declare
@@ -49,6 +49,11 @@ begin
   end if;
   if plat not in ('web', 'ios', 'android', 'desktop', 'unknown') then
     plat := 'unknown';
+  end if;
+  -- Teto diário por pessoa (disco do plano grátis do Supabase: 500 MB): passou, descarta em silêncio.
+  if (select count(*) from public.user_tela_log
+       where user_id = (select auth.uid()) and criado_em > now() - interval '24 hours') >= 1000 then
+    return;
   end if;
   for it in select * from jsonb_array_elements(p_itens) loop
     if coalesce(it ->> 'tela', '') !~ '^[A-Za-z0-9_]{1,40}$' then
@@ -68,14 +73,8 @@ $$;
 
 revoke all on function public.registrar_telas_usuario(jsonb, text) from public, anon;
 grant execute on function public.registrar_telas_usuario(jsonb, text) to authenticated;
--- INSERT dentro da função precisa de privilégio: security invoker + sem grant direto
--- falharia. Política de insert restrita ao próprio usuário resolve sem abrir leitura.
-grant insert on public.user_tela_log to authenticated;
-grant usage on sequence public.user_tela_log_id_seq to authenticated;
-create policy user_tela_log_insert_proprio on public.user_tela_log
-  for insert to authenticated
-  with check (user_id = (select auth.uid()));
-
+-- Escrita SÓ pelo RPC (security definer, user_id = auth.uid(), teto de 1.000 linhas/dia por pessoa): o cliente
+-- não tem INSERT direto na tabela, então não dá para encher o disco com chamadas soltas ao PostgREST.
 -- Onde a pessoa passa o tempo (service_role): select * from public.telas_resumo;
 create or replace view public.telas_resumo
 with (security_invoker = true) as
@@ -83,7 +82,7 @@ select tela,
        count(*) as visitas,
        count(distinct user_id) as pessoas,
        round(avg(duracao_ms) / 1000.0, 1) as media_seg,
-       round((percentile_cont(0.5) within group (order by duracao_ms)) / 1000.0, 1) as mediana_seg
+       round(((percentile_cont(0.5) within group (order by duracao_ms)) / 1000.0)::numeric, 1) as mediana_seg
   from public.user_tela_log
  where acao is null
  group by tela;

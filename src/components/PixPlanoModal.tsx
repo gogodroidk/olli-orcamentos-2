@@ -7,6 +7,7 @@ import { OlliButton } from './OlliButton';
 import { qrSvg } from '../utils/qrcode';
 import { formatCurrency } from '../utils/currency';
 import { checarPixPlano, type CobrancaPixPlano } from '../services/pixPlano';
+import { track, Eventos } from '../services/analytics';
 
 /**
  * PixPlanoModal — pagar o PLANO por Pix (AbacatePay). Mostra o QR e o copia-e-cola
@@ -47,6 +48,7 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
       if (!ativo || !s) return;
       if (s.pago) {
         setPago(true);
+        track(Eventos.pixPago); // funil: 1º pagamento (só o nome do evento)
         aoPago();
       }
     };

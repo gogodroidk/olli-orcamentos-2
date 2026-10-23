@@ -1,31 +1,28 @@
 /**
- * Rastreio de telas com tempo de permanência.
+ * Rastreio de uso: telas com tempo de permanência + os 10 eventos do funil.
  *
- * Alimenta `public.user_tela_log` (ver migration 20261022100000). Só manda o NOME da
- * rota (sem params, ids ou texto) e a duração. Acumula e descarrega em lote para não
- * gerar uma chamada por navegação. Best-effort: nunca lança nem bloqueia a UX.
+ * Alimenta `public.user_tela_log` (migrations 20261022100000 e 20261023160000). Só manda o NOME
+ * da rota (sem params, ids ou texto), o nome fixo do evento do funil e a duração. Acumula e
+ * descarrega em lote. Best-effort: nunca lança nem bloqueia a UX.
  *
- * Desligado por padrão: só roda com `EXPO_PUBLIC_RASTREIO_TELAS=1` (a migration precisa
- * estar aplicada antes; sem ela o RPC falha e o lote é descartado em silêncio).
+ * DESLIGADO por padrão: só roda com `EXPO_PUBLIC_RASTREIO_TELAS=1` (a migration precisa estar
+ * aplicada e a política de privacidade já publicada, com 7 dias de aviso, ANTES de ligar). Com a
+ * flag ligada, respeita o opt-out da pessoa ("Ajudar a melhorar o OLLI") e NÃO envia se não
+ * conseguir ler a preferência.
  */
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { getCurrentUser, supabase } from './supabase';
+import { lerPreferenciaRastreio } from './rastreioPreferencia';
+import { empilhar, itemAcao, itemTela, LOTE_MAX, podeEnviar, type ItemRastreio } from './rastreioNucleo';
 
 const LIGADO = process.env.EXPO_PUBLIC_RASTREIO_TELAS === '1';
-const LOTE_MAX = 20;
-const TELA_VALIDA = /^[A-Za-z0-9_]{1,40}$/;
-const DURACAO_MAX_MS = 4 * 60 * 60 * 1000;
 
-interface Item {
-  tela: string;
-  acao?: string;
-  duracao_ms: number;
-}
-
-let fila: Item[] = [];
+let fila: ItemRastreio[] = [];
 let telaAtual: string | null = null;
 let entrouEm = 0;
 let descarregando = false;
+let sessaoMarcada = false;
+let escutando = false;
 
 function plataforma(): string {
   return ['web', 'ios', 'android'].includes(Platform.OS) ? Platform.OS : 'unknown';
@@ -36,6 +33,7 @@ async function descarregar(): Promise<void> {
   descarregando = true;
   const lote = fila.splice(0, LOTE_MAX);
   try {
+    if (!podeEnviar(await lerPreferenciaRastreio())) return; // opt-out ou não sei: descarta, nada sai
     if (!(await getCurrentUser())) return; // deslogado: descarta, nada a ligar a ninguém.
     await supabase.rpc('registrar_telas_usuario', { p_itens: lote, p_plataforma: plataforma() });
   } catch {
@@ -46,15 +44,14 @@ async function descarregar(): Promise<void> {
 }
 
 function fecharTelaAtual(agora: number): void {
-  if (!telaAtual) return;
-  const duracao_ms = Math.min(Math.max(agora - entrouEm, 0), DURACAO_MAX_MS);
-  fila.push({ tela: telaAtual, duracao_ms });
+  const item = itemTela(telaAtual ?? undefined, agora - entrouEm);
   telaAtual = null;
+  if (item) fila = empilhar(fila, item);
 }
 
 /** Chame a cada mudança de rota com o NOME da rota (nunca a URL). */
 export function telaMudou(nome: string | undefined): void {
-  if (!LIGADO || !nome || !TELA_VALIDA.test(nome) || nome === telaAtual) return;
+  if (!LIGADO || !nome || nome === telaAtual || !itemTela(nome, 0)) return;
   const agora = Date.now();
   fecharTelaAtual(agora);
   telaAtual = nome;
@@ -62,10 +59,12 @@ export function telaMudou(nome: string | undefined): void {
   if (fila.length >= LOTE_MAX / 2) void descarregar();
 }
 
-/** Toque relevante dentro da tela atual (ex.: 'salvar_orcamento'). Sem conteúdo. */
-export function toqueRegistrado(acao: string): void {
-  if (!LIGADO || !telaAtual || !/^[a-z0-9_]{1,40}$/.test(acao)) return;
-  fila.push({ tela: telaAtual, acao, duracao_ms: 0 });
+/** Evento do funil (só os 10 de rastreioNucleo; qualquer outro é ignorado aqui e fica só no SQLite local). */
+export function eventoFunil(evento: string): void {
+  if (!LIGADO) return;
+  const item = itemAcao(evento, telaAtual);
+  if (!item) return;
+  fila = empilhar(fila, item);
   if (fila.length >= LOTE_MAX) void descarregar();
 }
 
@@ -87,4 +86,23 @@ export function appEmSegundoPlano(): void {
 export function resetarRastreioTelas(): void {
   fila = [];
   telaAtual = null;
+  sessaoMarcada = false;
+}
+
+/** Uma vez por abertura do app: marca `sessao_iniciada` e liga o descarregamento ao ir para segundo plano. */
+export function iniciarRastreio(): void {
+  if (!LIGADO) return;
+  if (!sessaoMarcada) {
+    sessaoMarcada = true;
+    eventoFunil('sessao_iniciada');
+  }
+  if (escutando) return;
+  escutando = true;
+  AppState.addEventListener('change', (estado) => {
+    if (estado === 'background' || estado === 'inactive') appEmSegundoPlano();
+    else if (estado === 'active') {
+      sessaoMarcada = false; // voltou do segundo plano: nova sessão
+      iniciarRastreio();
+    }
+  });
 }
