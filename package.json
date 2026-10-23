@@ -81,6 +81,7 @@
     "test:backup-equipe": "node scripts/teste-backup-equipe.ts",
     "test:particao": "node scripts/teste-particao.ts",
     "test:banco-conexao": "node scripts/teste-banco-conexao.ts",
+    "test:pix-validade": "node scripts/teste-pix-validade.ts",
     "test:recibo-data": "node scripts/teste-recibo-data.ts",
     "test:orcamento-nome-avulso": "node scripts/teste-orcamento-nome-avulso.ts",
     "test:og-oficios": "node scripts/teste-og-oficios.ts",
