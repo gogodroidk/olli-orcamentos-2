@@ -271,6 +271,8 @@ function conteudoReengajamento(dados, appUrl) {
     exigir(!Number.isNaN(termina.getTime()) && termina.toISOString() === dados.terminaEm, 'dados_invalidos');
     const quando = dataCurtaBrasilia(dados.terminaEm);
     const preco = reais(PRECO_PRO.mensalCentavos);
+    // Desconto do anual DERIVADO da fonte (precosPlanos.ts), nunca escrito à mão.
+    const descontoAnualPro = Math.round((PRECO_PRO.economiaAnualCentavos / (PRECO_PRO.mensalCentavos * 12)) * 100);
     return {
       subject: `Seu teste do Pro termina em ${quando}`,
       preview: 'O teste não cobra nada e não renova sozinho.',
@@ -278,6 +280,7 @@ function conteudoReengajamento(dados, appUrl) {
       paragrafos: [
         'O teste não cobra nada e não renova sozinho: quando terminar, a conta volta ao plano Grátis e seus dados continuam salvos.',
         `Para continuar com o Pro, assine por ${preco}/mês — dá para pagar com Pix — e mantenha ${frasePro()}.`,
+        `Se preferir pagar uma vez só, o plano anual sai por ${reais(PRECO_PRO.anualCentavos)}, ${descontoAnualPro}% a menos que 12 meses no mensal, também com Pix.`,
       ],
       passos: null,
       cta: { rotulo: 'Assinar o Pro', href: urlCom(appUrl, '/planos') },
