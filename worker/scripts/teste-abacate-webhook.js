@@ -119,11 +119,12 @@ globalThis.fetch = async (entrada, init = {}) => {
       const k = `${linha.origem}|${linha.event_id}`;
       if (db.eventos.has(k)) return resp(409, { code: '23505' });
       db.eventos.set(k, { ...linha, recebido_em: new Date().toISOString(), processado_em: null, erro: null });
-      return resp(201);
+      // return=representation (select=recebido_em): o claim usa esta âncora para a vigência.
+      return resp(201, [{ recebido_em: db.eventos.get(k).recebido_em }]);
     }
     const { k } = chaveEvento(url);
     const linha = db.eventos.get(k);
-    if (metodo === 'GET') return resp(200, linha ? [{ status: linha.status }] : []);
+    if (metodo === 'GET') return resp(200, linha ? [{ status: linha.status, recebido_em: linha.recebido_em }] : []);
     if (metodo === 'PATCH') {
       if (linha) Object.assign(linha, JSON.parse(corpo));
       return resp(204);
