@@ -161,6 +161,10 @@ caso('teto da rodada vale por prioridade: trial acabando passa na frente de últ
   assert.equal(r.pedidos.length, 1);
   assert.equal(r.pedidos[0].dados.tipo, 'trial_acabando');
   assert.equal(r.motivos.teto_da_rodada, 2);
+  // trial acabando (janela de 24–72 h) passa também na frente da ativação D+3/D+7
+  const ativ = candidato({ userId: U(7), confirmadoEm: antes(4 * D) });
+  const r2 = selecionarPedidos([ativ, t], { ...OPTS, tetoRodada: 1 });
+  assert.equal(r2.pedidos[0].dados?.tipo, 'trial_acabando');
   const livre = selecionarPedidos([ultima1, ultima2, t], { ...OPTS, tetoRodada: 5 });
   assert.deepEqual(livre.pedidos.map((x) => x.dados.tipo), ['trial_acabando', 'ativacao_ultima', 'ativacao_ultima']);
 });
