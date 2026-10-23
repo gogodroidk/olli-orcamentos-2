@@ -179,6 +179,21 @@ caso('lote: um pedido por conta e motivos sem PII', () => {
   assert.equal(r.pedidos.length, 2); // U(1) duas vezes e trial(48) também é U(1)
   assert.equal(/@/.test(JSON.stringify(r)), false);
 });
+caso('teto da rodada vale por prioridade: trial acabando passa na frente de última chamada que chegou antes', () => {
+  const ultima1 = candidato({ userId: U(5), confirmadoEm: antes(60 * D) });
+  const ultima2 = candidato({ userId: U(6), confirmadoEm: antes(70 * D) });
+  const t = trial(48); // U(1)
+  const r = selecionarPedidos([ultima1, ultima2, t], { ...OPTS, tetoRodada: 1 });
+  assert.equal(r.pedidos.length, 1);
+  assert.equal(r.pedidos[0].dados.tipo, 'trial_acabando');
+  assert.equal(r.motivos.teto_da_rodada, 2);
+  // trial acabando (janela de 24–72 h) passa também na frente da ativação D+3/D+7
+  const ativ = candidato({ userId: U(7), confirmadoEm: antes(4 * D) });
+  const r2 = selecionarPedidos([ativ, t], { ...OPTS, tetoRodada: 1 });
+  assert.equal(r2.pedidos[0].dados?.tipo, 'trial_acabando');
+  const livre = selecionarPedidos([ultima1, ultima2, t], { ...OPTS, tetoRodada: 5 });
+  assert.deepEqual(livre.pedidos.map((x) => x.dados.tipo), ['trial_acabando', 'ativacao_ultima', 'ativacao_ultima']);
+});
 
 console.log('\n5) Copy derivada da fonte');
 const UNSUB = 'https://diagnostico.olliorcamentos.online/email/descadastrar?u=00000000-0000-4000-8000-000000000001&e=lembretes&a=abc';
@@ -200,6 +215,11 @@ caso('trial: preço e benefícios vêm de PRECO_PRO e frasePro()', () => {
   assert.ok(e.text.includes(`${reais(PRECO_PRO.mensalCentavos)}/mês`));
   assert.ok(e.text.includes(frasePro()));
   assert.ok(e.text.includes('não renova sozinho'));
+  // Anual: preço e desconto derivados da fonte; sem parcelado 12x (sai mais caro que o anual).
+  assert.ok(e.text.includes(reais(PRECO_PRO.anualCentavos)));
+  const pct = Math.round((PRECO_PRO.economiaAnualCentavos / (PRECO_PRO.mensalCentavos * 12)) * 100);
+  assert.ok(e.text.includes(`${pct}% a menos`));
+  assert.equal(/12x|12 x|parcel/i.test(e.text), false);
   assert.ok(e.html.includes('/planos'));
 });
 caso('trial_encerrado: e-mail com preço da fonte, sem Pix embutido e sem dado do cliente', () => {
