@@ -69,3 +69,13 @@ export function interpretarPreferencia(valor: string | null | undefined, erro = 
 }
 /** Só envia com preferência CLARAMENTE ligada; 'desconhecido' (erro de leitura) não envia. */
 export const podeEnviar = (p: Preferencia): boolean => p === 'ligado';
+
+export const TENTATIVAS_MAX = 3;
+export interface ItemComTentativa extends ItemRastreio { t?: number }
+
+/** Falha no envio (rede/servidor): devolve o lote ao INÍCIO da fila, contando a tentativa; passou do limite, descarta (e conta). */
+export function reenfileirar(fila: ItemComTentativa[], lote: ItemComTentativa[]): { fila: ItemComTentativa[]; descartados: number } {
+  const volta = lote.map((i) => ({ ...i, t: (i.t ?? 0) + 1 })).filter((i) => (i.t as number) < TENTATIVAS_MAX);
+  const nova = [...volta, ...fila];
+  return { fila: nova.length > FILA_MAX ? nova.slice(nova.length - FILA_MAX) : nova, descartados: lote.length - volta.length };
+}

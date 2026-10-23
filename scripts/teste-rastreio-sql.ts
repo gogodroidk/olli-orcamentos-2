@@ -35,9 +35,10 @@ const n = async (w = 'true') => Number((await db.query<{ n: string }>(`select co
 console.log('\nescrita só pelo RPC');
 checar('sem login: not_authenticated', (await erro(() => como('', rpc([{ tela: 'Home', duracao_ms: 10 }])))).includes('not_authenticated'));
 await como(U1, rpc([{ tela: 'Home', duracao_ms: 4200 }, { tela: 'orcamento_novo', acao: 'quote_created', duracao_ms: 0, user_id: U2 }, { tela: 'Rota com espaço e ?id=1', duracao_ms: 5 }, { tela: 'Home', acao: 'Botão Enviar!', duracao_ms: 1 }]));
-checar('grava só as telas válidas (3 de 4)', (await n()) === 3);
-checar('user_id vem do servidor (ignora o do payload)', (await n(`user_id='${U2}'`)) === 0 && (await n(`user_id='${U1}'`)) === 3);
-checar('ação fora do formato vira nula', (await n("acao is null and tela='Home'")) === 2);
+checar('grava só o válido: tela fora do formato E ação fora da lista fechada derrubam o item (2 de 4)', (await n()) === 2);
+checar('user_id vem do servidor (ignora o do payload)', (await n(`user_id='${U2}'`)) === 0 && (await n(`user_id='${U1}'`)) === 2);
+checar('texto livre NUNCA chega ao banco (nem o botão "Botão Enviar!")', (await n("acao = 'Botão Enviar!'")) === 0 && (await n("acao is null and tela='Home'")) === 1);
+checar('o banco também barra ação fora da lista (constraint, até para service_role)', (await erro(() => db.exec(`insert into public.user_tela_log (user_id, tela, acao) values ('${U1}', 'Home', 'digitou_o_nome_do_cliente')`))).length > 0);
 checar('lote > 20 recusado', (await erro(() => como(U1, rpc(Array.from({ length: 21 }, () => ({ tela: 'Home' })))))).includes('lote_invalido'));
 checar('authenticated NÃO insere direto', (await erro(() => como(U1, `insert into public.user_tela_log (user_id, tela) values ('${U1}','Home')`))).length > 0);
 checar('authenticated NÃO lê a tabela nem as views', (await erro(() => como(U1, 'select * from public.user_tela_log'))).length > 0 && (await erro(() => como(U1, 'select * from public.funil_uso'))).length > 0);
@@ -63,10 +64,30 @@ checar('1ª vez de cada marco (o 2º orçamento não substitui o 1º)', f && new
 checar('resumo: 2 pessoas abriram/cadastraram, 1 criou, enviou, gerou Pix e pagou', Number(r.abriu_app) === 2 && Number(r.cadastrou) === 2 && Number(r.criou_orcamento) === 1 && Number(r.enviou_orcamento) === 1 && Number(r.gerou_pix) === 1 && Number(r.pagou) === 1, JSON.stringify(r));
 checar('tempos (mediana): 1º orçamento 29 min após o cadastro, Pix→pagamento 30 min', Number(t.min_ate_1o_orcamento) === 29 && Number(t.min_do_pix_ao_pagamento) === 30, JSON.stringify(t));
 
+console.log('\nopt-out NA CONTA (condição 2 do parecer)');
+await db.exec(`delete from public.user_tela_log`);
+await como(U1, rpc([{ tela: 'Home', acao: 'signup' }]));
+checar('padrão: ativo (sem linha de opt-out) e grava', (await como(U1, 'select public.rastreio_uso_ativo() a')).rows[0].a === true && (await n(`user_id='${U1}'`)) === 1);
+await como(U1, 'select public.rastreio_uso_definir(false)');
+checar('desligar: preferência da conta = false e APAGA o que já foi coletado dela', (await como(U1, 'select public.rastreio_uso_ativo() a')).rows[0].a === false && (await n(`user_id='${U1}'`)) === 0);
+await como(U1, rpc([{ tela: 'Home', acao: 'quote_sent' }]));
+checar('com opt-out o RPC descarta tudo (vale desde o 1º evento, em qualquer aparelho)', (await n(`user_id='${U1}'`)) === 0);
+checar('o opt-out de uma pessoa não afeta outra', (await como(U2, 'select public.rastreio_uso_ativo() a')).rows[0].a === true);
+checar('sem login: ativo = nulo (o app trata como "não sei" e não envia)', (await como('', 'select public.rastreio_uso_ativo() a')).rows[0].a === null);
+checar('authenticated não lê nem escreve a tabela de opt-out direto', (await erro(() => como(U1, 'select * from public.rastreio_uso_optout'))).length > 0 && (await erro(() => como(U1, `insert into public.rastreio_uso_optout (user_id) values ('${U2}')`))).length > 0);
+await como(U1, 'select public.rastreio_uso_definir(true)');
+await como(U1, rpc([{ tela: 'Home', acao: 'quote_sent' }]));
+checar('religar volta a gravar', (await n(`user_id='${U1}'`)) === 1);
+await como(U1, 'select public.rastreio_uso_definir(false)');
+
 console.log('\nLGPD');
+await db.exec(`insert into public.user_tela_log (user_id, tela, acao) values ('${U2}', 'app', 'signup')`);
+await como(U2, 'select public.rastreio_uso_definir(false)').catch(() => {});
+await db.exec(`insert into public.rastreio_uso_optout (user_id) values ('${U2}') on conflict do nothing`);
+await db.exec(`insert into public.user_tela_log (user_id, tela, acao) values ('${U2}', 'app', 'signup')`);
 await db.exec(`delete from auth.users where id='${U2}'`);
-checar('excluir a conta apaga os eventos dela (cascade)', (await n(`user_id='${U2}'`)) === 0 && (await n(`user_id='${U1}'`)) > 0);
-await db.exec(`update public.user_tela_log set criado_em = now() - interval '91 days' where acao = 'sessao_iniciada'`);
+checar('(4) excluir a conta apaga os eventos E a preferência de opt-out dela (cascade)', (await n(`user_id='${U2}'`)) === 0 && Number((await db.query<{ n: string }>(`select count(*) n from public.rastreio_uso_optout where user_id='${U2}'`)).rows[0].n) === 0);
+await db.exec(`insert into public.user_tela_log (user_id, tela, acao, criado_em) values ('${U1}', 'app', 'sessao_iniciada', now() - interval '91 days'), ('${U1}', 'app', 'pix_pago', now())`);
 await db.exec(`delete from public.user_tela_log where criado_em < now() - interval '90 days'`);
 checar('retenção de 90 dias apaga só o antigo', (await n("acao='sessao_iniciada'")) === 0 && (await n("acao='pix_pago'")) === 1);
 

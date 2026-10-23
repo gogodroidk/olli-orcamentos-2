@@ -6,7 +6,7 @@
  */
 import { readFileSync } from 'node:fs';
 import {
-  ACAO_VALIDA, DURACAO_MAX_MS, EVENTOS_FUNIL, FILA_MAX, ehEventoFunil, empilhar, interpretarPreferencia, itemAcao, itemTela, podeEnviar,
+  ACAO_VALIDA, DURACAO_MAX_MS, EVENTOS_FUNIL, FILA_MAX, TENTATIVAS_MAX, ehEventoFunil, empilhar, interpretarPreferencia, itemAcao, itemTela, podeEnviar, reenfileirar,
 } from '../src/services/rastreioNucleo.ts';
 import { limparRastreioUso, DIAS_RETENCAO_RASTREIO } from '../worker/src/rastreioRetencao.js';
 
@@ -44,14 +44,37 @@ caso('política de privacidade deixou de dizer "analytics local" e cita desativa
 const sql = ler('supabase/migrations/20261022100000_user_tela_log.sql');
 caso('migration: RPC security definer, sem INSERT direto e teto diário', /security definer/.test(sql) && !/grant insert on public\.user_tela_log/.test(sql) && />= 1000/.test(sql));
 
-console.log('\nretenção de 90 dias no worker');
+console.log('\nfalha de envio nunca é ignorada (P2 da LIVRE)');
+caso('lote que falhou volta ao INÍCIO da fila, contando tentativa', (() => { const r = reenfileirar([{ tela: 'B', duracao_ms: 1 }], [{ tela: 'A', duracao_ms: 1 }]); return r.fila[0].tela === 'A' && r.fila[0].t === 1 && r.descartados === 0; })());
+caso(`após ${TENTATIVAS_MAX} falhas o item é descartado E contado`, (() => { let lote = [{ tela: 'A', duracao_ms: 1 } as { tela: string; duracao_ms: number; t?: number }]; let desc = 0; let fila: typeof lote = []; for (let i = 0; i < TENTATIVAS_MAX; i++) { const r = reenfileirar(fila, lote); fila = r.fila; desc += r.descartados; lote = fila.splice(0); } return desc === 1 && fila.length === 0; })());
+const telas = ler('src/services/rastreioTelas.ts');
+caso('rastreioTelas lê o { error } do rpc e reenfileira (não ignora)', /const \{ error \} = await supabase\.rpc\('registrar_telas_usuario'/.test(telas) && /if \(error\) falhouEnvio\(lote\)/.test(telas) && /reenfileirar\(fila, lote\)/.test(telas));
+
+console.log('\nopt-out NA CONTA e exclusão (condições 2 e 4 do parecer)');
+const pref = ler('src/services/rastreioPreferencia.ts');
+caso('preferência vem do SERVIDOR (rastreio_uso_ativo) e é gravada nele (rastreio_uso_definir); erro = desconhecido', /rpc\('rastreio_uso_ativo'\)/.test(pref) && /rpc\('rastreio_uso_definir'/.test(pref) && /'desconhecido'/.test(pref));
+caso('o switch só muda se o servidor confirmou', /if \(salvou\) setRastreioPref/.test(ler('src/screens/ContaScreen.tsx')));
+caso('logout esquece a preferência (é da conta, não do aparelho)', /esquecerPreferenciaRastreio\(\)/.test(telas));
+caso('excluir a conta apaga o usuário no Auth (e o log vai junto por cascade, testado no SQL)', /auth\/v1\/admin\/users\//.test(ler('worker/src/conta.js')));
+const mig = ler('supabase/migrations/20261023160000_rastreio_funil.sql');
+caso('migration: ação só da lista fechada no banco, opt-out na conta com cascade e RPC respeita o opt-out', /user_tela_log_acao_funil/.test(mig) && /rastreio_uso_optout[\s\S]*on delete cascade/.test(mig) && /rastreio_uso_optout o where o\.user_id/.test(mig));
+
+console.log('\nretenção de 90 dias no worker (com log, nunca silenciosa)');
 {
   const chamadas: string[] = [];
-  const f = (async (u: string, init: { method: string }) => { chamadas.push(`${init.method} ${u}`); return { ok: true }; }) as unknown as typeof fetch;
+  const logs: string[] = [];
+  const log = (x: string) => logs.push(x);
+  const ok200 = (async (u: string, init: { method: string }) => { chamadas.push(`${init.method} ${u}`); return { ok: true, status: 200, headers: { get: () => '*/12' } }; }) as unknown as typeof fetch;
+  const erro500 = (async () => ({ ok: false, status: 500, headers: { get: () => null } })) as unknown as typeof fetch;
+  const cai = (async () => { throw new Error('rede'); }) as unknown as typeof fetch;
   const env = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k' };
-  caso('só age às 06:17 UTC', (await limparRastreioUso(env, new Date(Date.UTC(2026, 9, 24, 6, 18)), f)) === false && chamadas.length === 0);
-  caso('às 06:17 apaga o que passou de 90 dias', (await limparRastreioUso(env, new Date(Date.UTC(2026, 9, 24, 6, 17)), f)) === true && chamadas.length === 1 && chamadas[0].includes('user_tela_log?criado_em=lt.2026-07-26') && DIAS_RETENCAO_RASTREIO === 90);
-  caso('sem credencial do servidor não faz nada', (await limparRastreioUso({}, new Date(Date.UTC(2026, 9, 24, 6, 17)), f)) === false);
+  const as0617 = new Date(Date.UTC(2026, 9, 24, 6, 17));
+  caso('só age às 06:17 UTC', (await limparRastreioUso(env, new Date(Date.UTC(2026, 9, 24, 6, 18)), ok200, log)) === false && chamadas.length === 0 && logs.length === 0);
+  caso('às 06:17 apaga o que passou de 90 dias e REGISTRA quantas linhas', (await limparRastreioUso(env, as0617, ok200, log)) === true && chamadas[0].includes('user_tela_log?criado_em=lt.2026-07-26') && DIAS_RETENCAO_RASTREIO === 90 && JSON.parse(logs[0]).apagadas === 12 && JSON.parse(logs[0]).ok === true);
+  caso('HTTP 500 vira log com ok:false e http:500 (não some)', (await limparRastreioUso(env, as0617, erro500, log)) === false && JSON.parse(logs[1]).ok === false && JSON.parse(logs[1]).http === 500);
+  caso('rede caiu vira log com erro', (await limparRastreioUso(env, as0617, cai, log)) === false && JSON.parse(logs[2]).erro === 'rede');
+  caso('o log não carrega chave nem URL com segredo', !logs.join('').includes('"k"') && !logs.join('').includes('supabase.co'));
+  caso('sem credencial do servidor não faz nada', (await limparRastreioUso({}, as0617, ok200, log)) === false);
   caso('o cron do worker chama a retenção do rastreio', /limparRastreioUso\(env, agendado\)/.test(ler('worker/src/index.js')));
 }
 

@@ -123,7 +123,7 @@ const TEXTO_AJUSTE = {
   ajuda: { titulo: 'Ajuda e suporte', descricao: 'Dúvidas, tutoriais e falar com a gente' },
   dicas: { titulo: 'Mostrar dicas contextuais', descricao: 'Balões curtos explicando elementos da tela' },
   apresentacao: { titulo: 'Rever apresentação e dicas', descricao: 'Mostra a introdução e as dicas de novo' },
-  rastreioUso: { titulo: 'Ajudar a melhorar o OLLI', descricao: 'Registra quais telas e botões você usa, nunca o que você digita' },
+  rastreioUso: { titulo: 'Ajudar a melhorar o OLLI', descricao: 'Registra quais telas e botões você usa, nunca o que você digita. Desligar apaga o que já foi registrado' },
   privacidade: { titulo: 'Política de privacidade', descricao: 'Quais dados o OLLI usa e por quê' },
   termos: { titulo: 'Termos de uso', descricao: 'As regras de uso do OLLI' },
   excluirWeb: { titulo: 'Excluir conta pela web', descricao: 'Pedir a exclusão pelo site, sem precisar do app' },

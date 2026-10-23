@@ -12,12 +12,13 @@
  */
 import { AppState, Platform } from 'react-native';
 import { getCurrentUser, supabase } from './supabase';
-import { lerPreferenciaRastreio } from './rastreioPreferencia';
-import { empilhar, itemAcao, itemTela, LOTE_MAX, podeEnviar, type ItemRastreio } from './rastreioNucleo';
+import { esquecerPreferenciaRastreio, lerPreferenciaRastreio } from './rastreioPreferencia';
+import { empilhar, itemAcao, itemTela, LOTE_MAX, podeEnviar, reenfileirar, type ItemComTentativa } from './rastreioNucleo';
 
 const LIGADO = process.env.EXPO_PUBLIC_RASTREIO_TELAS === '1';
 
-let fila: ItemRastreio[] = [];
+let fila: ItemComTentativa[] = [];
+let descartadosPorFalha = 0; // contador de lotes perdidos (visível no dev; evita falha silenciosa)
 let telaAtual: string | null = null;
 let entrouEm = 0;
 let descarregando = false;
@@ -35,12 +36,23 @@ async function descarregar(): Promise<void> {
   try {
     if (!podeEnviar(await lerPreferenciaRastreio())) return; // opt-out ou não sei: descarta, nada sai
     if (!(await getCurrentUser())) return; // deslogado: descarta, nada a ligar a ninguém.
-    await supabase.rpc('registrar_telas_usuario', { p_itens: lote, p_plataforma: plataforma() });
+    const { error } = await supabase.rpc('registrar_telas_usuario', {
+      p_itens: lote.map(({ tela, acao, duracao_ms }) => ({ tela, acao, duracao_ms })),
+      p_plataforma: plataforma(),
+    });
+    if (error) falhouEnvio(lote); // erro do servidor/rede: devolve à fila (até 3 tentativas), nunca "ignora"
   } catch {
-    // best-effort.
+    falhouEnvio(lote);
   } finally {
     descarregando = false;
   }
+}
+
+function falhouEnvio(lote: ItemComTentativa[]): void {
+  const r = reenfileirar(fila, lote);
+  fila = r.fila;
+  descartadosPorFalha += r.descartados;
+  if (__DEV__ && r.descartados > 0) console.warn(`[rastreio] ${descartadosPorFalha} item(ns) descartado(s) após falhas de envio`);
 }
 
 function fecharTelaAtual(agora: number): void {
@@ -85,6 +97,7 @@ export function appEmSegundoPlano(): void {
 /** Logout: descarta o que não foi enviado (não pode vazar para o próximo usuário). */
 export function resetarRastreioTelas(): void {
   fila = [];
+  esquecerPreferenciaRastreio();
   telaAtual = null;
   sessaoMarcada = false;
 }
