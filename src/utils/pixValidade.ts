@@ -1,6 +1,6 @@
 /**
  * Texto "Vale até hoje/amanhã às HH:MM" do Pix do plano. Sempre derivado do
- * `expiresAt` que a AbacatePay devolveu: sem data válida (ou já vencida) devolve
+ * `expiresAt` que o gateway devolveu: sem data válida (ou já vencida) devolve
  * `null` e a tela omite a linha — nunca inventa prazo.
  */
 export function textoValidadePix(expiresAt: string | null | undefined, agora: Date = new Date()): string | null {

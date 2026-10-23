@@ -1,6 +1,6 @@
 /**
  *     node scripts/teste-pix-validade.ts
- * Exit 0 = passou; 1 = falhou. Aviso de validade do Pix do plano (PixPlanoModal).
+ * Exit 0 = passou; 1 = falhou. Aviso de validade do Pix do plano (modal).
  */
 import { readFileSync } from 'node:fs';
 import { textoValidadePix } from '../src/utils/pixValidade.ts';
