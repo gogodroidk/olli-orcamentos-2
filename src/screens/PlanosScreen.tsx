@@ -27,6 +27,8 @@ import {
 import { CELULA_ORCAMENTOS_GRATIS, FRASE_GRATIS, PLANOS_BASE as TABELA_PLANOS, ROTULO_RECURSO, frasePro, type BulletPlano } from '../services/planosBase';
 import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnvios';
 import { ContadorEnvios } from '../components/ContadorEnvios';
+import { AvisoLimiteAntigas } from '../components/AvisoLimiteAntigas';
+import { useAvisoLimiteAntigas } from '../hooks/useAvisoLimiteAntigas';
 import { contadorEnvios, type EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
   PRECO_PRO,
@@ -310,6 +312,7 @@ export default function PlanosScreen() {
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
   const [origemPlano, setOrigemPlano] = useState<'gratis' | 'pagamento' | 'admin' | 'trial' | undefined>('gratis');
   const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
+  const avisoAntigas = useAvisoLimiteAntigas();
   const [iniciandoTrial, setIniciandoTrial] = useState(false);
   const [carregandoPlano, setCarregandoPlano] = useState(true);
   // 3 estados explícitos (nunca colapsar erro em vazio): `planoErro` só vira
@@ -812,6 +815,8 @@ export default function PlanosScreen() {
       <ScrollView contentContainerStyle={[styles.scroll, ehDesktop && styles.scrollDesktop]} showsVerticalScrollIndicator={false}>
         {/* P0-09: "X de 5 envios" (conta nova do Grátis, a partir do 3º envio). `oferta` null = leitura falhou: sem contador, o servidor segue mandando. */}
         <ContadorEnvios estado={oferta ? { estado: 'pronto', contador: contadorEnvios(oferta) } : { estado: 'indisponivel' }} />
+        {/* Conta ANTIGA, antes do limite (D+30): aviso dispensável 1 vez. Sinal do servidor; sem ele, nada. */}
+        <AvisoLimiteAntigas estado={avisoAntigas.estado} onDispensar={avisoAntigas.dispensar} />
         {planoErro ? (
           <View style={styles.cobrancaAviso}>
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
