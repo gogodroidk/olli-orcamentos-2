@@ -172,9 +172,58 @@ export function tituloRecurso(recurso: Recurso): string {
   return RECURSOS_EM_BREVE.has(recurso) ? `${t} (em breve)` : t;
 }
 
+/**
+ * LIMITE DO GRÁTIS EM CONTA NOVA (P0-09) — a ÚNICA constante de copy do corte.
+ * `null` = corte DESLIGADO: o Grátis é ilimitado e o texto diz isso (verdade hoje).
+ * Data ISO `AAAA-MM-DD` = dia em que o servidor passou a limitar contas criadas desde então
+ * (`limite_gratis_config.corte`); a copy vira "até 5 por mês em contas novas". Ligar = trocar
+ * esta constante NO MESMO PR/dia do `update ... set corte = now()`, com ordem do Igor.
+ * `scripts/teste-copy-corte-gratis.ts` trava a copy 'ilimitado' escrita à mão quando a data existe.
+ */
+export const CORTE_GRATIS_DATA: string | null = null;
+export const LIMITE_ENVIOS_GRATIS_MES = 5;
+
+/** `AAAA-MM-DD` → `dd/mm/aaaa`, sem passar por `Date` (fuso não muda o dia). */
+function dataCorteBR(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) throw new Error(`CORTE_GRATIS_DATA inválida: ${iso}`);
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/** Frase de orçamentos do Grátis, na versão certa para o estado do corte. */
+function fraseOrcamentosGratis(): string {
+  if (CORTE_GRATIS_DATA === null) return 'orçamentos ilimitados (PDF, link e WhatsApp, sem cota mensal)';
+  const d = dataCorteBR(CORTE_GRATIS_DATA);
+  return `orçamentos em PDF, link e WhatsApp (contas criadas a partir de ${d} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite)`;
+}
+
+/** Orçamentos do Grátis em meia frase ("Grátis — {isto} e tudo do essencial"). */
+export const FRASE_GRATIS_CURTA: string =
+  CORTE_GRATIS_DATA === null
+    ? 'orçamentos ilimitados'
+    : `até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas (contas anteriores seguem sem limite)`;
+
+/** Linha de anúncio/landing de página de oficio: "Grátis ..." sem cartão. */
+export const GRATIS_LINHA_ANUNCIO: string =
+  CORTE_GRATIS_DATA === null
+    ? 'Grátis com orçamentos ilimitados.'
+    : `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas.`;
+
+/** Célula "Orçamentos" do Grátis na tabela comparativa (Pro e Empresa seguem 'Ilimitados'). */
+export const CELULA_ORCAMENTOS_GRATIS: string =
+  CORTE_GRATIS_DATA === null ? 'Ilimitados' : `${LIMITE_ENVIOS_GRATIS_MES}/mês (contas novas)`;
+
+/** Pré-visualização do e-mail de última chamada de ativação (neutra para as duas coortes). */
+export const PREVIEW_EMAIL_GRATIS: string =
+  CORTE_GRATIS_DATA === null
+    ? 'No plano Grátis os orçamentos são ilimitados, sem cartão.'
+    : 'O plano Grátis continua sem cartão e sem prazo.';
+
 /** O que TODO plano tem — a alma do Grátis. Nada aqui passa por entitlement. */
 export const RECURSOS_GRATIS: readonly string[] = [
-  'Orçamentos ilimitados: PDF, link e WhatsApp, sem cota mensal',
+  CORTE_GRATIS_DATA === null
+    ? 'Orçamentos ilimitados: PDF, link e WhatsApp, sem cota mensal'
+    : `Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de ${dataCorteBR(CORTE_GRATIS_DATA)} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite`,
   'Rascunhos, recibos, clientes e histórico sem limite',
   'Catálogo de serviços e produtos',
   'Clientes e agenda',
@@ -189,7 +238,7 @@ export const NOTA_SELO_GRATIS = `O PDF, o recibo e o link do Grátis levam um se
 
 /** Frase curta do Grátis para FAQ, SEO e ajuda. */
 export const FRASE_GRATIS =
-  `orçamentos ilimitados (PDF, link e WhatsApp, sem cota mensal), com o selo discreto "${TEXTO_SELO_OLLI}"`;
+  `${fraseOrcamentosGratis()}, com o selo discreto "${TEXTO_SELO_OLLI}"`;
 
 /** Um bullet de cartão de plano: um texto, os recursos que ele vende e se já existe. */
 export interface BulletPlano {
