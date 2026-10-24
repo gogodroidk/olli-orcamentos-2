@@ -27,8 +27,8 @@ for (const url of arquivos) {
 }
 ok('licença Plus Jakarta Sans', existsSync('web/public/fonts/LICENSE-plus-jakarta-sans.txt'));
 ok('licença Spectral', existsSync('web/public/fonts/LICENSE-spectral.txt'));
-const headers = readFileSync('web/public/_headers', 'utf8');
-ok('_headers: /fonts/* com CORS aberto', /\/fonts\/\*[\s\S]*Access-Control-Allow-Origin:\s*\*/.test(headers));
+const headers = readFileSync('web/scripts/gerar-headers.mjs', 'utf8');
+ok('gerar-headers.mjs (gera o _headers do build): /fonts/* com CORS aberto', /\/fonts\/\*[\s\S]*Access-Control-Allow-Origin:\s*\*/.test(headers));
 
 const paginas = ['link', 'stripe', 'pmoc', 'equipe', 'confirmacaoVisita', 'adminPagina'];
 for (const p of paginas) ok(`${p}.js usa FONTES_CSS`, readFileSync(`${SRC}/${p}.js`, 'utf8').includes('FONTES_CSS'));

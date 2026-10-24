@@ -1,4 +1,0 @@
-# Fontes próprias (worker/src/fontesProprias.js): as páginas do worker, em outro domínio, as carregam daqui.
-/fonts/*
-  Access-Control-Allow-Origin: *
-  Cache-Control: public, max-age=31536000, immutable

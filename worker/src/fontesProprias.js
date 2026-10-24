@@ -2,7 +2,7 @@
  * FONTES PRÓPRIAS (LGPD): as páginas que o worker serve ao cliente final (link do orçamento, confirmação de visita, página de
  * pagamento, PMOC, equipe) NÃO carregam mais Google Fonts — o <link> entregava o IP do visitante ao Google. As fontes (Plus Jakarta
  * Sans e Spectral, ambas SIL OFL 1.1, uso comercial livre) ficam em web/public/fonts e saem de olliorcamentos.online/fonts
- * (CORS aberto em web/public/_headers). Só o subset latin (cobre o português). Licenças ao lado dos arquivos.
+ * (CORS aberto em web/scripts/gerar-headers.mjs, que gera o _headers do build). Só o subset latin (cobre o português). Licenças ao lado dos arquivos.
  */
 export const FONTES_ORIGEM = 'https://olliorcamentos.online';
 
