@@ -60,6 +60,7 @@ import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
 import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
+import { handleApple } from './appleRotas.js';
 import { cronPlayComBatimento } from './playBatimento.js';
 import { horaDoAlarmePix, rodarAlarmePix } from './alarmePix.js';
 import { handleResendWebhook } from './resendWebhook.js';
@@ -1028,6 +1029,13 @@ const handler = {
     // gate da IA, mesmo perfil das rotas de pagamento acima. Ver worker/src/play.js.
     if (url.pathname.startsWith('/play/')) {
       return handlePlay(request, env, url);
+    }
+
+    // ── ASSINATURA PELA APP STORE (StoreKit 2) — kill switch de código APPLE_IAP_HABILITADO (hoje false) ──
+    // GET /apple/config, POST /apple/verificar (JWT) e POST /apple/notificacoes (App Store Server Notifications v2,
+    // sem login: a autenticidade é a cadeia de certificados da Apple). Ver worker/src/appleRotas.js.
+    if (url.pathname.startsWith('/apple/')) {
+      return handleApple(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──
