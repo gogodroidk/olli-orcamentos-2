@@ -113,7 +113,7 @@ const ofertaAtiva = interpretarEstadoOferta({
 assert.equal(ofertaAtiva?.planoEfetivo, 'pro', 'trial ativo precisa liberar o Pro');
 assert.equal(ofertaAtiva?.trialEstado, 'active');
 const ofertaGratisAntiga = interpretarEstadoOferta({
-  plano_efetivo: 'gratis', limite_envios: 5, envios_usados: 7, envios_restantes: 0,
+  plano_efetivo: 'gratis', limite_conta_nova: true, limite_envios: 5, envios_usados: 7, envios_restantes: 0,
   trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
   requires_card: false, auto_renews: false, data_disposition: 'preserve',
 });
@@ -130,11 +130,15 @@ const semTeto = interpretarEstadoOferta({
 assert.equal(semTeto?.limiteEnvios, null, 'conta antiga / corte desligado: sem teto');
 assert.equal(semTeto?.enviosRestantes, null);
 const teto = (extra: Record<string, unknown>) => interpretarEstadoOferta({
-  plano_efetivo: 'gratis', limite_envios: 5, envios_usados: 3, envios_restantes: 2,
+  plano_efetivo: 'gratis', limite_conta_nova: true, limite_envios: 5, envios_usados: 3, envios_restantes: 2,
   trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
   requires_card: false, auto_renews: false, data_disposition: 'preserve', ...extra,
 });
 assert.equal(teto({ limite_envios: 0 })?.limiteEnvios, null, 'teto 0 é lixo: sem teto');
+// SERVIDOR ANTIGO: manda limite_envios=5 para todo Grátis SEM o sinal limite_conta_nova → o app ignora (nada de 'X de 5' falso).
+assert.equal(teto({ limite_conta_nova: undefined })?.limiteEnvios, null, 'sem o sinal do servidor novo: sem teto');
+assert.equal(teto({ limite_conta_nova: false })?.limiteEnvios, null, 'sinal falso: sem teto');
+assert.deepEqual(limites.contadorEnvios(teto({ limite_conta_nova: undefined, envios_usados: 4 })), { mostrar: false }, 'servidor antigo nunca gera contador');
 assert.equal(teto({ limite_envios: '5' })?.limiteEnvios, null, 'teto em texto é lixo: sem teto');
 assert.equal(teto({ plano_efetivo: 'pro' })?.limiteEnvios, null, 'Pro nunca tem teto');
 assert.equal(teto({ envios_restantes: -1 })?.enviosRestantes, null, 'restantes negativo é lixo');

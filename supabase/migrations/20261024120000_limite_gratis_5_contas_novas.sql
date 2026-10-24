@@ -200,6 +200,10 @@ begin
   select * into v_trial from public.trials_comerciais t where t.tenant_id = v_contexto.tenant_id;
   return jsonb_build_object(
     'plano_efetivo', v_plano,
+    -- SINAL do servidor NOVO: só ele manda `limite_conta_nova`. O servidor ANTIGO (antes de 20261002150000) mandava
+    -- limite_envios=5 para todo Grátis sem este campo; o app só acredita no teto quando o sinal vem junto (CDC: nada de
+    -- 'X de 5' sem limite real).
+    'limite_conta_nova', v_limitada,
     'limite_envios', case when v_limitada then v_limite else null end,
     'envios_usados', v_usados,
     'envios_restantes', case when v_limitada then greatest(0, v_limite - v_usados) else null end,
