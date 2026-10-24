@@ -62,11 +62,13 @@ export interface InicioTrialPro {
 
 export interface ReservaEnvioOrcamento {
   /**
-   * Sempre `true` desde 01/10/2026: o Grátis é ilimitado e nenhum envio é barrado
-   * por cota. O tipo literal garante que nenhuma tela volte a ter um ramo de
-   * recusa (o último, o "Cota mensal utilizada" do detalhe, saiu em 02/10/2026).
+   * `true` quase sempre: o Grátis é ilimitado e falha de registro NUNCA barra o envio.
+   * A ÚNICA recusa é `cota_esgotada` com `permitido:false` vinda do servidor — conta
+   * nova do Grátis que já usou o limite do mês (P0-09; o servidor só devolve isso
+   * quando o corte está ligado em `limite_gratis_config`). Toda tela que envia
+   * precisa tratar `permitido === false` (hoje: `autorizarEntrega` na Visualizar).
    */
-  permitido: true;
+  permitido: boolean;
   planoEfetivo: PlanoId;
   /** Orçamentos distintos registrados neste mês (informativo). */
   usados: number;
@@ -81,10 +83,11 @@ export interface ReservaEnvioOrcamento {
    *   envio segue, só não conta para o teste automático nem para o funil;
    * - `ambiente_local`: sem Supabase configurado (desenvolvimento).
    *
-   * `cota_esgotada` de um servidor antigo nunca chega aqui: `interpretarReservaEnvio`
-   * o transforma em `sem_registro`.
+   * - `cota_esgotada`: recusa REAL (`permitido:false`) do limite do Grátis em conta nova.
    */
-  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local';
+  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local' | 'cota_esgotada';
+  /** Só quando recusado por limite: o teto do mês (ex.: 5). */
+  limiteEnvios: number | null;
 }
 
 function inteiroNaoNegativo(valor: unknown, fallback: number): number {
@@ -143,6 +146,16 @@ export function interpretarReservaEnvio(valor: unknown): ReservaEnvioOrcamento {
   const v = valor as Record<string, unknown>;
   const motivo = v.motivo;
   const motivos = new Set(['plano_pago', 'trial_ativo', 'dentro_da_cota']);
+  // Única recusa do contrato: limite do Grátis em conta nova (servidor com corte ligado).
+  if (v.permitido === false && motivo === 'cota_esgotada') {
+    return {
+      ...envioSemRegistro(),
+      permitido: false,
+      usados: inteiroNaoNegativo(v.usados, 0),
+      motivo: 'cota_esgotada',
+      limiteEnvios: typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0 ? v.limite_envios : null,
+    };
+  }
   if (v.permitido !== true || !motivos.has(motivo as string)) return envioSemRegistro();
 
   const plano: PlanoId = v.plano_efetivo === 'empresa' ? 'empresa' : v.plano_efetivo === 'pro' ? 'pro' : 'gratis';
@@ -160,6 +173,7 @@ export function interpretarReservaEnvio(valor: unknown): ReservaEnvioOrcamento {
     reservaToken,
     trialElegivel: v.trial_elegivel === true,
     motivo: motivo as 'plano_pago' | 'trial_ativo' | 'dentro_da_cota',
+    limiteEnvios: null,
   };
 }
 
@@ -174,6 +188,7 @@ export function envioSemRegistro(): ReservaEnvioOrcamento {
     reservaToken: null,
     trialElegivel: false,
     motivo: 'sem_registro',
+    limiteEnvios: null,
   };
 }
 

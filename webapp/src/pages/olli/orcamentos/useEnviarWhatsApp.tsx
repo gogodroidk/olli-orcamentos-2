@@ -21,7 +21,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import { cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
+import { avisoLimiteEnvios, cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
 import { linkWhatsApp } from "@/olli/linkWhatsApp";
 import { publicarLinkOrcamento } from "@/olli/publicarLink";
@@ -57,7 +57,9 @@ export function useEnviarWhatsApp() {
 			const semLinkWa = linkWhatsApp(blob.clienteTelefone, "");
 			if (!semLinkWa) {
 				toast.error(`Informe o WhatsApp de ${blob.clienteNome || "o cliente"} com DDD`, {
-					description: "Edite o orçamento (ou o cadastro do cliente) e salve o número. Sem ele não dá para abrir a conversa.",
+					description: blob.clienteId
+						? "Edite o orçamento (ou o cadastro do cliente) e salve o número. Sem ele não dá para abrir a conversa."
+						: "Este orçamento tem só o nome do cliente. Abra o orçamento, escolha ou cadastre o cliente (com WhatsApp) e salve; depois é só enviar.",
 					position: "top-center",
 				});
 				return;
@@ -70,6 +72,12 @@ export function useEnviarWhatsApp() {
 
 				// 3) Registra o envio (nunca barra: sem registro o envio segue) e publica o link.
 				const reserva = await reservarEnvioOrcamento(orcamentoId, "whatsapp");
+				if (!reserva.permitido) {
+					// P0-09: limite do Grátis em conta nova — só o envio para, o orçamento fica salvo.
+					const aviso = avisoLimiteEnvios(reserva);
+					toast.info(aviso.titulo, { description: aviso.mensagem, position: "top-center", duration: 12_000 });
+					return;
+				}
 				let url: string | null = null;
 				let mensagem = montarMensagemEnvioOrcamento(blob, empresa);
 				try {

@@ -56,6 +56,7 @@ import {
 	confirmarEnvioOrcamento,
 	obterEstadoOfertaComercial,
 	reservarEnvioOrcamento,
+	avisoLimiteEnvios,
 } from "@/olli/cota-envios";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { ymdParaBr } from "@/olli/datas";
@@ -525,6 +526,11 @@ export default function OrcamentosPage() {
 			// REGISTRO do envio, não portão: o Grátis é ilimitado (limitesComerciais.ts).
 			// Se o registro falhar, `reserva` vem como `sem_registro` e o PDF sai igual.
 			const reserva = await reservarEnvioOrcamento(linha.id, "pdf");
+			if (!reserva.permitido) {
+				// P0-09: só o ENVIO para; o orçamento fica salvo. Falha de registro nunca cai aqui.
+				const aviso = avisoLimiteEnvios(reserva);
+				throw new Error(`${aviso.titulo}. ${aviso.mensagem}`);
+			}
 			try {
 				const marca = await resolverMarcaDoDocumento(qc);
 				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });

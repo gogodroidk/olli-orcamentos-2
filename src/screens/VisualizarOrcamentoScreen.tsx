@@ -400,13 +400,24 @@ export default function VisualizarOrcamentoScreen() {
   }
 
   /**
-   * Registra o envio (teste automático do Pro + funil). Desde 01/10/2026 o Grátis é
-   * ilimitado: o registro NUNCA barra o envio — se ele falhar, volta como
-   * `sem_registro` e o orçamento sai do mesmo jeito (ver limitesComerciais.ts).
+   * Registra o envio (teste automático do Pro + funil). O Grátis é ilimitado: falha do
+   * registro NUNCA barra o envio (`sem_registro`). Exceção única: `cota_esgotada` do
+   * limite de conta nova (P0-09), tratada logo abaixo (ver limitesComerciais.ts).
    */
   async function autorizarEntrega(canal: CanalEnvioOrcamento): Promise<ReservaEnvioOrcamento | null> {
     if (!orc) return null;
-    return reservarEnvioOrcamento(orc.id, canal);
+    const reserva = await reservarEnvioOrcamento(orc.id, canal);
+    // P0-09: única recusa do contrato — conta nova do Grátis que usou o limite do mês.
+    // Só o ENVIO para; o orçamento fica salvo e editável. Sem a palavra "bloqueado".
+    if (!reserva.permitido) {
+      const teto = reserva.limiteEnvios ?? 5;
+      toast.info(
+        `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, veja os planos na tela Conta.`,
+        { titulo: 'Limite do mês atingido' },
+      );
+      return null;
+    }
+    return reserva;
   }
 
   /**

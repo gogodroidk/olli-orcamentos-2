@@ -814,7 +814,35 @@ export async function renderLinkPage(token, env, request) {
 }
 
 // ─── páginas ─────────────────────────────────────────────────
-function shell(inner, accentRaw = ACCENT, mostrarSelo = true) {
+// ─── Open Graph (prévia do link no WhatsApp/Instagram/Telegram) ───────────────────
+/** Imagem ESTÁTICA da OLLI (a mesma da landing): https, sem dado de ninguém. A logo do prestador não vai no
+ *  snapshot do link e o WhatsApp não aceita data URI como og:image — por isso a da OLLI. */
+export const OG_IMAGEM = 'https://olliorcamentos.online/og-image.png';
+
+/**
+ * Metadados da prévia. SÓ o nome do prestador (a marca que ele mesmo mostra ao cliente). NUNCA entram:
+ * valor do orçamento, nome/telefone do cliente, itens, número, Pix. Tudo escapado para atributo HTML.
+ */
+export function metaOpenGraph(nomePrestador) {
+  const nome = String(nomePrestador ?? '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Seu prestador';
+  const titulo = `Orçamento de ${nome}`;
+  const descricao = 'Veja os itens do orçamento, aprove e fale direto com o prestador pelo WhatsApp.';
+  return [
+    '<meta property="og:type" content="website"/>',
+    '<meta property="og:site_name" content="OLLI Orçamentos"/>',
+    '<meta property="og:locale" content="pt_BR"/>',
+    `<meta property="og:title" content="${esc(titulo)}"/>`,
+    `<meta property="og:description" content="${esc(descricao)}"/>`,
+    `<meta property="og:image" content="${OG_IMAGEM}"/>`,
+    '<meta property="og:image:type" content="image/png"/>',
+    '<meta name="twitter:card" content="summary_large_image"/>',
+    `<meta name="twitter:title" content="${esc(titulo)}"/>`,
+    `<meta name="twitter:description" content="${esc(descricao)}"/>`,
+    `<meta name="twitter:image" content="${OG_IMAGEM}"/>`,
+  ].join('\n');
+}
+
+function shell(inner, accentRaw = ACCENT, mostrarSelo = true, og = '') {
   const accent = safeHexColor(accentRaw, ACCENT);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -822,6 +850,7 @@ function shell(inner, accentRaw = ACCENT, mostrarSelo = true) {
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
+${og}
 <title>Orçamento · OLLI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1318,5 +1347,5 @@ ${scriptSinais()}
   </script>`;
 
   // Selo: só some com plano CONFIRMADO sem selo. Linha sem regras = selo fica.
-  return shell(inner, accent, !(row._regras && row._regras.mostrarSelo === false));
+  return shell(inner, accent, !(row._regras && row._regras.mostrarSelo === false), metaOpenGraph(nomePrestador));
 }

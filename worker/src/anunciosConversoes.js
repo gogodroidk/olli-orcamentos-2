@@ -9,6 +9,13 @@
  *                          (web/src/lib/... → webapp/src/lib/marketing.ts)
  *   Subscribe             event_id 'assinatura-<user_id>' — só o servidor sabe que pagou
  *                          (funil_marcos 'pagou', que já descarta teste e fictício)
+ *   OrcamentoEnviado      event_id 'orcamento-enviado-<user_id>' — ATIVAÇÃO: 1º orçamento ENVIADO
+ *                          (funil_marcos 'orcamento_enviado', sem estimativa). Só o servidor sabe. EVENTO
+ *                          CUSTOM, sem value/currency, de propósito: a landing JÁ dispara `Lead` no navegador
+ *                          a cada clique em CTA de cadastro (web/src/scripts/marketing.ts, `rastrear("Lead", …)`,
+ *                          via fbq em web/src/lib/metaPixel.ts). Dois eventos `Lead` (clique × ativação real)
+ *                          misturariam sinais no mesmo Pixel e o algoritmo otimizaria em cima do clique. O nome
+ *                          do evento do servidor é a constante EVENTO_ATIVACAO.
  *
  * QUEM ENTRA: só quem aceitou o aviso de cookies (`medicao_anuncios.consentimento =
  * 'sim'`) e não está em `funil_exclusoes` — o filtro mora no SQL
@@ -24,15 +31,39 @@
  * cron de minuto): roda 1 vez a cada 10 min. Rodada vazia = 1 subrequest (pendências);
  * com o que enviar = até 4 (pendências, token no Vault, envio em lote, registro).
  *
- * PRIVACIDADE: e-mail e id da conta vão como SHA-256 (exigência do Meta e da nossa
- * política); nome, telefone e dados dos clientes nunca saem.
+ * PRIVACIDADE: e-mail, telefone (55+DDD+número) e id da conta vão como SHA-256 (exigência do Meta e
+ * da nossa política); nome e dados dos clientes do prestador nunca saem. O token vai no cabeçalho
+ * Authorization, NUNCA na URL (URL aparece em log de proxy e em mensagem de erro de rede).
+ * Log só com contagens: nada de e-mail, telefone, id de conta nem corpo de resposta da Meta.
  */
 
 import { PRECO_EMPRESA, PRECO_PRO } from '../../src/services/precosPlanos.ts';
 
 export const META_PIXEL_ID = '4793168394059665';
+/** Evento de ATIVAÇÃO (1º orçamento enviado). Trocar o nome aqui muda só o que a Meta recebe. */
+export const EVENTO_ATIVACAO = 'OrcamentoEnviado';
 const GRAPH_VERSAO = 'v23.0';
 const SETE_DIAS_S = 7 * 24 * 60 * 60;
+
+/**
+ * `detalhe` vai para a tabela anuncios_conversoes: só códigos e números. A mensagem da Meta pode citar
+ * parâmetro/valor do evento (e-mail/telefone em hash, id de conta) — nunca é gravada. Nem o texto de erro da rede.
+ */
+export function detalheSeguroMeta({ status, json, rede = false, teste = false } = {}) {
+  if (rede) return 'rede';
+  const n = (v) => (Number.isInteger(v) && v >= 0 && v < 1e9 ? String(v) : null);
+  if (Number(status) >= 200 && Number(status) < 300 && !json?.error) {
+    const trace = typeof json?.fbtrace_id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(json.fbtrace_id) ? json.fbtrace_id : '-';
+    const recebidos = n(json?.events_received);
+    return `fbtrace ${trace}${recebidos === null ? '' : ` recebidos ${recebidos}`}${teste ? ' (teste)' : ''}`;
+  }
+  const partes = [`HTTP ${n(Number(status)) ?? '?'}`];
+  const codigo = n(json?.error?.code);
+  const sub = n(json?.error?.error_subcode);
+  if (codigo) partes.push(`code ${codigo}`);
+  if (sub) partes.push(`sub ${sub}`);
+  return partes.join(' ');
+}
 
 /** Minuto 3, 13, 23… — fora deles o job sai sem gastar subrequest. */
 export function horaDeEnviarConversoes(agora) {
@@ -72,6 +103,10 @@ export async function montarEventoMeta(item, agoraMs = Date.now()) {
   const userData = { client_user_agent: ua, external_id: [await sha256(String(item.user_id))] };
   const email = texto(item.email, 320);
   if (email) userData.em = [await sha256(email.toLowerCase())];
+  // Telefone já normalizado pelo banco (55 + DDD + número, só dígitos): é o formato que a Meta pede
+  // antes do hash. Qualquer outra forma é descartada em vez de adivinhada.
+  const telefone = texto(item.telefone, 20);
+  if (telefone && /^55[0-9]{10,11}$/.test(telefone)) userData.ph = [await sha256(telefone)];
   const fbp = texto(item?.origem?.fbp, 200);
   const fbc = texto(item?.origem?.fbc, 300);
   if (fbp) userData.fbp = fbp;
@@ -90,6 +125,8 @@ export async function montarEventoMeta(item, agoraMs = Date.now()) {
   };
   if (item.evento === 'CompleteRegistration') {
     evento.custom_data = { status: true };
+  } else if (item.evento === EVENTO_ATIVACAO) {
+    // Custom e sem value/currency: não finge ser receita nem lead de clique.
   } else {
     const valor = valorDoPlano(item.plano);
     evento.custom_data = { currency: 'BRL', ...(valor ? { value: valor } : {}), ...(item.plano ? { content_name: item.plano } : {}) };
@@ -129,8 +166,13 @@ export async function processarConversoesAnuncios(env, { agora = new Date(), for
       console.log(`[anuncios] erro ao ler pendências: HTTP ${rPend.status}`);
       return { estado: 'erro_pendencias' };
     }
-    const pendencias = await rPend.json();
-    if (!Array.isArray(pendencias) || pendencias.length === 0) return { estado: 'nada', enviados: 0 };
+    const pendencias = await rPend.json().catch(() => null);
+    // `[]` = nada a enviar. Qualquer outra coisa (corpo vazio, objeto, HTML) = "não sei": erro, nunca "nada".
+    if (!Array.isArray(pendencias)) {
+      console.log('[anuncios] resposta de pendências inválida (não é lista).');
+      return { estado: 'erro_pendencias' };
+    }
+    if (pendencias.length === 0) return { estado: 'nada', enviados: 0 };
 
     // Token: segredo do worker, ou o Vault do Supabase (o Workers Free tem teto de 64
     // variáveis e já estava cheio). Só busca quando há o que enviar: 1 subrequest a
@@ -164,20 +206,16 @@ export async function processarConversoesAnuncios(env, { agora = new Date(), for
       let estado = 'erro';
       let detalhe = '';
       try {
-        const r = await f(`https://graph.facebook.com/${GRAPH_VERSAO}/${META_PIXEL_ID}/events?access_token=${encodeURIComponent(token)}`, {
+        const r = await f(`https://graph.facebook.com/${GRAPH_VERSAO}/${META_PIXEL_ID}/events`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(corpo),
         });
         const json = await r.json().catch(() => ({}));
-        if (r.ok && Number(json?.events_received) === eventos.length) {
-          estado = 'enviado';
-          detalhe = `fbtrace ${json.fbtrace_id ?? '-'}${env.META_CAPI_TEST_CODE ? ' (teste)' : ''}`;
-        } else {
-          detalhe = `HTTP ${r.status}: ${String(json?.error?.message ?? 'resposta inesperada').slice(0, 300)}`;
-        }
-      } catch (erro) {
-        detalhe = `rede: ${String(erro?.message ?? erro).slice(0, 200)}`;
+        if (r.ok && Number(json?.events_received) === eventos.length) estado = 'enviado';
+        detalhe = detalheSeguroMeta({ status: r.status, json, teste: Boolean(env.META_CAPI_TEST_CODE) });
+      } catch {
+        detalhe = detalheSeguroMeta({ rede: true });
       }
       // Evento de teste não é o envio de verdade: não fecha a pendência.
       if (env.META_CAPI_TEST_CODE && estado === 'enviado') estado = 'erro';
@@ -192,7 +230,7 @@ export async function processarConversoesAnuncios(env, { agora = new Date(), for
     console.log(`[anuncios] CAPI: ${enviados} enviado(s), ${resultado.length - enviados} pulado(s)/erro.`);
     return { estado: 'ok', enviados, resultado };
   } catch (erro) {
-    console.log(`[anuncios] falha: ${String(erro?.message ?? erro).slice(0, 200)}`);
+    console.log(`[anuncios] falha: ${String(erro?.name ?? 'erro').replace(/[^A-Za-z0-9_]/g, '').slice(0, 40)}`);
     return { estado: 'falha' };
   }
 }
