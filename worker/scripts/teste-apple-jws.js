@@ -102,6 +102,26 @@ await erro(assinar(a, { ...payload, signedDate: agora + 3600e3 }), opc, 'assinad
   assert.equal(r.signedDate, antigo.signedDate);
   caso('folha vencida hoje mas vigente na data da assinatura: aceita (transação antiga)');
 }
+{
+  // DER malformado com a raiz CERTA: erro limpo, e a raiz errada é recusada ANTES de parsear qualquer coisa
+  const h = b64u(JSON.stringify({ alg: 'ES256', x5c: [Buffer.from('lixo').toString('base64'), Buffer.from('lixo2').toString('base64'), a.x5c[2]] }));
+  const forjado = `${h}.${b64u(JSON.stringify({ signedDate: agora }))}.${b64u(Buffer.alloc(64, 7))}`;
+  await erro(forjado, opc, 'der_invalido', 'DER malformado (raiz certa): AppleJwsErro der_invalido, não TypeError');
+  await erro(forjado, {}, 'raiz_nao_confiavel', 'DER malformado com raiz errada: recusado pela raiz antes de parsear');
+  // DER bem formado mas com ESTRUTURA errada (o caso que antes estourava TypeError: 'reading inicio')
+  const estranho = Buffer.from([0x30, 0x03, 0x02, 0x01, 0x00]).toString('base64');
+  const h2 = b64u(JSON.stringify({ alg: 'ES256', x5c: [estranho, estranho, a.x5c[2]] }));
+  const forjado2 = `${h2}.${b64u(JSON.stringify({ signedDate: agora }))}.${b64u(Buffer.alloc(64, 7))}`;
+  await erro(forjado2, opc, 'certificado_invalido', 'DER válido com estrutura errada: certificado_invalido (antes: TypeError/503 + Sentry)');
+}
+{
+  const velho = { ...payload, signedDate: agora - 1000 };
+  await erro(assinar(a, velho), { ...opc, agora: agora + 40 * 86400e3, maxIdadeMs: 7 * 86400e3 }, 'assinatura_antiga', 'maxIdadeMs: assinatura mais velha que a janela é recusada');
+  const r = await verificarJwsApple(assinar(a, velho), { ...opc, agora: agora + 3 * 86400e3, maxIdadeMs: 7 * 86400e3 });
+  assert.equal(r.productId, 'olli_pro');
+  caso('maxIdadeMs: dentro da janela passa');
+  await erro(assinar(a, { productId: 'x' }), { ...opc, maxIdadeMs: 7 * 86400e3 }, 'sem_signed_date', 'com janela, payload sem signedDate é recusado');
+}
 await erro('a.b', opc, 'jws_invalido', 'lixo: recusa');
 await erro('', opc, 'jws_invalido', 'vazio: recusa');
 await erro(null, opc, 'jws_invalido', 'nulo: recusa');

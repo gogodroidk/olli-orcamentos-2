@@ -16,7 +16,9 @@
  *  5. as extensões-marca da Apple (OIDs 1.2.840.113635.100.6.11.1 na folha e 1.2.840.113635.100.6.2.1
  *     na intermediária): um certificado qualquer encadeado na raiz da Apple (ex.: de outro produto)
  *     não vale;
- *  6. assinatura JWS (r||s, P-256/SHA-256) verificada com a chave da folha.
+ *  6. assinatura JWS (r||s, P-256/SHA-256) verificada com a chave da folha;
+ *  7. `opcoes.maxIdadeMs` (rotas): `signedDate` mais velho que a janela é recusado ('assinatura_antiga') — fecha replay de
+ *     JWS antigo e limita o estrago de uma chave de folha antiga vazada (não há OCSP).
  *
  * Falhou qualquer passo = lança `AppleJwsErro` com `codigo` estável; nunca devolve payload não verificado.
  * Nada aqui loga o JWS nem o payload.
@@ -184,7 +186,7 @@ async function assinadoPor(cert, emissor) {
  * no lugar da raiz da Apple. `opcoes.agora` (ms): relógio injetável. `opcoes.exigirMarcaApple` (padrão true).
  */
 export async function verificarJwsApple(jws, opcoes = {}) {
-  const { raizes = [RAIZ_APPLE_G3_SHA256], agora = Date.now(), exigirMarcaApple = true } = opcoes;
+  const { raizes = [RAIZ_APPLE_G3_SHA256], agora = Date.now(), exigirMarcaApple = true, maxIdadeMs = null } = opcoes;
   if (typeof jws !== 'string' || jws.length > 20000) falha('jws_invalido');
   const partes = jws.split('.');
   if (partes.length !== 3 || partes.some((p) => p === '')) falha('jws_invalido');
@@ -202,15 +204,29 @@ export async function verificarJwsApple(jws, opcoes = {}) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) falha('payload_invalido');
 
   const ders = header.x5c.map((c) => b64Bytes(c));
-  const [folha, inter, raiz] = ders.map(lerCertificado);
 
-  // 2. raiz fixada
-  const hashRaiz = await sha256Hex(raiz.der);
+  // 2. raiz fixada — conferida ANTES de parsear qualquer coisa (barato; lixo de atacante não gasta CPU nem vira exceção)
+  const hashRaiz = await sha256Hex(ders[2]);
   if (!raizes.includes(hashRaiz)) falha('raiz_nao_confiavel');
+  let folha;
+  let inter;
+  let raiz;
+  try {
+    [folha, inter, raiz] = ders.map(lerCertificado);
+  } catch (e) {
+    // DER malformado nunca vira TypeError no handler (Sentry/503): é entrada inválida.
+    if (e instanceof AppleJwsErro) throw e;
+    return falha('certificado_invalido');
+  }
 
   // 4. data de referência = quando a Apple assinou (limitada a "agora" + tolerância)
   const assinadoEm = Number.isFinite(payload.signedDate) ? payload.signedDate : agora;
   if (assinadoEm > agora + TOLERANCIA_FUTURO_MS) falha('assinado_no_futuro');
+  // Defesa em profundidade (sem OCSP/revogação): chave de folha antiga vazada não vale p/ assinatura velha. Quem chama define a janela.
+  if (maxIdadeMs !== null) {
+    if (!Number.isFinite(payload.signedDate)) falha('sem_signed_date');
+    if (agora - payload.signedDate > maxIdadeMs) falha('assinatura_antiga');
+  }
   for (const c of [folha, inter, raiz]) {
     if (assinadoEm < c.naoAntes || assinadoEm > c.naoDepois) falha('certificado_fora_da_validade');
   }

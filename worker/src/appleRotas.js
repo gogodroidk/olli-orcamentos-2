@@ -26,7 +26,7 @@
 import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { verificarJwsApple, AppleJwsErro } from './appleJws.js';
 import { donoDaTransacao, ehUuid, traduzirTransacaoApple, validarTransacao, vinculoApple } from './appleIap.js';
-import { cabeNoTeto, rateOkSensivel, textoCabeNoTeto } from './rateLimit.js';
+import { cabeNoTeto, checarLimite, deixaPassar, rateOkSensivel, textoCabeNoTeto } from './rateLimit.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
 export const APPLE_ROUTES = new Set(['/apple/config', '/apple/verificar', '/apple/notificacoes']);
@@ -36,6 +36,9 @@ export const APPLE_IAP_HABILITADO = false;
 
 const NIVEL_PLANO = { gratis: 0, pro: 1, empresa: 2 };
 const TETO_JWS_BYTES = 24 * 1024;
+/** Idade máxima do signedDate: o StoreKit assina na hora (recente); a Apple reenvia notificação por dias. */
+const IDADE_MAX_VERIFICAR_MS = 7 * 24 * 3600e3;
+const IDADE_MAX_NOTIFICACAO_MS = 14 * 24 * 3600e3;
 const TETO_NOTIFICACAO_BYTES = 64 * 1024;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -148,6 +151,8 @@ async function gravarCompra(env, reg) {
       });
       return r.ok;
     }
+    // Evento mais velho que o já gravado não desfaz o novo (a guarda de ordem de `assinaturas` não cobre esta tabela).
+    if (ms(existente.evento_em) !== null && ms(reg.evento_em) !== null && ms(reg.evento_em) < ms(existente.evento_em)) return true;
     const { user_id: _u, original_transaction_id: _o, ...resto } = reg;
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/apple_compras?original_transaction_id=eq.${encodeURIComponent(reg.original_transaction_id)}`, {
       method: 'PATCH',
@@ -197,11 +202,16 @@ export async function aplicarDecisaoApple(env, d, { agora = Date.now() } = {}) {
   // encerrar: prova de vínculo
   if (!atual) return { http: 200, corpo: { ok: true, acao: 'ignorar', motivo: 'sem_assinatura' }, marca: 'processado' };
   if (atual.revenuecat_transacao_id !== d.transacaoId) return { http: 200, corpo: { ok: true, acao: 'ignorar', motivo: 'sem_vinculo' }, marca: 'processado' };
-  const ok = await atualizarVinculada(env, d.userId, d.transacaoId, {
-    status: 'canceled', current_period_end: d.vigenciaAte, revenuecat_vigencia_ate: d.vigenciaAte, revenuecat_evento_em: d.eventoEm,
-  });
+  // Convivência: se o acesso gravado vai ALÉM da vigência da própria Apple (+folga), quem sustenta é Stripe/Pix/Play (o conceder
+  // mesclou o maior). Encerrar a Apple então só atualiza os campos da Apple; nunca corta o que foi pago por fora.
+  const FOLGA = 3 * 3600e3;
+  const sustentadaPorOutra = ms(atual.current_period_end) !== null && ms(atual.revenuecat_vigencia_ate) !== null && ms(atual.current_period_end) > ms(atual.revenuecat_vigencia_ate) + FOLGA && ms(atual.current_period_end) > Date.parse(d.vigenciaAte) + FOLGA;
+  const patch = sustentadaPorOutra
+    ? { revenuecat_vigencia_ate: d.vigenciaAte, revenuecat_evento_em: d.eventoEm }
+    : { status: 'canceled', current_period_end: d.vigenciaAte, revenuecat_vigencia_ate: d.vigenciaAte, revenuecat_evento_em: d.eventoEm };
+  const ok = await atualizarVinculada(env, d.userId, d.transacaoId, patch);
   if (!ok) return { http: 500, corpo: { erro: 'falha_persistencia' }, marca: 'falhou', erro: 'gravacao' };
-  return { http: 200, corpo: { ok: true, acao: 'encerrar' }, marca: 'processado' };
+  return { http: 200, corpo: { ok: true, acao: 'encerrar', ...(sustentadaPorOutra ? { motivo: 'sustentada_por_outra_origem' } : {}) }, marca: 'processado' };
 }
 
 const estadoDaDecisao = (d) => (d.acao === 'conceder' ? 'ativa' : d.acao === 'encerrar' ? 'encerrada' : 'registrada');
@@ -219,11 +229,16 @@ async function verificar(request, env, ver, ligado) {
   if (!(await rateOkSensivel(env, env.ABACATE_RL, `apple:${user.id}`))) return json({ erro: 'muitas_requisicoes' }, 429);
   const teto = cabeNoTeto(request, TETO_JWS_BYTES);
   if (!teto.ok) return json({ erro: 'payload_grande' }, 413);
-  const corpo = await request.json().catch(() => ({}));
+  const bruto = await request.text();
+  if (!textoCabeNoTeto(bruto, TETO_JWS_BYTES)) return json({ erro: 'payload_grande' }, 413);
+  let corpo = {};
+  try {
+    corpo = JSON.parse(bruto);
+  } catch {}
   const jws = corpo && typeof corpo.signedTransaction === 'string' ? corpo.signedTransaction : '';
   let tx;
   try {
-    tx = await ver(jws);
+    tx = await ver(jws, { maxIdadeMs: IDADE_MAX_VERIFICAR_MS });
   } catch (e) {
     if (e instanceof AppleJwsErro) return json({ ok: false, erro: 'jws_invalido', motivo: e.codigo }, 400);
     capturarExcecao(e, { origem: 'apple_verificar' });
@@ -242,6 +257,11 @@ async function verificar(request, env, ver, ligado) {
     return json({ ok: false, erro: 'token_de_outra_conta' }, 409);
   }
   const transacaoId = await vinculoApple(tx.originalTransactionId);
+  // LÁPIDE: uma notificação (REFUND/REVOKE/EXPIRED) que chegou ANTES deste /verificar já encerrou a compra; um JWS assinado antes
+  // dela não pode reabrir o acesso (fraude: comprar, pedir reembolso e só então chamar /verificar com o JWS antigo).
+  if (compra && compra.estado === 'encerrada' && ms(compra.evento_em) !== null && ms(compra.evento_em) >= (Number.isFinite(tx.signedDate) ? tx.signedDate : 0)) {
+    return json({ ok: true, estado: 'encerrada', plano: null, vigenteAte: null, motivo: 'compra_ja_encerrada' });
+  }
   const d = traduzirTransacaoApple(tx, { userId: user.id, transacaoId, sandboxPermitido: testadoresPermitidos(env).has(user.id) });
   const gravou = await gravarCompra(env, {
     original_transaction_id: tx.originalTransactionId, user_id: user.id, produto_id: v.produto.produtoId, ambiente: tx.environment,
@@ -255,6 +275,10 @@ async function verificar(request, env, ver, ligado) {
 
 // ─── POST /apple/notificacoes (App Store Server Notifications v2) ──
 async function notificacoes(request, env, ver) {
+  // Teto por IP ANTES de parsear/verificar (rota pública). NÃO é fail-closed: 429 só faz a Apple reenviar e limitador fora
+  // não pode derrubar o canal de dinheiro (mesmo critério do webhook do AbacatePay).
+  const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+  if (env?.ABACATEHOOK_RL && !deixaPassar(await checarLimite(env.ABACATEHOOK_RL, `applehook:${ip}`), { sensivel: false })) return json({ erro: 'muitas_requisicoes' }, 429);
   const teto = cabeNoTeto(request, TETO_NOTIFICACAO_BYTES);
   if (!teto.ok) return json({ erro: 'payload_grande' }, 413);
   const bruto = await request.text();
@@ -267,7 +291,7 @@ async function notificacoes(request, env, ver) {
   }
   let n;
   try {
-    n = await ver(signedPayload);
+    n = await ver(signedPayload, { maxIdadeMs: IDADE_MAX_NOTIFICACAO_MS });
   } catch (e) {
     if (e instanceof AppleJwsErro) return json({ erro: 'jws_invalido', motivo: e.codigo }, 400);
     capturarExcecao(e, { origem: 'apple_notificacao' });
@@ -287,8 +311,9 @@ async function notificacoes(request, env, ver) {
     let tx;
     let renovacao = null;
     try {
-      tx = await ver(n.data?.signedTransactionInfo);
-      if (n.data?.signedRenewalInfo) renovacao = await ver(n.data.signedRenewalInfo).catch(() => null);
+      tx = await ver(n.data?.signedTransactionInfo, { maxIdadeMs: IDADE_MAX_NOTIFICACAO_MS });
+      if (n.data?.signedRenewalInfo) renovacao = await ver(n.data.signedRenewalInfo, { maxIdadeMs: IDADE_MAX_NOTIFICACAO_MS }).catch(() => null);
+      if (renovacao && renovacao.originalTransactionId !== tx.originalTransactionId) renovacao = null; // renovação de OUTRA assinatura não vale aqui
     } catch (e) {
       if (e instanceof AppleJwsErro) {
         await marcarEvento(env, { origem: 'apple_notif', eventId: uuid, status: 'processado', erro: `jws_interno_${e.codigo}` });
@@ -303,9 +328,21 @@ async function notificacoes(request, env, ver) {
     }
     const compra = await lerCompra(env, tx.originalTransactionId);
     if (compra?.erro) throw new Error('leitura_compra');
-    const userId = compra?.user_id ?? null;
+    let userId = compra?.user_id ?? null;
     if (!userId) {
-      // Notificação antes do /verificar: guarda, não libera. Quem chama /verificar logo depois resolve.
+      // Notificação ANTES do /verificar. Não libera plano, mas se for REFUND/REVOKE/EXPIRED deixa uma LÁPIDE na compra
+      // (user_id = appAccountToken; se esse usuário não existir a FK recusa e nada é gravado), que o /verificar respeita.
+      const dono = donoDaTransacao(tx);
+      const fim = ['REFUND', 'REVOKE', 'EXPIRED', 'GRACE_PERIOD_EXPIRED'].includes(n.notificationType) || Number.isFinite(tx.revocationDate);
+      if (dono && fim) {
+        const lapide = await gravarCompra(env, {
+          original_transaction_id: tx.originalTransactionId, user_id: dono, produto_id: v.produto.produtoId, ambiente: tx.environment,
+          estado: 'encerrada', expiry: Number.isFinite(tx.expiresDate) ? new Date(tx.expiresDate).toISOString() : null,
+          evento_em: new Date(Number.isFinite(tx.signedDate) ? tx.signedDate : Date.now()).toISOString(),
+        });
+        await marcarEvento(env, { origem: 'apple_notif', eventId: uuid, status: 'processado', erro: lapide ? 'lapide_gravada' : 'compra_ainda_nao_registrada' });
+        return json({ ok: true, acao: 'registrar', motivo: lapide ? 'lapide_gravada' : 'compra_ainda_nao_registrada' });
+      }
       await marcarEvento(env, { origem: 'apple_notif', eventId: uuid, status: 'processado', erro: 'compra_ainda_nao_registrada' });
       return json({ ok: true, acao: 'registrar', motivo: 'compra_ainda_nao_registrada' });
     }
@@ -333,7 +370,7 @@ async function notificacoes(request, env, ver) {
 /** `opcoes.verificarJws`/`opcoes.ligado` só existem para o TESTE (cadeia de mentira, kill switch aberto); produção chama com 3 argumentos. */
 export async function handleApple(request, env, url, opcoes = {}) {
   const p = url.pathname;
-  const ver = opcoes.verificarJws ?? ((jws) => verificarJwsApple(jws));
+  const ver = opcoes.verificarJws ?? ((jws, o) => verificarJwsApple(jws, o));
   const ligado = opcoes.ligado ?? appleLigado(env);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (p === '/apple/config' && request.method === 'GET') return config(ligado);

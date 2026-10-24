@@ -43,7 +43,8 @@ const assinar = (payload) => {
   const p = b64u(JSON.stringify(payload));
   return `${h}.${p}.${b64u(sign('sha256', Buffer.from(`${h}.${p}`), { key: leafKey, dsaEncoding: 'ieee-p1363' }))}`;
 };
-const verificarTeste = (jws) => verificarJwsApple(jws, { raizes: [raizSha] });
+let relogioExtra = 0;
+const verificarTeste = (jws, o = {}) => verificarJwsApple(jws, { ...o, raizes: [raizSha], agora: Date.now() + relogioExtra });
 
 // ── Supabase falso ──
 const USER = '11111111-2222-4333-8444-555555555555';
@@ -221,6 +222,58 @@ const vinc = await vinculoApple('2000000111111111');
   assert.equal(Date.parse(db.assinaturas[OUTRO2].current_period_end), agora + 90 * DIA, 'mantém a MAIOR vigência');
   globalThis.fetch = antigoFetch;
   caso('convivência: Apple Pro sobre Empresa vigente de outra origem não rebaixa nem encurta');
+}
+// 8b. LÁPIDE: REFUND antes do /verificar não deixa um JWS velho reabrir o acesso
+{
+  const U3 = '55555555-2222-4333-8444-555555555555';
+  const antigoFetch = globalThis.fetch;
+  globalThis.fetch = async (u, i) => (String(u).endsWith('/auth/v1/user') && String(i?.headers?.Authorization).includes('jwt-u3') ? resp({ id: U3 }) : antigoFetch(u, i));
+  const base = tx({ originalTransactionId: '2000000555555555', appAccountToken: U3, signedDate: agora - 20_000 });
+  const estorno = { ...base, signedDate: agora + 5000, revocationDate: agora + 4000 };
+  const n1 = await chamar('POST', '/apple/notificacoes', { corpo: notif('REFUND', estorno, { signedDate: agora + 5000 }) });
+  assert.equal(n1.corpo.motivo, 'lapide_gravada');
+  assert.equal(db.compras['2000000555555555'].estado, 'encerrada');
+  const v = await chamar('POST', '/apple/verificar', { jwt: 'jwt-u3', corpo: { signedTransaction: assinar(base) } });
+  assert.equal(v.corpo.estado, 'encerrada');
+  assert.equal(v.corpo.motivo, 'compra_ja_encerrada');
+  assert.equal(db.assinaturas[U3], undefined, 'JWS pré-reembolso NÃO concede');
+  globalThis.fetch = antigoFetch;
+  caso('lápide: REFUND que chega antes do /verificar impede o JWS pré-reembolso de conceder acesso');
+}
+// 8c. REFUND da Apple não corta período pago por OUTRA origem (Stripe/Pix/Play)
+{
+  const U4 = '44444444-2222-4333-8444-555555555555';
+  db.assinaturas[U4] = { user_id: U4, plano: 'empresa', status: 'active', current_period_end: new Date(agora + 90 * DIA).toISOString(), revenuecat_transacao_id: null };
+  const antigoFetch = globalThis.fetch;
+  globalThis.fetch = async (u, i) => (String(u).endsWith('/auth/v1/user') && String(i?.headers?.Authorization).includes('jwt-u4') ? resp({ id: U4 }) : antigoFetch(u, i));
+  const t0 = tx({ originalTransactionId: '2000000666666666', appAccountToken: U4, expiresDate: agora + 20 * DIA, signedDate: agora });
+  await chamar('POST', '/apple/verificar', { jwt: 'jwt-u4', corpo: { signedTransaction: assinar(t0) } });
+  assert.equal(Date.parse(db.assinaturas[U4].current_period_end), agora + 90 * DIA, 'mesclou o maior');
+  const r = await chamar('POST', '/apple/notificacoes', { corpo: notif('REFUND', { ...t0, signedDate: agora + 3000, revocationDate: agora + 2500 }, { signedDate: agora + 3000 }) });
+  assert.equal(r.corpo.motivo, 'sustentada_por_outra_origem');
+  assert.equal(db.assinaturas[U4].status, 'active', 'status NÃO vira canceled');
+  assert.equal(Date.parse(db.assinaturas[U4].current_period_end), agora + 90 * DIA, 'período pago por fora preservado');
+  globalThis.fetch = antigoFetch;
+  caso('REFUND da Apple sobre plano sustentado por outra origem: só atualiza campos da Apple, não corta o período pago por fora');
+}
+// 8d. janela de idade do signedDate e certificado malformado
+{
+  relogioExtra = 40 * DIA;
+  const r = await chamar('POST', '/apple/verificar', { jwt: 'jwt-user', corpo: { signedTransaction: assinar(tx({ originalTransactionId: '2000000777777777' })) } });
+  assert.equal(r.status, 400);
+  assert.equal(r.corpo.motivo, 'assinatura_antiga');
+  const rn = await chamar('POST', '/apple/notificacoes', { corpo: notif('DID_RENEW', tx({ originalTransactionId: '2000000777777777' })) });
+  assert.equal(rn.status, 400, 'notificação com 40 dias de idade também é recusada (janela 14 d)');
+  relogioExtra = 0;
+  caso('signedDate velho demais (7 d em /verificar, 14 d em notificações): recusado — fecha replay de JWS antigo');
+  // DER malformado no x5c (com a raiz certa): 400 limpo, nunca TypeError/503/Sentry
+  const h = b64u(JSON.stringify({ alg: 'ES256', x5c: [Buffer.from('lixo').toString('base64'), Buffer.from('lixo2').toString('base64'), x5c[2]] }));
+  const p = b64u(JSON.stringify({ signedDate: agora }));
+  const forjado = `${h}.${p}.${b64u(Buffer.alloc(64, 7))}`;
+  const rf = await chamar('POST', '/apple/notificacoes', { corpo: { signedPayload: forjado } });
+  assert.equal(rf.status, 400);
+  assert.equal(rf.corpo.motivo, 'der_invalido');
+  caso('certificado DER malformado: 400 der_invalido (nunca TypeError/503)');
 }
 // 9. falha de gravação = 500 (reenvio), nunca 200 mentiroso
 {
