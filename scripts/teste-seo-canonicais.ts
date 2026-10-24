@@ -55,13 +55,13 @@ caso('as variantes de anúncio ficam fora do sitemap, sem enfraquecer o filtro d
   assert.match(config, /VARIANTES_DE_ANUNCIO = \['\/eletricista\/', '\/refrigeracao\/'\]/);
   assert.match(config, /VARIANTES_DE_ANUNCIO\.includes\(caminho\)\) return false/);
   assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'(, '\/servicos\/')?\]/);
-  // /servicos/: enquanto os preços não forem aprovados a página é noindex e SAI do sitemap;
-  // publicada (PRECOS_APROVADOS = true) ENTRA no sitemap. O teste acompanha a flag nos dois sentidos.
+  // /servicos/: enquanto a página não for publicada (portão LEGAL + QA + ordem do Igor) a página é noindex e SAI do sitemap;
+  // publicada (PAGINA_PUBLICADA = true) ENTRA no sitemap. O teste acompanha a flag nos dois sentidos.
   const servicos = ler('web/src/data/servicos.ts');
   const lista = config.match(/\['\/admin\/'[^\]]*\]/)?.[0] ?? '';
-  if (/PRECOS_APROVADOS = false/.test(servicos)) assert.ok(lista.includes("'/servicos/'"), '/servicos/ noindex precisa sair do sitemap');
-  else if (/PRECOS_APROVADOS = true/.test(servicos)) assert.ok(!lista.includes("'/servicos/'"), '/servicos/ publicada precisa entrar no sitemap');
-  else assert.fail('PRECOS_APROVADOS não encontrado em servicos.ts: o teste não sabe o estado da página');
+  if (/PAGINA_PUBLICADA = false/.test(servicos)) assert.ok(lista.includes("'/servicos/'"), '/servicos/ noindex precisa sair do sitemap');
+  else if (/PAGINA_PUBLICADA = true/.test(servicos)) assert.ok(!lista.includes("'/servicos/'"), '/servicos/ publicada precisa entrar no sitemap');
+  else assert.fail('PAGINA_PUBLICADA não encontrado em servicos.ts: o teste não sabe o estado da página');
 });
 
 caso('lastmod das páginas fixas: datas válidas (AAAA-MM-DD), nenhuma no futuro, /para/* coberto', () => {
