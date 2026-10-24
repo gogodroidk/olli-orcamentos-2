@@ -53,10 +53,11 @@ export function direcaoDaTroca(de: Passo, para: Passo): 1 | -1 {
 /**
  * Onde o editor abre. Criando com o cliente JÁ ligado ao cadastro (veio do CRM,
  * da página do cliente) o passo "Cliente" não tem o que fazer: abre em Itens. Na
- * edição e no resto, abre no começo.
+ * edição e no resto, abre no começo. O orçamento de exemplo (ativação) também
+ * abre em Itens, já com os itens: o nome do cliente é pedido só no Revisar.
  */
-export function passoInicial(opcoes: { edicao: boolean; clienteLigado: boolean }): Passo {
-  return !opcoes.edicao && opcoes.clienteLigado ? 'itens' : 'cliente';
+export function passoInicial(opcoes: { edicao: boolean; clienteLigado: boolean; exemplo?: boolean }): Passo {
+  return !opcoes.edicao && (opcoes.clienteLigado || opcoes.exemplo) ? 'itens' : 'cliente';
 }
 
 /** Rótulo do botão principal — diz o que acontece ao tocar, não "Avançar". */
@@ -82,6 +83,7 @@ export function motivoBloqueio(
     return orc.clienteNome.trim() ? null : 'Escolha ou digite o cliente para continuar.';
   }
   if (passo === 'itens' || passo === 'revisar') {
+    if (passo === 'revisar' && !orc.clienteNome.trim()) return 'Digite para quem é o orçamento.';
     if (orc.itens.length === 0) return 'Adicione pelo menos 1 item.';
     const semValor = orc.itens.filter(i => i.preco <= 0 && !itensZeroConfirmados.has(i.id));
     if (semValor.length > 0) {
