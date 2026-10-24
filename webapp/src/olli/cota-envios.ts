@@ -32,6 +32,18 @@ export async function reservarEnvioOrcamento(
 	}
 }
 
+/**
+ * P0-09: texto da recusa do limite do Grátis em conta nova (única recusa do contrato).
+ * Mesmo texto do app (VisualizarOrcamentoScreen): sem a palavra "bloqueado", orçamento salvo.
+ */
+export function avisoLimiteEnvios(reserva: ReservaEnvioOrcamento): { titulo: string; mensagem: string } {
+  const teto = reserva.limiteEnvios ?? 5;
+  return {
+    titulo: "Limite do mês atingido",
+    mensagem: `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, veja os planos.`,
+  };
+}
+
 export async function obterEstadoOfertaComercial(): Promise<EstadoOfertaComercial | null> {
 	try {
 		const { data, error } = await supabase.rpc("meu_estado_oferta_comercial");
