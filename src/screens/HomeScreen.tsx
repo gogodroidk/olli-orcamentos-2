@@ -97,6 +97,8 @@ import { usePermissao } from '../hooks/usePermissao';
 import { useSyncInicial } from '../hooks/useSyncInicial';
 import { useVerticais } from '../hooks/useVerticais';
 import { useLembreteAssinatura } from '../hooks/useLembreteAssinatura';
+import { useContadorEnvios } from '../hooks/useContadorEnvios';
+import { ContadorEnvios } from '../components/ContadorEnvios';
 import { track, Eventos } from '../services/analytics';
 import { useCadastroNegocio } from '../components/AvisoCompletarNegocio';
 
@@ -189,6 +191,8 @@ export default function HomeScreen() {
   const styles = useEstilos(criarEstilos);
   // Lembrete de assinatura (regra única em services/lembreteAssinatura.ts); relê a cada foco.
   const lembreteAssinatura = useLembreteAssinatura();
+  // P0-09: "X de 5 envios" só em conta nova do Grátis, a partir do 3º envio (3 estados no hook).
+  const contadorEnviosHome = useContadorEnvios();
 
   /**
    * Cores do hero, derivadas do fundo EFETIVO (véu achatado sobre `background`).
@@ -712,6 +716,13 @@ export default function HomeScreen() {
           iniciandoTrial={lembreteAssinatura.iniciandoTrial}
           style={styles.lembreteAssinatura}
         />
+
+        {/* CONTADOR DE ENVIOS DO GRÁTIS — só conta nova, só depois do 3º envio; sem contador não ocupa espaço. */}
+        {contadorEnviosHome.estado === 'pronto' && contadorEnviosHome.contador.mostrar ? (
+          <View style={styles.lembreteAssinatura}>
+            <ContadorEnvios estado={contadorEnviosHome} />
+          </View>
+        ) : null}
 
         {/* CRÉDITO DE TROCA — só o AVISO (em análise / decidido há pouco), só para o
             dono; sem pedido não ocupa espaço. O cartão fixo mora em Planos e Conta. */}
