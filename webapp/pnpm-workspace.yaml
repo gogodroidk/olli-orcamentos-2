@@ -1,6 +1,5 @@
 allowBuilds:
   esbuild: true
-  lefthook: true
   msw: true
 overrides:
   browserslist: 4.28.7
@@ -20,5 +19,4 @@ overrides:
 
 onlyBuiltDependencies:
   - esbuild
-  - lefthook
   - msw
