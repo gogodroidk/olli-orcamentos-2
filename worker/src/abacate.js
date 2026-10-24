@@ -62,6 +62,8 @@ import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
 const ORIGEM_CONSUMO = 'abacate';
+/** P0-08: fila do lembrete "Pix vence em 3 h" (reuso de webhook_events, sem tabela nova): 'recebido' = lembrete pendente. */
+export const ORIGEM_PIX_COBRANCA = 'pix_cobranca';
 /**
  * Origem da TRILHA do webhook em `webhook_events` (uma linha por evento `log_…`),
  * como o Play RTDN faz com 'play_rtdn'. Separada do consumo ('abacate', uma linha
@@ -367,6 +369,20 @@ async function criarPixPlano(request, env) {
     // Só plano e o que veio (nada de segredo, brCode ou dado do usuário).
     console.error('[olli-abacate] criar Pix falhou —', JSON.stringify({ plano: plano.id, expiresIn: PIX_EXPIRA_S, resposta: data ? 'sem_brCode' : 'nula' }));
     return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  }
+
+  // P0-08: grava a cobrança para o lembrete de 3 h antes do vencimento. Falha aqui NUNCA derruba a venda
+  // (o cliente já tem o QR): só perde o lembrete e deixa rastro no log (sem brCode nem dado pessoal).
+  try {
+    const gravou = await reivindicarEvento(env, {
+      origem: ORIGEM_PIX_COBRANCA,
+      eventId: data.id,
+      tipo: 'plano_pix_criada',
+      payload: { user_id: user.id, plano: plano.id, expires_at: data.expiresAt || null },
+    });
+    if (!gravou.ok) console.error('[olli-abacate] cobrança não gravada para o lembrete — segue a venda');
+  } catch (e) {
+    console.error('[olli-abacate] gravar cobrança para o lembrete falhou —', e && (e.message || e));
   }
 
   return json({
