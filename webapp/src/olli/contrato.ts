@@ -166,7 +166,7 @@ function orcamentoToRow(o: Orcamento): Record<string, unknown> {
 	return {
 		id: o.id,
 		numero: o.numero,
-		cliente_id: o.clienteId ?? null,
+		cliente_id: o.clienteId || null,
 		cliente_nome: o.clienteNome ?? null,
 		status: o.status,
 		subtotal: o.subtotal ?? null,
@@ -186,7 +186,7 @@ function reciboToRow(r: Recibo): Record<string, unknown> {
 		id: r.id,
 		numero: r.numero,
 		orcamento_id: r.orcamentoId ?? null,
-		cliente_id: r.clienteId ?? null,
+		cliente_id: r.clienteId || null,
 		cliente_nome: r.clienteNome ?? null,
 		valor_recebido: r.valorRecebido ?? null,
 		forma_pagamento: r.formaPagamento ?? null,
@@ -209,7 +209,7 @@ function reciboToRow(r: Recibo): Record<string, unknown> {
 function agendamentoToRow(a: Agendamento): Record<string, unknown> {
 	return {
 		id: a.id,
-		cliente_id: a.clienteId ?? null,
+		cliente_id: a.clienteId || null,
 		cliente_nome: a.clienteNome,
 		titulo: a.titulo,
 		tipo: a.tipo,
@@ -243,7 +243,7 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
 		id: o.id,
 		numero: o.numero ?? null,
 		orcamento_id: o.orcamentoId ?? null,
-		cliente_id: o.clienteId ?? null,
+		cliente_id: o.clienteId || null,
 		cliente_nome: o.clienteNome ?? null,
 		titulo: o.titulo ?? null,
 		descricao: o.descricao ?? null,
@@ -265,7 +265,7 @@ function ordemServicoToRow(o: OrdemServico): Record<string, unknown> {
 function equipamentoToRow(e: Equipamento): Record<string, unknown> {
 	const row: Record<string, unknown> = {
 		id: e.id,
-		cliente_id: e.clienteId ?? null,
+		cliente_id: e.clienteId || null,
 		local_id: e.localId ?? null,
 		codigo_interno: e.codigoInterno ?? null,
 		patrimonio: e.patrimonio ?? null,
