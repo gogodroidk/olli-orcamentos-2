@@ -3,7 +3,7 @@
  *
  *     node scripts/teste-email-lembretes-template.js   (de dentro de worker/)
  *
- * Protege: CTA certo por tipo (/planos?renovar=pix), link de descadastro no HTML
+ * Protege: CTA certo por tipo (/planos), link de descadastro no HTML
  * e no texto, sem PII, sem urgência inventada, HTML acessível e falha fechada em
  * dado estranho. Desde 01/10/2026 (Grátis ilimitado) os e-mails de cota não
  * existem: um pedido antigo desses na fila falha com `tipo_descontinuado`.
@@ -87,7 +87,7 @@ caso('Grátis ilimitado: e-mail de cota (pedido antigo na fila) é recusado, nun
   assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_quase', limite: 5, usados: 3, restantes: 2 } })), 'tipo_descontinuado');
   assert.equal(erro(() => renderizarEmailLembrete({ ...BASE, dados: { tipo: 'cota_esgotada', limite: 5, usados: 5, restantes: 0 } })), 'tipo_descontinuado');
 });
-caso('renovar_pix: data em Brasília e CTA /planos?renovar=pix', () => {
+caso('renovar_pix: data em Brasília e CTA /planos', () => {
   const venceEm = '2026-10-02T02:00:00.000Z'; // 01/10 23h em Brasília
   const email = renderizarEmailLembrete({
     ...BASE,
@@ -95,7 +95,7 @@ caso('renovar_pix: data em Brasília e CTA /planos?renovar=pix', () => {
   });
   comum(email);
   assert.equal(email.subject, 'Seu plano Pro vence em 01/10 (quinta)');
-  assert.ok(email.text.includes('Renovar com Pix: https://app.olliorcamentos.online/planos?renovar=pix'));
+  assert.ok(email.text.includes('Renovar com Pix: https://app.olliorcamentos.online/planos'));
   assert.ok(email.text.includes('O Pix não renova sozinho.'));
 });
 caso('plano_vencido: Empresa, dados salvos, renovar com Pix', () => {
@@ -107,7 +107,7 @@ caso('plano_vencido: Empresa, dados salvos, renovar com Pix', () => {
   comum(email);
   assert.equal(email.subject, 'Seu plano Empresa venceu — seus dados continuam salvos');
   assert.ok(email.text.includes('venceu em 28/09 (segunda)'));
-  assert.ok(email.html.includes('/planos?renovar=pix'));
+  assert.ok(email.html.includes('/planos'));
 });
 caso('data curta em Brasília atravessa a meia-noite UTC', () => {
   assert.equal(dataCurtaBrasilia('2026-10-01T01:30:00.000Z'), '30/09 (quarta)');

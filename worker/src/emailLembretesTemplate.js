@@ -147,7 +147,7 @@ function conteudoAtivacao(dados, appUrl) {
 function conteudoAssinatura(dados, appUrl) {
   exigir(objeto(dados) && typeof dados.tipo === 'string', 'dados_invalidos');
   const motivo = 'Você recebe este aviso porque tem uma conta na OLLI Orçamentos.';
-  const renovar = { rotulo: 'Renovar com Pix', href: urlCom(appUrl, '/planos', { renovar: 'pix' }) };
+  const renovar = { rotulo: 'Renovar com Pix', href: urlCom(appUrl, '/planos') };
 
   // Grátis ILIMITADO desde 01/10/2026: os avisos de cota (cota_quase/cota_esgotada)
   // não existem mais. Um pedido desses que ainda esteja na fila (enfileirado antes

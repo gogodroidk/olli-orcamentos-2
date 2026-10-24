@@ -52,7 +52,7 @@ aplicou o patch AQUI, na worktree `C:\OLLI_REL`, por cima das suas alterações 
 - A regra fica em `src/services/lembreteAssinatura.ts` e é pura (sem estado nem chamadas externas). O app usa direto, o painel usa pelo alias `@lembreteAssinatura`.
   As adaptações por loja estão em `src/services/lembreteAssinaturaLoja.ts`.
 - A faixa aparece no Início do app (celular e desktop) e no Início e em Planos do painel.
-  - `/planos?renovar=pix` abre o Pix de renovação.
+  - `/planos` (o app ainda não lê `?renovar=pix`; o e-mail não envia o parâmetro).
 - Os testes `teste-lembrete-assinatura` (25) e `teste-lembrete-assinatura-loja` (88) estão no `npm test`.
 - Aplicado em `C:\OLLI_REL`: o Codex não tinha mudado nada desde a foto 239633b. Backup em `backup-OLLI_REL-antes-lembretes/`, patch em `lembretes.patch`.
   Painel publicado no deploy 921d88b5. O worker não mudou nesta rodada.
