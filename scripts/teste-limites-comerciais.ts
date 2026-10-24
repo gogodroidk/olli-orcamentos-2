@@ -56,16 +56,33 @@ for (const usados of [6, 10, 50]) {
   assert.equal(r.usados, usados);
 }
 
-// Servidor ANTIGO (migration 20261002150000 ainda não aplicada) dizendo cota_esgotada:
-// a cota não existe mais no produto — o envio segue, só sem registro.
-const antigo = interpretarReservaEnvio({
-  permitido: false, plano_efetivo: 'gratis', usados: 5, restantes: 0, contabilizado_agora: false,
+// LIMITE DO GRÁTIS em conta nova (P0-09): cota_esgotada com permitido:false é a ÚNICA recusa.
+// O app respeita (a Visualizar para o ENVIO e mostra o aviso); orçamento segue salvo.
+const esgotada = interpretarReservaEnvio({
+  permitido: false, plano_efetivo: 'gratis', usados: 5, restantes: 0, limite_envios: 5, contabilizado_agora: false,
   trial_elegivel: true, motivo: 'cota_esgotada', requer_confirmacao: false, reserva_token: null,
 });
-assert.equal(antigo.permitido, true, 'cota_esgotada do servidor antigo não barra mais o envio');
-assert.equal(antigo.motivo, 'sem_registro');
-assert.equal(antigo.reservaToken, null, 'sem registro, sem token: não há o que confirmar');
-assert.equal(antigo.trialElegivel, false, 'falha de registro não inventa elegibilidade');
+assert.equal(esgotada.permitido, false, 'cota_esgotada recusa o envio');
+assert.equal(esgotada.motivo, 'cota_esgotada');
+assert.equal(esgotada.limiteEnvios, 5);
+assert.equal(esgotada.reservaToken, null);
+assert.equal(esgotada.requerConfirmacao, false);
+// Só vale com os DOIS sinais: permitido:true + motivo cota_esgotada, ou lixo, nunca recusa.
+assert.equal(interpretarReservaEnvio({ permitido: true, motivo: 'cota_esgotada' }).permitido, true, 'sinal contraditório não barra');
+assert.equal(interpretarReservaEnvio({ permitido: false, motivo: 'qualquer_outro' }).permitido, true, 'recusa desconhecida não barra (falha aberta)');
+assert.equal(interpretarReservaEnvio({ permitido: false }).permitido, true, 'recusa sem motivo não barra');
+assert.equal(interpretarReservaEnvio(null).permitido, true, 'resposta nula não barra');
+// A tela que envia trata a recusa (senão o servidor barra e o app ignora).
+const visualizar = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
+assert.match(visualizar, /if \(!reserva\.permitido\)/, 'autorizarEntrega precisa tratar permitido === false');
+// Painel web: os DOIS pontos de envio (PDF e WhatsApp) respeitam a recusa — o servidor barra e o painel não pode ignorar.
+const painelPdf = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
+const painelWhats = ler('../webapp/src/pages/olli/orcamentos/useEnviarWhatsApp.tsx');
+assert.match(painelPdf, /if \(!reserva\.permitido\)/, 'painel PDF trata permitido === false');
+assert.match(painelWhats, /if \(!reserva\.permitido\)/, 'painel WhatsApp trata permitido === false');
+assert.match(ler('../webapp/src/olli/cota-envios.ts'), /export function avisoLimiteEnvios/, 'painel tem o aviso do limite');
+assert.doesNotMatch(ler('../webapp/src/olli/cota-envios.ts').match(/avisoLimiteEnvios[\s\S]{0,400}/)?.[0] ?? '', /bloquead/i, 'aviso do painel sem a palavra bloqueado');
+assert.doesNotMatch(visualizar.match(/Limite do mês atingido[\s\S]{0,40}/)?.[0] ?? '', /bloquead/i, 'aviso sem a palavra bloqueado');
 
 const pago = interpretarReservaEnvio({
   permitido: true,
@@ -132,7 +149,7 @@ assert.equal(envioSemRegistro().permitido, true, 'o Grátis é ilimitado: falha 
 // O ramo de recusa ("Cota mensal utilizada") saiu do detalhe em 02/10/2026, e com
 // ele a copy de bloqueio: o tipo de `permitido` agora é o literal `true`.
 assert.equal('mensagemBloqueioEnvio' in limites, false, 'nenhuma copy de bloqueio de envio sobrou');
-assert.doesNotMatch(mobile, /cota_esgotada|Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/, 'o detalhe não tem mais ramo de cota');
+assert.doesNotMatch(mobile, /Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/, 'o detalhe não volta ao texto antigo de cota (a recusa nova é só o limite de conta nova)');
 
 assert.match(sql, /primary key \(tenant_id, periodo, orcamento_id\)/i, 'idempotência deve ser por tenant/mês/orçamento');
 assert.match(sql, /pg_advisory_xact_lock/i, 'a cota precisa de trava transacional');
