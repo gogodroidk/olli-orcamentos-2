@@ -887,9 +887,13 @@ export async function handleWebhook(request, env) {
         if (ok) {
           const okDb = await sincronizarSubscription(env, sub, sub.status || 'past_due');
           if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+        } else {
+          // Sem a subscription não dá para marcar past_due. 200 aqui viraria 'processado'
+          // (lápide: a Stripe não reenvia) e o cliente com cobrança falha ficaria 'ativo'.
+          // 500 + 'falhou' libera o reenvio (ver reivindicarEvento).
+          await marcarEvento(env, { origem: 'stripe', eventId: evento && evento.id, status: 'falhou', erro: 'stripeGet_subscription_falhou' });
+          return json({ erro: 'falha_stripe' }, 500);
         }
-        // Se não conseguimos buscar a subscription, não falhamos o webhook: a
-        // Stripe reenviará; e updated/deleted futuros corrigem o status.
       }
     }
     // Eventos não tratados: 200 (a Stripe só precisa saber que recebemos).
