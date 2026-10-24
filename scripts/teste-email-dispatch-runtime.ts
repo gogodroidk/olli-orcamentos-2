@@ -59,10 +59,10 @@ checar('lembretes ligados na produção (ou pausa documentada) e desligados no s
   (/"EMAIL_LEMBRETES_MODE"\s*:\s*"production(:[a-z,]+)?"/.test(varsProducao) || pausaDocumentada) && /"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsStaging));
 // Régua parcial (07/10/2026): com os lembretes ligados na produção, só o tipo "ativacao" pode estar
 // na lista e só para conta recente; assinatura/reengajamento ficam desligados até a data de religar.
-checar('produção: lembretes ligados só para "ativacao" e contas de até 7 dias (tipos restantes desligados)',
-  /"EMAIL_LEMBRETES_MODE"\s*:\s*"production:ativacao"/.test(varsProducao)
+checar('produção: régua completa (todos os tipos) desde 21/10/2026; ativação segue só p/ contas de até 7 dias',
+  /"EMAIL_LEMBRETES_MODE"\s*:\s*"production"/.test(varsProducao)
   && /"EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS"\s*:\s*"7"/.test(varsProducao)
-  && /RELIGAR[^\n]*13\/10\/2026/.test(varsProducao));
+  && /21\/10\/2026[^\n]*T-029/.test(varsProducao));
 checar('batch de produção é pequeno (3) e o de staging, um', /"WELCOME_BATCH_LIMIT"\s*:\s*"3"/.test(varsProducao) && /"WELCOME_BATCH_LIMIT"\s*:\s*"1"/.test(varsStaging));
 checar('URL de descadastro aponta para a rota do worker', /"EMAIL_DESCADASTRO_URL"\s*:\s*"https:\/\/diagnostico\.olliorcamentos\.online\/email\/descadastrar"/.test(varsProducao));
 checar('scheduled também roda a seleção de lembretes', /ctx\.waitUntil\(processarLembretesEmail\(env/.test(index));
