@@ -8,13 +8,18 @@
  * `corte = 'D+1 00:00 -03'` (Brasília, sem horário de verão desde 2019). Se não bater, NÃO publica.
  * Nunca executa SQL: só imprime e compara. Quem roda o UPDATE é o TECH, com ordem do Igor.
  */
+import { pathToFileURL } from 'node:url';
 import { CORTE_GRATIS_DATA } from '../src/services/planosBase.ts';
 
 const FUSO = 'America/Sao_Paulo';
 
 /** `AAAA-MM-DD HH:MM:SS` do instante no fuso de Brasília. `null` = valor que não é data. */
+/** Só aceita instante COM fuso (Z ou ±hh[:mm]); o timestamptz do Postgres sempre traz. Sem fuso a leitura dependeria do TZ da máquina. */
+const COM_FUSO = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s*(Z|[+-]\d{2}(:?\d{2})?)$/;
+
 export function emBrasilia(valor: string): string | null {
-  const ms = Date.parse(valor);
+  if (!COM_FUSO.test(String(valor).trim())) return null;
+  const ms = Date.parse(String(valor).trim().replace(' ', 'T').replace(/\s+/g, '').replace(/([+-]\d{2})$/, '$1:00'));
   if (!Number.isFinite(ms)) return null;
   const p = new Intl.DateTimeFormat('en-CA', {
     timeZone: FUSO, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
@@ -58,11 +63,16 @@ export function sqlDoCorte(constante: string | null): { atualizar: string; confe
   };
 }
 
-// CLI (não roda quando importado pelo teste)
-if (import.meta.url === `file://${process.argv[1]}`) {
+// CLI (não roda quando importado pelo teste). pathToFileURL: caminho com espaço/acento vem percent-encoded em import.meta.url.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const i = process.argv.indexOf('--corte');
   if (i >= 0) {
-    const r = corteConfere(process.argv[i + 1], CORTE_GRATIS_DATA);
+    const valor = process.argv[i + 1];
+    if (valor === undefined || valor.startsWith('--')) {
+      console.error('NÃO CONFERE — NÃO PUBLICAR: --corte sem valor');
+      process.exit(2);
+    }
+    const r = corteConfere(valor, CORTE_GRATIS_DATA);
     console.log(`${r.ok ? 'CONFERE' : 'NÃO CONFERE — NÃO PUBLICAR'}: ${r.motivo}`);
     process.exit(r.ok ? 0 : 1);
   }
