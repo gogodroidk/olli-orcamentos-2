@@ -176,12 +176,19 @@ export function tituloRecurso(recurso: Recurso): string {
  * LIMITE DO GRÁTIS EM CONTA NOVA (P0-09) — a ÚNICA constante de copy do corte.
  * `null` = corte DESLIGADO: o Grátis é ilimitado e o texto diz isso (verdade hoje).
  * Data ISO `AAAA-MM-DD` = dia em que o servidor passou a limitar contas criadas desde então
- * (`limite_gratis_config.corte`); a copy vira "até 5 por mês em contas novas". Ligar = trocar
+ * (`limite_gratis_config.corte`); a copy vira "até 5 envios por mês". Ligar = trocar
  * esta constante NO MESMO PR/dia do `update ... set corte = now()`, com ordem do Igor.
  * `scripts/teste-copy-corte-gratis.ts` trava a copy 'ilimitado' escrita à mão quando a data existe.
  */
 export const CORTE_GRATIS_DATA: string | null = null;
 export const LIMITE_ENVIOS_GRATIS_MES = 5;
+/**
+ * Dia (ISO) em que o limite passa a valer para as contas criadas ANTES do corte das novas (D+30,
+ * aviso dado em CORTE_GRATIS_PUBLICADO_EM = D). Ordem do Igor 24/10 + parecer LEGAL: 30 dias de
+ * aviso; conta antiga só é limitada depois de ver o aviso (`aviso_visto_em`, no banco). `null` = as antigas
+ * seguem sem limite. Tem que ser definida junto com CORTE_GRATIS_DATA (o teste trava).
+ */
+export const CORTE_ANTIGAS_DATA: string | null = null;
 /**
  * Dia (ISO) em que o texto novo dos Termos entra no ar; obrigatório quando `CORTE_GRATIS_DATA`
  * existe (o teste trava). Só serve para o "atualizado em" dos Termos.
@@ -201,7 +208,12 @@ export function diaExtenso(iso: string): string {
 export const PARAGRAFO_LIMITE_TERMOS: string | null =
   CORTE_GRATIS_DATA === null
     ? null
-    : `O plano gratuito permite enviar até ${LIMITE_ENVIOS_GRATIS_MES} (cinco) orçamentos por mês nas contas criadas a partir das 00h00 (horário de Brasília) de ${diaExtenso(CORTE_GRATIS_DATA)}. As contas criadas antes dessa data não têm esse limite. Se um dia o limite passar a valer também para contas anteriores, avisaremos com pelo menos 30 (trinta) dias de antecedência, no aplicativo e por e-mail. O limite conta orçamentos diferentes enviados no mês; reenviar o mesmo orçamento não conta de novo. Ao atingir o limite, você continua podendo criar e salvar orçamentos, recibos, clientes e ordens de serviço e consultar todo o seu histórico; para enviar mais orçamentos naquele mês, você pode contratar um plano pago. Nenhum dado é apagado por causa do limite.`;
+    : paragrafoLimiteTermos(CORTE_GRATIS_DATA, CORTE_ANTIGAS_DATA, CORTE_GRATIS_PUBLICADO_EM);
+
+function paragrafoLimiteTermos(novas: string, antigas: string | null, avisoEm: string | null): string {
+  if (antigas === null || avisoEm === null) throw new Error('CORTE_ANTIGAS_DATA e CORTE_GRATIS_PUBLICADO_EM são obrigatórias com CORTE_GRATIS_DATA');
+  return `O plano gratuito permite enviar até ${LIMITE_ENVIOS_GRATIS_MES} (cinco) orçamentos por mês. O limite vale para as contas criadas a partir das 00h00 (horário de Brasília) de ${diaExtenso(novas)} e, para as contas criadas antes dessa data, a partir das 00h00 (horário de Brasília) de ${diaExtenso(antigas)}, depois de aviso dado em ${diaExtenso(avisoEm)} no aplicativo e por e-mail. Conta anterior ainda não avisada passa a ter o limite só depois de ver o aviso. O limite conta orçamentos diferentes enviados no mês; reenviar o mesmo orçamento não conta de novo. Ao atingir o limite, você continua podendo criar e salvar orçamentos, recibos, clientes e ordens de serviço e consultar todo o seu histórico; para enviar mais orçamentos naquele mês, você pode contratar um plano pago. Os orçamentos já enviados continuam funcionando. Nenhum dado é apagado por causa do limite. Mudanças futuras nas condições do plano gratuito serão avisadas com pelo menos 30 (trinta) dias de antecedência, no aplicativo e por e-mail.`;
+}
 
 /** `AAAA-MM-DD` → `dd/mm/aaaa`, sem passar por `Date` (fuso não muda o dia). */
 function dataCorteBR(iso: string): string {
@@ -214,14 +226,14 @@ function dataCorteBR(iso: string): string {
 function fraseOrcamentosGratis(): string {
   if (CORTE_GRATIS_DATA === null) return 'orçamentos ilimitados (PDF, link e WhatsApp, sem cota mensal)';
   const d = dataCorteBR(CORTE_GRATIS_DATA);
-  return `orçamentos em PDF, link e WhatsApp (contas criadas a partir de ${d} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite)`;
+  return `orçamentos em PDF, link e WhatsApp (até ${LIMITE_ENVIOS_GRATIS_MES} enviados por mês: nas contas criadas a partir de ${d}${CORTE_ANTIGAS_DATA === null ? '' : `; nas criadas antes, a partir de ${dataCorteBR(CORTE_ANTIGAS_DATA)}`})`;
 }
 
 /** Orçamentos do Grátis em meia frase ("Grátis — {isto} e tudo do essencial"). */
 export const FRASE_GRATIS_CURTA: string =
   CORTE_GRATIS_DATA === null
     ? 'orçamentos ilimitados'
-    : `até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas (contas anteriores seguem sem limite)`;
+    : `até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês`;
 
 /** Linha de anúncio/landing de página de oficio: "Grátis ..." sem cartão. */
 export const GRATIS_LINHA_ANUNCIO: string =
@@ -231,7 +243,7 @@ export const GRATIS_LINHA_ANUNCIO: string =
 
 /** Célula "Orçamentos" do Grátis na tabela comparativa (Pro e Empresa seguem 'Ilimitados'). */
 export const CELULA_ORCAMENTOS_GRATIS: string =
-  CORTE_GRATIS_DATA === null ? 'Ilimitados' : `Até ${LIMITE_ENVIOS_GRATIS_MES} enviados/mês (contas novas)`;
+  CORTE_GRATIS_DATA === null ? 'Ilimitados' : `Até ${LIMITE_ENVIOS_GRATIS_MES} enviados/mês`;
 
 /** Pré-visualização do e-mail de última chamada de ativação (neutra para as duas coortes). */
 export const PREVIEW_EMAIL_GRATIS: string =
@@ -243,7 +255,7 @@ export const PREVIEW_EMAIL_GRATIS: string =
 export const RECURSOS_GRATIS: readonly string[] = [
   CORTE_GRATIS_DATA === null
     ? 'Orçamentos ilimitados: PDF, link e WhatsApp, sem cota mensal'
-    : `Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de ${dataCorteBR(CORTE_GRATIS_DATA)} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite`,
+    : `Orçamentos: PDF, link e WhatsApp, até ${LIMITE_ENVIOS_GRATIS_MES} enviados por mês (contas criadas a partir de ${dataCorteBR(CORTE_GRATIS_DATA)}${CORTE_ANTIGAS_DATA === null ? '' : `; contas anteriores, a partir de ${dataCorteBR(CORTE_ANTIGAS_DATA)}`})`,
   'Rascunhos, recibos, clientes e histórico sem limite',
   'Catálogo de serviços e produtos',
   'Clientes e agenda',

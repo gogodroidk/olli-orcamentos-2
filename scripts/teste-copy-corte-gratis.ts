@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   CELULA_ORCAMENTOS_GRATIS,
+  CORTE_ANTIGAS_DATA,
   CORTE_GRATIS_PUBLICADO_EM,
   PARAGRAFO_LIMITE_TERMOS,
   diaExtenso,
@@ -20,6 +21,7 @@ import {
   RECURSOS_GRATIS,
 } from '../src/services/planosBase.ts';
 
+function dataCorteBR(iso: string): string { const [a, m, d] = iso.split('-'); return `${d}/${m}/${a}`; }
 const ler = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const PROIBIDO = /orçamentos? ilimitados?|sem cota mensal|sem limite de orçamentos|não tem (prazo nem )?limite de orçamentos/i;
 
@@ -55,6 +57,7 @@ assert.match(termosFonte, /diaExtenso\(CORTE_GRATIS_PUBLICADO_EM\)/, 'data dos T
 if (CORTE_GRATIS_DATA === null) {
   assert.equal(PARAGRAFO_LIMITE_TERMOS, null, 'corte desligado: Termos sem o parágrafo do limite');
   assert.equal(CORTE_GRATIS_PUBLICADO_EM, null, 'corte desligado: sem data de publicação');
+  assert.equal(CORTE_ANTIGAS_DATA, null, 'corte desligado: antigas também sem data');
   // Estado de hoje: a fonte única continua dizendo a verdade de hoje (ilimitado), sem número de limite.
   assert.match(FRASE_GRATIS, /ilimitados/, 'corte desligado: Grátis ilimitado');
   assert.equal(CELULA_ORCAMENTOS_GRATIS, 'Ilimitados', 'corte desligado: tabela igual à de hoje');
@@ -65,9 +68,14 @@ if (CORTE_GRATIS_DATA === null) {
 } else {
   assert.match(CORTE_GRATIS_DATA, /^\d{4}-\d{2}-\d{2}$/, 'data do corte AAAA-MM-DD');
   assert.ok(CORTE_GRATIS_PUBLICADO_EM !== null && CORTE_GRATIS_PUBLICADO_EM < CORTE_GRATIS_DATA, 'publicação dos Termos definida e ANTES do corte');
+  assert.ok(CORTE_ANTIGAS_DATA !== null, 'com corte das novas, o das antigas também (ordem do Igor 24/10)');
+  const dias = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+  assert.ok(dias(CORTE_GRATIS_PUBLICADO_EM!, CORTE_ANTIGAS_DATA!) >= 30, 'aviso às antigas com pelo menos 30 dias (parecer LEGAL 24/10)');
+  assert.ok(!/seguem sem limite|sem limite/i.test([FRASE_GRATIS, RECURSOS_GRATIS[0], FRASE_GRATIS_CURTA, GRATIS_LINHA_ANUNCIO, CELULA_ORCAMENTOS_GRATIS].join(' ')), "nenhuma copy diz 'anteriores seguem sem limite'");
+  assert.match(PARAGRAFO_LIMITE_TERMOS ?? '', /depois de ver o aviso/, 'Termos: antiga só é limitada depois de ver o aviso');
   assert.ok(PARAGRAFO_LIMITE_TERMOS !== null);
   assert.ok(PARAGRAFO_LIMITE_TERMOS.includes(diaExtenso(CORTE_GRATIS_DATA)), 'parágrafo do limite com a data do corte por extenso');
-  assert.match(PARAGRAFO_LIMITE_TERMOS, /5 \(cinco\) orçamentos por mês/);
+  assert.match(PARAGRAFO_LIMITE_TERMOS!, /5 \(cinco\) orçamentos por mês/);
   const [a, m, d] = CORTE_GRATIS_DATA.split('-');
   const br = `${d}/${m}/${a}`;
   for (const t of [FRASE_GRATIS_CURTA, GRATIS_LINHA_ANUNCIO, CELULA_ORCAMENTOS_GRATIS, PREVIEW_EMAIL_GRATIS]) {
@@ -76,7 +84,7 @@ if (CORTE_GRATIS_DATA === null) {
   for (const t of [FRASE_GRATIS, RECURSOS_GRATIS[0]]) {
     assert.doesNotMatch(t, PROIBIDO, `fonte única sem 'ilimitado' após o corte: ${t}`);
     assert.ok(t.includes(br) && t.includes(`${LIMITE_ENVIOS_GRATIS_MES}`), `fonte única traz data e número: ${t}`);
-    assert.match(t, /anteriores seguem sem limite/, 'contas antigas: dito com honestidade');
+    assert.ok(t.includes(dataCorteBR(CORTE_ANTIGAS_DATA!)), 'copy traz a data das antigas');
   }
   for (const arq of ESCRITOS_A_MAO) {
     const achados = ler(arq).split('\n').map((l, i) => [i + 1, l] as const).filter(([, l]) => PROIBIDO.test(l));
