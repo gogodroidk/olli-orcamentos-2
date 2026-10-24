@@ -272,7 +272,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
 
       {/* NOVO CLIENTE */}
       {!selected && (
-        <TouchableOpacity style={styles.newBtn} onPress={() => setShowNew(true)} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.newBtn} onPress={() => { const digitado = query.trim(); if (digitado && !nc.nome) setNc(p => ({ ...p, nome: digitado })); setShowNew(true); }} activeOpacity={0.8}>
           <MaterialCommunityIcons name="account-plus" size={22} color={cores.primary} />
           <Text style={styles.newBtnLabel}>Cadastrar novo cliente</Text>
         </TouchableOpacity>

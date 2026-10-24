@@ -40,7 +40,7 @@ export async function registrarDocumentoWeb(input: {
     };
     const documento = {
       id, user_id: userId, criado_por: userId, tipo: input.tipo, status: input.status ?? "pronto",
-      titulo: input.titulo.trim(), cliente_id: input.orcamento.clienteId ?? null,
+      titulo: input.titulo.trim(), cliente_id: input.orcamento.clienteId || null,
       cliente_nome: input.orcamento.clienteNome ?? "", origem_tipo: "orcamento",
       origem_id: input.orcamento.id, origem_numero: input.orcamento.numero,
       versao_atual: 1, dados: input.dados, criado_em: agora, atualizado_em: agora,
@@ -101,7 +101,7 @@ export async function criarDocumentoManual(input: {
     tipo: input.tipo,
     status: "rascunho" as const,
     titulo,
-    cliente_id: input.clienteId ?? null,
+    cliente_id: input.clienteId || null,
     cliente_nome: (input.clienteNome ?? "").trim(),
     origem_tipo: "manual" as const,
     origem_id: null,

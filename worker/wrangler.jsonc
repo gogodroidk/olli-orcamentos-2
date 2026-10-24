@@ -69,14 +69,15 @@
     "AUTH_OTP_VALIDADE_MINUTOS": "10",
     // Lembretes por e-mail (ativação D+3/D+7, assinatura e reengajamento). Tetos conservadores:
     // 3 por rodada horária, 40 por dia no total.
-    // RÉGUA PARCIAL (07/10/2026, decisão do Maestro): desde 04/10 estava toda "off" por causa do
-    // teste do concierge com os sem-orçamento (a régua mandaria e-mail a 37 das 51 contas e
-    // contaminaria a medida). Agora o sufixo de EMAIL_LEMBRETES_MODE separa os tipos (o worker está em 64/64 variáveis, chave nova não cabe): LIGADO só "ativacao" e
-    // só para conta de até 7 dias (ATIVACAO_MAX_DIAS=7 — as antigas do concierge ficam de fora);
-    // "assinatura" e "reengajamento" (última chamada, parou, fim de teste) seguem DESLIGADOS.
-    // RELIGAR os demais (acrescentar na lista) até 13/10/2026: o aviso de fim de teste começa
-    // em 14/10. Boas-vindas e e-mails de login não passam por aqui.
-    "EMAIL_LEMBRETES_MODE": "production:ativacao",
+    // HISTÓRICO: desde 04/10 estava toda "off" por causa do teste do concierge com os sem-orçamento
+    // (a régua mandaria e-mail a 37 das 51 contas e contaminaria a medida). Em 07/10/2026 virou régua
+    // parcial ("production:ativacao", só ativação e só para conta de até 7 dias).
+    // ESTADO ATUAL: 21/10/2026 (T-029, atrasado 8 dias): teste do concierge encerrado -> MODE="production" = régua COMPLETA,
+    // LIGADOS todos os tipos: ativação, assinatura (renovação/cobrança: D-3, D0, D+1) e reengajamento (última chamada, parou, fim de teste).
+    // Ativação segue limitada a conta de até 7 dias (ATIVACAO_MAX_DIAS=7 — as antigas do concierge ficam de fora).
+    // O sufixo de EMAIL_LEMBRETES_MODE ("production:tipo1,tipo2") ainda restringe os tipos (worker em 64/64 variáveis, chave nova não cabe).
+    // Boas-vindas e e-mails de login não passam por aqui.
+    "EMAIL_LEMBRETES_MODE": "production",
     "EMAIL_LEMBRETES_MAX_POR_RODADA": "3",
     "EMAIL_LEMBRETES_TETO_DIARIO": "40",
     "EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS": "7",
