@@ -75,6 +75,13 @@ assert.equal(interpretarReservaEnvio(null).permitido, true, 'resposta nula não 
 // A tela que envia trata a recusa (senão o servidor barra e o app ignora).
 const visualizar = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
 assert.match(visualizar, /if \(!reserva\.permitido\)/, 'autorizarEntrega precisa tratar permitido === false');
+// Painel web: os DOIS pontos de envio (PDF e WhatsApp) respeitam a recusa — o servidor barra e o painel não pode ignorar.
+const painelPdf = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
+const painelWhats = ler('../webapp/src/pages/olli/orcamentos/useEnviarWhatsApp.tsx');
+assert.match(painelPdf, /if \(!reserva\.permitido\)/, 'painel PDF trata permitido === false');
+assert.match(painelWhats, /if \(!reserva\.permitido\)/, 'painel WhatsApp trata permitido === false');
+assert.match(ler('../webapp/src/olli/cota-envios.ts'), /export function avisoLimiteEnvios/, 'painel tem o aviso do limite');
+assert.doesNotMatch(ler('../webapp/src/olli/cota-envios.ts').match(/avisoLimiteEnvios[\s\S]{0,400}/)?.[0] ?? '', /bloquead/i, 'aviso do painel sem a palavra bloqueado');
 assert.doesNotMatch(visualizar.match(/Limite do mês atingido[\s\S]{0,40}/)?.[0] ?? '', /bloquead/i, 'aviso sem a palavra bloqueado');
 
 const pago = interpretarReservaEnvio({
