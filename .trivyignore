@@ -8,3 +8,5 @@ CVE-2026-93687 exp:2026-10-31
 CVE-2026-85393 exp:2026-10-31
 # http-cache-semantics@4.2.0 -> sem correção (web/package-lock.json)
 CVE-2026-93748 exp:2026-10-31
+# zod@3.x (package-lock.json raiz e webapp/pnpm-lock.yaml) -> CVE-2023-54404 (DoS por array sem limite): a correção só existe no zod 4 (major, quebra API); usado só para validar entrada própria. Reavaliar na migração p/ zod 4.
+CVE-2023-54404 exp:2026-10-31

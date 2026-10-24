@@ -24,9 +24,10 @@ import {
   TRIAL_PRO_DIAS,
   type Recurso,
 } from '../services/entitlements';
-import { FRASE_GRATIS, PLANOS_BASE as TABELA_PLANOS, ROTULO_RECURSO, frasePro, type BulletPlano } from '../services/planosBase';
+import { CELULA_ORCAMENTOS_GRATIS, FRASE_GRATIS, PLANOS_BASE as TABELA_PLANOS, ROTULO_RECURSO, frasePro, type BulletPlano } from '../services/planosBase';
 import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnvios';
-import type { EstadoOfertaComercial } from '../services/limitesComerciais';
+import { ContadorEnvios } from '../components/ContadorEnvios';
+import { contadorEnvios, type EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
   PRECO_PRO,
   PRECO_EMPRESA,
@@ -189,7 +190,7 @@ interface LinhaComparativo {
 
 /** Recursos base (não gateados): livres em todos os planos — a alma do Grátis. */
 const LINHAS_BASE: LinhaComparativo[] = [
-  { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: 'Ilimitados', pro: 'Ilimitados', empresa: 'Ilimitados' },
+  { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: CELULA_ORCAMENTOS_GRATIS, pro: 'Ilimitados', empresa: 'Ilimitados' },
   { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
   { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
   { rotulo: 'Diagnóstico por código de erro (offline)', gratis: true, pro: true, empresa: true },
@@ -809,6 +810,8 @@ export default function PlanosScreen() {
       <GradientHeader title="Planos OLLI" subtitle="Escolha como crescer" onBack={() => goBackOrHome(nav)} />
 
       <ScrollView contentContainerStyle={[styles.scroll, ehDesktop && styles.scrollDesktop]} showsVerticalScrollIndicator={false}>
+        {/* P0-09: "X de 5 envios" (conta nova do Grátis, a partir do 3º envio). `oferta` null = leitura falhou: sem contador, o servidor segue mandando. */}
+        <ContadorEnvios estado={oferta ? { estado: 'pronto', contador: contadorEnvios(oferta) } : { estado: 'indisponivel' }} />
         {planoErro ? (
           <View style={styles.cobrancaAviso}>
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />

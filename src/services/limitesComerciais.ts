@@ -44,8 +44,12 @@ export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'conve
 
 export interface EstadoOfertaComercial {
   planoEfetivo: PlanoId;
-  /** Orçamentos distintos enviados neste mês (informativo — não existe teto). */
+  /** Orçamentos distintos enviados neste mês (informativo; só vira teto se `limiteEnvios` vier). */
   enviosUsados: number;
+  /** Teto mensal (ex.: 5) SÓ em conta nova do Grátis com o corte ligado (P0-09); `null` = sem teto. */
+  limiteEnvios: number | null;
+  /** Quanto falta no mês (0 = esgotado); `null` quando não há teto. */
+  enviosRestantes: number | null;
   trialEstado: TrialEstado;
   trialTerminaEm: string | null;
   trialDias: number;
@@ -62,11 +66,13 @@ export interface InicioTrialPro {
 
 export interface ReservaEnvioOrcamento {
   /**
-   * Sempre `true` desde 01/10/2026: o Grátis é ilimitado e nenhum envio é barrado
-   * por cota. O tipo literal garante que nenhuma tela volte a ter um ramo de
-   * recusa (o último, o "Cota mensal utilizada" do detalhe, saiu em 02/10/2026).
+   * `true` quase sempre: o Grátis é ilimitado e falha de registro NUNCA barra o envio.
+   * A ÚNICA recusa é `cota_esgotada` com `permitido:false` vinda do servidor — conta
+   * nova do Grátis que já usou o limite do mês (P0-09; o servidor só devolve isso
+   * quando o corte está ligado em `limite_gratis_config`). Toda tela que envia
+   * precisa tratar `permitido === false` (hoje: `autorizarEntrega` na Visualizar).
    */
-  permitido: true;
+  permitido: boolean;
   planoEfetivo: PlanoId;
   /** Orçamentos distintos registrados neste mês (informativo). */
   usados: number;
@@ -81,10 +87,11 @@ export interface ReservaEnvioOrcamento {
    *   envio segue, só não conta para o teste automático nem para o funil;
    * - `ambiente_local`: sem Supabase configurado (desenvolvimento).
    *
-   * `cota_esgotada` de um servidor antigo nunca chega aqui: `interpretarReservaEnvio`
-   * o transforma em `sem_registro`.
+   * - `cota_esgotada`: recusa REAL (`permitido:false`) do limite do Grátis em conta nova.
    */
-  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local';
+  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local' | 'cota_esgotada';
+  /** Só quando recusado por limite: o teto do mês (ex.: 5). */
+  limiteEnvios: number | null;
 }
 
 function inteiroNaoNegativo(valor: unknown, fallback: number): number {
@@ -92,9 +99,10 @@ function inteiroNaoNegativo(valor: unknown, fallback: number): number {
 }
 
 /**
- * Lê `meu_estado_oferta_comercial`. Os campos de cota (`limite_envios`,
- * `envios_restantes`) são IGNORADOS de propósito: o servidor antigo ainda os manda
- * com o 5, o novo manda `null`, e nenhum dos dois pode reinventar uma cota no app.
+ * Lê `meu_estado_oferta_comercial`. `limite_envios`/`envios_restantes` só valem como
+ * número inteiro positivo/não negativo e só em plano Grátis; qualquer outra coisa vira
+ * `null` (= sem teto). O app NUNCA inventa teto: quem manda é o servidor (corte em
+ * `limite_gratis_config`), e conta antiga ou com o corte desligado recebe `null`.
  */
 export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial | null {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
@@ -108,9 +116,19 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
     ? v.trial_termina_em
     : null;
   if (v.trial_estado === 'active' && !terminaEm) return null;
+  // O teto só vale com o SINAL do servidor novo (`limite_conta_nova: true`): o servidor antigo mandava limite_envios=5
+  // para todo Grátis, sem limite real — mostrar 'X de 5' ali seria informação falsa.
+  const limite = plano === 'gratis' && v.limite_conta_nova === true && typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0
+    ? v.limite_envios
+    : null;
+  const restantes = limite !== null && typeof v.envios_restantes === 'number' && Number.isSafeInteger(v.envios_restantes) && v.envios_restantes >= 0
+    ? v.envios_restantes
+    : null;
   return {
     planoEfetivo: plano,
     enviosUsados: inteiroNaoNegativo(v.envios_usados, 0),
+    limiteEnvios: limite,
+    enviosRestantes: limite !== null ? restantes : null,
     trialEstado: v.trial_estado as TrialEstado,
     trialTerminaEm: terminaEm,
     trialDias: TRIAL_PRO_DIAS,
@@ -143,6 +161,16 @@ export function interpretarReservaEnvio(valor: unknown): ReservaEnvioOrcamento {
   const v = valor as Record<string, unknown>;
   const motivo = v.motivo;
   const motivos = new Set(['plano_pago', 'trial_ativo', 'dentro_da_cota']);
+  // Única recusa do contrato: limite do Grátis em conta nova (servidor com corte ligado).
+  if (v.permitido === false && motivo === 'cota_esgotada') {
+    return {
+      ...envioSemRegistro(),
+      permitido: false,
+      usados: inteiroNaoNegativo(v.usados, 0),
+      motivo: 'cota_esgotada',
+      limiteEnvios: typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0 ? v.limite_envios : null,
+    };
+  }
   if (v.permitido !== true || !motivos.has(motivo as string)) return envioSemRegistro();
 
   const plano: PlanoId = v.plano_efetivo === 'empresa' ? 'empresa' : v.plano_efetivo === 'pro' ? 'pro' : 'gratis';
@@ -160,6 +188,7 @@ export function interpretarReservaEnvio(valor: unknown): ReservaEnvioOrcamento {
     reservaToken,
     trialElegivel: v.trial_elegivel === true,
     motivo: motivo as 'plano_pago' | 'trial_ativo' | 'dentro_da_cota',
+    limiteEnvios: null,
   };
 }
 
@@ -174,9 +203,43 @@ export function envioSemRegistro(): ReservaEnvioOrcamento {
     reservaToken: null,
     trialElegivel: false,
     motivo: 'sem_registro',
+    limiteEnvios: null,
   };
 }
 
 export function reservaAmbienteLocal(): ReservaEnvioOrcamento {
   return { ...envioSemRegistro(), motivo: 'ambiente_local' };
+}
+
+// ─── Contador "X de 5" (P0-09) ───────────────────────────────────────────────
+
+/** O contador só aparece a partir do 3º envio do mês (antes disso é ruído). */
+export const CONTADOR_ENVIOS_A_PARTIR_DE = 3;
+
+export type ContadorEnvios =
+  | { mostrar: false }
+  | { mostrar: true; usados: number; limite: number; restantes: number; esgotado: boolean; texto: string };
+
+/**
+ * Regra PURA do contador: só conta nova do Grátis com teto (`limiteEnvios` do servidor), a
+ * partir do 3º envio. Conta antiga (limite nulo), Pro/Empresa e oferta que não carregou
+ * (`null`) não mostram nada — o servidor continua sendo quem barra o 6º envio.
+ */
+export function contadorEnvios(oferta: EstadoOfertaComercial | null): ContadorEnvios {
+  if (!oferta || oferta.planoEfetivo !== 'gratis' || oferta.limiteEnvios === null) return { mostrar: false };
+  const limite = oferta.limiteEnvios;
+  const usados = Math.min(oferta.enviosUsados, limite);
+  if (oferta.enviosUsados < CONTADOR_ENVIOS_A_PARTIR_DE) return { mostrar: false };
+  const restantes = oferta.enviosRestantes ?? Math.max(0, limite - oferta.enviosUsados);
+  const esgotado = restantes <= 0;
+  return {
+    mostrar: true,
+    usados,
+    limite,
+    restantes,
+    esgotado,
+    texto: esgotado
+      ? `Você usou os ${limite} envios do Grátis deste mês. Eles voltam no próximo mês.`
+      : `${usados} de ${limite} envios do Grátis usados neste mês.`,
+  };
 }

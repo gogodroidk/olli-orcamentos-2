@@ -163,7 +163,7 @@ function apkAntigoPermite(v: Record<string, unknown>): boolean {
   const lida = interpretarEstadoOferta(o);
   assert.ok(lida, 'o app novo aceita a oferta sem limite');
   assert.equal(lida.enviosUsados, 12);
-  assert.equal('limiteEnvios' in lida, false, 'o app novo não carrega mais a ideia de limite');
+  assert.equal(lida.limiteEnvios, null, 'sem teto: o app não inventa limite');
   caso('oferta: limite_envios e envios_restantes nulos, envios_usados informativo');
 }
 

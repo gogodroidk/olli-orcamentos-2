@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Gate pré-commit: segredo nos arquivos staged (gitleaks). Ligar: bash scripts/ligar-githooks.sh (core.hooksPath=.githooks; substitui .git/hooks, por isso também roda o sql-lint em aviso)
+# Falso-positivo triado vai em .gitleaksignore (nunca desligar a regra).
+# sqlfluff em aviso nas migrations do commit (nunca bloqueia) — o mesmo do scripts/instalar-hooks.sh
+bash scripts/sql-lint.sh --staged || true
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks não instalado — gate de segredo PULADO (o ci-local ainda varre o histórico)." >&2
+  exit 0
+fi
+exec gitleaks git --staged --redact --no-banner --log-level warn --gitleaks-ignore-path .gitleaksignore

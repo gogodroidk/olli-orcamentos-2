@@ -203,6 +203,16 @@ console.log('\n2. criar cobrança');
   const r = await chamar(envProd, 'POST', '/abacate/plano/pix', { jwt: 'jwt-user', corpo: { plano: 'pro_mensal' } });
   checar('cria e devolve o QR', [r.status, r.corpo?.id, r.corpo?.brCode], [200, 'pix_char_novo', '00020101PIX']);
   checar('valor em centavos vem do catálogo (R$ 39)', criadas[0]?.data?.amount, 3900);
+  // P0-08: a cobrança fica gravada (fila do lembrete de 3 h) sem brCode nem dado pessoal.
+  checar('grava a cobrança p/ o lembrete (pix_cobranca, id da cobrança, recebido)', [eventos['pix_cobranca|pix_char_novo']?.tipo, eventos['pix_cobranca|pix_char_novo']?.status], ['plano_pix_criada', 'recebido']);
+  checar('...payload só com user, plano e validade (sem brCode)', eventos['pix_cobranca|pix_char_novo']?.payload, { user_id: USER, plano: 'pro_mensal', expires_at: '2026-09-29T19:00:00Z' });
+  delete eventos['pix_cobranca|pix_char_novo'];
+  falhar.add('insert');
+  const semBanco = await chamar(envProd, 'POST', '/abacate/plano/pix', { jwt: 'jwt-user', corpo: { plano: 'pro_mensal' } });
+  falhar.delete('insert');
+  checar('banco fora ao gravar a cobrança NÃO derruba a venda (200 com QR)', [semBanco.status, semBanco.corpo?.brCode], [200, '00020101PIX']);
+  criadas.pop();
+
   checar('externalId vincula usuário e plano', /^olli:pl:user-pix-1:[0-9a-f-]{36}:pro_mensal$/.test(criadas[0]?.data?.metadata?.externalId), true);
   await chamar(envProd, 'POST', '/abacate/plano/pix', { jwt: 'jwt-user', corpo: { plano: 'pro_anual' } });
   checar('anual = R$ 374,40', criadas[1]?.data?.amount, 37440);

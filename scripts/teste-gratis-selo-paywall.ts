@@ -204,7 +204,7 @@ console.log('\n6) nenhuma ponta sobrou com a cota de 5');
     '../worker/src/emailLembretesTemplate.js',
     '../worker/src/emailLembretesPolicy.js',
   ];
-  const COTA = /ORCAMENTOS_ENVIADOS_GRATIS_MES|até \$\{[^}]+\} orçamentos|orçamentos enviados ou PDFs por mês|Falta 1 orçamento grátis|Faltam \$\{|usou os \$\{|cota_esgotada'\s*\?/;
+  const COTA = /ORCAMENTOS_ENVIADOS_GRATIS_MES|até \$\{[^}]+\} orçamentos|orçamentos enviados ou PDFs por mês|Falta 1 orçamento grátis|Faltam \$\{|usou os \$\{[^}]+\} orçamentos|cota_esgotada'\s*\?/;
   for (const a of arquivos) {
     checar(`${a.replace('../', '')} sem cota de orçamentos`, COTA.test(semComentarios(ler(a))), false);
   }
