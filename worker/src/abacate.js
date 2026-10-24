@@ -374,12 +374,13 @@ async function criarPixPlano(request, env) {
   // P0-08: grava a cobrança para o lembrete de 3 h antes do vencimento. Falha aqui NUNCA derruba a venda
   // (o cliente já tem o QR): só perde o lembrete e deixa rastro no log (sem brCode nem dado pessoal).
   try {
-    const gravou = await reivindicarEvento(env, {
+    // Teto de 2,5 s: Supabase lento não pode atrasar o QR do cliente (revisão independente, P2).
+    const gravou = await Promise.race([reivindicarEvento(env, {
       origem: ORIGEM_PIX_COBRANCA,
       eventId: data.id,
       tipo: 'plano_pix_criada',
       payload: { user_id: user.id, plano: plano.id, expires_at: data.expiresAt || null },
-    });
+    }), new Promise((r) => setTimeout(() => r({ ok: false }), 2500))]);
     if (!gravou.ok) console.error('[olli-abacate] cobrança não gravada para o lembrete — segue a venda');
   } catch (e) {
     console.error('[olli-abacate] gravar cobrança para o lembrete falhou —', e && (e.message || e));
