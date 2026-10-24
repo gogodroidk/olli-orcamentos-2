@@ -119,8 +119,54 @@ const ofertaGratisAntiga = interpretarEstadoOferta({
 });
 assert.ok(ofertaGratisAntiga, 'oferta do servidor antigo continua legível');
 assert.equal(ofertaGratisAntiga.enviosUsados, 7);
-assert.equal('limiteEnvios' in ofertaGratisAntiga, false, 'o limite 5 do servidor antigo é ignorado');
-assert.equal('enviosRestantes' in ofertaGratisAntiga, false);
+// P0-09: quando o servidor MANDA o teto (conta nova do Grátis com o corte ligado), o app o lê; o app nunca inventa teto.
+assert.equal(ofertaGratisAntiga.limiteEnvios, 5);
+assert.equal(ofertaGratisAntiga.enviosRestantes, 0);
+const semTeto = interpretarEstadoOferta({
+  plano_efetivo: 'gratis', limite_envios: null, envios_usados: 40, envios_restantes: null,
+  trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
+  requires_card: false, auto_renews: false, data_disposition: 'preserve',
+});
+assert.equal(semTeto?.limiteEnvios, null, 'conta antiga / corte desligado: sem teto');
+assert.equal(semTeto?.enviosRestantes, null);
+const teto = (extra: Record<string, unknown>) => interpretarEstadoOferta({
+  plano_efetivo: 'gratis', limite_envios: 5, envios_usados: 3, envios_restantes: 2,
+  trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
+  requires_card: false, auto_renews: false, data_disposition: 'preserve', ...extra,
+});
+assert.equal(teto({ limite_envios: 0 })?.limiteEnvios, null, 'teto 0 é lixo: sem teto');
+assert.equal(teto({ limite_envios: '5' })?.limiteEnvios, null, 'teto em texto é lixo: sem teto');
+assert.equal(teto({ plano_efetivo: 'pro' })?.limiteEnvios, null, 'Pro nunca tem teto');
+assert.equal(teto({ envios_restantes: -1 })?.enviosRestantes, null, 'restantes negativo é lixo');
+
+// Contador "X de 5": só conta nova do Grátis (teto do servidor), só a partir do 3º envio; nunca inventa.
+const { contadorEnvios, CONTADOR_ENVIOS_A_PARTIR_DE } = limites;
+assert.equal(CONTADOR_ENVIOS_A_PARTIR_DE, 3);
+assert.deepEqual(contadorEnvios(null), { mostrar: false }, 'oferta que não carregou: nada');
+assert.deepEqual(contadorEnvios(semTeto), { mostrar: false }, 'conta antiga (limite nulo): nada, mesmo com 40 envios');
+assert.deepEqual(contadorEnvios(teto({ envios_usados: 2, envios_restantes: 3 })), { mostrar: false }, 'antes do 3º envio: nada');
+assert.deepEqual(contadorEnvios(teto({ plano_efetivo: 'pro' })), { mostrar: false }, 'Pro: nada');
+const tres = contadorEnvios(teto({}));
+assert.equal(tres.mostrar, true);
+if (tres.mostrar) {
+  assert.equal(tres.texto, '3 de 5 envios do Grátis usados neste mês.');
+  assert.equal(tres.esgotado, false);
+  assert.equal(tres.restantes, 2);
+}
+const cinco = contadorEnvios(teto({ envios_usados: 5, envios_restantes: 0 }));
+assert.equal(cinco.mostrar && cinco.esgotado, true);
+assert.match(cinco.mostrar ? cinco.texto : '', /Você usou os 5 envios do Grátis deste mês\. Eles voltam no próximo mês\./);
+assert.doesNotMatch(cinco.mostrar ? cinco.texto : '', /bloquead/i, 'sem a palavra bloqueado');
+// Passou do teto por reserva/corrida: não mostra "7 de 5".
+const sete = contadorEnvios(teto({ envios_usados: 7, envios_restantes: 0 }));
+assert.equal(sete.mostrar && sete.usados, 5, 'usados é limitado ao teto');
+// As 3 telas ligam o contador pelo hook de 3 estados.
+for (const [nome, caminho] of [['Visualizar', '../src/screens/VisualizarOrcamentoScreen.tsx'], ['Home', '../src/screens/HomeScreen.tsx']] as const) {
+  assert.match(ler(caminho), /useContadorEnvios\(\)/, `${nome} usa o hook do contador`);
+  assert.match(ler(caminho), /<ContadorEnvios /, `${nome} desenha o contador`);
+}
+assert.match(ler('../src/screens/PlanosScreen.tsx'), /<ContadorEnvios estado=\{oferta \?/, 'Planos desenha o contador a partir da oferta');
+assert.match(ler('../src/hooks/useContadorEnvios.ts'), /estado: 'indisponivel'/, 'hook tem o estado indisponível (erro nunca vira vazio)');
 assert.equal(
   interpretarEstadoOferta({ ...ofertaAtiva, trial_estado: 'active' }),
   null,

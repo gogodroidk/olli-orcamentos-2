@@ -44,8 +44,12 @@ export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'conve
 
 export interface EstadoOfertaComercial {
   planoEfetivo: PlanoId;
-  /** Orçamentos distintos enviados neste mês (informativo — não existe teto). */
+  /** Orçamentos distintos enviados neste mês (informativo; só vira teto se `limiteEnvios` vier). */
   enviosUsados: number;
+  /** Teto mensal (ex.: 5) SÓ em conta nova do Grátis com o corte ligado (P0-09); `null` = sem teto. */
+  limiteEnvios: number | null;
+  /** Quanto falta no mês (0 = esgotado); `null` quando não há teto. */
+  enviosRestantes: number | null;
   trialEstado: TrialEstado;
   trialTerminaEm: string | null;
   trialDias: number;
@@ -95,9 +99,10 @@ function inteiroNaoNegativo(valor: unknown, fallback: number): number {
 }
 
 /**
- * Lê `meu_estado_oferta_comercial`. Os campos de cota (`limite_envios`,
- * `envios_restantes`) são IGNORADOS de propósito: o servidor antigo ainda os manda
- * com o 5, o novo manda `null`, e nenhum dos dois pode reinventar uma cota no app.
+ * Lê `meu_estado_oferta_comercial`. `limite_envios`/`envios_restantes` só valem como
+ * número inteiro positivo/não negativo e só em plano Grátis; qualquer outra coisa vira
+ * `null` (= sem teto). O app NUNCA inventa teto: quem manda é o servidor (corte em
+ * `limite_gratis_config`), e conta antiga ou com o corte desligado recebe `null`.
  */
 export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial | null {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
@@ -111,9 +116,17 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
     ? v.trial_termina_em
     : null;
   if (v.trial_estado === 'active' && !terminaEm) return null;
+  const limite = plano === 'gratis' && typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0
+    ? v.limite_envios
+    : null;
+  const restantes = limite !== null && typeof v.envios_restantes === 'number' && Number.isSafeInteger(v.envios_restantes) && v.envios_restantes >= 0
+    ? v.envios_restantes
+    : null;
   return {
     planoEfetivo: plano,
     enviosUsados: inteiroNaoNegativo(v.envios_usados, 0),
+    limiteEnvios: limite,
+    enviosRestantes: limite !== null ? restantes : null,
     trialEstado: v.trial_estado as TrialEstado,
     trialTerminaEm: terminaEm,
     trialDias: TRIAL_PRO_DIAS,
@@ -194,4 +207,37 @@ export function envioSemRegistro(): ReservaEnvioOrcamento {
 
 export function reservaAmbienteLocal(): ReservaEnvioOrcamento {
   return { ...envioSemRegistro(), motivo: 'ambiente_local' };
+}
+
+// ─── Contador "X de 5" (P0-09) ───────────────────────────────────────────────
+
+/** O contador só aparece a partir do 3º envio do mês (antes disso é ruído). */
+export const CONTADOR_ENVIOS_A_PARTIR_DE = 3;
+
+export type ContadorEnvios =
+  | { mostrar: false }
+  | { mostrar: true; usados: number; limite: number; restantes: number; esgotado: boolean; texto: string };
+
+/**
+ * Regra PURA do contador: só conta nova do Grátis com teto (`limiteEnvios` do servidor), a
+ * partir do 3º envio. Conta antiga (limite nulo), Pro/Empresa e oferta que não carregou
+ * (`null`) não mostram nada — o servidor continua sendo quem barra o 6º envio.
+ */
+export function contadorEnvios(oferta: EstadoOfertaComercial | null): ContadorEnvios {
+  if (!oferta || oferta.planoEfetivo !== 'gratis' || oferta.limiteEnvios === null) return { mostrar: false };
+  const limite = oferta.limiteEnvios;
+  const usados = Math.min(oferta.enviosUsados, limite);
+  if (oferta.enviosUsados < CONTADOR_ENVIOS_A_PARTIR_DE) return { mostrar: false };
+  const restantes = oferta.enviosRestantes ?? Math.max(0, limite - oferta.enviosUsados);
+  const esgotado = restantes <= 0;
+  return {
+    mostrar: true,
+    usados,
+    limite,
+    restantes,
+    esgotado,
+    texto: esgotado
+      ? `Você usou os ${limite} envios do Grátis deste mês. Eles voltam no próximo mês.`
+      : `${usados} de ${limite} envios do Grátis usados neste mês.`,
+  };
 }
