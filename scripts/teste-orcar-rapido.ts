@@ -295,6 +295,13 @@ console.log('\n6) fonte da tela');
   caso('teclado: rodapé compacto fora do passo Cliente (não some inteiro)', () => {
     assert.match(tela, /rodapeCompacto = tecladoAberto && passo !== 'cliente'/);
   });
+  caso('campo "Para quem é?" não desmonta ao digitar (flag fixada ao entrar no Revisar)', () => {
+    // Bug P1 da revisão independente: renderizar por `!orc.clienteNome.trim()` fazia o TextInput sumir
+    // na 1ª letra. A decisão é tomada UMA vez, em irPara, e fica até sair do Revisar.
+    assert.doesNotMatch(tela, /passo === 'revisar' && !orc\.clienteNome\.trim\(\)/);
+    assert.match(tela, /passo === 'revisar' && pedirNome/);
+    assert.match(tela, /setPedirNome\(novo === 'revisar' && !\(orc\?\.clienteNome \?\? ''\)\.trim\(\)\)/);
+  });
   caso('erro nunca vira vazio: sugestões, busca e "repetir" têm estado de erro', () => {
     assert.match(itens, /estado: 'erro'/);
     assert.match(itens, /setEstadoBusca\('erro'\)/);

@@ -137,6 +137,9 @@ export default function NovoOrcamentoScreen() {
   const ehExemplo = !isEdit && !!(route.params as any)?.exemploVertical;
 
   const [passo, setPasso] = useState<Passo>('cliente');
+  // Decidido ao ENTRAR no Revisar (nome vazio?) e fixo até sair: se dependesse do texto, o campo
+  // 'Para quem é?' desmontava na 1ª letra digitada (teclado fechava, nome ficava com 1 letra).
+  const [pedirNome, setPedirNome] = useState(false);
   const [saving, setSaving] = useState(false);
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -201,6 +204,7 @@ export default function NovoOrcamentoScreen() {
     if (novo === passo) return;
     Keyboard.dismiss();
     animarPasso(direcaoDaTroca(passo, novo), novo);
+    setPedirNome(novo === 'revisar' && !(orc?.clienteNome ?? '').trim());
     setPasso(novo);
   }
 
@@ -701,7 +705,7 @@ export default function NovoOrcamentoScreen() {
           />
         )}
         {passo === 'ajustar' && <Step3Detalhes orc={orc} onChange={update} empresa={empresa} />}
-        {passo === 'revisar' && !orc.clienteNome.trim() && (
+        {passo === 'revisar' && pedirNome && (
           <View style={styles.paraQuem}>
             <Text style={styles.paraQuemRotulo}>Para quem é?</Text>
             <TextInput
