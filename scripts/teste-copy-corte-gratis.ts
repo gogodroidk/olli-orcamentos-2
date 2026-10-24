@@ -8,6 +8,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   CELULA_ORCAMENTOS_GRATIS,
+  CORTE_GRATIS_PUBLICADO_EM,
+  PARAGRAFO_LIMITE_TERMOS,
+  diaExtenso,
   CORTE_GRATIS_DATA,
   FRASE_GRATIS,
   FRASE_GRATIS_CURTA,
@@ -41,7 +44,17 @@ const ESCRITOS_A_MAO = [
   'web/src/pages/planos.astro',
 ];
 
+// O número da copy tem que ser o do banco (default da coluna `limite`) — nunca divergir.
+assert.match(ler('supabase/migrations/20261024120000_limite_gratis_5_contas_novas.sql'), new RegExp(`limite integer not null default ${LIMITE_ENVIOS_GRATIS_MES}\\b`), 'LIMITE_ENVIOS_GRATIS_MES = default do banco');
+// termos.ts usa import sem extensão (bundler): o node puro não o carrega, então a ligação é checada no texto.
+const termosFonte = ler('src/content/legal/termos.ts');
+assert.match(termosFonte, /\.\.\.\(PARAGRAFO_LIMITE_TERMOS === null \? \[\] : \[PARAGRAFO_LIMITE_TERMOS\]\)/, 'Termos §4 insere o parágrafo do limite');
+assert.match(termosFonte, /atualizadoEm: ATUALIZADO_EM/, 'Termos usam a data derivada');
+assert.match(termosFonte, /diaExtenso\(CORTE_GRATIS_PUBLICADO_EM\)/, 'data dos Termos vem da publicação');
+
 if (CORTE_GRATIS_DATA === null) {
+  assert.equal(PARAGRAFO_LIMITE_TERMOS, null, 'corte desligado: Termos sem o parágrafo do limite');
+  assert.equal(CORTE_GRATIS_PUBLICADO_EM, null, 'corte desligado: sem data de publicação');
   // Estado de hoje: a fonte única continua dizendo a verdade de hoje (ilimitado), sem número de limite.
   assert.match(FRASE_GRATIS, /ilimitados/, 'corte desligado: Grátis ilimitado');
   assert.equal(CELULA_ORCAMENTOS_GRATIS, 'Ilimitados', 'corte desligado: tabela igual à de hoje');
@@ -51,6 +64,10 @@ if (CORTE_GRATIS_DATA === null) {
   assert.doesNotMatch(RECURSOS_GRATIS[0], new RegExp(`até ${LIMITE_ENVIOS_GRATIS_MES}`), 'corte desligado: não anuncia limite');
 } else {
   assert.match(CORTE_GRATIS_DATA, /^\d{4}-\d{2}-\d{2}$/, 'data do corte AAAA-MM-DD');
+  assert.ok(CORTE_GRATIS_PUBLICADO_EM !== null && CORTE_GRATIS_PUBLICADO_EM < CORTE_GRATIS_DATA, 'publicação dos Termos definida e ANTES do corte');
+  assert.ok(PARAGRAFO_LIMITE_TERMOS !== null);
+  assert.ok(PARAGRAFO_LIMITE_TERMOS.includes(diaExtenso(CORTE_GRATIS_DATA)), 'parágrafo do limite com a data do corte por extenso');
+  assert.match(PARAGRAFO_LIMITE_TERMOS, /5 \(cinco\) orçamentos por mês/);
   const [a, m, d] = CORTE_GRATIS_DATA.split('-');
   const br = `${d}/${m}/${a}`;
   for (const t of [FRASE_GRATIS_CURTA, GRATIS_LINHA_ANUNCIO, CELULA_ORCAMENTOS_GRATIS, PREVIEW_EMAIL_GRATIS]) {

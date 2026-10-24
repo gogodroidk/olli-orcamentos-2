@@ -182,6 +182,26 @@ export function tituloRecurso(recurso: Recurso): string {
  */
 export const CORTE_GRATIS_DATA: string | null = null;
 export const LIMITE_ENVIOS_GRATIS_MES = 5;
+/**
+ * Dia (ISO) em que o texto novo dos Termos entra no ar; obrigatório quando `CORTE_GRATIS_DATA`
+ * existe (o teste trava). Só serve para o "atualizado em" dos Termos.
+ */
+export const CORTE_GRATIS_PUBLICADO_EM: string | null = null;
+
+const MESES_EXTENSO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** `AAAA-MM-DD` → "26 de outubro de 2026", sem passar por `Date`. */
+export function diaExtenso(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) throw new Error(`data inválida: ${iso}`);
+  return `${Number(m[3])} de ${MESES_EXTENSO[Number(m[2]) - 1]} de ${m[1]}`;
+}
+
+/** Parágrafo do limite para os Termos §4 (parecer LEGAL R0012). `null` = corte desligado. */
+export const PARAGRAFO_LIMITE_TERMOS: string | null =
+  CORTE_GRATIS_DATA === null
+    ? null
+    : `O plano gratuito permite enviar até ${LIMITE_ENVIOS_GRATIS_MES} (cinco) orçamentos por mês nas contas criadas a partir das 00h00 (horário de Brasília) de ${diaExtenso(CORTE_GRATIS_DATA)}. As contas criadas antes dessa data não têm esse limite. Se um dia o limite passar a valer também para contas anteriores, avisaremos com pelo menos 30 (trinta) dias de antecedência, no aplicativo e por e-mail. O limite conta orçamentos diferentes enviados no mês; reenviar o mesmo orçamento não conta de novo. Ao atingir o limite, você continua podendo criar e salvar orçamentos, recibos, clientes e ordens de serviço e consultar todo o seu histórico; para enviar mais orçamentos naquele mês, você pode contratar um plano pago. Nenhum dado é apagado por causa do limite.`;
 
 /** `AAAA-MM-DD` → `dd/mm/aaaa`, sem passar por `Date` (fuso não muda o dia). */
 function dataCorteBR(iso: string): string {
@@ -207,11 +227,11 @@ export const FRASE_GRATIS_CURTA: string =
 export const GRATIS_LINHA_ANUNCIO: string =
   CORTE_GRATIS_DATA === null
     ? 'Grátis com orçamentos ilimitados.'
-    : `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas.`;
+    : `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês.`;
 
 /** Célula "Orçamentos" do Grátis na tabela comparativa (Pro e Empresa seguem 'Ilimitados'). */
 export const CELULA_ORCAMENTOS_GRATIS: string =
-  CORTE_GRATIS_DATA === null ? 'Ilimitados' : `${LIMITE_ENVIOS_GRATIS_MES}/mês (contas novas)`;
+  CORTE_GRATIS_DATA === null ? 'Ilimitados' : `Até ${LIMITE_ENVIOS_GRATIS_MES} enviados/mês (contas novas)`;
 
 /** Pré-visualização do e-mail de última chamada de ativação (neutra para as duas coortes). */
 export const PREVIEW_EMAIL_GRATIS: string =
