@@ -1,0 +1,11 @@
+# sqlfluff — gate de AVISO só para .sql alterados em supabase/migrations (ver scripts/sql-lint.sh).
+# Calibrado em 5 migrations recentes (20261007130000..20261009090000): o estilo do repo é
+# SQL escrito à mão, com comentários longos e alinhamento manual; as regras de layout
+# (indentação, espaçamento, largura de linha) só geravam ruído, então ficam fora.
+# Ficam ligadas as que apontam risco/erro real (ambiguidade, parse, convenções de nome).
+[sqlfluff]
+dialect = postgres
+exclude_rules = layout, capitalisation, AL01, AL03
+# ^ layout = indentação/espaço/largura; capitalisation = caixa (o repo mistura, e o CP02 acusa
+#   'PUBLIC' do REVOKE como identificador); AL01/AL03 = alias implícito e alias de expressão.
+max_line_length = 0
