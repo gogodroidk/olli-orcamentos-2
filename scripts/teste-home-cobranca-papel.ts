@@ -111,7 +111,7 @@ caso('Home: a régua exige papel conhecido e usa ACAO_SINAL', () => {
 caso('Home: fora da régua, os radares nem são LIDOS', () => {
   const casos: Array<[string, string, string]> = [
     ['loadCobranca', 'veDinheiro', 'orcamentosParaCobrar('],
-    ['loadFollowUp', 'veDinheiro', 'orcamentosParaFollowUp('],
+    ['loadFollowUp', 'veDinheiro', 'radarPropostas('],
     ['loadRadar', 'vePosVenda', 'clientesParaReconquistar('],
   ];
   for (const [loader, flag, chamada] of casos) {
