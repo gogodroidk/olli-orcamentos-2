@@ -197,6 +197,28 @@ function fraseOrcamentosGratis(): string {
   return `orçamentos em PDF, link e WhatsApp (contas criadas a partir de ${d} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite)`;
 }
 
+/** Orçamentos do Grátis em meia frase ("Grátis — {isto} e tudo do essencial"). */
+export const FRASE_GRATIS_CURTA: string =
+  CORTE_GRATIS_DATA === null
+    ? 'orçamentos ilimitados'
+    : `até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas (contas anteriores seguem sem limite)`;
+
+/** Linha de anúncio/landing de página de oficio: "Grátis ..." sem cartão. */
+export const GRATIS_LINHA_ANUNCIO: string =
+  CORTE_GRATIS_DATA === null
+    ? 'Grátis com orçamentos ilimitados.'
+    : `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas.`;
+
+/** Célula "Orçamentos" do Grátis na tabela comparativa (Pro e Empresa seguem 'Ilimitados'). */
+export const CELULA_ORCAMENTOS_GRATIS: string =
+  CORTE_GRATIS_DATA === null ? 'Ilimitados' : `${LIMITE_ENVIOS_GRATIS_MES}/mês (contas novas)`;
+
+/** Pré-visualização do e-mail de última chamada de ativação (neutra para as duas coortes). */
+export const PREVIEW_EMAIL_GRATIS: string =
+  CORTE_GRATIS_DATA === null
+    ? 'No plano Grátis os orçamentos são ilimitados, sem cartão.'
+    : 'O plano Grátis continua sem cartão e sem prazo.';
+
 /** O que TODO plano tem — a alma do Grátis. Nada aqui passa por entitlement. */
 export const RECURSOS_GRATIS: readonly string[] = [
   CORTE_GRATIS_DATA === null

@@ -1,12 +1,13 @@
 ---
 // Página do anúncio de eletricista (auditoria MKT 04/10/2026). Ver components/PaginaAnuncio.astro.
 import PaginaAnuncio from "../components/PaginaAnuncio.astro";
+import { GRATIS_LINHA_ANUNCIO } from "../data/recursos";
 ---
 <PaginaAnuncio
   titulo="OLLI para eletricista — orçamento com a sua marca"
-  descricao="Chega de mandar preço por áudio. Orçamento em PDF com a sua marca e link para o cliente aprovar no WhatsApp. Grátis com orçamentos ilimitados."
+  descricao={`Chega de mandar preço por áudio. Orçamento em PDF com a sua marca e link para o cliente aprovar no WhatsApp. ${GRATIS_LINHA_ANUNCIO}`}
   h1="Chega de mandar preço por áudio."
-  sub="Orçamento em PDF com a sua marca e link pro cliente aprovar no WhatsApp. Grátis, sem cota mensal."
+  sub={`Orçamento em PDF com a sua marca e link pro cliente aprovar no WhatsApp. ${GRATIS_LINHA_ANUNCIO}`}
   imagem="/anuncio/link-cliente-eletrica.webp"
   imagemAlt="Página de orçamento de um eletricista aberta no celular do cliente: troca de quadro, DR e tomadas, total de R$ 1.480,00"
   utmContent="eletrica"

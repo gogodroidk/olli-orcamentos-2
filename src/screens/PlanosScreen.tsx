@@ -24,7 +24,7 @@ import {
   TRIAL_PRO_DIAS,
   type Recurso,
 } from '../services/entitlements';
-import { FRASE_GRATIS, PLANOS_BASE as TABELA_PLANOS, ROTULO_RECURSO, frasePro, type BulletPlano } from '../services/planosBase';
+import { CELULA_ORCAMENTOS_GRATIS, FRASE_GRATIS, PLANOS_BASE as TABELA_PLANOS, ROTULO_RECURSO, frasePro, type BulletPlano } from '../services/planosBase';
 import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnvios';
 import type { EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
@@ -189,7 +189,7 @@ interface LinhaComparativo {
 
 /** Recursos base (não gateados): livres em todos os planos — a alma do Grátis. */
 const LINHAS_BASE: LinhaComparativo[] = [
-  { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: 'Ilimitados', pro: 'Ilimitados', empresa: 'Ilimitados' },
+  { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: CELULA_ORCAMENTOS_GRATIS, pro: 'Ilimitados', empresa: 'Ilimitados' },
   { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
   { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
   { rotulo: 'Diagnóstico por código de erro (offline)', gratis: true, pro: true, empresa: true },

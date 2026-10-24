@@ -11,7 +11,7 @@ import {
   IA_USOS_GRATIS_MES,
   TRIAL_PRO_DIAS,
 } from '../../services/entitlements.ts';
-import { FRASE_GRATIS, planoBase } from '../../services/planosBase.ts';
+import { FRASE_GRATIS, FRASE_GRATIS_CURTA, planoBase } from '../../services/planosBase.ts';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos.ts';
 
 /** Os recursos que um plano pago acrescenta, lidos da tabela única (com "em breve"). */
@@ -467,7 +467,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         soNaWeb: true,
         conteudo: [
           // Preços vêm de precosPlanos; recursos e "em breve" da tabela única planosBase.
-          `Grátis (${reais(0)}) — orçamentos ilimitados e tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
+          `Grátis (${reais(0)}) — ${FRASE_GRATIS_CURTA} e tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
           `Pro (${reais(PRECO_PRO.mensalCentavos)}/mês) — ${recursosDoPlano('pro')}.`,
           `Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês) — tudo do Pro, mais: ${recursosDoPlano('empresa')}.`,
         ],
@@ -476,7 +476,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         tipo: 'passos',
         soNaLoja: true,
         conteudo: [
-          `Grátis — orçamentos ilimitados e tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
+          `Grátis — ${FRASE_GRATIS_CURTA} e tudo do essencial, mais ${IA_USOS_GRATIS_MES} usos de IA por mês.`,
           `Pro — ${recursosDoPlano('pro')}.`,
           `Empresa — tudo do Pro, mais: ${recursosDoPlano('empresa')}.`,
         ],

@@ -14,7 +14,7 @@
 
 import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
 import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
-import { FRASE_GRATIS, frasePro } from '../../src/services/planosBase.ts';
+import { FRASE_GRATIS, PREVIEW_EMAIL_GRATIS, frasePro } from '../../src/services/planosBase.ts';
 
 export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-05.v3';
 export const EMAIL_LEMBRETES_BRAND = 'OLLI Orçamentos';
@@ -215,7 +215,7 @@ function conteudoReengajamento(dados, appUrl) {
     chavesExatas(dados, ['tipo'], 'dados_invalidos');
     return {
       subject: 'Sua conta na OLLI Orçamentos continua aqui',
-      preview: 'No plano Grátis os orçamentos são ilimitados, sem cartão.',
+      preview: PREVIEW_EMAIL_GRATIS,
       titulo: 'Sua conta continua aqui',
       paragrafos: [
         'Você criou sua conta na OLLI Orçamentos há mais de um mês e ainda não fez nenhum orçamento.',
