@@ -1,0 +1,331 @@
+﻿# Estado do OLLI em 30/09/2026 â€” o que estÃ¡ no ar e como trabalhar daqui para frente
+
+Documento de passagem de bastÃ£o (Claude â‡„ Codex â‡„ Igor). Fonte da anÃ¡lise:
+`Entregas Claude\OLLI\2026-09-29-auditoria-ecossistema\RELATORIO-MESTRE.md`.
+
+## 1. Como o cÃ³digo chega Ã  produÃ§Ã£o (regra nova)
+
+1. Branch por tarefa: `claude/<tarefa>` ou `codex/<tarefa>` (minÃºsculo â€” no Windows, `Codex/x` e `codex/x` colidem).
+2. PR para `main`, CI verde (jobs `app-gate`, `painel`, `landing`, `worker`, `lint`).
+3. Merge na `main`.
+4. Deploy **somente a partir da `main`**:
+   - worker: `cd worker && npm ci && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy`
+   - painel: `cd webapp && pnpm install --frozen-lockfile && pnpm build && npx wrangler pages deploy dist --project-name olli-painel-web --branch main`
+   - landing: `cd web && npm ci && npm run build && cd ../site && npx wrangler deploy` (o build consulta `/abacate/config` para decidir a copy do Pix â€” rode com rede)
+   - migrations: arquivo novo em `supabase/migrations/`, aplicado depois do merge (Management API ou MCP), conferido por SELECT.
+
+AtÃ© 29/09 a produÃ§Ã£o rodava a partir de `C:\OLLI_REL` com ~119 arquivos nÃ£o commitados e a `main` parada desde
+20/08. O PR #43 levou exatamente esse estado para a `main`. `C:\OLLI_REL` agora estÃ¡ em `codex/base-main`
+(= `main`), limpo. A automaÃ§Ã£o do Codex "OLLI â€” meta de perfeiÃ§Ã£o e QA contÃ­nuo" foi **pausada** em 29/09
+(backup em `CONFIG CLAUDE\_backup-configs-originais\pausa-codex-20260929\`); ao religar, ela precisa seguir este fluxo.
+
+## 2. O que foi publicado em 29â€“30/09 (main `3f3326a`)
+
+| PR | O quÃª |
+|---|---|
+| #43 | Estado de produÃ§Ã£o (Codex) + Pix do plano via AbacatePay + lembretes de assinatura na `main` |
+| #48 | Gates verdes: `auth-lifecycle` na cadeia, patches do Expo, lint com catraca no CI |
+| #44 | Pix: cobranÃ§a libera o plano uma vez sÃ³ (plano revogado nÃ£o volta pelo polling) + teto por IP no webhook |
+| #50 | IA religada: cadeia paga barata em allowlist com `max_price`, health honesto (`ia: on/degradada/off`), alerta no Sentry |
+| #45 | Senha da demo fora do repo + gate `test:sem-segredos` |
+| #46 | ExceÃ§Ãµes chegam ao Sentry (app, painel, worker) sem perder o stack |
+| #47 | Landing honesta: sem bastidores publicados, offline sÃ³ no app, Pix mencionado |
+| #49 | Login Google: o `code` nÃ£o se perde mais, erro nunca Ã© silencioso, funil medido |
+| #51 | E-mail real ligado: boas-vindas + lembretes de ativaÃ§Ã£o e de assinatura, descadastro assinado |
+
+Banco (produÃ§Ã£o): `user_activity_log` (com correÃ§Ã£o do `RETURNING`), `email_producao_lembretes`
+(38 boas-vindas antigas descartadas, novas nascem liberadas), `auth_funil_eventos`.
+Worker: secrets `OPENROUTER_API_KEY` (chave com crÃ©dito) e `EMAIL_DESCADASTRO_SECRET` (novo, no cofre).
+
+## 3. Como conferir que estÃ¡ vivo
+
+- `GET https://diagnostico.olliorcamentos.online/` â†’ `ia:"on"`, `ia_pago:"on"`, `ia_saude` (por isolate).
+- `GET /abacate/config` â†’ `{pix:true, modo:"producao"}`.
+- E-mail: `select status, dispatch_scope, count(*) from public.email_outbox group by 1,2;`
+- Funil do login: `select evento, motivo, count(*) from public.auth_funil_eventos group by 1,2;`
+- `npm run check:ai-models` (com `OPENROUTER_API_KEY` no ambiente) valida a cadeia ao vivo.
+- Funil de receita (depois da migration `20260930120100_funil_receita.sql`): painel `/admin` â†’ seÃ§Ã£o
+  "Funil de receita" (coorte semanal, conversÃ£o entre degraus, tempo mediano, sem PII). Por SQL:
+  `select * from public.admin_funil_coortes(array['<e-mail do dono>'], 12);` e
+  `select * from public.admin_funil_exclusoes(array['<e-mail do dono>']);`. Conta interna/demo sai do funil pelo
+  botÃ£o "Tirar do funil" no detalhe do usuÃ¡rio (auditado) ou por `insert into public.funil_exclusoes`.
+
+## 4. PendÃªncias (ordem sugerida)
+
+1. **Onda B (receita):** ativaÃ§Ã£o atÃ© o 1Âº orÃ§amento (47 de 60 nunca criaram), primeiros pagantes, telemetria de funil.
+2. Novo APK/AAB com Pix, lembretes, login Google e patches do Expo â€” testar boot no emulador `olli_phone`.
+3. ~~Trocar `google/gemini-2.5-flash-lite` antes de 20/10/2026~~ â€” trocado por `openai/gpt-4o-mini` no PR da faxina (30/09); vale em produÃ§Ã£o depois do `wrangler deploy` do worker.
+4. DecisÃµes do dono: GitHub Pro (proteÃ§Ã£o da `main` em repo privado), Supabase Pro (senha vazada),
+   limite de crÃ©dito da chave OpenRouter, preÃ§o/limite do grÃ¡tis, webhook da Resend (bounced/complained).
+
+---
+
+## LOG DO DIA â€” 2026-10-06 (MKT â€” CMO / LIVRE)
+
+### 1. ExecuÃ§Ã£o de maior impacto (DINHEIRO)
+**Arquivo:** `docs/EMAIL_ATIVACAO_AUTOPILOT_v1.md`  
+**AÃ§Ã£o:** Criou 3 templates de e-mail de ativaÃ§Ã£o (A=controle, B=Autopilot hook, C=dinheiro parado) derivados da FONTE (PLANOS_BASE, precosPlanos, iaAutopilot).  
+**HipÃ³tese:** Gancho "cole conversa â†’ orÃ§amento em 2 min" via Autopilot (jÃ¡ existe no GrÃ¡tis) converte melhor que passos genÃ©ricos.  
+**MÃ©trica alvo:** Primeiro orÃ§amento em 48h â‰¥ 12% (vs ~5% baseline) nos 8 "dinheiro parado" + 20% base inativa.  
+**PrÃ³ximo:** AprovaÃ§Ã£o do Igor â†’ dev implementa Variante B no worker (2h) â†’ A/B 7 dias.
+
+### 2. Aprendizado Novo (web research)
+**Arquivo:** `CONFIG CLAUDE/cerebro/claude-code/2026-10/APRENDIZADO_2026-10-06_saas_activation_benchmarks.md`  
+**Fonte:** Drexus (2024-04), 1Capture (2024-12), CostPocket/Stripo (2024-10), Elena Verna (2024-01)  
+**5 insights acionÃ¡veis:**
+- AtivaÃ§Ã£o = comportamento com dados + pequeno compromisso + revela valor (nÃ£o tour/click)
+- TTFV Ã© alavanca #1 (+38% lift): elite 47 min vs mediana horas â†’ **Autopilot = 2 min**
+- Email behavioral (trigger) bate calendar por 89% engagement (CostPocket 1%â†’65%)
+- Reverse trial (premiumâ†’free downshift) sobe conversÃ£o 10â€“40% (sense of loss)
+- Freeâ†’paid tem cauda longa (mediana 11%, elite 23%) â†’ reengajamento "parou" Ã© crÃ­tico
+
+### 3. Ideia Inovadora (teste 2 dias, R$ 0)
+**Arquivo:** `docs/IDEIA_INOVADORA_PASSAPORTE_PRECO.md`  
+**Conceito:** Passaporte de PreÃ§o AnÃ´nimo â€” prestador opt-in compartilha preÃ§o mÃ©dio OS por categoria/regiÃ£o; OLLI agrega anÃ´nimo (mÃ­n 10) e devolve benchmark: "VocÃª estÃ¡ 16% abaixo da mÃ©dia".  
+**Conecta:** L2 (dados) â†’ L1 (volume/comissÃ£o) â†’ L5 (crÃ©dito scoring) num loop prÃ³prio.  
+**Teste 2 dias manual:** Exportar Supabase â†’ agregar Python â†’ 10 relatÃ³rios PDF â†’ enviar WhatsApp â†’ medir abertura â‰¥60%, edita preÃ§o 7d â‰¥30%, preÃ§o sobe 30d â‰¥5%.  
+**GO/NO-GO:** Se GO â†’ builda no app (pÃ¡gina "Meu Benchmark" no Pro); se NO-GO â†’ descarta, custo 2 dias MKT.
+
+### 4. PrÃ³ximos Passos (MKT)
+- [ ] Igor aprova Template B + A/B test nos 8 "dinheiro parado"
+- [ ] Igor aprova teste Passaporte de PreÃ§o (10 prestadores ativos)
+- [ ] Founder welcome email (Igor assina) â€” 60%+ open rate bench
+- [ ] Behavioral trigger: login D+1 sem orÃ§amento â†’ email (4h dev)
+
+---
+
+## LOG DO DIA â€” 2026-10-06 (2Âª iteraÃ§Ã£o) (MKT â€” CMO / LIVRE)
+
+### 1. ExecuÃ§Ã£o de maior impacto (DINHEIRO)
+**Arquivo:** `docs/EMAIL_BOAS_VINDAS_FOUNDER_v1.md`  
+**AÃ§Ã£o:** Template de boas-vindas assinado pelo Igor (founder email) â€” benchmark: **60%+ open rate** (1Capture, Amplitude: founder involvement = 156% conv).  
+**Derivado da FONTE:** `welcomeEmailTemplate.js` + `planosBase.ts` + `precosPlanos.ts` + `iaAutopilot.ts` â€” zero invenÃ§Ã£o.  
+**CTA Ãºnico:** "Testar o Autopilot agora" â†’ deep link `olli://autopilot`.  
+**MÃ©trica alvo:** Open rate â‰¥60% (vs 42% baseline), 1Âº orÃ§amento 24h â‰¥15%, reply direto â‰¥5%.  
+**PrÃ³ximo:** AprovaÃ§Ã£o Igor â†’ dev adiciona no `welcomeEmailTemplate.js` (1h) â†’ mede nos prÃ³ximos 20 signups.
+
+### 2. Aprendizado Novo (web research)
+**Arquivo:** `CONFIG CLAUDE/cerebro/claude-code/2026-10/APRENDIZADO_2026-10-06_email_onboarding_behavioral.md`  
+**Fonte:** Encharge (2024-04), Precision.co (2023-09), AnovaGrowth (2026-06), Reddit r/SaaS (2024-10), SAAS GHL Snapshot  
+**6 insights acionÃ¡veis:**
+- Trigger-based emails: **70.5% higher open rates** que calendar-based (WebFX)
+- Resend to unopens (subject line B, 2-3d): **+15-20% open rate** â€” "votam contra subject, nÃ£o body"
+- Behavior-gated sequence: webhook `first_quote_created` cancela intervention emails â€” **89% paid activations nos primeiros 10 dias**
+- Multi-channel (email + SMS + AI voice): **11% â†’ 47% conversÃ£o** (4x)
+- Service business onboarding: **stage-to-stage conversion** > email open rates â€” "AI roda timing/papelada, humanos rodam relacionamento"
+- Founder welcome = 60%+ open rate (confirmado)
+
+### 3. Ideia Inovadora (teste 2 dias, R$ 0)
+**Arquivo:** `docs/IDEIA_INOVADORA_FIADOR_OLLI.md`  
+**Conceito:** **Fiador OLLI** â€” Garantia de recebimento baseada em score comportamental do CLIENTE FINAL (dado ÃšNICO: orÃ§amento â†’ aprovaÃ§Ã£o â†’ visita â†’ OS assinada â†’ Pix).  
+**Conecta:** L1 (ciclo comercial) â†’ L2 (histÃ³rico comportamento) â†’ L5 (parceiro seguradora/capital de giro) â†’ L0 (upsell Pro/Empresa) â†’ L3 (badge "Garantido" gera confianÃ§a â†’ mais aprovaÃ§Ãµes).  
+**Teste 2 dias manual (Igor no WhatsApp):** 10 prestadores ativos, 1 orÃ§amento cada com "Garantia OLLI" simulada, score â‰¥70 = elegÃ­vel.  
+**MÃ©tricas:** Aceita testar â‰¥70% (2d), AprovaÃ§Ã£o orÃ§amento +15pp vs baseline (7d), Recebimento efetivo â‰¥95% (30d).  
+**GO/NO-GO:** Se GO â†’ builda `fiadorScore.js` no worker + badge no PDF + preparaÃ§Ã£o jurÃ­dica parceiro.
+
+### 4. PrÃ³ximos Passos Atualizados (MKT)
+- [ ] Igor aprova Founder Welcome Email + deploy (1h dev)
+- [ ] Igor aprova Template B Autopilot + A/B test (2h dev)
+- [ ] Igor aprova teste Fiador OLLI manual (10 prestadores, WhatsApp pessoal)
+- [ ] Igor aprova teste Passaporte de PreÃ§o (10 prestadores, PDF manual)
+- [ ] Behavioral trigger: webhook `orcamento_criado` cancela intervention emails (4h dev)
+- [ ] Resend to unopens subject line B em activation_day_3 (2h dev)
+
+---
+
+## LOG DO DIA â€” 2026-10-06 (3Âª iteraÃ§Ã£o) (MKT â€” CMO / LIVRE)
+
+### 1. ExecuÃ§Ã£o de maior impacto (DINHEIRO + CRESCIMENTO)
+**Arquivo:** `docs/INDICACAO_TECNICO_INDICA_TECNICO_spec.md`  
+**AÃ§Ã£o:** Spec completa do programa de indicaÃ§Ã£o "TÃ©cnico Indica TÃ©cnico" â€” **CAC orgÃ¢nico = R$ 0**, viral loop prestadorâ†’prestador.  
+**Base:** AllBetter ($50 cash), Jobber (3 meses grÃ¡tis double-sided), ServiceTitan ($500/demo), ReferPro (3x conversÃ£o, gap 83%â†’29%).  
+**Modelo OLLI:** CrÃ©dito (meses Pro grÃ¡tis) = R$ 0 caixa, retÃ©m indicador, alinha uso real + **Fiador OLLI grÃ¡tis no 1Âº orÃ§amento do indicado** (diferencial Ãºnico).  
+**Spec tÃ©cnica pronta:** Tabelas Supabase, `indicationEngine.js`, integraÃ§Ã£o `planoEfetivo.ts`, deep link `olli://indicacao?codigo=`, emails automatizados, dashboard painel/app.  
+**Fases:** 4 semanas (Core â†’ CrÃ©dito â†’ Viral â†’ OtimizaÃ§Ã£o).  
+**Teste manual 2 dias (GO/NO-GO):** Igor no WhatsApp com 5 prestadores ativos â†’ mede % pedem cÃ³digo (â‰¥60%), cadastros (â‰¥3), 1Âº orÃ§amento Autopilot (â‰¥2).  
+**PrÃ³ximo:** AprovaÃ§Ã£o Igor â†’ dev inicia Fase 1 segunda.
+
+### 2. Aprendizado Novo (web research)
+**Arquivo:** `CONFIG CLAUDE/cerebro/claude-code/2026-10/APRENDIZADO_2026-10-06_referral_field_service_saas.md`  
+**Fonte:** AllBetter (2024-10-08), RazorSync (2024-08-01), Impact.com (2024), Knockbase, ReferPro (2023+)  
+**7 insights acionÃ¡veis:**
+- Cash para aquisiÃ§Ã£o, CrÃ©dito para retenÃ§Ã£o â†’ OLLI usa **crÃ©dito (meses Pro)** = R$ 0 caixa + retenÃ§Ã£o
+- Double-sided = 65% preferem compartilhar â†’ OLLI: **Veterano +1 mÃªs + Novo +1 mÃªs + Fiador grÃ¡tis**
+- 83% indicariam, sÃ³ 29% fazem (gap 54%) â†’ **In-app 1 tap + deep link + tracking automÃ¡tico**
+- Referral converte 3â€“5x paid ads, LTV 16â€“25% maior â†’ **ÃšNICO canal viÃ¡vel AGORA (69 contas, 0 pagantes)**
+- Tiered rewards mantÃªm engajamento â†’ **A cada 3 ativas = +1 mÃªs EXTRA (teto 1 ano)**
+- Timing = Job Completion â†’ OLLI gatilho = **1Âº orÃ§amento via Autopilot (momento "aha!")**
+- TÃ©cnicoâ†’TÃ©cnico (B2B2C) = modelo AllBetter/Jobber â†’ **OLLI tem Autopilot + Fiador como diferencial**
+
+### 3. Ideia Inovadora (teste 2 dias, R$ 0)
+**Arquivo:** `docs/IDEIA_INOVADORA_REDE_COBERTURA.md`  
+**Conceito:** **Rede de Cobertura OLLI** â€” "Indiquei, Cobri, Ganhamos Juntos": prestador sobrecarregado pede cobertura â†’ match com prestador verificado (Fiador â‰¥80, mesma especialidade, regiÃ£o, agenda livre) â†’ split automÃ¡tico 85/10/5 (executor/indicador/OLLI) via Mercado Pago split.  
+**Conecta:** L3 (demanda) â†’ L1 (ciclo comercial) â†’ L0 (assinatura) â†’ L4 (fornecedores) num loop.  
+**Teste 2 dias manual (3 duplas = 6 prestadores, WhatsApp Igor):** Simula "ficou doente" â†’ mede aceita <30 min (â‰¥66%), execuÃ§Ã£o+Pix (100%), NPS (â‰¥8/10).  
+**GO/NO-GO:** Se GO â†’ dev builda `redeCoberturaEngine.js` (geo + especialidade + Fiador + agenda) + transferÃªncia `/o/<token>` + split MP.
+
+### 4. PrÃ³ximos Passos Consolidados (MKT)
+- [ ] Igor aprova **Founder Welcome Email** + deploy (1h dev)
+- [ ] Igor aprova **Template B Autopilot** + A/B test (2h dev)
+- [ ] Igor aprova **Teste IndicaÃ§Ã£o manual** (5 prestadores, WhatsApp) â†’ GO = Fase 1 dev
+- [ ] Igor aprova **Teste Fiador OLLI manual** (10 prestadores, WhatsApp)
+- [ ] Igor aprova **Teste Passaporte de PreÃ§o** (10 prestadores, PDF manual)
+- [ ] Igor aprova **Teste Rede Cobertura manual** (3 duplas, WhatsApp)
+- [ ] Behavioral trigger: webhook `orcamento_criado` cancela intervention emails (4h dev)
+- [ ] Resend to unopens subject line B em activation_day_3 (2h dev)
+
+---
+
+## LOG DO DIA â€” 2026-10-07 (MKT â€” CMO / LIVRE)
+
+### 1. ExecuÃ§Ã£o de maior impacto (DINHEIRO + CRESCIMENTO)
+**Arquivo:** `docs/INDICACAO_MINIMA_checklist_execucao.md`  
+**AÃ§Ã£o:** Checklist de execuÃ§Ã£o 4 dias (CTO) baseado na **Spec MÃ­nima do CPO (07/10)** â€” reaproveita 100% o que jÃ¡ existe (`credit_ledger`, `olli_attr`, `funil_exclusoes`, `Celebracao`, selo UTM).  
+**Escopo mÃ­nimo:** 1 tabela `indicacoes` + CartÃ£o "Indique" em 2 momentos (pÃ³s-envio + pÃ³s-aprovaÃ§Ã£o) + Link `?ref=` no cadastro + Recompensa no 1Âº orÃ§amento (double-sided, crÃ©ditos IA, teto 5/1).  
+**Zero invenÃ§Ãµes:** X = crÃ©ditos IA (Igor define lendo `creditos.ts`), sem meses Pro grÃ¡tis, sem tiers, sem cash.  
+**CritÃ©rio continuaÃ§Ã£o (14d):** â‰¥10 cartÃµes vistos, â‰¥3 compartilhadas, â‰¥1 indicado orÃ§ando; cortar se 0 compartilhadas.  
+**PrÃ³ximo:** AprovaÃ§Ã£o CTO/Igor â†’ branch `claude/indicacao-minima` â†’ Dia 1 migration + tipos.
+
+### 2. Aprendizado Novo (web research)
+**Arquivo:** `CONFIG CLAUDE/cerebro/claude-code/2026-10/APRENDIZADO_2026-10-07_pricing_field_service_saas.md`  
+**Fonte:** Fieldcode (2024-07), Dynamics 365 (2024-07), Fieldproxy (2025-11), Salesforce Agentforce (2024), Growth Mind (2024-10)  
+**6 insights acionÃ¡veis:**
+- Mercado migra para **per-user pricing** (Fieldcode $25/45/65) â†’ OLLI pode adicionar per-tÃ©cnico no Empresa
+- **Flat-rate unlimited** (Fieldproxy) vs per-user â†’ OLLI hoje por conta, pode hybrid
+- **Pay-per-event** para sazonalidade â†’ OLLI testa crÃ©ditos orÃ§amento avulsos
+- **AI add-on premium** (Agentforce $125/user/mÃªs extra) â†’ OLLI cria "IA Ilimitada" R$ 19/mÃªs add-on
+- **Hybrid = norma** (Tiered + Per-User + Usage) â†’ OLLI: Base + per-tÃ©cnico + IA add-on
+- **ExperimentaÃ§Ã£o constante** â†’ OLLI roda experimentos pricing trimestrais
+
+### 3. Ideia Inovadora (teste 2 dias, R$ 0)
+**Arquivo:** `docs/IDEIA_INOVADORA_CLUBE_ORCAMENTO.md`  
+**Conceito:** **Clube do OrÃ§amento** â€” 2-3 prestadores que JÃ colaboram informalmente dividem **1 conta Empresa (R$ 99)** com logins separados (CPF prÃ³prio), Fiador compartilhado (mÃ©dia), indicaÃ§Ãµes internas double-credit, split externo 50/50.  
+**Conecta:** L0 (pricing hybrid) â†’ L1 (indicaÃ§Ã£o viral) â†’ L3 (rede colaboraÃ§Ã£o) â†’ L5 (crÃ©dito via volume).  
+**Teste 2 dias manual (3 duplas = 6 prestadores, WhatsApp Igor):** Proposta "R$ 99/2 = R$ 49,5/cabeÃ§a vs R$ 39 Pro + Empresa full + Fiador + double credit".  
+**MÃ©tricas:** Aceita â‰¥66% (2h), ambos ativos + 1Âº orÃ§amento 100% (24h), indicaÃ§Ã£o interna+externa â‰¥1/dupla (7d).  
+**GO/NO-GO:** Se GO â†’ dev `clubeOrcamento.ts` (vincular 3 CPFs a 1 tenant, billing R$ 99 Ãºnico, entitlements herdados).
+
+### 4. PrÃ³ximos Passos Atualizados (MKT)
+- [ ] CTO/Igor aprova **Checklist IndicaÃ§Ã£o MÃ­nima** â†’ branch `claude/indicacao-minima` (Dia 1 migration)
+- [ ] Igor aprova **Founder Welcome Email** + deploy (1h dev)
+- [ ] Igor aprova **Template B Autopilot** + A/B test (2h dev)
+- [ ] Igor aprova **Teste IndicaÃ§Ã£o manual** (5 prestadores, WhatsApp) â†’ GO = Fase 1 dev
+- [ ] Igor aprova experimento **"IA Ilimitada add-on R$ 19/mÃªs"** (menor risco, usa ledger + gate `ia_ilimitada`)
+- [ ] Igor aprova **Teste Clube do OrÃ§amento manual** (3 duplas, WhatsApp)
+- [ ] Igor aprova **Teste Fiador OLLI manual** (10 prestadores, WhatsApp)
+- [ ] Igor aprova **Teste Passaporte de PreÃ§o** (10 prestadores, PDF manual)
+- [ ] Igor aprova **Teste Rede Cobertura manual** (3 duplas, WhatsApp)
+- [ ] Behavioral trigger: webhook `orcamento_criado` cancela intervention emails (4h dev)
+- [ ] Resend to unopens subject line B em activation_day_3 (2h dev)
+
+---
+
+## LOG DO DIA â€” 2026-10-07 (4Âª iteraÃ§Ã£o) (MKT â€” CMO / LIVRE)
+
+### 1. ExecuÃ§Ã£o de maior impacto (DINHEIRO + CRESCIMENTO) â€” **PROVA ENTREGUE**
+**Arquivos criados (prontos para CTO iniciar branch `claude/indicacao-minima`):**
+- `supabase/migrations/20261007_indicacoes.sql` â€” Tabela `indicacoes` com RLS + Ã­ndices
+- `worker/src/indicacoes.ts` â€” Tipos + helpers (`gerarCodigoIndicacao`, `criarOuBuscarIndicacao`, `buscarIndicacaoPorCodigo`, `atualizarIndicacao`)
+- `worker/src/indicationReward.ts` â€” Processamento recompensa no 1Âº orÃ§amento (double-sided, anti-fraude, tetos 5/1, idempotÃªncia via `credit_ledger`)
+- `worker/functions/indicacoes-criar-ou-buscar.ts` â€” Edge Function para app/painel buscar/criar cÃ³digo
+- `worker/src/indicacaoSignup.ts` â€” IntegraÃ§Ã£o no signup (lÃª `olli_attr`, atualiza indicaÃ§Ã£o, credita se jÃ¡ orÃ§ou)
+- `web/src/utils/capturarRef.ts` â€” Handler `?ref=` para landing/painel/app (cookie `olli_attr` + localStorage)
+- `src/components/IndicacaoCard.tsx` â€” CartÃ£o "Indique colegas" 2 momentos (pÃ³s-envio + pÃ³s-aprovaÃ§Ã£o), Share API nativo, eventos analytics
+
+**Spec alinhada 100% com CPO (07/10):** Reaproveita `credit_ledger(origem='referral')`, `olli_attr`, `funil_exclusoes`, `Celebracao`, selo UTM. Zero novas tabelas de crÃ©dito. X = crÃ©ditos IA (Igor define em `creditos.ts`).
+
+### 2. Aprendizado Novo (web research)
+**Arquivo:** `CONFIG CLAUDE/cerebro/claude-code/2026-10/APRENDIZADO_2026-10-07_referral_trades_automation.md`  
+**Fonte:** ReferPro (2023+), SaaSHero playbook, Clicki (HVAC), Buzzing (HVAC)  
+**8 insights crÃ­ticos:**
+- Gap 83%â†’29% = automaÃ§Ã£o + timing + facilidade fecha
+- **Timing 2h pÃ³s-job = 3.2x lift** â†’ OLLI gatilho natural = orÃ§amento aprovado/pago
+- **Dual-sided = 2.3x mais** que single-sided â†’ OLLI jÃ¡ no spec
+- **QR fÃ­sico + digital** = captura offline â†’ Selo "Feito com OLLI" JÃ Ã‰ QR clicÃ¡vel
+- **Pagamento 48h = 3.2x repeat** â†’ OLLI crÃ©ditos IA **instantÃ¢neos** (ledger automÃ¡tico)
+- **Technician spiff + leaderboard** = gamificaÃ§Ã£o interna â†’ OLLI painel mostra progresso
+- **Cross-trade referral** (HVAC+ElÃ©trica+HidrÃ¡ulica) â†’ Rede de Cobertura jÃ¡ propÃµe
+- **50% volume em 60 dias** â†’ Teste manual 2 dias â†’ GO = Fase 1 alinha
+
+### 3. Ideia Inovadora (teste 2 dias, R$ 0)
+**Arquivo:** `docs/IDEIA_INOVADORA_INDICACAO_EMBUTIDA_NO_ORCAMENTO.md`  
+**Conceito:** **IndicaÃ§Ã£o Embutida no OrÃ§amento** â€” O prÃ³prio PDF/recibo/link do orÃ§amento vira canal de aquisiÃ§Ã£o **passivo**. Selo "Feito com OLLI" ganha `?ref=CODIGO_PRESTADOR` â†’ cliente final clica â†’ cadastra â†’ prestador ganha crÃ©dito **sem esforÃ§o ativo**. Escala linear com volume de orÃ§amentos (69 contas Ã— 10 orÃ§amentos = 690 impressÃµes/mÃªs).
+
+**Teste 2 dias manual (5 prestadores, feature flag):**
+- Dev adiciona `ref=` no selo via flag `indicacao_embutida` (30 min)
+- MÃ©tricas: CTR selo â‰¥2%, cadastros/cliques â‰¥10%, 1Âº orÃ§amento/cadastros â‰¥25%, crÃ©ditos/prestador â‰¥1
+- GO = Rollout 100% Pro/Empresa + gamificaÃ§Ã£o painel ("Seus orÃ§amentos trouxeram X colegas")
+
+**Conecta:** L1 (orÃ§amento) â†’ L0 (aquisiÃ§Ã£o orgÃ¢nica) â†’ L3 (rede expandida via clientes) â†’ L5 (volume â†’ split/crÃ©dito).
+
+### 4. PrÃ³ximos Passos Consolidados (MKT)
+- [ ] CTO/Igor aprova **Checklist IndicaÃ§Ã£o MÃ­nima** â†’ branch `claude/indicacao-minima` (Dia 1 migration) â€” **ARQUIVOS PRONTOS**
+- [ ] Igor aprova **Founder Welcome Email** + deploy (1h dev)
+- [ ] Igor aprova **Template B Autopilot** + A/B test (2h dev)
+- [ ] Igor aprova **Teste IndicaÃ§Ã£o manual** (5 prestadores, WhatsApp) â†’ GO = Fase 1 dev
+- [ ] Igor aprova **Teste IndicaÃ§Ã£o Embutida** (5 prestadores, feature flag selo) â€” **NOVO, BAIXO RISCO**
+- [ ] Igor aprova experimento **"IA Ilimitada add-on R$ 19/mÃªs"** (menor risco, usa ledger + gate `ia_ilimitada`)
+- [ ] Igor aprova **Teste Clube do OrÃ§amento manual** (3 duplas, WhatsApp)
+- [ ] Igor aprova **Teste Fiador OLLI manual** (10 prestadores, WhatsApp)
+- [ ] Igor aprova **Teste Passaporte de PreÃ§o** (10 prestadores, PDF manual)
+- [ ] Igor aprova **Teste Rede Cobertura manual** (3 duplas, WhatsApp)
+- [ ] Behavioral trigger: webhook `orcamento_criado` cancela intervention emails (4h dev)
+- [ ] Resend to unopens subject line B em activation_day_3 (2h dev)
+- [ ] Adicionar `?ref=` no selo "Feito com OLLI" (marcaOlli.ts) â€” **PRONTO PARA TESTE EMBUTIDA**
+
+---
+
+## LOG DO DIA â€” 2026-10-07 (5Âª iteraÃ§Ã£o) (MKT â€” CMO / LIVRE)
+
+### 1. ExecuÃ§Ã£o de maior impacto (DINHEIRO + CRESCIMENTO) â€” **PROVA ENTREGUE**
+**ImplementaÃ§Ã£o completa da IndicaÃ§Ã£o Embutida no OrÃ§amento (passiva):**
+- `src/utils/marcaOlli.ts` â€” `urlSeloOlli`, `seloOlliHtml`, `footerSeloOlliHtml` aceitam `refCodigo` opcional
+- `src/utils/pdfGenerator.ts` â€” `gerarHtmlOrcamento` passa `opts?.refCodigo` para o selo do PDF
+- `web/src/utils/capturarRef.ts` â€” Handler `?ref=` universal (landing/painel/app) com cookie `olli_attr` + localStorage
+- `worker/src/link.js` â€” `buscarCodigoIndicacao` (busca no `indicacoes` table), `renderLinkPage` busca e passa `refCodigo` para `pageOrcamento` â†’ `shell` â†’ `seloOlliHtml('link_orcamento', refCodigo)`
+- `scripts/teste-gratis-selo-paywall.ts` â€” Testes atualizados: **92 ok, 0 falhas**
+
+**Feature flag `indicacao_embutida` pronta para teste:** 5 prestadores, 30 min dev para ativar no selo.
+
+### 2. Aprendizado Novo (web research)
+**Arquivo:** `CONFIG CLAUDE/cerebro/claude-code/2026-10/APRENDIZADO_2026-10-07_viral_loops_plg_field_service.md`  
+**Fonte:** ProductLed (Wes Bush 2024-03), SaaSHero ConTech PLG (2026), Elena Verna (2024-08), Stefan Secker, Carrier NexTech, Field Service benchmarks  
+**8 insights crÃ­ticos:**
+- **3 Mecanismos Virais** (Stefan Secker): OLLI tem os 3 â€” Colaborativo (Equipe), Incentivado (IndicaÃ§Ã£o), Incidental (Selo) â†’ **ativar/otimizar cada um**
+- **Superhuman "sent with"** = 30-60% top-funnel, 20% signups â†’ Selo OLLI = equivalente, 690 impressÃµes/mÃªs â†’ **IndicaÃ§Ã£o Embutida** jÃ¡ implementada
+- **tl;dv:** Link de indicaÃ§Ã£o em **CADA email de resumo** â†’ Oportunidade: `?ref=` no recibo + `/v/<token>` (confirmaÃ§Ã£o visita)
+- **ConTech PLG 5 EstÃ¡gios** (SaaSHero) â†’ MÃ©tricas OLLI devem ser **por orÃ§amento/projeto**: 1Âº orÃ§amento enviado, 1Âº aprovado, 1Âº Pix, 2Âº orÃ§amento, Empresa ativa
+- **Field Service Benchmarks:** HVAC 22%, dual-sided 2.3x, timing 2h=3.2x, payout 48h=3.2x repeat, QR offline
+- **PLS (Elena Verna):** Hand-raisers, PQAs, Champions, incentivar logos nÃ£o ACV, NDR > ACV
+- **STEPPS aplicado ao OLLI:** Forte em Incidental (selo) + Incentivized (indicaÃ§Ã£o) + Collaborative (Equipe)
+- **Moss/Superhuman/tl;dv patterns:** Two-sided, timing imediato, UX frictionless, automatizado, touchpoints recorrentes
+
+### 3. Ideia Inovadora (teste 2 dias, R$ 0)
+**Arquivo:** `docs/IDEIA_INOVADORA_ORCAMENTO_COLABORATIVO.md`  
+**Conceito:** **OrÃ§amento Inteligente Compartilhado** â€” Link `/o/<token>` vira **workspace colaborativo multi-partes** (Cliente + Prestador + Subcontratado/Fornecedor editam/comentam/aprovam JUNTOS). Cada participante novo = usuÃ¡rio OLLI potencial. Loop: **ColaboraÃ§Ã£o â†’ Convite â†’ UsuÃ¡rio â†’ Novo OrÃ§amento â†’ ColaboraÃ§Ã£o**.
+
+**Teste 2 dias manual (3 trios = 9 pessoas, WhatsApp Igor):**
+- 3 trios reais (Prestador + Cliente + Sub/Fornecedor)
+- Feature flag `orcamento_colaborativo` no painel (editor web aberto para cliente comentar, subcontratado editar sua seÃ§Ã£o)
+- MÃ©tricas: Trios com â‰¥2 interagindo â‰¥66% (24h), participantes novos criam conta â‰¥20% (48h), novos orÃ§amentos â‰¥1/trio (7d)
+- GO = Editor real-time (WebRTC/CRDT), convites por papel, notificaÃ§Ãµes, versionamento
+
+**Conecta:** L1 (orÃ§amento) â†’ L0 (aquisiÃ§Ã£o via colaboraÃ§Ã£o) â†’ L3 (rede real de trabalho) â†’ L4 (fornecedores) â†’ L5 (volume) â†’ L8 (conta digital).
+
+### 4. PrÃ³ximos Passos Consolidados (MKT)
+- [ ] CTO/Igor aprova **Checklist IndicaÃ§Ã£o MÃ­nima** â†’ branch `claude/indicacao-minima` (Dia 1 migration) â€” **ARQUIVOS PRONTOS**
+- [ ] Igor aprova **Founder Welcome Email** + deploy (1h dev)
+- [ ] Igor aprova **Template B Autopilot** + A/B test (2h dev)
+- [ ] Igor aprova **Teste IndicaÃ§Ã£o manual** (5 prestadores, WhatsApp) â†’ GO = Fase 1 dev
+- [ ] Igor aprova **Teste IndicaÃ§Ã£o Embutida** (5 prestadores, feature flag selo) â€” **PRONTO, BAIXO RISCO**
+- [ ] Igor aprova **Teste OrÃ§amento Colaborativo** (3 trios, feature flag painel) â€” **NOVO, ALTO IMPACTO**
+- [ ] Igor aprova experimento **"IA Ilimitada add-on R$ 19/mÃªs"** (menor risco, usa ledger + gate `ia_ilimitada`)
+- [ ] Igor aprova **Teste Clube do OrÃ§amento manual** (3 duplas, WhatsApp)
+- [ ] Igor aprova **Teste Fiador OLLI manual** (10 prestadores, WhatsApp)
+- [ ] Igor aprova **Teste Passaporte de PreÃ§o** (10 prestadores, PDF manual)
+- [ ] Igor aprova **Teste Rede Cobertura manual** (3 duplas, WhatsApp)
+- [ ] Adicionar `?ref=` no recibo e `/v/<token>` (confirmaÃ§Ã£o visita) â€” touchpoints recorrentes tipo tl;dv
+- [ ] Behavioral trigger: webhook `orcamento_criado` cancela intervention emails (4h dev)
+- [ ] Resend to unopens subject line B em activation_day_3 (2h dev)
+- [ ] Definir mÃ©tricas ConTech PLG: orÃ§amentos/projeto, convites aceitos, Pix/projeto
+
