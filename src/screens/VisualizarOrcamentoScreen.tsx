@@ -92,6 +92,8 @@ import {
   obterEstadoOfertaComercial,
   reservarEnvioOrcamento,
 } from '../services/cotaEnvios';
+import { useContadorEnvios } from '../hooks/useContadorEnvios';
+import { ContadorEnvios } from '../components/ContadorEnvios';
 import { avisoTrialAutomatico } from '../services/ativacao';
 import { avisar } from './desktop/dialogo';
 import { recarregarPlanoGlobal } from '../hooks/usePlano';
@@ -145,6 +147,8 @@ type EnvioPendente =
 
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
+  // P0-09: "X de 5 envios" só em conta nova do Grátis, a partir do 3º envio (3 estados no hook).
+  const contadorEstado = useContadorEnvios();
   const route = useRoute<Route>();
   const cores = useCores();
   const gradientes = useGradientes();
@@ -1659,6 +1663,7 @@ export default function VisualizarOrcamentoScreen() {
         subtitulo={orc.clienteNome}
         aoFechar={() => setFolha(null)}
       >
+        <ContadorEnvios estado={contadorEstado} />
         <ItemFolha
           icon="whatsapp"
           destaque
