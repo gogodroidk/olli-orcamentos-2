@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Gate pré-commit: segredo nos arquivos staged (gitleaks). Instalar: bash scripts/instalar-hooks.sh
+# Falso-positivo triado vai em .gitleaksignore (nunca desligar a regra).
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks não instalado — gate de segredo PULADO (o ci-local ainda varre o histórico)." >&2
+  exit 0
+fi
+exec gitleaks git --staged --redact --no-banner --log-level warn --gitleaks-ignore-path .gitleaksignore
