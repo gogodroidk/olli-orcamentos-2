@@ -40,8 +40,7 @@
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
         "MP_ACCESS_TOKEN",
-        "MP_WEBHOOK_SECRET",
-        "OLLI_ROUTES_API_KEY"
+        "MP_WEBHOOK_SECRET"
       ],
       "secretScope": "staging-only-test-values",
       "baselineStatus": "runtime_schema_41_local_files_remote_history_42_reconciled_staging",
