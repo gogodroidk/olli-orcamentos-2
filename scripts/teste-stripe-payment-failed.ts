@@ -52,5 +52,9 @@ chamadas = simular(500);
 r = await disparar({ id: 'evt_f2', type: 'invoice.payment_failed', data: { object: {} } });
 checar('sem subscription na fatura: 200 e processado', [r.status, statusMarcado(chamadas)], [200, ['processado']]);
 
+chamadas = simular(404);
+r = await disparar({ id: 'evt_f3', type: 'invoice.payment_failed', data: { object: { subscription: 'sub_gone' } } });
+checar('subscription 404 (apagada): 200 e processado, sem reenvio infinito', [r.status, statusMarcado(chamadas)], [200, ['processado']]);
+
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exitCode = falhas === 0 ? 0 : 1;
