@@ -52,6 +52,16 @@ if (supTok) {
   if (r.ok) serviceRole = (await r.json()).find((k) => k.name === 'service_role')?.api_key;
 }
 
+// 2b) RESEND_WEBHOOK_SECRET: o cofre não guarda; lê o signing secret do webhook via API do Resend.
+// Sem ele /resend/webhook responde 503 (bounce/complaint não chegam).
+let resendWebhookSecret = env.RESEND_WEBHOOK_SECRET || null;
+if (!resendWebhookSecret && env.RESEND_API_KEY_LEITURA) {
+  const r = await fetch('https://api.resend.com/webhooks/4452c68a-9716-497e-9772-7f1a3e87b39d', {
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY_LEITURA}` },
+  });
+  if (r.ok) resendWebhookSecret = (await r.json()).signing_secret || null;
+}
+
 // 3) SECRETS (depois do deploy)
 const secrets = [
   ['SUPABASE_SERVICE_ROLE_KEY', serviceRole],
@@ -68,7 +78,6 @@ const secrets = [
   // faltasse. `valor` undefined cai no "SEM VALOR NO COFRE" do loop abaixo (avisa
   // e segue) em vez de recriar o secret com um valor fixo.
   ['ADMIN_EMAIL', env.OLLI_ADMIN_EMAIL],
-  ['OLLI_ROUTES_API_KEY', env.OLLI_ROUTES_API_KEY],
   // Pix AbacatePay: chave da API (v2) + secret do webhook (a defesa real do
   // /abacate/webhook — o mesmo valor precisa estar registrado no dashboard da
   // AbacatePay como ?webhookSecret=). Ambos vêm do cofre.
@@ -83,6 +92,7 @@ const secrets = [
   // hook_send_email_secrets no Supabase. Sem ele, /auth/email-hook responde 503
   // e nenhum e-mail de login/cadastro/recuperação sai.
   ['SEND_EMAIL_HOOK_SECRET', env.SEND_EMAIL_HOOK_SECRET],
+  ['RESEND_WEBHOOK_SECRET', resendWebhookSecret],
 ];
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {

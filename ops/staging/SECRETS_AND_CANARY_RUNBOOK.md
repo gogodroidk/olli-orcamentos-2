@@ -29,7 +29,6 @@ STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET
 MP_ACCESS_TOKEN
 MP_WEBHOOK_SECRET
-OLLI_ROUTES_API_KEY
 ```
 
 ## Provisionamento controlado
@@ -46,7 +45,6 @@ npx wrangler secret put STRIPE_SECRET_KEY --env staging
 npx wrangler secret put STRIPE_WEBHOOK_SECRET --env staging
 npx wrangler secret put MP_ACCESS_TOKEN --env staging
 npx wrangler secret put MP_WEBHOOK_SECRET --env staging
-npx wrangler secret put OLLI_ROUTES_API_KEY --env staging
 ```
 
 Depois, verifique somente nomes:
