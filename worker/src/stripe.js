@@ -17,6 +17,7 @@
  * SELECT da própria linha em public.assinaturas, então não consegue se auto-promover.
  */
 import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
+import { FONTES_CSS } from './fontesProprias.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 
@@ -100,7 +101,7 @@ function html(body, status = 200) {
       'Referrer-Policy': 'no-referrer',
       // Mesma defesa em profundidade do link.js: CSP restritivo, tudo inline.
       'Content-Security-Policy':
-        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; font-src https://olliorcamentos.online; img-src data:; base-uri 'none'; form-action 'none'",
     },
   });
 }
@@ -937,9 +938,7 @@ function pagina(emoji, titulo, sub, tomOk = true) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
 <title>${esc(titulo)} · OLLI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@600;700&display=swap" rel="stylesheet">
+<style>${FONTES_CSS}</style>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EAEEF3;color:#1A2230;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 14px}
