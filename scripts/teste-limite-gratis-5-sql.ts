@@ -105,6 +105,7 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   const velha = await novoUsuario(10);
   for (let i = 1; i <= 8; i++) assert.equal((await enviar(velha, `v-${i}`)).permitido, true, `conta antiga, envio ${i}`);
   assert.equal((await oferta(velha)).limite_envios, null);
+  assert.equal((await oferta(velha)).limite_conta_nova, false, 'conta antiga: sinal falso');
   caso('conta criada ANTES do corte mantém Grátis sem teto');
 }
 
@@ -118,6 +119,7 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   }
   const o5 = await oferta(nova);
   assert.equal(o5.limite_envios, 5);
+  assert.equal(o5.limite_conta_nova, true, 'o servidor novo manda o sinal junto com o teto');
   assert.equal(o5.envios_usados, 5);
   assert.equal(o5.envios_restantes, 0);
   const seis = await reservar(nova, 'n-6');

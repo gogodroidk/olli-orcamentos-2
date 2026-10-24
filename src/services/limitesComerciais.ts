@@ -116,7 +116,9 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
     ? v.trial_termina_em
     : null;
   if (v.trial_estado === 'active' && !terminaEm) return null;
-  const limite = plano === 'gratis' && typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0
+  // O teto só vale com o SINAL do servidor novo (`limite_conta_nova: true`): o servidor antigo mandava limite_envios=5
+  // para todo Grátis, sem limite real — mostrar 'X de 5' ali seria informação falsa.
+  const limite = plano === 'gratis' && v.limite_conta_nova === true && typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0
     ? v.limite_envios
     : null;
   const restantes = limite !== null && typeof v.envios_restantes === 'number' && Number.isSafeInteger(v.envios_restantes) && v.envios_restantes >= 0
