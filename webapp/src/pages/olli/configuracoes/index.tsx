@@ -15,16 +15,16 @@ import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
+import { formatCurrency, formatDate } from "@/utils/intl";
 import { BotaoPortalStripe, listarFaturasStripe, obterMetodoStripe, obterStatusPortalStripe } from "../planos/portal";
 import { MedicaoAnunciosCard } from "./MedicaoAnunciosCard";
 import { ResumoEmailCard } from "./ResumoEmailCard";
 
-const dinheiro = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const planoNome = (p?: string) => (p === "empresa" ? "Empresa" : p === "pro" ? "Pro" : "Grátis");
 const dataBr = (v?: string | number | null) => {
 	if (!v) return "—";
 	const d = new Date(v);
-	return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+	return Number.isNaN(d.getTime()) ? "—" : formatDate(d);
 };
 
 export default function ConfiguracoesPage() {
@@ -107,7 +107,7 @@ export default function ConfiguracoesPage() {
 
 				{temStripe && <div className="mt-5 grid gap-4 border-t border-border pt-5 lg:grid-cols-[220px_1fr]">
 					<div><p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Cartão</p>{metodo.isLoading ? <Skeleton className="mt-2 h-5 w-32" /> : metodo.isError ? <p className="mt-2 text-sm text-error">Consulta indisponível.</p> : metodo.data ? <p className="mt-2 text-sm font-medium text-text-primary">{metodo.data.brand.toUpperCase()} •••• {metodo.data.last4}</p> : <p className="mt-2 text-sm text-text-secondary">Nenhum cartão salvo.</p>}</div>
-					<div><p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Faturas recentes</p>{faturas.isLoading ? <Skeleton className="mt-2 h-14 w-full" /> : faturas.isError ? <p className="mt-2 text-sm text-error">Consulta indisponível.</p> : !faturas.data?.length ? <p className="mt-2 text-sm text-text-secondary">Nenhuma fatura encontrada.</p> : <div className="mt-2 divide-y divide-border rounded-lg border border-border">{faturas.data.slice(0, 4).map((f) => <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"><span><strong className="text-text-primary">{dinheiro.format(f.valorCentavos / 100)}</strong><span className="ml-2 text-text-secondary">{dataBr(f.data)}</span></span>{f.recibo ? <a href={f.recibo} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir <FileText className="size-3.5" /></a> : <Badge variant={f.pago ? "success" : "secondary"}>{f.pago ? "Paga" : f.status ?? "Pendente"}</Badge>}</div>)}</div>}</div>
+					<div><p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Faturas recentes</p>{faturas.isLoading ? <Skeleton className="mt-2 h-14 w-full" /> : faturas.isError ? <p className="mt-2 text-sm text-error">Consulta indisponível.</p> : !faturas.data?.length ? <p className="mt-2 text-sm text-text-secondary">Nenhuma fatura encontrada.</p> : <div className="mt-2 divide-y divide-border rounded-lg border border-border">{faturas.data.slice(0, 4).map((f) => <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-sm"><span><strong className="text-text-primary">{formatCurrency(f.valorCentavos / 100)}</strong><span className="ml-2 text-text-secondary">{dataBr(f.data)}</span></span>{f.recibo ? <a href={f.recibo} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">Abrir <FileText className="size-3.5" /></a> : <Badge variant={f.pago ? "success" : "secondary"}>{f.pago ? "Paga" : f.status ?? "Pendente"}</Badge>}</div>)}</div>}</div>
 				</div>}
 			</Card>
 

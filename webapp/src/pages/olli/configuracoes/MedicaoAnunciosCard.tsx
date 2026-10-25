@@ -6,13 +6,14 @@ import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { Switch } from "@/ui/switch";
+import { formatDate } from "@/utils/intl";
 
 const CHAVE = ["olli", "conta", "medicao-anuncios"] as const;
 
 const dataBr = (iso?: string) => {
 	if (!iso) return null;
 	const d = new Date(iso);
-	return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("pt-BR");
+	return Number.isNaN(d.getTime()) ? null : formatDate(d);
 };
 
 /**

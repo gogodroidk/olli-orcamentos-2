@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { formatCurrency as formatIntlCurrency } from '../../utils/intl';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, Image, StyleSheet, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, corStatusOS, type Cores } from '../../theme';
@@ -25,7 +26,7 @@ const STATUS_OS_ORDEM: StatusOS[] = ['aberta', 'agendada', 'em_execucao', 'pausa
 /** Valor numérico → "R$ 1.234,56". */
 function formatarValor(v?: number): string {
   if (typeof v !== 'number' || Number.isNaN(v)) return '';
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return formatIntlCurrency(v);
 }
 
 /** ISO → valor aceito por um `<input type="datetime-local">` (sem segundos/Z). */

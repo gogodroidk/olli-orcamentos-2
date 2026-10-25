@@ -13,6 +13,7 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
 import { qrSvg } from '../utils/qrcode';
+import { formatDate as formatIntlDate } from '../utils/intl';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import {
@@ -48,7 +49,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 function dataCurta(iso: string): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return '';
-  return new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+  return formatIntlDate(new Date(t), { day: '2-digit', month: 'short', includeYear: false });
 }
 
 export default function CreditosScreen() {

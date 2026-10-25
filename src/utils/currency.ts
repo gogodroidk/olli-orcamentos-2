@@ -1,8 +1,12 @@
-export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(Number.isFinite(value) ? value : 0);
+import {
+  DEFAULT_LOCALE,
+  DEFAULT_CURRENCY,
+  formatCurrency as formatIntlCurrency,
+  formatNumber as formatIntlNumber,
+} from './intl';
+
+export function formatCurrency(value: number, locale = DEFAULT_LOCALE, currency = DEFAULT_CURRENCY): string {
+  return formatIntlCurrency(Number.isFinite(value) ? value : 0, { locale, currency });
 }
 
 /**
@@ -55,11 +59,12 @@ export function parseNumberPositive(value: string | number, fallback = 1): numbe
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export function formatNumber(value: number, decimals = 2): string {
-  return new Intl.NumberFormat('pt-BR', {
+export function formatNumber(value: number, decimals = 2, locale = DEFAULT_LOCALE): string {
+  return formatIntlNumber(Number.isFinite(value) ? value : 0, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  }).format(Number.isFinite(value) ? value : 0);
+    locale,
+  });
 }
 
 /** Quantidade: mostra inteiro sem casas, fracionário com até 2 casas. */

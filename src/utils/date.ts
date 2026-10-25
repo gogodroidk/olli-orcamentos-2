@@ -1,3 +1,5 @@
+import { DEFAULT_LOCALE, formatDate as formatIntlDate, formatTime as formatIntlTime } from './intl';
+
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Converte ISO para Date sem o salto de fuso em datas "só dia" (AAAA-MM-DD). */
@@ -9,24 +11,24 @@ function toLocalDate(iso: string): Date {
   return new Date(iso);
 }
 
-export function formatDate(iso: string | undefined): string {
+export function formatDate(iso: string | undefined, locale = DEFAULT_LOCALE): string {
   if (!iso) return '';
   if (iso.includes('/')) return iso; // já está em BR
   const d = toLocalDate(iso);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('pt-BR');
+  return formatIntlDate(d, { locale });
 }
 
-export function formatDateTime(iso: string | undefined): string {
+export function formatDateTime(iso: string | undefined, locale = DEFAULT_LOCALE): string {
   if (!iso) return '';
   const d = toLocalDate(iso);
   if (isNaN(d.getTime())) return '';
-  return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  return `${formatIntlDate(d, { locale })} às ${formatIntlTime(d, { locale })}`;
 }
 
-export function formatDateForDisplay(iso: string | undefined): string {
+export function formatDateForDisplay(iso: string | undefined, locale = DEFAULT_LOCALE): string {
   if (!iso) return 'Data não informada';
-  return formatDate(iso);
+  return formatDate(iso, locale);
 }
 
 export function nowISO(): string {

@@ -76,6 +76,7 @@
     "start": "expo start",
     "start:clear": "expo start --clear",
     "typecheck": "tsc --noEmit",
+    "test:formatacao-intl": "node scripts/teste-formatacao-intl.ts",
     "doctor": "npx --yes -p expo-doctor@1.19.10 expo-doctor",
     "test:contexto-equipe": "node scripts/teste-contexto-equipe.ts",
     "test:backup-equipe": "node scripts/teste-backup-equipe.ts",

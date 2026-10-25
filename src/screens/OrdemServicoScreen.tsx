@@ -23,6 +23,7 @@ import { usePermissao } from '../hooks/usePermissao';
 import { useVerticais } from '../hooks/useVerticais';
 import { modeloChecklistVertical } from '../services/checklistVertical';
 import { ehDiaSemHora } from '../utils/ordemServicoDoOrcamento';
+import { formatCurrency as formatIntlCurrency } from '../utils/intl';
 // Contrato da ONDA 4 — ÚNICA superfície de import da frente B (além de types).
 import {
   getOrdens,
@@ -97,7 +98,7 @@ function formatarDataCurta(iso?: string): string {
 /** Valor numérico → "R$ 1.234,56". */
 function formatarValor(v?: number): string {
   if (typeof v !== 'number' || Number.isNaN(v)) return '';
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return formatIntlCurrency(v);
 }
 
 // ─────────────────────────────────────────────────────────────

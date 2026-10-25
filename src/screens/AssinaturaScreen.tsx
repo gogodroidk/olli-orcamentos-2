@@ -13,6 +13,7 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { formatDate } from '../utils/date';
+import { formatCurrency as formatIntlCurrency, formatDate as formatIntlDate } from '../utils/intl';
 import type { PlanoId } from '../services/planos';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 import { PixPlanoModal } from '../components/PixPlanoModal';
@@ -106,7 +107,7 @@ function statusFaturaInfo(f: Fatura, c: Cores): { label: string; cor: string } {
 function formatarValor(centavos: number, moeda: string): string {
   const valor = (centavos || 0) / 100;
   try {
-    return valor.toLocaleString('pt-BR', { style: 'currency', currency: (moeda || 'brl').toUpperCase() });
+    return formatIntlCurrency(valor, { currency: (moeda || 'brl').toUpperCase() });
   } catch {
     // Moeda não reconhecida pelo Intl: cai num formato simples com o código.
     return `${(moeda || '').toUpperCase()} ${valor.toFixed(2)}`;
@@ -118,7 +119,7 @@ function formatarDataMs(ms: number | null): string {
   if (typeof ms !== 'number' || !isFinite(ms)) return '';
   const d = new Date(ms);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('pt-BR');
+  return formatIntlDate(d);
 }
 
 function sufixoIntervalo(intervalo: Fatura['intervalo']): string {

@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
+import { formatCurrency, formatDate } from "@/utils/intl";
 import {
 	BotaoAbrirLinha,
 	isMoneyKey,
@@ -61,8 +62,6 @@ function prettify(key: string): string {
 	return map[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-
 /** Chaves estáveis para os placeholders de carregamento (evita index como key). */
 const SKELETON_ROWS = ["sk-1", "sk-2", "sk-3", "sk-4", "sk-5", "sk-6", "sk-7"];
 const SKELETON_CARDS = ["skc-1", "skc-2", "skc-3", "skc-4", "skc-5"];
@@ -71,7 +70,7 @@ function formatValue(key: string, v: unknown): string {
 	if (v === null || v === undefined || v === "") return "—";
 	if (typeof v === "boolean") return v ? "Sim" : "Não";
 	if (typeof v === "number") {
-		if (/(valor|total|preco|custo|subtotal)/i.test(key)) return BRL.format(v);
+		if (/(valor|total|preco|custo|subtotal)/i.test(key)) return formatCurrency(v);
 		return String(v);
 	}
 	if (typeof v === "string") {
@@ -81,7 +80,7 @@ function formatValue(key: string, v: unknown): string {
 		if (dataPura) return `${dataPura[3]}/${dataPura[2]}/${dataPura[1]}`;
 		if (/^\d{4}-\d{2}-\d{2}T/.test(v)) {
 			const d = new Date(v);
-			if (!Number.isNaN(d.getTime())) return d.toLocaleDateString("pt-BR");
+			if (!Number.isNaN(d.getTime())) return formatDate(d);
 		}
 		return v;
 	}
