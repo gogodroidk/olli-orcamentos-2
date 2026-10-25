@@ -6,7 +6,7 @@ const ok = lerPedido(bom);
 assert.equal(ok.ok, true);
 assert.equal(ok.linha.negocio, 'Clínica Sol');
 assert.equal(ok.linha.whatsapp, '5511987654321');
-assert.equal(ok.linha.aviso_versao, 'diagnostico-v1');
+assert.equal(ok.linha.aviso_versao, 'diagnostico-v2');
 
 for (const [campo, erro] of [['negocio', 'negocio_obrigatorio'], ['cidade', 'cidade_obrigatoria'], ['dor', 'dor_obrigatoria'], ['whatsapp', 'whatsapp_invalido']]) {
   assert.equal(lerPedido({ ...bom, [campo]: '  ' }).erro, erro);

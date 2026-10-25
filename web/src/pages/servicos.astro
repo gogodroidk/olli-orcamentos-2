@@ -9,6 +9,7 @@
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import Layout from "../layouts/Layout.astro";
+import { EMPRESA } from "../data/empresa";
 import {
   AVISO_REGULADAS,
   CONDICOES,
@@ -111,8 +112,11 @@ const PEDIDO_URL = "https://diagnostico.olliorcamentos.online/servicos/pedido";
         <label class="flex gap-3 text-sm leading-relaxed text-slate">
           <input id="p-aceite" name="aceite" type="checkbox" required class="mt-1 size-5 shrink-0" />
           <span>
-            Autorizo a OLLI a usar esses dados e informações públicas do meu negócio para preparar o diagnóstico
-            e me responder por WhatsApp. Posso pedir para apagar a qualquer momento (<a href="/privacidade/" class="underline">privacidade</a>).
+            Autorizo a OLLI (OLLI Inteligência Digital Sistemas Ltda., CNPJ 65.361.266/0001-05) a usar esses dados e
+            informações públicas do meu negócio para preparar o diagnóstico e responder por WhatsApp. A resposta pode ser
+            feita por um assistente virtual (IA), e posso pedir uma pessoa. Guardamos o pedido por até 180 dias se não
+            houver proposta. Para apagar meus dados ou parar de receber mensagens, respondo SAIR ou escrevo para o
+            contato da página. <a href="/privacidade/" class="underline">Política de Privacidade</a>.
           </span>
         </label>
         <p id="p-status" role="status" aria-live="polite" class="min-h-6 text-sm"></p>

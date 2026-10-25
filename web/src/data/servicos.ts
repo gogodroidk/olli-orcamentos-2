@@ -85,8 +85,9 @@ export const NAO_INCLUSO = [
 
 export const CONDICOES = [
 	"O valor é definido na proposta, depois do diagnóstico do seu negócio. Não há tabela fixa.",
+	"Você só paga depois de aprovar a proposta por escrito. Sem taxa escondida.",
 	"Escopo, prazo, forma de pagamento e rodada de ajuste ficam por escrito na proposta, antes de você pagar qualquer coisa.",
 ];
 
 export const AVISO_REGULADAS =
-	"Advocacia, clínicas e consultórios: o conteúdo segue as regras de publicidade da OAB, do CFM e do CRO, e quem revisa e responde pelo texto é o profissional. Não usamos dado de cliente real nas demonstrações.";
+	"Advocacia, clínicas, consultórios e outras profissões regulamentadas: a OLLI cuida do site, do atendimento e da parte técnica, e orienta o conteúdo pelas regras do seu conselho (OAB, CFM, CRO e outros), mas quem revisa, aprova e responde pelo que é publicado é o profissional. Não prometemos resultado, não fazemos captação de clientes em nome do profissional e não usamos dados de clientes ou pacientes reais em demonstrações.";

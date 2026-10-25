@@ -100,6 +100,13 @@ export const PRIVACIDADE: LegalDoc = {
           'No aplicativo Android, a assinatura dos planos pagos é cobrada e gerenciada pela Google Play, ' +
           'quando essa opção estiver disponível. Os demais itens de pagamento abaixo só se aplicam quando você ' +
           'inicia uma compra pela versão web ou por outro canal em que o checkout esteja explicitamente disponível.',
+        'Formulário de diagnóstico de OLLI Serviços. Se você pedir um diagnóstico na página de serviços, ' +
+          'recebemos nome do negócio, cidade, descrição da dor e WhatsApp. Usamos para preparar o diagnóstico ' +
+          'e a proposta e responder por WhatsApp, com base no seu consentimento. Também consultamos informações ' +
+          'públicas do seu negócio (site, Google, redes). Guardamos por no máximo 180 dias se não houver proposta ' +
+          'e, se houver contrato, pelo prazo legal. Os dados ficam em servidores de provedores de nuvem ' +
+          '(Supabase, Cloudflare) e não são vendidos. Você pode pedir acesso, correção, exclusão ou parar de ' +
+          'receber mensagens a qualquer momento.',
       ],
       tabela: [
         {

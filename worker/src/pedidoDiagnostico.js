@@ -14,7 +14,7 @@ import { lerCorpoLimitado } from './bodyLimit.js';
 import { cabeNoTeto } from './rateLimit.js';
 import { numeroWhatsAppBR } from './telefoneWhatsapp.js';
 
-export const AVISO_VERSAO = 'diagnostico-v1';
+export const AVISO_VERSAO = 'diagnostico-v2';
 const MAX_BYTES = 4096;
 const LIM = { negocio: 120, cidade: 80, dor: 600 };
 
