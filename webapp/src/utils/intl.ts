@@ -57,13 +57,13 @@ export function formatDate(
 	if (!data || Number.isNaN(data.getTime())) return '';
 
 	const { locale = DEFAULT_LOCALE, includeYear = true, ...dateOptions } = options;
-	const formato =
+	const formato: Intl.DateTimeFormatOptions =
 		dateOptions.dateStyle || dateOptions.timeStyle
 			? dateOptions
 			: {
 					day: '2-digit',
 					month: '2-digit',
-					...(includeYear ? { year: 'numeric' } : {}),
+					...(includeYear ? { year: 'numeric' as const } : {}),
 					...dateOptions,
 				};
 	return new Intl.DateTimeFormat(locale, formato).format(data);
@@ -78,9 +78,9 @@ export function formatTime(
 	if (!data || Number.isNaN(data.getTime())) return '';
 
 	const { locale = DEFAULT_LOCALE, ...dateOptions } = options;
-	const formato =
+	const formato: Intl.DateTimeFormatOptions =
 		dateOptions.dateStyle || dateOptions.timeStyle
 			? dateOptions
-			: { hour: '2-digit', minute: '2-digit', ...dateOptions };
+			: { hour: '2-digit' as const, minute: '2-digit' as const, ...dateOptions };
 	return new Intl.DateTimeFormat(locale, formato).format(data);
 }

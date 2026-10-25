@@ -11,6 +11,8 @@ import {
   formatNumber as formatWebNumber,
   formatTime as formatWebTime,
 } from '../webapp/src/utils/intl.ts';
+import { formatCurrency as formatAppCompatCurrency, formatNumber as formatAppCompatNumber } from '../src/utils/currency.ts';
+import { formatDate as formatAppCompatDate } from '../src/utils/date.ts';
 
 const implementacoes = [
   ['app', formatAppCurrency, formatAppDate, formatAppNumber, formatAppTime],
@@ -52,5 +54,10 @@ for (const [nome, moeda, data, numero, hora] of implementacoes) {
     'horário aceita locale e fuso explícitos',
   );
 }
+
+assert.equal(formatAppCompatCurrency(1234.56), 'R$\u00a01.234,56', 'compat: moeda existente preserva a saída pt-BR');
+assert.equal(formatAppCompatNumber(1234.56), '1.234,56', 'compat: número existente preserva a saída pt-BR');
+assert.equal(formatAppCompatDate('2026-10-24'), '24/10/2026', 'compat: data existente usa o utilitário central');
+verificacoes += 3;
 
 console.log(`PASSOU: ${verificacoes} verificações nos formatadores do app e do painel.`);

@@ -1,4 +1,4 @@
-import { DEFAULT_LOCALE, formatDate as formatIntlDate, formatTime as formatIntlTime } from './intl';
+import { DEFAULT_LOCALE, formatDate as formatIntlDate, formatTime as formatIntlTime } from './intl.ts';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 

@@ -3,7 +3,7 @@ import {
   DEFAULT_CURRENCY,
   formatCurrency as formatIntlCurrency,
   formatNumber as formatIntlNumber,
-} from './intl';
+} from './intl.ts';
 
 export function formatCurrency(value: number, locale = DEFAULT_LOCALE, currency = DEFAULT_CURRENCY): string {
   return formatIntlCurrency(Number.isFinite(value) ? value : 0, { locale, currency });
