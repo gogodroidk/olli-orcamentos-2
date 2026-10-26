@@ -22,6 +22,7 @@ import Layout from "../../layouts/Layout.astro";
 import Footer from "../../components/Footer.astro";
 import Header from "../../components/Header.astro";
 import Icone from "../../components/Icone.astro";
+import ExemploOrcamento from "../../components/ExemploOrcamento.astro";
 import { calculosDoOficio } from "../../../../src/services/calculosOficio";
 import { VERTICAIS, VERTICAL_GERAL } from "../../../../src/services/verticais";
 import {
@@ -225,6 +226,9 @@ const schemaFaq = {
 				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Grátis sem prazo</span>
 			</div>
 		</section>
+
+		{/* ══════════ EXEMPLO REAL (do calcular() da própria ferramenta) ══════════ */}
+		<ExemploOrcamento calculos={calculos} profissao={profissao} cadastroUrl={APP_CADASTRO_URL} />
 
 		{/* ══════════ AS FERRAMENTAS REAIS DO OFÍCIO ══════════
 		     Conteúdo 100% derivado de calculosOficio.ts: nome, descrição e a NORMA em
