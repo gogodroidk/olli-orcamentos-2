@@ -1,0 +1,21 @@
+# .cursorignore (D-1053, parecer LEGAL D-1052): o Cursor nunca lê nem envia estes arquivos ao modelo.
+.env*
+**/.env*
+credenciais*
+**/credenciais*
+*.pem
+*.key
+# CSV de leads/contatos e bases de clientes
+*leads*.csv
+**/*leads*.csv
+**/contatos*.csv
+**/clientes*.csv
+dados-receita/
+**/dados-receita/
+# dumps e sementes do banco
+*.dump
+*.sql.gz
+*.bak.sql
+**/dump*.sql
+supabase/seed*
+**/supabase/seed*
