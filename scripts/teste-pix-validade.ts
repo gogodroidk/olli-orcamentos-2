@@ -31,6 +31,8 @@ const modal = readFileSync(new URL('../src/components/PixPlanoModal.tsx', import
 ok('modal usa textoValidadePix(cobranca.expiresAt)', /textoValidadePix\(cobranca\.expiresAt\)/.test(modal));
 ok('sem "24 h" fixo no modal', !/24\s*h/i.test(modal));
 ok('sem promessa de e-mail 7 dias no modal', !/7 dias/.test(modal));
+// P0-08: "Pagar depois" só fecha a tela (a cobrança segue valendo); não gera Pix novo nem cancela nada.
+ok('botão "Pagar depois" existe e chama aoFechar', /label="Pagar depois"[^>]*onPress=\{aoFechar\}/.test(modal));
 
 
 // Parecer do Dr. Paulo (24/10): a tela do Pix cita o arrependimento (CDC art. 49) e o preço vem da fonte.
