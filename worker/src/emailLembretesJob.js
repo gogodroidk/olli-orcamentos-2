@@ -21,6 +21,7 @@ import { chamarRpcServico } from './emailRpc.js';
 import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
+import { selecionarPixVence } from './pixVencePolicy.js';
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
 const LIMITE_CANDIDATOS = 50;
@@ -92,17 +93,53 @@ async function executarRodada(env, dependencias = {}) {
     if (!Array.isArray(linhas)) throw Object.assign(new Error('candidatos_resposta_invalida'), { codigo: 'candidatos_resposta_invalida' });
     const candidatos = linhas.map((linha) => (linha && typeof linha === 'object' ? linha.candidato : null));
 
-    const { pedidos, motivos } = selecionarPedidos(candidatos, {
+    const { pedidos, motivos: motivosBase } = selecionarPedidos(candidatos, {
       agora,
       precoProMensal: reais(PRECO_PRO.mensalCentavos),
       ativacaoMaxDias,
       tetoRodada,
       tiposPermitidos,
     });
+    const motivos = { ...motivosBase };
 
     const banco = {};
     let enfileirados = 0;
-    for (const p of pedidos) {
+
+    // "Pix do plano vence em ~3 h" (P0-08): vem ANTES dos outros tipos porque a janela é curta (a
+    // próxima rodada pode já ser tarde). Só roda com `pix_vence` listado EXPLICITAMENTE no sufixo do
+    // MODE ("production" sozinho NÃO liga) e consome o mesmo teto da rodada. Falha aqui não derruba os
+    // outros tipos: vira `pix_vence_falhou` nas decisões (e no batimento) e a rodada segue.
+    let pixVence = 0;
+    if (restoModo.length > 0 && tiposPermitidos.has('pix_vence')) try {
+      const lista = await chamarRpcServico(config, fetchImpl, 'listar_pix_vence_email', {
+        p_now: agoraIso,
+        p_limit: LIMITE_CANDIDATOS,
+      }, { limiteBytes: LIMITE_BYTES_CANDIDATOS });
+      if (!Array.isArray(lista)) throw Object.assign(new Error('pix_vence_resposta_invalida'), { codigo: 'pix_vence_resposta_invalida' });
+      const sel = selecionarPixVence(lista.map((l) => (l && typeof l === 'object' ? l.candidato : null)), { agora, teto: tetoRodada });
+      for (const [m, n] of Object.entries(sel.motivos)) motivos[`pix_vence_${m}`] = n;
+      for (const p of sel.pedidos) {
+        const motivo = await enfileirar(p);
+        if (motivo === 'enfileirado') { enfileirados += 1; pixVence += 1; }
+        if (motivo === 'teto_diario') break;
+      }
+    } catch (erro) {
+      motivos.pix_vence_falhou = 1;
+      const codigo = texto(erro?.codigo || erro?.message, 60).replace(/[^a-zA-Z0-9._:-]/g, '_') || 'erro';
+      console.error(JSON.stringify({ event: 'email_lembretes_pix_vence_falhou', code: codigo }));
+    }
+
+    for (const p of pedidos.slice(0, Math.max(0, tetoRodada - enfileirados))) {
+      const motivo = await enfileirar(p);
+      if (motivo === 'enfileirado') enfileirados += 1;
+      if (motivo === 'teto_diario') break;
+    }
+
+    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, pixVence, decisoes: motivos, banco });
+    console.log(JSON.stringify({ event: 'email_lembretes_rodada', ...saida }));
+    return saida;
+
+    async function enfileirar(p) {
       const r = await chamarRpcServico(config, fetchImpl, 'enqueue_lembrete_email', {
         p_user_id: p.userId,
         p_template: p.template,
@@ -115,13 +152,8 @@ async function executarRodada(env, dependencias = {}) {
       });
       const motivo = r && typeof r.motivo === 'string' ? r.motivo.replace(/[^a-z_]/g, '').slice(0, 40) : 'resposta_invalida';
       banco[motivo] = (banco[motivo] || 0) + 1;
-      if (r && r.enfileirado === true) enfileirados += 1;
-      if (motivo === 'teto_diario') break;
+      return r && r.enfileirado === true ? 'enfileirado' : motivo;
     }
-
-    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, decisoes: motivos, banco });
-    console.log(JSON.stringify({ event: 'email_lembretes_rodada', ...saida }));
-    return saida;
   } catch (erro) {
     const codigo = texto(erro?.codigo || erro?.message, 60).replace(/[^a-zA-Z0-9._:-]/g, '_') || 'erro';
     console.error(JSON.stringify({ event: 'email_lembretes_rodada_falhou', code: codigo }));
