@@ -13,9 +13,19 @@
  * Nada de segredo é impresso. Lê o cofre e a Management API do Supabase.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
-const COFRE = 'C:\\Users\\ADMIN\\Desktop\\CONFIG CLAUDE\\credenciais-locais.env';
+// Cofre local (ARSENAL). OLLI_COFRE sobrepõe; o padrão segue a pasta do usuário, então vale no
+// Linux (/home/igor/...) e no Windows antigo (C:\\Users\\ADMIN\\...) sem caminho fixo.
+// --dry-run: só confere o cofre e lista os secrets que seriam restaurados (sem deploy, sem PUT).
+const COFRE = process.env.OLLI_COFRE || join(homedir(), 'Desktop', 'CONFIG CLAUDE', 'credenciais-locais.env');
+const DRY_RUN = process.argv.includes('--dry-run');
+if (!existsSync(COFRE)) {
+  console.error(`Cofre não encontrado: ${COFRE} (defina OLLI_COFRE). Nada foi feito.`);
+  process.exit(1);
+}
 const env = {};
 for (const linha of readFileSync(COFRE, 'utf8').split(/\r?\n/)) {
   if (!linha || linha.startsWith('#') || !linha.includes('=')) continue;
@@ -35,12 +45,14 @@ async function cf(path, opts = {}) {
 }
 
 // 1) DEPLOY (apaga os secrets — por isso vem antes)
+if (!DRY_RUN) {
 console.log('[1] wrangler deploy…');
 execFileSync('npx', ['wrangler', 'deploy'], {
   stdio: 'inherit',
   shell: process.platform === 'win32',
   env: { ...process.env, CLOUDFLARE_API_TOKEN: TOK, CLOUDFLARE_ACCOUNT_ID: ACC },
 });
+}
 
 // 2) SERVICE_ROLE via Management API do Supabase
 const supTok = env.SUPABASE_ACCESS_TOKEN || env.SUPABASE_MANAGEMENT_TOKEN || env.SUPABASE_PAT;
@@ -97,12 +109,18 @@ const secrets = [
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {
   if (!valor) { console.log(`    ${nome.padEnd(28)} SEM VALOR NO COFRE`); continue; }
+  if (DRY_RUN) { console.log(`    ${nome.padEnd(28)} presente (${valor.length} chars) — dry-run, não enviado`); continue; }
   const { status } = await cf('/secrets', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: nome, text: valor, type: 'secret_text' }),
   });
   console.log(`    ${nome.padEnd(28)} ${status === 200 ? 'ok' : 'HTTP ' + status} (${valor.length} chars)`);
+}
+
+if (DRY_RUN) {
+  console.log(`\nDry-run: cofre ${COFRE} lido; nenhum deploy nem secret enviado.`);
+  process.exit(0);
 }
 
 // 4) PROVA (após propagação)
