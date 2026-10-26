@@ -8,7 +8,7 @@
  * devolver o HTML do site e o webhook da Stripe vira 404. Este script desfaz isso.
  *
  * Ordem que importa: `wrangler deploy` PRIMEIRO (ele apaga os secrets), secrets
- * DEPOIS. Rode a partir de worker/:  node reparar.mjs
+ * DEPOIS. Rode a partir de worker/:  node reparar.mjs  [--dry-run] [--forcar]
  *
  * Nada de segredo é impresso. Lê o cofre e a Management API do Supabase.
  */
@@ -35,9 +35,30 @@ for (const linha of readFileSync(COFRE, 'utf8').split(/\r?\n/)) {
 // O que não está no cofre pode vir do ambiente (~/.config/olli/env.sh, carregado pelo ~/.profile):
 // é onde mora o SUPABASE_ACCESS_TOKEN no Linux. O cofre continua tendo prioridade.
 for (const [k, v] of Object.entries(process.env)) if (!(k in env) && v) env[k] = v;
-const TOK = env.CLOUDFLARE_API_TOKEN;
-const ACC = env.CLOUDFLARE_ACCOUNT_ID;
-const BASE = `https://api.cloudflare.com/client/v4/accounts/${ACC}/workers/scripts/olli-diagnostico`;
+// Token Cloudflare: o do cofre pode não ter acesso ao worker (26/10: "No access to the specified
+// resource"); o do ambiente (env.sh) tem. Usa o primeiro par token+conta que LÊ os secrets do
+// worker. Sem nenhum, aborta ANTES do deploy: deploy sem conseguir repor secrets derruba o worker.
+const pares = [
+  [process.env.CLOUDFLARE_API_TOKEN, process.env.CLOUDFLARE_ACCOUNT_ID, 'ambiente'],
+  [env.CLOUDFLARE_API_TOKEN, env.CLOUDFLARE_ACCOUNT_ID, 'cofre'],
+].filter(([t, a]) => t && a);
+let TOK, ACC, BASE, atuais;
+for (const [t, a, origem] of pares) {
+  const base = `https://api.cloudflare.com/client/v4/accounts/${a}/workers/scripts/olli-diagnostico`;
+  const r = await fetch(base + '/secrets', { headers: { Authorization: `Bearer ${t}` } });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok && j.success) {
+    [TOK, ACC, BASE] = [t, a, base];
+    atuais = new Set(j.result.map((s) => s.name));
+    console.log(`[0] token Cloudflare do ${origem}: lê ${atuais.size} secrets do worker`);
+    break;
+  }
+  console.log(`[0] token Cloudflare do ${origem}: HTTP ${r.status} ${j.errors?.[0]?.message || ''}`);
+}
+if (!TOK) {
+  console.error('Nenhum token Cloudflare com acesso ao olli-diagnostico. Nada foi feito.');
+  process.exit(1);
+}
 
 async function cf(path, opts = {}) {
   const r = await fetch(BASE + path, {
@@ -108,11 +129,30 @@ const secrets = [
   // e nenhum e-mail de login/cadastro/recuperação sai.
   ['SEND_EMAIL_HOOK_SECRET', env.SEND_EMAIL_HOOK_SECRET],
   ['RESEND_WEBHOOK_SECRET', resendWebhookSecret],
+  // Link de descadastro dos e-mails (HMAC); sem ele o link sai inválido.
+  ['EMAIL_DESCADASTRO_SECRET', env.EMAIL_DESCADASTRO_SECRET],
+  // Chave de ENVIO da Resend (a de LEITURA só serve para o 2b acima).
+  ['RESEND_API_KEY', env.RESEND_API_KEY_ENVIO],
+  // Service account olli-play-verify: o cofre guarda o CAMINHO do JSON; o secret é o conteúdo.
+  ['PLAY_SA_JSON', env.OLLI_PLAY_VERIFY_SA_JSON && existsSync(env.OLLI_PLAY_VERIFY_SA_JSON)
+    ? readFileSync(env.OLLI_PLAY_VERIFY_SA_JSON, 'utf8').trim() : env.OLLI_PLAY_VERIFY_SA_JSON],
+  ['PLAY_TESTE_PERMITIDOS', env.PLAY_TESTE_PERMITIDOS],
 ];
+// Só repõe o que FALTA no worker agora (depois do deploy); o que já está lá não é sobrescrito,
+// para um mapeamento errado do cofre não trocar um secret bom. --forcar regrava todos.
+const FORCAR = process.argv.includes('--forcar');
+if (!DRY_RUN) {
+  const j = await cf('/secrets').then((r) => JSON.parse(r.body)).catch(() => ({}));
+  if (j.success) atuais = new Set(j.result.map((s) => s.name));
+}
+const cobertos = new Set(secrets.map(([nome]) => nome));
+const fora = [...atuais].filter((n) => !cobertos.has(n));
+if (fora.length) console.log(`    no worker e FORA desta lista (não repostos): ${fora.join(', ')}`);
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {
-  if (!valor) { console.log(`    ${nome.padEnd(28)} SEM VALOR NO COFRE`); continue; }
-  if (DRY_RUN) { console.log(`    ${nome.padEnd(28)} presente (${valor.length} chars) — dry-run, não enviado`); continue; }
+  if (atuais.has(nome) && !FORCAR) { console.log(`    ${nome.padEnd(28)} já no worker (mantido)${valor ? '' : ' — SEM VALOR NO COFRE'}`); continue; }
+  if (!valor) { console.log(`    ${nome.padEnd(28)} FALTA NO WORKER E SEM VALOR NO COFRE`); continue; }
+  if (DRY_RUN) { console.log(`    ${nome.padEnd(28)} seria reposto (${valor.length} chars) — dry-run, não enviado`); continue; }
   const { status } = await cf('/secrets', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
