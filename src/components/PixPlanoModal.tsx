@@ -136,6 +136,8 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
                 <ActivityIndicator size="small" color={cores.accentLight} />
                 <Text style={styles.aguardandoTxt}>Aguardando o pagamento…</Text>
               </View>
+              {/* P0-08: sair sem pagar agora. Só fecha: a cobrança continua valendo até a validade acima. */}
+              <OlliButton label="Pagar depois" variant="ghost" fullWidth onPress={aoFechar} />
               <Text style={styles.nota}>Pode fechar o app e pagar depois: o plano libera sozinho quando o banco confirmar.</Text>
               <Text style={styles.nota}>{textoArrependimentoCurto()}</Text>
               <Text style={styles.nota}>
