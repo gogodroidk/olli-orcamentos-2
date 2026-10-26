@@ -1,5 +1,5 @@
 /**
- * RÉGUA "ORÇAMENTO NÃO ABERTO EM 48 H" (Z-123, migration 20261025230000) rodando o SQL de verdade no PGlite,
+ * RÉGUA "ORÇAMENTO NÃO ABERTO EM 48 H" (Z-123, migration 20261026120000) rodando o SQL de verdade no PGlite,
  * em cima da cadeia REAL de migrations do e-mail (outbox, supressão, teto de 24 h, contas internas, pix_vence).
  *
  *     node scripts/teste-regua-nao-aberto-sql.ts
@@ -27,7 +27,7 @@ const CADEIA = [
   '20261007140000_contas_internas.sql',
   '20261026040000_pix_vence_lembrete.sql',
 ];
-const NOVA = M('20261025230000_regua_orcamento_nao_aberto.sql');
+const NOVA = M('20261026120000_regua_orcamento_nao_aberto.sql');
 
 let ok = 0;
 const caso = (n: string) => { ok++; console.log(`  ok  ${n}`); };
