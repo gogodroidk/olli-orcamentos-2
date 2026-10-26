@@ -9,7 +9,11 @@
  * Nunca executa SQL: só imprime e compara. Quem roda o UPDATE é o TECH, com ordem do Igor.
  */
 import { pathToFileURL } from 'node:url';
-import { CORTE_GRATIS_DATA } from '../src/services/planosBase.ts';
+import * as planosBase from '../src/services/planosBase.ts';
+
+const { CORTE_GRATIS_DATA } = planosBase;
+/** Só existe depois do #234; antes disso (ou desligada) = null. */
+const CORTE_ANTIGAS_DATA: string | null = (planosBase as { CORTE_ANTIGAS_DATA?: string | null }).CORTE_ANTIGAS_DATA ?? null;
 
 const FUSO = 'America/Sao_Paulo';
 
@@ -46,12 +50,19 @@ export function corteConfere(corteBanco: string | null | undefined, constante: s
     : { ok: false, motivo: `corte do banco em Brasília é ${local}, a constante pede ${esperado}` };
 }
 
+/** O `corte_antigas` do banco bate com `CORTE_ANTIGAS_DATA`? Mesma regra do corte das novas. */
+export function corteAntigasConfere(corteBanco: string | null | undefined, constante: string | null): Conferencia {
+  const r = corteConfere(corteBanco, constante);
+  return { ok: r.ok, motivo: `[antigas] ${r.motivo}` };
+}
+
 /** SQL de ligar/desligar e de conferir, a partir da constante. */
 export function sqlDoCorte(constante: string | null): { atualizar: string; conferir: string } {
   if (constante === null) {
     return {
-      atualizar: 'update public.limite_gratis_config set corte = null, atualizado_em = now();',
-      conferir: 'select corte from public.limite_gratis_config;  -- esperado: corte = null',
+      // Desligar zera OS DOIS cortes: deixar corte_antigas ligado seguiria limitando as contas antigas (revisão LIVRE 25/10).
+      atualizar: 'update public.limite_gratis_config set corte = null, corte_antigas = null, atualizado_em = now();',
+      conferir: 'select corte, corte_antigas from public.limite_gratis_config;  -- esperado: os dois null',
     };
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(constante)) throw new Error(`CORTE_GRATIS_DATA inválida: ${constante}`);
@@ -73,8 +84,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exit(2);
     }
     const r = corteConfere(valor, CORTE_GRATIS_DATA);
-    console.log(`${r.ok ? 'CONFERE' : 'NÃO CONFERE — NÃO PUBLICAR'}: ${r.motivo}`);
-    process.exit(r.ok ? 0 : 1);
+    const ia = process.argv.indexOf('--corte-antigas');
+    // Com a copy anunciando data para as antigas, o valor do banco é OBRIGATÓRIO (sem ele não dá para provar que bate).
+    const valorAntigas = ia >= 0 ? process.argv[ia + 1] : undefined;
+    if (ia >= 0 && (valorAntigas === undefined || valorAntigas.startsWith('--'))) {
+      console.error('NÃO CONFERE — NÃO PUBLICAR: --corte-antigas sem valor');
+      process.exit(2);
+    }
+    const ra = corteAntigasConfere(ia >= 0 ? valorAntigas : null, CORTE_ANTIGAS_DATA);
+    const ok = r.ok && ra.ok;
+    console.log(`${ok ? 'CONFERE' : 'NÃO CONFERE — NÃO PUBLICAR'}: ${r.motivo} | ${ra.motivo}`);
+    process.exit(ok ? 0 : 1);
   }
   const s = sqlDoCorte(CORTE_GRATIS_DATA);
   console.log(`CORTE_GRATIS_DATA = ${CORTE_GRATIS_DATA ?? 'null (desligado)'}\n\n-- passo do banco (SÓ com "pode subir" do Igor):\n${s.atualizar}\n\n-- conferência:\n${s.conferir}`);
