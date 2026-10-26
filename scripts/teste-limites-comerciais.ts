@@ -143,6 +143,41 @@ assert.equal(teto({ limite_envios: '5' })?.limiteEnvios, null, 'teto em texto é
 assert.equal(teto({ plano_efetivo: 'pro' })?.limiteEnvios, null, 'Pro nunca tem teto');
 assert.equal(teto({ envios_restantes: -1 })?.enviosRestantes, null, 'restantes negativo é lixo');
 
+// CONTA ANTIGA no limite (D+30): o sinal próprio `limite_conta_antiga` liga o teto/contador; o aviso vem em `aviso_limite_antigas`.
+assert.equal(teto({ limite_conta_nova: false, limite_conta_antiga: true })?.limiteEnvios, 5, 'antiga limitada: teto lido');
+assert.equal(teto({ limite_conta_nova: undefined, limite_conta_antiga: false })?.limiteEnvios, null, 'antiga ainda não limitada: sem teto');
+assert.deepEqual(
+  limites.contadorEnvios(teto({ limite_conta_nova: false, limite_conta_antiga: true, envios_usados: 4, envios_restantes: 1 })),
+  limites.contadorEnvios(teto({ envios_usados: 4, envios_restantes: 1 })),
+  'antiga limitada tem o mesmo contador da nova',
+);
+const semAviso = teto({ limite_conta_nova: false });
+assert.equal(semAviso?.avisoLimiteAntigas, null, 'sem aviso do servidor: null');
+const comAviso = (extra: Record<string, unknown> = {}) => teto({
+  limite_conta_nova: false, limite_envios: null, envios_restantes: null, envios_usados: 3,
+  aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00+00:00', usados_30d: 7 }, ...extra,
+});
+assert.deepEqual(comAviso()?.avisoLimiteAntigas, { aPartirDe: '2026-11-24T03:00:00+00:00', usados30d: 7 });
+assert.equal(comAviso({ aviso_limite_antigas: { a_partir_de: 'lixo', usados_30d: 7 } })?.avisoLimiteAntigas, null, 'data lixo: sem aviso');
+assert.equal(comAviso({ aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00Z', usados_30d: -1 } })?.avisoLimiteAntigas, null, 'N negativo: sem aviso');
+assert.equal(comAviso({ plano_efetivo: 'pro' })?.avisoLimiteAntigas, null, 'Pro não recebe aviso');
+const agoraD = new Date('2026-10-24T18:00:00Z');
+assert.deepEqual(limites.avisoAntigas(null, 5, agoraD), { mostrar: false }, 'oferta que não carregou: nada');
+assert.deepEqual(limites.avisoAntigas(semAviso, 5, agoraD), { mostrar: false }, 'sem sinal do servidor: nada');
+const av = limites.avisoAntigas(comAviso(), 5, agoraD);
+assert.ok(av.mostrar);
+assert.equal(av.dataBR, '24/11/2026', 'D+30 00:00 -03 = 03:00Z cai no dia 24 em Brasília');
+assert.equal(av.texto, 'A partir de 24/11/2026 o Grátis passa a permitir até 5 envios por mês. Você usou 7 nos últimos 30 dias.');
+assert.equal(av.chave, 'olli:aviso_limite_antigas:2026-11-24T03:00:00+00:00');
+assert.match((limites.avisoAntigas(comAviso({ aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00Z', usados_30d: 1 } }), 5, agoraD) as { texto: string }).texto, /Você usou 1 nos últimos/);
+assert.deepEqual(limites.avisoAntigas(comAviso(), 5, new Date('2026-11-24T03:00:00Z')), { mostrar: false }, 'depois do início do limite o banner some');
+// As telas ligam o banner pelo hook de 3 estados.
+assert.match(ler('../src/hooks/useAvisoLimiteAntigas.ts'), /estado: 'indisponivel'/, 'hook do aviso tem o estado indisponível');
+for (const [nome, caminho] of [['Planos', '../src/screens/PlanosScreen.tsx'], ['Conta', '../src/screens/ContaScreen.tsx']] as const) {
+  assert.match(ler(caminho), /useAvisoLimiteAntigas\(\)/, `${nome} usa o hook do aviso`);
+  assert.match(ler(caminho), /<AvisoLimiteAntigas /, `${nome} desenha o aviso`);
+}
+
 // Contador "X de 5": só conta nova do Grátis (teto do servidor), só a partir do 3º envio; nunca inventa.
 const { contadorEnvios, CONTADOR_ENVIOS_A_PARTIR_DE } = limites;
 assert.equal(CONTADOR_ENVIOS_A_PARTIR_DE, 3);

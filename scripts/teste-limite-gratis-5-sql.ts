@@ -20,6 +20,7 @@ const sqlEntitlement = ler('../supabase/migrations/20260914115639_harden_billing
 const sqlTrialAuto = ler('../supabase/migrations/20260930120000_trial_pro_automatico_primeiro_envio.sql');
 const sqlIlimitado = ler('../supabase/migrations/20261002150000_gratis_orcamentos_ilimitados.sql').split('-- ─── 3. Candidatos a lembrete')[0];
 const sqlLimite = ler('../supabase/migrations/20261024120000_limite_gratis_5_contas_novas.sql');
+const sqlAntigas = ler('../supabase/migrations/20261024150000_limite_gratis_contas_antigas.sql');
 const reservaCorrigida = sqlLint.match(/create or replace function public\.reservar_envio_orcamento_gratis\([\s\S]*?\n\$\$;/)?.[0];
 assert.ok(reservaCorrigida);
 
@@ -47,6 +48,8 @@ await db.exec(sqlTrialAuto);
 await db.exec(sqlIlimitado);
 await db.exec(sqlLimite);
 await db.exec(sqlLimite); // idempotente: aplicar de novo não quebra
+await db.exec(sqlAntigas);
+await db.exec(sqlAntigas);
 
 let seq = 0;
 async function novoUsuario(diasDeConta: number): Promise<string> {
@@ -80,7 +83,7 @@ async function oferta(uid: string) {
   return (await db.query<{ o: Record<string, unknown> }>('select public.meu_estado_oferta_comercial() as o')).rows[0].o;
 }
 const ligar = (diasAtras = 1) => db.query(`update public.limite_gratis_config set corte = now() - ($1 || ' days')::interval`, [String(diasAtras)]);
-const desligar = () => db.query('update public.limite_gratis_config set corte = null');
+const desligar = () => db.query('update public.limite_gratis_config set corte = null, corte_antigas = null');
 /** APK antigo: bloqueia quando permitido=false e entende cota_esgotada. */
 const apkAntigoPermite = (v: Record<string, unknown>) =>
   typeof v.permitido === 'boolean' && ['plano_pago', 'trial_ativo', 'dentro_da_cota', 'cota_esgotada'].includes(v.motivo as string) && v.permitido;
@@ -106,6 +109,8 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   for (let i = 1; i <= 8; i++) assert.equal((await enviar(velha, `v-${i}`)).permitido, true, `conta antiga, envio ${i}`);
   assert.equal((await oferta(velha)).limite_envios, null);
   assert.equal((await oferta(velha)).limite_conta_nova, false, 'conta antiga: sinal falso');
+  assert.equal((await oferta(velha)).limite_conta_antiga, false, 'corte_antigas NULL: antiga sem teto');
+  assert.equal((await oferta(velha)).aviso_limite_antigas, null, 'corte_antigas NULL: sem aviso');
   caso('conta criada ANTES do corte mantém Grátis sem teto');
 }
 
@@ -180,6 +185,51 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   assert.equal(leitura.rows[0].r, false);
   assert.equal(leitura.rows[0].w, false);
   caso('limite_gratis_config: authenticated não lê nem grava');
+}
+
+// 8. CONTAS ANTIGAS no limite a partir de corte_antigas (D+30), com aviso antes
+{
+  const diasAFrente = (d: number) => db.query(`update public.limite_gratis_config set corte_antigas = now() + ($1 || ' days')::interval`, [String(d)]);
+  await ligar(1);
+  await diasAFrente(29);
+  const velha = await novoUsuario(40);
+  for (let i = 1; i <= 7; i++) assert.equal((await enviar(velha, `ant-${i}`)).permitido, true, `antes de D+30 a antiga envia ${i}`);
+  const antes = await oferta(velha);
+  assert.equal(antes.limite_conta_nova, false);
+  assert.equal(antes.limite_conta_antiga, false, 'antes de D+30 ainda não é limitada');
+  assert.equal(antes.limite_envios, null);
+  const aviso = antes.aviso_limite_antigas as { a_partir_de: string; usados_30d: number };
+  assert.ok(aviso && Date.parse(aviso.a_partir_de) > Date.now(), 'aviso traz a data D+30');
+  assert.equal(aviso.usados_30d, 7, 'N = envios reais do banco');
+  const nova = await novoUsuario(0);
+  assert.equal((await oferta(nova)).aviso_limite_antigas, null, 'conta nova não recebe o aviso das antigas');
+  const pro = await novoUsuario(40);
+  await db.query(`insert into public.assinaturas (user_id, status, plano, current_period_end) values ($1, 'active', 'pro', now() + interval '20 days')`, [pro]);
+  assert.equal((await oferta(pro)).aviso_limite_antigas, null, 'Pro não recebe aviso');
+  caso('antes de D+30: antiga sem teto, com aviso {a_partir_de, usados_30d}; nova/Pro sem aviso');
+
+  // chegou D+30: a antiga fica limitada (os 7 envios do mês já passam de 5)
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() - interval '1 minute'`);
+  const depois = await oferta(velha);
+  assert.equal(depois.limite_conta_antiga, true, 'depois de D+30: sinal de antiga limitada');
+  assert.equal(depois.limite_conta_nova, false, 'não vira conta nova');
+  assert.equal(depois.limite_envios, 5);
+  assert.equal(depois.envios_restantes, 0);
+  assert.equal(depois.aviso_limite_antigas, null, 'aviso some quando o limite começa');
+  const barrado = await reservar(velha, 'ant-8');
+  assert.equal(barrado.permitido, false, 'antiga acima de 5 é barrada');
+  assert.equal(barrado.motivo, 'cota_esgotada');
+  assert.equal((await reservar(velha, 'ant-3')).permitido, true, 'reenvio de orçamento já registrado segue');
+  const antigaLeve = await novoUsuario(40);
+  for (let i = 1; i <= 5; i++) assert.equal((await enviar(antigaLeve, `leve-${i}`)).permitido, true);
+  assert.equal((await reservar(antigaLeve, 'leve-6')).permitido, false, 'o 6º da antiga também é barrado');
+  assert.equal((await oferta(pro)).limite_envios, null, 'Pro segue sem teto');
+  caso('a partir de D+30: antiga é limitada (5/mês), 6º barrado, Pro livre');
+
+  // rollback
+  await desligar();
+  assert.equal((await reservar(velha, 'ant-9')).permitido, true, 'corte_antigas NULL solta de novo');
+  caso('rollback (cortes NULL) solta a antiga');
 }
 
 console.log(`\nteste-limite-gratis-5-sql: ${ok} casos OK`);
