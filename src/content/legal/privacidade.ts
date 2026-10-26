@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '7 de outubro de 2026',
+  atualizadoEm: '26 de outubro de 2026',
   aviso:
-    'Documento atualizado em 7 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 26 de outubro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -111,6 +111,11 @@ export const PRIVACIDADE: LegalDoc = {
           dado: 'Telefone (WhatsApp) informado no cadastro',
           finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: registramos o número numa lista de "não contatar" e paramos de enviar mensagens a ele, salvo resposta a um contato que você mesmo iniciar.',
           base: 'Legítimo interesse em ajudar quem criou a conta a usar o serviço (art. 7º, IX), com direito de oposição a qualquer momento.',
+        },
+        {
+          dado: 'Mensagens que você envia ao WhatsApp do OLLI (telefone, nome do perfil e texto)',
+          finalidade: 'Atender o seu pedido quando você nos escreve pelo WhatsApp do OLLI, (11) 94172-7487, mesmo que você ainda não tenha conta, e registrar o que foi combinado. Guardamos o seu telefone, o nome do seu perfil do WhatsApp e o texto da mensagem; não baixamos fotos, áudios nem arquivos. Quem responde primeiro é uma pessoa da nossa equipe. Para não receber mais mensagens, responda SAIR; guardamos só o número, numa lista de quem não quer ser contatado, para não escrever de novo.',
+          base: 'Legítimo interesse em atender quem nos procura (art. 7º, IX) e, se você quiser contratar, procedimentos preliminares relacionados a contrato (art. 7º, V). Você pode se opor a qualquer momento.',
         },
         {
           dado: 'Login com o Google: nome, e-mail e foto do perfil da sua conta Google',
