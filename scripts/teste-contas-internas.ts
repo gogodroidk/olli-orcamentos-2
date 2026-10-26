@@ -74,8 +74,8 @@ const doDono = await Promise.all(['gogodroidk@gmail.com', 'IgorELuisa@Gmail.com'
 await db.exec(mig);
 await db.exec(mig); // idempotente (inclusive os remendos e a semente)
 // D-0914: conta de TESTE (etiqueta no e-mail ou caixa descartável) nasce interna; e-mail comum segue cliente.
-await db.exec(ler('../supabase/migrations/20261026120000_conta_interna_teste.sql'));
-await db.exec(ler('../supabase/migrations/20261026120000_conta_interna_teste.sql')); // idempotente
+await db.exec(ler('../supabase/migrations/20261026130500_conta_interna_teste.sql'));
+await db.exec(ler('../supabase/migrations/20261026130500_conta_interna_teste.sql')); // idempotente
 const idTeste = async (e: string) =>
   (await db.query(`insert into auth.users (email) values ($1) returning id`, [e])).rows[0].id as string;
 {

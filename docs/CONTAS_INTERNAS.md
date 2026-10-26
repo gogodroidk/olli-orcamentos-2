@@ -15,7 +15,7 @@ Uma conta é **interna** se: está em `funil_exclusoes` (por id ou por e-mail �
 (motivo `dono/interna (semente)`; `criado_por` fica NULL — a coluna é uuid e não há usuário-autor). Os demais internos entram pelo painel.
 
 ## Conta de teste nasce interna (D-0914, 26/10/2026)
-Ordem do Igor: contas de teste não contam como possível cliente. `20261026120000_conta_interna_teste.sql` acrescenta à `conta_interna`
+Ordem do Igor: contas de teste não contam como possível cliente. `20261026130500_conta_interna_teste.sql` acrescenta à `conta_interna`
 o e-mail com etiqueta de teste (`+teste`, `+test`, `+qa`, `+e2e`, `+z99`, `+smoke`, `+probe`, `+agente` antes do `@`) e as caixas
 `example.*`, `mailinator.com`, `yopmail.com`. **Regra para agentes:** não criar conta de teste em produção (use o Supabase de staging);
 se for inevitável, o e-mail leva `+teste` e a conta já sai do placar, das métricas, da régua, do WhatsApp e dos anúncios.
