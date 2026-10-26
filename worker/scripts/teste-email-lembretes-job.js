@@ -116,6 +116,20 @@ try {
     assert.equal(enq.p_template_dados.tipo, 'nao_aberto');
     assert.equal(enq.p_idempotency_key, `reengajamento:${U(9)}:nao_aberto:fixture-9-aberto`);
   });
+  await caso('não aberto: lista quebrada vira `nao_aberto_falhou` e a rodada dos outros tipos segue', async () => {
+    const calls = [];
+    const fetchImpl = async (url, init) => {
+      calls.push(url);
+      if (url.endsWith('/rpc/listar_candidatos_lembrete_email')) return Response.json([]);
+      if (url.endsWith('/rpc/listar_nao_abertos_email')) return Response.json({ erro: 'x' });
+      throw new Error(`url_inesperada:${url}`);
+    };
+    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'production:nao_aberto' }, { fetchImpl, now: () => AGORA });
+    assert.equal(r.motivo, 'ok');
+    assert.equal(r.decisoes.nao_aberto_falhou, 1);
+    assert.equal(r.naoAbertos, 0);
+    assert.equal(calls.some((u) => u.endsWith('/rpc/enqueue_lembrete_email')), false);
+  });
   await caso('modo off não chama rede', async () => {
     const f = fetchFalso({ candidatos: [] });
     const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'off' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
@@ -271,7 +285,7 @@ try {
       assert.deepEqual(posts.map((b) => b.event_id), ['ini|2026-09-29T15', 'fim|2026-09-29T15']);
       assert.ok(posts.every((b) => b.origem === 'lembretes_cron'));
       assert.deepEqual(posts[1].payload, {
-        modo: 'production', motivo: 'ok', codigo: null, candidatos: 2, enfileirados: 1, pixVence: 0,
+        modo: 'production', motivo: 'ok', codigo: null, candidatos: 2, enfileirados: 1, pixVence: 0, naoAbertos: 0,
         decisoes: { ativacao: 1, tipo_desligado: 1 }, banco: { enfileirado: 1 },
       });
       const texto = JSON.stringify(w.chamadas);

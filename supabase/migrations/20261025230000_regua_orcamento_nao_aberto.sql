@@ -34,7 +34,40 @@ begin
     raise exception 'nao_abertos_argumentos_invalidos';
   end if;
 
+  -- Um candidato por conta (o orçamento mais antigo ainda elegível) e SÓ DEPOIS o limit: sem isso, 50 links
+  -- antigos da mesma conta (ou de membros de equipe) travariam a fila por até 7 dias.
   return query
+  with elegiveis as (
+    select distinct on (op.user_id) op.*
+    from public.orcamentos_publicos op
+    join auth.users u on u.id = op.user_id
+    where op.status = 'enviado'
+      and op.visualizado_em is null
+      and op.respondido_em is null
+      and op.revogado_em is null
+      and op.criado_em <= p_now - interval '48 hours'
+      and op.criado_em > p_now - interval '7 days'
+      and u.email is not null
+      and pg_catalog.btrim(u.email) <> ''
+      and u.email_confirmed_at is not null
+      and u.email_confirmed_at <= p_now
+      and u.deleted_at is null
+      and (u.banned_until is null or u.banned_until <= p_now)
+      and coalesce(u.is_anonymous, false) = false
+      and not exists (select 1 from public.email_supressoes s where s.user_id = u.id)
+      and not public.conta_interna(u.id)
+      and not private.email_recebeu_ultimas_24h(u.id, p_now)
+      and not exists (
+        select 1 from public.email_outbox o
+        where o.idempotency_key = 'reengajamento:' || op.user_id::text || ':nao_aberto:' || op.token
+      )
+      -- membro de equipe (que não é dono) não recebe: filtra AQUI para não gastar vaga do limit
+      and not (
+        (select pg_catalog.count(*) from public.organizacoes g where g.owner_user_id = op.user_id) = 0
+        and exists (select 1 from public.organizacao_membros m where m.user_id = op.user_id and m.ativo)
+      )
+    order by op.user_id, op.criado_em, op.token
+  )
   select pg_catalog.jsonb_build_object(
     'userId', op.user_id,
     'token', op.token,
@@ -50,30 +83,9 @@ begin
       (select pg_catalog.count(*) from public.organizacoes g where g.owner_user_id = op.user_id) = 0
       and exists (select 1 from public.organizacao_membros m where m.user_id = op.user_id and m.ativo)
     ),
-    'suprimido', false -- quem está suprimido nem entra (filtro abaixo); o campo é exigido pela política
+    'suprimido', false -- quem está suprimido nem entra (filtro acima); o campo é exigido pela política
   )
-  from public.orcamentos_publicos op
-  join auth.users u on u.id = op.user_id
-  where op.status = 'enviado'
-    and op.visualizado_em is null
-    and op.respondido_em is null
-    and op.revogado_em is null
-    and op.criado_em <= p_now - interval '48 hours'
-    and op.criado_em > p_now - interval '7 days'
-    and u.email is not null
-    and pg_catalog.btrim(u.email) <> ''
-    and u.email_confirmed_at is not null
-    and u.email_confirmed_at <= p_now
-    and u.deleted_at is null
-    and (u.banned_until is null or u.banned_until <= p_now)
-    and coalesce(u.is_anonymous, false) = false
-    and not exists (select 1 from public.email_supressoes s where s.user_id = u.id)
-    and not public.conta_interna(u.id)
-    and not private.email_recebeu_ultimas_24h(u.id, p_now)
-    and not exists (
-      select 1 from public.email_outbox o
-      where o.idempotency_key = 'reengajamento:' || op.user_id::text || ':nao_aberto:' || op.token
-    )
+  from elegiveis op
   order by op.criado_em, op.token
   limit p_limit;
 end;

@@ -317,7 +317,7 @@ function conteudoReengajamento(dados, appUrl) {
       titulo: 'Um orçamento seu ainda não foi aberto',
       paragrafos: [
         `Você enviou um orçamento em ${quando} e o cliente ainda não abriu o link.`,
-        'Vale um toque seu: chame o cliente no WhatsApp ou reenvie o link pelo app.',
+        'Vale um toque seu: chame o cliente no WhatsApp. Se você já reenviou o link e ele ainda não abriu, vale confirmar que chegou.',
       ],
       passos: null,
       cta: { rotulo: 'Ver meus orçamentos', href: urlCom(appUrl, '/') },
