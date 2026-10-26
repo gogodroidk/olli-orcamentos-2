@@ -22,6 +22,7 @@
  *    é restritivo.
  */
 import { rateOkSensivel } from './rateLimit.js';
+import { FONTES_CSS } from './fontesProprias.js';
 import { enviarConvite } from './email.js';
 import { derivarEntitlement } from './entitlement.js';
 
@@ -81,7 +82,7 @@ function html(body, status = 200) {
       // A página do convite precisa de um <script> inline (botão "abrir app") e
       // Google Fonts. Sem conexões externas além das fontes.
       'Content-Security-Policy':
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src https://olliorcamentos.online; img-src data:; base-uri 'none'; form-action 'none'",
     },
   });
 }
@@ -423,9 +424,7 @@ function pagina(emoji, titulo, subHtml, deepLink, token) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
 <title>Convite · OLLI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@600;700&display=swap" rel="stylesheet">
+<style>${FONTES_CSS}</style>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EAEEF3;color:#1A2230;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 14px}

@@ -42,6 +42,12 @@ export const CREDITO_TROCA_PEDIDOS_MAX = 3;
 export type CanalEnvioOrcamento = 'pdf' | 'link' | 'whatsapp';
 export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';
 
+export interface AvisoLimiteAntigas {
+  /** Instante (ISO) em que o limite passa a valer para a conta. */
+  aPartirDe: string;
+  usados30d: number;
+}
+
 export interface EstadoOfertaComercial {
   planoEfetivo: PlanoId;
   /** Orçamentos distintos enviados neste mês (informativo; só vira teto se `limiteEnvios` vier). */
@@ -50,6 +56,11 @@ export interface EstadoOfertaComercial {
   limiteEnvios: number | null;
   /** Quanto falta no mês (0 = esgotado); `null` quando não há teto. */
   enviosRestantes: number | null;
+  /**
+   * Conta ANTERIOR ao corte, ainda antes do limite (`corte_antigas`): quando o limite começa e quantos envios
+   * ela fez nos últimos 30 dias (valor do banco). `null` = nada a avisar (nova, Pro, ou servidor sem o sinal).
+   */
+  avisoLimiteAntigas: AvisoLimiteAntigas | null;
   trialEstado: TrialEstado;
   trialTerminaEm: string | null;
   trialDias: number;
@@ -118,7 +129,9 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
   if (v.trial_estado === 'active' && !terminaEm) return null;
   // O teto só vale com o SINAL do servidor novo (`limite_conta_nova: true`): o servidor antigo mandava limite_envios=5
   // para todo Grátis, sem limite real — mostrar 'X de 5' ali seria informação falsa.
-  const limite = plano === 'gratis' && v.limite_conta_nova === true && typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0
+  // Dois sinais do servidor: conta NOVA (`limite_conta_nova`) e conta ANTIGA já limitada (`limite_conta_antiga`, a partir de D+30).
+  const sinalLimite = v.limite_conta_nova === true || v.limite_conta_antiga === true;
+  const limite = plano === 'gratis' && sinalLimite && typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0
     ? v.limite_envios
     : null;
   const restantes = limite !== null && typeof v.envios_restantes === 'number' && Number.isSafeInteger(v.envios_restantes) && v.envios_restantes >= 0
@@ -129,6 +142,7 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
     enviosUsados: inteiroNaoNegativo(v.envios_usados, 0),
     limiteEnvios: limite,
     enviosRestantes: limite !== null ? restantes : null,
+    avisoLimiteAntigas: plano === 'gratis' ? interpretarAvisoAntigas(v.aviso_limite_antigas) : null,
     trialEstado: v.trial_estado as TrialEstado,
     trialTerminaEm: terminaEm,
     trialDias: TRIAL_PRO_DIAS,
@@ -136,6 +150,14 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
     renovaAutomaticamente: false,
     preservaDados: true,
   };
+}
+
+function interpretarAvisoAntigas(valor: unknown): AvisoLimiteAntigas | null {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
+  const a = valor as Record<string, unknown>;
+  if (typeof a.a_partir_de !== 'string' || Number.isNaN(Date.parse(a.a_partir_de))) return null;
+  if (typeof a.usados_30d !== 'number' || !Number.isSafeInteger(a.usados_30d) || a.usados_30d < 0) return null;
+  return { aPartirDe: a.a_partir_de, usados30d: a.usados_30d };
 }
 
 export function interpretarInicioTrial(valor: unknown): InicioTrialPro | null {
@@ -241,5 +263,38 @@ export function contadorEnvios(oferta: EstadoOfertaComercial | null): ContadorEn
     texto: esgotado
       ? `Você usou os ${limite} envios do Grátis deste mês. Eles voltam no próximo mês.`
       : `${usados} de ${limite} envios do Grátis usados neste mês.`,
+  };
+}
+
+// ─── Aviso às contas ANTIGAS (limite a partir de D+30) ───────────────────────
+
+export type AvisoAntigas =
+  | { mostrar: false }
+  | { mostrar: true; chave: string; dataBR: string; texto: string };
+
+/** `dd/mm/aaaa` no fuso de Brasília (UTC−3, sem horário de verão), sem depender de Intl. */
+function dataBrasilia(iso: string): string {
+  const d = new Date(Date.parse(iso) - 3 * 60 * 60 * 1000);
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
+/**
+ * Regra PURA do banner "a partir de {D+30} o Grátis passa a permitir até 5 envios por mês". Só aparece com o sinal do
+ * servidor (`avisoLimiteAntigas`) e enquanto o limite ainda não começou; `limite` vem do servidor (nunca fixo aqui).
+ * `chave` identifica ESTE aviso (muda se a data mudar) para a dispensa de 1 vez.
+ */
+export function avisoAntigas(oferta: EstadoOfertaComercial | null, limite: number, agora: Date = new Date()): AvisoAntigas {
+  const a = oferta?.avisoLimiteAntigas;
+  if (!oferta || oferta.planoEfetivo !== 'gratis' || !a) return { mostrar: false };
+  if (Date.parse(a.aPartirDe) <= agora.getTime()) return { mostrar: false };
+  const dataBR = dataBrasilia(a.aPartirDe);
+  const usou = a.usados30d === 1 ? 'Você usou 1 nos últimos 30 dias.' : `Você usou ${a.usados30d} nos últimos 30 dias.`;
+  return {
+    mostrar: true,
+    chave: `olli:aviso_limite_antigas:${a.aPartirDe}`,
+    dataBR,
+    texto: `A partir de ${dataBR} o Grátis passa a permitir até ${limite} envios por mês. ${usou}`,
   };
 }
