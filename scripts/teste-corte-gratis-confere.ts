@@ -44,7 +44,7 @@ caso('corteConfere: aceita só D 00:00 em Brasília; recusa UTC meia-noite, outr
   const s = sqlDoCorte(D1);
   assert.match(s.atualizar, /timestamptz '2026-10-26 00:00:00-03'/);
   assert.match(s.conferir, /at time zone 'America\/Sao_Paulo'\) = timestamp '2026-10-26 00:00:00'/);
-  assert.match(sqlDoCorte(null).atualizar, /corte = null, corte_antigas = null/, 'desligar zera os dois cortes');
+  assert.match(sqlDoCorte(null).atualizar, /set corte = null, atualizado_em = now\(\);\nupdate public\.limite_gratis_config set corte_antigas = null/, 'desligar zera os dois cortes em comandos separados');
   assert.match(sqlDoCorte(null).conferir, /corte_antigas/);
   assert.throws(() => sqlDoCorte('26/10/2026'));
   caso('SQL gerado: UPDATE com -03 explícito e SELECT de conferência em Brasília; desligar = null');
@@ -90,7 +90,22 @@ caso('valor sem fuso, data pura e número solto são recusados; offsets -03 / -0
   const semValor = roda('--corte');
   assert.equal(semValor.status, 2, '--corte sem valor: exit 2, nunca 0');
   assert.match(semValor.stderr, /NÃO CONFERE/);
+  // 2º stub: copy já anuncia data às antigas (CORTE_ANTIGAS_DATA preenchida). Cobre os exit codes novos do CLI.
+  writeFileSync(join(pasta, '..', 'src', 'services', 'planosBase.ts'), "export const CORTE_GRATIS_DATA: string | null = '2026-10-26';\nexport const CORTE_ANTIGAS_DATA: string | null = '2026-11-25';\n");
+  const semAntigas = roda('--corte', '2026-10-26 00:00:00-03');
+  assert.equal(semAntigas.status, 1, 'copy anuncia data às antigas e --corte-antigas não veio: não confere');
+  assert.match(semAntigas.stdout, /\[antigas\]/);
+  const duploOk = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas', '2026-11-25 00:00:00-03');
+  assert.equal(duploOk.status, 0);
+  assert.match(duploOk.stdout, /^CONFERE/);
+  const antigasErrada = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas', '2026-11-26 00:00:00-03');
+  assert.equal(antigasErrada.status, 1);
+  const antigasSemValor = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas');
+  assert.equal(antigasSemValor.status, 2);
   void execFileSync;
+  const sozinho = roda('--corte-antigas', '2026-11-25 00:00:00-03');
+  assert.equal(sozinho.status, 2, '--corte-antigas sem --corte: exit 2, nunca 0');
+  assert.match(sozinho.stderr, /exige --corte/);
   caso('CLI em pasta com espaço/acento: imprime, confere (exit 0), não confere (exit 1) e --corte sem valor (exit 2); nunca mudo com exit 0');
 }
 

@@ -61,7 +61,10 @@ export function sqlDoCorte(constante: string | null): { atualizar: string; confe
   if (constante === null) {
     return {
       // Desligar zera OS DOIS cortes: deixar corte_antigas ligado seguiria limitando as contas antigas (revisão LIVRE 25/10).
-      atualizar: 'update public.limite_gratis_config set corte = null, corte_antigas = null, atualizado_em = now();',
+      // Dois comandos: se a migration do #233 ainda não foi aplicada (sem a coluna), o 1º ainda vale e o 2º é o único a falhar.
+      atualizar:
+        'update public.limite_gratis_config set corte = null, atualizado_em = now();\n' +
+        'update public.limite_gratis_config set corte_antigas = null;  -- exige a migration 20261024150000 (#233) aplicada',
       conferir: 'select corte, corte_antigas from public.limite_gratis_config;  -- esperado: os dois null',
     };
   }
@@ -77,6 +80,10 @@ export function sqlDoCorte(constante: string | null): { atualizar: string; confe
 // CLI (não roda quando importado pelo teste). pathToFileURL: caminho com espaço/acento vem percent-encoded em import.meta.url.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const i = process.argv.indexOf('--corte');
+  if (i < 0 && process.argv.includes('--corte-antigas')) {
+    console.error('NÃO CONFERE — NÃO PUBLICAR: --corte-antigas exige --corte');
+    process.exit(2);
+  }
   if (i >= 0) {
     const valor = process.argv[i + 1];
     if (valor === undefined || valor.startsWith('--')) {
