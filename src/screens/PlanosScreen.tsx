@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Linking, ActivityIndicator, Platform } from 'react-native';
 import { useNavigation, useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -328,6 +328,8 @@ export default function PlanosScreen() {
   const [cobrancaPix, setCobrancaPix] = useState<CobrancaPixPlano | null>(null);
   // "Pagar depois" (P0-08): Pix gerado e ainda não pago, guardado no aparelho para reabrir o MESMO código.
   const [pixPendente, setPixPendente] = useState<CobrancaPixPlano | null>(null);
+  // Geração da leitura do Pix guardado: resposta velha (lida antes de pagar) não traz o cartão de volta.
+  const geracaoPixPendente = useRef(0);
   const [pixEmAndamento, setPixEmAndamento] = useState<PlanoId | null>(null);
   // Google Play (só com VENDA_PELA_PLAY): ofertas com preço da loja, compra em curso
   // e restauração. Desligada, o estado nasce e fica em 'desligado'.
@@ -392,11 +394,14 @@ export default function PlanosScreen() {
 
   /** Lê o Pix guardado; se o servidor já viu o pagamento, some (e o plano é relido). Falha = sem cartão. */
   const carregarPixPendente = useCallback(async () => {
+    const geracao = ++geracaoPixPendente.current;
+    const valeAinda = () => geracao === geracaoPixPendente.current;
     const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
-    if (!sessao) { setPixPendente(null); return; }
+    if (!sessao) { if (valeAinda()) setPixPendente(null); return; }
     const c = await buscarPixPendente(sessao.user.id);
-    if (!c) { setPixPendente(null); return; }
+    if (!c) { if (valeAinda()) setPixPendente(null); return; }
     const st = await checarPixPlano(c.id);
+    if (!valeAinda()) return;
     if (st?.pago) {
       await esquecerPixPendente();
       setPixPendente(null);
@@ -580,22 +585,30 @@ export default function PlanosScreen() {
       ]);
       return;
     }
+    // Já existe Pix deste mesmo plano esperando: reabre o mesmo código em vez de criar outra cobrança
+    // (dois Pix pagáveis do mesmo plano = risco de pagar duas vezes).
+    const chave = chavePixPlano(p.id, periodo);
+    if (pixPendente && pixPendente.plano.id === chave) {
+      setCobrancaPix(pixPendente);
+      return;
+    }
     vibrar('selecao');
     setPixEmAndamento(p.id);
     try {
-      const c = await criarPixPlano(chavePixPlano(p.id, periodo));
+      const c = await criarPixPlano(chave);
       if (!c) {
         Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
         return;
       }
+      await guardarPixPendente(c, sessao.user.id);
       setCobrancaPix(c);
-      void guardarPixPendente(c, sessao.user.id);
     } finally {
       setPixEmAndamento(null);
     }
   }
 
   const aoPixPago = useCallback(() => {
+    geracaoPixPendente.current += 1;
     setPixPendente(null);
     void esquecerPixPendente();
     void carregarPlano();
@@ -605,15 +618,19 @@ export default function PlanosScreen() {
   async function gerarNovoPix() {
     const atual = cobrancaPix;
     setCobrancaPix(null);
+    // O código atual venceu: some o cartão dele (e do aparelho) já, antes de pedir outro.
+    geracaoPixPendente.current += 1;
+    setPixPendente(null);
+    void esquecerPixPendente();
     if (!atual) return;
     const c = await criarPixPlano(atual.plano.id);
     if (!c) {
       Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
       return;
     }
-    setCobrancaPix(c);
     const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
-    if (sessao) void guardarPixPendente(c, sessao.user.id);
+    if (sessao) await guardarPixPendente(c, sessao.user.id);
+    setCobrancaPix(c);
   }
 
   /**

@@ -25,7 +25,23 @@ export function paraGuardar(c: CobrancaPixPlano, userId: string): PixPendenteGua
   return { v: PIX_PENDENTE_VERSAO, userId, cobranca: c };
 }
 
-/** Lê o que foi guardado. Lixo, outra conta ou vencido = null (o chamador apaga). */
+/**
+ * Lê o que foi guardado:
+ *   - `cobranca`: vale para esta conta e ainda não venceu;
+ *   - `outraConta`: é de outra conta e ainda vale — NÃO apagar (a dona volta e o cartão continua lá);
+ *   - `apagar`: lixo, versão velha ou vencido.
+ */
+export function classificarPixPendente(bruto: unknown, userId: string, agora: Date = new Date()):
+  { cobranca: CobrancaPixPlano } | { outraConta: true } | { apagar: true } {
+  if (!userId) return { outraConta: true };
+  const comoMeu = lerPixPendente(bruto, userId, agora);
+  if (comoMeu) return { cobranca: comoMeu };
+  const dono = bruto && typeof bruto === 'object' ? (bruto as Partial<PixPendenteGuardado>).userId : undefined;
+  if (typeof dono === 'string' && dono && dono !== userId && lerPixPendente(bruto, dono, agora)) return { outraConta: true };
+  return { apagar: true };
+}
+
+/** Lê o que foi guardado para ESTA conta. Lixo, outra conta ou vencido = null. */
 export function lerPixPendente(bruto: unknown, userId: string, agora: Date = new Date()): CobrancaPixPlano | null {
   if (!bruto || typeof bruto !== 'object' || !userId) return null;
   const g = bruto as Partial<PixPendenteGuardado>;

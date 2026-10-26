@@ -5,7 +5,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PIX_PENDENTE_KEY } from './storageKeys';
-import { lerPixPendente, paraGuardar } from '../utils/pixPendente';
+import { classificarPixPendente, paraGuardar } from '../utils/pixPendente';
 import type { CobrancaPixPlano } from './pixPlano';
 
 export async function guardarPixPendente(c: CobrancaPixPlano, userId: string): Promise<void> {
@@ -22,9 +22,10 @@ export async function buscarPixPendente(userId: string): Promise<CobrancaPixPlan
   try {
     const raw = await AsyncStorage.getItem(PIX_PENDENTE_KEY);
     if (!raw) return null;
-    const c = lerPixPendente(JSON.parse(raw), userId);
-    if (!c) await AsyncStorage.removeItem(PIX_PENDENTE_KEY);
-    return c;
+    const r = classificarPixPendente(JSON.parse(raw), userId);
+    if ('cobranca' in r) return r.cobranca;
+    if ('apagar' in r) await AsyncStorage.removeItem(PIX_PENDENTE_KEY);
+    return null; // de outra conta e ainda válido: fica para a dona
   } catch {
     return null;
   }
