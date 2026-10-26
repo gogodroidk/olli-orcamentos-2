@@ -6,7 +6,7 @@
  * `pix_vence` listado no MODE, antes dos outros tipos, no mesmo teto, e falha do Pix não derruba a régua).
  */
 import assert from 'node:assert/strict';
-import { decidirPixVence, PIX_VENCE_PLANOS, selecionarPixVence } from '../src/pixVencePolicy.js';
+import { decidirPixVence, limiteDoAviso, PIX_VENCE_PLANOS, selecionarPixVence } from '../src/pixVencePolicy.js';
 import { renderizarEmailLembrete } from '../src/emailLembretesTemplate.js';
 import { processarLembretesEmail } from '../src/emailLembretesJob.js';
 import { PLANO_PIX } from '../src/mercadopago.js';
@@ -48,6 +48,25 @@ await caso('janela: >4h = cedo; <=1h = perto demais; 4h exato ainda avisa', () =
   assert.equal(mot({ expiraEm: depois(H) }), 'perto_demais');
   assert.equal(mot({ expiraEm: depois(-H) }), 'perto_demais');
   assert.equal(mot({ expiraEm: depois(4 * H) }), 'pix_vence');
+});
+await caso('limite igual ao do banco (valores conferidos no Postgres de produção, SELECT puro)', () => {
+  const pares = [
+    ['2026-10-26T15:00:00Z', '2026-10-26T19:00:00.000Z'],
+    ['2026-10-26T21:00:00Z', '2026-10-27T01:00:00.000Z'],
+    ['2026-10-26T22:00:00Z', '2026-10-27T12:00:00.000Z'], // 19h BRT: até 09:00 de amanhã
+    ['2026-10-27T02:30:00Z', '2026-10-27T12:00:00.000Z'],
+    ['2026-12-31T22:00:00Z', '2027-01-01T12:00:00.000Z'], // virada de ano
+  ];
+  for (const [agora, limite] of pares) assert.equal(limiteDoAviso(new Date(agora)).toISOString(), limite, agora);
+});
+await caso('cobertura: todo vencimento do dia é avisado por alguma rodada (8h–19h BRT), inclusive madrugada', () => {
+  const rodadas = [];
+  for (let d = 0; d < 3; d += 1) for (let h = 8; h <= 19; h += 1) rodadas.push(new Date(Date.UTC(2026, 9, 26 + d, h + 3)));
+  for (let m = 0; m < 24 * 60; m += 5) {
+    const expira = new Date(Date.UTC(2026, 9, 27, 0, m)).toISOString(); // um dia inteiro, de 5 em 5 min
+    const avisa = rodadas.some((r) => decidirPixVence(cand({ expiraEm: expira }), { agora: r }).avisar);
+    assert.ok(avisa, `sem aviso para ${expira}`);
+  }
 });
 await caso('pago, substituído por Pix mais novo, SAIR e já avisado não recebem', () => {
   assert.equal(mot({ pago: true }), 'pago');

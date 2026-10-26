@@ -2,11 +2,14 @@
 --
 -- A cobrança Pix do plano já é gravada em `webhook_events` (origem `pix_cobranca`, tipo
 -- `plano_pix_criada`, payload {user_id, plano, expires_at}; #223). O pagamento visto fica em
--- `webhook_events` origem `abacate` (event_id = id da cobrança, status `processado`). Sem tabela nova.
+-- `webhook_events` origem `abacate` (event_id = id da cobrança; a linha só nasce depois de a AbacatePay
+-- confirmar PAID). Sem tabela nova.
 --
 -- Reusa a esteira dos lembretes (mesma outbox, supressão/SAIR, conta interna, teto diário global):
---   1. `listar_pix_vence_email`  — função NOVA: cobranças sem pagamento, não substituídas por um Pix
---      mais novo da mesma conta, vencendo entre 1 h e 4 h a partir de agora;
+--   0. `private.pix_vence_limite` e `private.timestamptz_ou_nulo` — helpers (janela e leitura segura da data);
+--   1. `listar_pix_vence_email`  — função NOVA: cobranças sem pagamento visto, não substituídas por um Pix
+--      mais novo da mesma conta, vencendo entre 1 h e 4 h a partir de agora (na última rodada do dia, 19h de
+--      Brasília, até 09:00 do dia seguinte — quem vence de madrugada é avisado na véspera);
 --   2. `enqueue_lembrete_email`  — ganha o tipo `pix_vence` por remendo do texto real da função (mesmo
 --      método da 20261007140000 e da régua `nao_aberto`; falha em voz alta se a âncora mudou; idempotente)
 --      e RECONFERE a cobrança sob a trava antes de enfileirar. O teto de 1 e-mail/24 h por pessoa NÃO vale
@@ -16,6 +19,40 @@
 -- EMAIL_LEMBRETES_MODE listar `pix_vence` ("production:...,pix_vence").
 
 begin;
+
+-- ─── 0. Helpers ──────────────────────────────────────────────────────────────────
+-- Vencimento mais distante que a rodada de `p_now` avisa. Igual a `limiteDoAviso` (worker/src/pixVencePolicy.js):
+-- agora + 4 h; a partir das 19h de Brasília (UTC-3 fixo, como o worker), 09:00 do dia seguinte.
+create or replace function private.pix_vence_limite(p_now timestamptz)
+returns timestamptz
+language sql
+immutable
+set search_path to ''
+as $function$
+  select case
+    when extract(hour from (p_now at time zone 'UTC') - interval '3 hours') >= 19
+      then (pg_catalog.date_trunc('day', (p_now at time zone 'UTC') - interval '3 hours') + interval '1 day 12 hours') at time zone 'UTC'
+    else p_now + interval '4 hours'
+  end;
+$function$;
+
+-- Payload é texto livre gravado pelo worker: data torta vira NULL em vez de derrubar a lista inteira.
+create or replace function private.timestamptz_ou_nulo(p_texto text)
+returns timestamptz
+language plpgsql
+stable -- o cast de texto sem fuso depende do TimeZone da sessão
+set search_path to ''
+as $function$
+begin
+  if p_texto is null or p_texto !~ '^\d{4}-\d{2}-\d{2}T' then return null; end if;
+  return p_texto::timestamptz;
+exception when others then
+  return null;
+end;
+$function$;
+
+revoke all on function private.pix_vence_limite(timestamptz) from public, anon, authenticated;
+revoke all on function private.timestamptz_ou_nulo(text) from public, anon, authenticated;
 
 -- ─── 1. Candidatos ───────────────────────────────────────────────────────────────
 create or replace function public.listar_pix_vence_email(
@@ -46,8 +83,7 @@ begin
       c.payload ->> 'plano' as plano,
       case when (c.payload ->> 'user_id') ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
            then (c.payload ->> 'user_id')::uuid end as user_id,
-      case when (c.payload ->> 'expires_at') ~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})$'
-           then (c.payload ->> 'expires_at')::timestamptz end as expira
+      private.timestamptz_ou_nulo(c.payload ->> 'expires_at') as expira
     from public.webhook_events c
     where c.origem = 'pix_cobranca'
       and c.tipo = 'plano_pix_criada'
@@ -67,18 +103,20 @@ begin
   join auth.users u on u.id = cb.user_id
   where cb.user_id is not null
     and cb.expira > p_now + interval '1 hour'
-    and cb.expira <= p_now + interval '4 hours'
+    and cb.expira <= private.pix_vence_limite(p_now)
     and cb.plano in ('pro_mensal', 'pro_anual', 'empresa_mensal', 'empresa_anual')
     and cb.event_id ~ '^[A-Za-z0-9_-]{4,120}$'
-    -- esta cobrança já foi paga
+    -- esta cobrança já foi paga. Qualquer status: a linha `abacate` só nasce depois de a AbacatePay
+    -- confirmar PAID (`liberarSePaga`); 'recebido'/'falhou' = pagou e a concessão ainda não fechou.
+    -- Dizer "ainda não foi pago" a essa pessoa a levaria a pagar de novo.
     and not exists (
       select 1 from public.webhook_events p
-      where p.origem = 'abacate' and p.event_id = cb.event_id and p.status = 'processado'
+      where p.origem = 'abacate' and p.event_id = cb.event_id
     )
     -- a pessoa pagou outro Pix depois de gerar este
     and not exists (
       select 1 from public.webhook_events p
-      where p.origem = 'abacate' and p.status = 'processado'
+      where p.origem = 'abacate'
         and p.payload ->> 'user_id' = cb.user_id::text
         and p.recebido_em >= cb.recebido_em
     )
@@ -130,11 +168,10 @@ declare
     || E'          and c.event_id = p_template_dados ->> ''cobrancaId''\n'
     || E'          and c.payload ->> ''user_id'' = p_user_id::text\n'
     || E'          and c.payload ->> ''plano'' = p_template_dados ->> ''plano''\n'
-    || E'          and (c.payload ->> ''expires_at'') ~ ''^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:?\\d{2})$''\n'
-    || E'          and pg_catalog.to_char((c.payload ->> ''expires_at'')::timestamptz at time zone ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')\n'
+    || E'          and pg_catalog.to_char(private.timestamptz_ou_nulo(c.payload ->> ''expires_at'') at time zone ''UTC'', ''YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'')\n'
     || E'              = p_template_dados ->> ''expiraEm''\n'
-    || E'          and (c.payload ->> ''expires_at'')::timestamptz > p_now + interval ''1 hour''\n'
-    || E'          and (c.payload ->> ''expires_at'')::timestamptz <= p_now + interval ''4 hours''\n'
+    || E'          and private.timestamptz_ou_nulo(c.payload ->> ''expires_at'') > p_now + interval ''1 hour''\n'
+    || E'          and private.timestamptz_ou_nulo(c.payload ->> ''expires_at'') <= private.pix_vence_limite(p_now)\n'
     || E'          and not exists (select 1 from public.webhook_events n\n'
     || E'                          where n.origem = ''pix_cobranca'' and n.tipo = ''plano_pix_criada''\n'
     || E'                            and n.payload ->> ''user_id'' = p_user_id::text and n.recebido_em > c.recebido_em)\n'
@@ -143,7 +180,7 @@ declare
     || E'      end if;\n'
     || E'      if exists (\n'
     || E'        select 1 from public.webhook_events p\n'
-    || E'        where p.origem = ''abacate'' and p.status = ''processado''\n'
+    || E'        where p.origem = ''abacate''\n'
     || E'          and (p.event_id = p_template_dados ->> ''cobrancaId''\n'
     || E'               or (p.payload ->> ''user_id'' = p_user_id::text\n'
     || E'                   and p.recebido_em >= (select c.recebido_em from public.webhook_events c\n'

@@ -110,6 +110,7 @@ async function executarRodada(env, dependencias = {}) {
     // MODE ("production" sozinho NÃO liga) e consome o mesmo teto da rodada. Falha aqui não derruba os
     // outros tipos: vira `pix_vence_falhou` nas decisões (e no batimento) e a rodada segue.
     let pixVence = 0;
+    let tetoDiarioAtingido = false;
     if (restoModo.length > 0 && tiposPermitidos.has('pix_vence')) try {
       const lista = await chamarRpcServico(config, fetchImpl, 'listar_pix_vence_email', {
         p_now: agoraIso,
@@ -121,7 +122,7 @@ async function executarRodada(env, dependencias = {}) {
       for (const p of sel.pedidos) {
         const motivo = await enfileirar(p);
         if (motivo === 'enfileirado') { enfileirados += 1; pixVence += 1; }
-        if (motivo === 'teto_diario') break;
+        if (motivo === 'teto_diario') { tetoDiarioAtingido = true; break; }
       }
     } catch (erro) {
       motivos.pix_vence_falhou = 1;
@@ -129,7 +130,7 @@ async function executarRodada(env, dependencias = {}) {
       console.error(JSON.stringify({ event: 'email_lembretes_pix_vence_falhou', code: codigo }));
     }
 
-    for (const p of pedidos.slice(0, Math.max(0, tetoRodada - enfileirados))) {
+    for (const p of tetoDiarioAtingido ? [] : pedidos.slice(0, Math.max(0, tetoRodada - enfileirados))) {
       const motivo = await enfileirar(p);
       if (motivo === 'enfileirado') enfileirados += 1;
       if (motivo === 'teto_diario') break;
@@ -181,6 +182,7 @@ export function resumoSeguroRodada(r) {
     codigo: rotulo(r?.codigo),
     candidatos: n(r?.candidatos),
     enfileirados: n(r?.enfileirados),
+    pixVence: n(r?.pixVence),
     decisoes: contagens(r?.decisoes),
     banco: contagens(r?.banco),
   };
