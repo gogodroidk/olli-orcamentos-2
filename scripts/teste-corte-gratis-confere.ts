@@ -81,19 +81,21 @@ caso('valor sem fuso, data pura e número solto são recusados; offsets -03 / -0
   const roda = (...a: string[]) => spawnSync(process.execPath, [join(pasta, 'corte-gratis-confere.ts'), ...a], { encoding: 'utf8' });
   const sem = roda();
   assert.match(sem.stdout, /CORTE_GRATIS_DATA =/, 'sem argumento imprime o plano mesmo em pasta com espaço');
-  const confere = roda('--corte', '2026-10-26 00:00:00-03');
+  const confere = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas', 'null');
   assert.equal(confere.status, 0);
   assert.match(confere.stdout, /^CONFERE/);
-  const nao = roda('--corte', '2000-01-01 00:00:00-03');
+  const nao = roda('--corte', '2000-01-01 00:00:00-03', '--corte-antigas', 'null');
   assert.equal(nao.status, 1);
   assert.match(nao.stdout, /NÃO CONFERE/);
   const semValor = roda('--corte');
   assert.equal(semValor.status, 2, '--corte sem valor: exit 2, nunca 0');
   assert.match(semValor.stderr, /NÃO CONFERE/);
+  const antigasLigadasSemCopy = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas', '2026-11-25 00:00:00-03');
+  assert.equal(antigasLigadasSemCopy.status, 1, 'banco limita as antigas mas a copy não anuncia: não confere');
   // 2º stub: copy já anuncia data às antigas (CORTE_ANTIGAS_DATA preenchida). Cobre os exit codes novos do CLI.
   writeFileSync(join(pasta, '..', 'src', 'services', 'planosBase.ts'), "export const CORTE_GRATIS_DATA: string | null = '2026-10-26';\nexport const CORTE_ANTIGAS_DATA: string | null = '2026-11-25';\n");
-  const semAntigas = roda('--corte', '2026-10-26 00:00:00-03');
-  assert.equal(semAntigas.status, 1, 'copy anuncia data às antigas e --corte-antigas não veio: não confere');
+  const semAntigas = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas', 'null');
+  assert.equal(semAntigas.status, 1, 'copy anuncia data às antigas e o banco está sem corte_antigas: não confere');
   assert.match(semAntigas.stdout, /\[antigas\]/);
   const duploOk = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas', '2026-11-25 00:00:00-03');
   assert.equal(duploOk.status, 0);
@@ -103,6 +105,10 @@ caso('valor sem fuso, data pura e número solto são recusados; offsets -03 / -0
   const antigasSemValor = roda('--corte', '2026-10-26 00:00:00-03', '--corte-antigas');
   assert.equal(antigasSemValor.status, 2);
   void execFileSync;
+  // sem --corte-antigas o gate NUNCA passa (nem com a constante das antigas null): exit 2
+  const semAntigasFlag = roda('--corte', '2026-10-26 00:00:00-03');
+  assert.equal(semAntigasFlag.status, 2, '--corte sem --corte-antigas: exit 2, nunca 0');
+  assert.match(semAntigasFlag.stderr, /--corte-antigas ausente/);
   const sozinho = roda('--corte-antigas', '2026-11-25 00:00:00-03');
   assert.equal(sozinho.status, 2, '--corte-antigas sem --corte: exit 2, nunca 0');
   assert.match(sozinho.stderr, /exige --corte/);

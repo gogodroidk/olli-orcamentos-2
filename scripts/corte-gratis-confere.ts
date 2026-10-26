@@ -73,7 +73,7 @@ export function sqlDoCorte(constante: string | null): { atualizar: string; confe
     atualizar: `update public.limite_gratis_config set corte = timestamptz '${constante} 00:00:00-03', atualizado_em = now();`,
     conferir:
       `select corte, (corte at time zone 'America/Sao_Paulo') = timestamp '${constante} 00:00:00' as confere ` +
-      `from public.limite_gratis_config;  -- esperado: confere = true; passe o valor de corte em --corte para este script`,
+      `, corte_antigas from public.limite_gratis_config;  -- esperado: confere = true; passe corte em --corte e corte_antigas em --corte-antigas para este script`,
   };
 }
 
@@ -92,13 +92,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
     const r = corteConfere(valor, CORTE_GRATIS_DATA);
     const ia = process.argv.indexOf('--corte-antigas');
-    // Com a copy anunciando data para as antigas, o valor do banco é OBRIGATÓRIO (sem ele não dá para provar que bate).
+    // SEMPRE obrigatório (mesmo com a constante null): sem ler o banco não dá para provar que as antigas estão sem corte.
     const valorAntigas = ia >= 0 ? process.argv[ia + 1] : undefined;
-    if (ia >= 0 && (valorAntigas === undefined || valorAntigas.startsWith('--'))) {
-      console.error('NÃO CONFERE — NÃO PUBLICAR: --corte-antigas sem valor');
+    if (ia < 0 || valorAntigas === undefined || valorAntigas.startsWith('--')) {
+      console.error('NÃO CONFERE — NÃO PUBLICAR: --corte-antigas ausente ou sem valor (passe o corte_antigas lido do banco; null se vazio)');
       process.exit(2);
     }
-    const ra = corteAntigasConfere(ia >= 0 ? valorAntigas : null, CORTE_ANTIGAS_DATA);
+    const ra = corteAntigasConfere(valorAntigas, CORTE_ANTIGAS_DATA);
     const ok = r.ok && ra.ok;
     console.log(`${ok ? 'CONFERE' : 'NÃO CONFERE — NÃO PUBLICAR'}: ${r.motivo} | ${ra.motivo}`);
     process.exit(ok ? 0 : 1);
