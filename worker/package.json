@@ -23,6 +23,7 @@
     "test:email-lembretes-template": "node scripts/teste-email-lembretes-template.js",
     "test:email-lembretes-job": "node scripts/teste-email-lembretes-job.js",
     "test:email-regua-reengajamento": "node scripts/teste-email-regua-reengajamento.js",
+    "test:orcamento-nao-aberto": "node scripts/teste-orcamento-nao-aberto.js",
     "test:email-descadastro": "node scripts/teste-email-descadastro.js",
     "test:funil-receita": "node scripts/teste-funil-receita.js",
     "test:play-verificacao": "node scripts/teste-play-verificacao.js",
