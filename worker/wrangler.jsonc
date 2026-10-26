@@ -77,7 +77,8 @@
     // Ativação segue limitada a conta de até 7 dias (ATIVACAO_MAX_DIAS=7 — as antigas do concierge ficam de fora).
     // O sufixo de EMAIL_LEMBRETES_MODE ("production:tipo1,tipo2") ainda restringe os tipos (worker em 64/64 variáveis, chave nova não cabe).
     // Boas-vindas e e-mails de login não passam por aqui.
-    "EMAIL_LEMBRETES_MODE": "production",
+    // 26/10/2026 (D-0923, P0-08): liga o aviso "seu Pix vence às HH:MM" — pix_vence só roda se listado EXPLICITAMENTE no sufixo.
+    "EMAIL_LEMBRETES_MODE": "production:ativacao,assinatura,reengajamento,pix_vence",
     "EMAIL_LEMBRETES_MAX_POR_RODADA": "3",
     "EMAIL_LEMBRETES_TETO_DIARIO": "40",
     "EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS": "7",

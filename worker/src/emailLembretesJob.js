@@ -22,6 +22,7 @@ import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js'
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
 import { selecionarNaoAbertos } from './orcamentoNaoAbertoPolicy.js';
+import { selecionarPixVence } from './pixVencePolicy.js';
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
 const LIMITE_CANDIDATOS = 50;
@@ -100,11 +101,72 @@ async function executarRodada(env, dependencias = {}) {
       tetoRodada,
       tiposPermitidos,
     });
-
     const motivos = { ...motivosBase };
     const banco = {};
     let enfileirados = 0;
-    for (const p of pedidos) {
+
+    // "Pix do plano vence em ~3 h" (P0-08): vem ANTES dos outros tipos porque a janela é curta (a
+    // próxima rodada pode já ser tarde). Só roda com `pix_vence` listado EXPLICITAMENTE no sufixo do
+    // MODE ("production" sozinho NÃO liga) e consome o mesmo teto da rodada. Falha aqui não derruba os
+    // outros tipos: vira `pix_vence_falhou` nas decisões (e no batimento) e a rodada segue.
+    let pixVence = 0;
+    let tetoDiarioAtingido = false;
+    if (restoModo.length > 0 && tiposPermitidos.has('pix_vence')) try {
+      const lista = await chamarRpcServico(config, fetchImpl, 'listar_pix_vence_email', {
+        p_now: agoraIso,
+        p_limit: LIMITE_CANDIDATOS,
+      }, { limiteBytes: LIMITE_BYTES_CANDIDATOS });
+      if (!Array.isArray(lista)) throw Object.assign(new Error('pix_vence_resposta_invalida'), { codigo: 'pix_vence_resposta_invalida' });
+      const sel = selecionarPixVence(lista.map((l) => (l && typeof l === 'object' ? l.candidato : null)), { agora, teto: tetoRodada });
+      for (const [m, n] of Object.entries(sel.motivos)) motivos[`pix_vence_${m}`] = n;
+      for (const p of sel.pedidos) {
+        const motivo = await enfileirar(p);
+        if (motivo === 'enfileirado') { enfileirados += 1; pixVence += 1; }
+        if (motivo === 'teto_diario') { tetoDiarioAtingido = true; break; }
+      }
+    } catch (erro) {
+      motivos.pix_vence_falhou = 1;
+      const codigo = texto(erro?.codigo || erro?.message, 60).replace(/[^a-zA-Z0-9._:-]/g, '_') || 'erro';
+      console.error(JSON.stringify({ event: 'email_lembretes_pix_vence_falhou', code: codigo }));
+    }
+
+    for (const p of tetoDiarioAtingido ? [] : pedidos.slice(0, Math.max(0, tetoRodada - enfileirados))) {
+      const motivo = await enfileirar(p);
+      if (motivo === 'enfileirado') enfileirados += 1;
+      if (motivo === 'teto_diario') break;
+    }
+
+    // "Orçamento não aberto em 48 h" (Z-123): aviso ao PRESTADOR, nunca ao cliente. Só roda com o tipo
+    // `nao_aberto` listado EXPLICITAMENTE no sufixo do MODE ("production" sozinho NÃO liga) e usa o que
+    // sobrou do teto da rodada. Falha aqui não derruba a rodada: vira `nao_aberto_falhou` nas decisões.
+    let naoAbertos = 0;
+    if (restoModo.length > 0 && tiposPermitidos.has('nao_aberto') && !tetoDiarioAtingido && enfileirados < tetoRodada) try {
+      const lista = await chamarRpcServico(config, fetchImpl, 'listar_nao_abertos_email', {
+        p_now: agoraIso,
+        p_limit: LIMITE_CANDIDATOS,
+      }, { limiteBytes: LIMITE_BYTES_CANDIDATOS });
+      if (!Array.isArray(lista)) throw Object.assign(new Error('nao_abertos_resposta_invalida'), { codigo: 'nao_abertos_resposta_invalida' });
+      const sel = selecionarNaoAbertos(lista.map((l) => (l && typeof l === 'object' ? l.candidato : null)), {
+        agora,
+        teto: tetoRodada - enfileirados,
+      });
+      for (const [m, n] of Object.entries(sel.motivos)) motivos[`nao_aberto_${m}`] = n;
+      for (const p of sel.pedidos) {
+        const motivo = await enfileirar(p);
+        if (motivo === 'enfileirado') { enfileirados += 1; naoAbertos += 1; }
+        if (motivo === 'teto_diario') break;
+      }
+    } catch (erro) {
+      motivos.nao_aberto_falhou = 1;
+      const codigo = texto(erro?.codigo || erro?.message, 60).replace(/[^a-zA-Z0-9._:-]/g, '_') || 'erro';
+      console.error(JSON.stringify({ event: 'email_lembretes_nao_aberto_falhou', code: codigo }));
+    }
+
+    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, pixVence, naoAbertos, decisoes: motivos, banco });
+    console.log(JSON.stringify({ event: 'email_lembretes_rodada', ...saida }));
+    return saida;
+
+    async function enfileirar(p) {
       const r = await chamarRpcServico(config, fetchImpl, 'enqueue_lembrete_email', {
         p_user_id: p.userId,
         p_template: p.template,
@@ -117,46 +179,8 @@ async function executarRodada(env, dependencias = {}) {
       });
       const motivo = r && typeof r.motivo === 'string' ? r.motivo.replace(/[^a-z_]/g, '').slice(0, 40) : 'resposta_invalida';
       banco[motivo] = (banco[motivo] || 0) + 1;
-      if (r && r.enfileirado === true) enfileirados += 1;
-      if (motivo === 'teto_diario') break;
+      return r && r.enfileirado === true ? 'enfileirado' : motivo;
     }
-
-    // "Orçamento não aberto em 48 h" (Z-123): aviso ao PRESTADOR, nunca ao cliente. Só roda com o tipo
-    // `nao_aberto` listado EXPLICITAMENTE no sufixo do MODE ("production" sozinho NÃO liga) e usa o que
-    // sobrou do teto da rodada.
-    let naoAbertos = 0;
-    if (restoModo.length > 0 && tiposPermitidos.has('nao_aberto') && enfileirados < tetoRodada) {
-      const lista = await chamarRpcServico(config, fetchImpl, 'listar_nao_abertos_email', {
-        p_now: agoraIso,
-        p_limit: LIMITE_CANDIDATOS,
-      }, { limiteBytes: LIMITE_BYTES_CANDIDATOS });
-      if (!Array.isArray(lista)) throw Object.assign(new Error('nao_abertos_resposta_invalida'), { codigo: 'nao_abertos_resposta_invalida' });
-      const sel = selecionarNaoAbertos(lista.map((l) => (l && typeof l === 'object' ? l.candidato : null)), {
-        agora,
-        teto: tetoRodada - enfileirados,
-      });
-      for (const [m, n] of Object.entries(sel.motivos)) motivos[`nao_aberto_${m}`] = n;
-      for (const p of sel.pedidos) {
-        const r = await chamarRpcServico(config, fetchImpl, 'enqueue_lembrete_email', {
-          p_user_id: p.userId,
-          p_template: p.template,
-          p_template_version: p.templateVersion,
-          p_purpose: p.purpose,
-          p_idempotency_key: p.idempotencyKey,
-          p_template_dados: p.dados,
-          p_teto_diario: tetoDiario,
-          p_now: agoraIso,
-        });
-        const motivo = r && typeof r.motivo === 'string' ? r.motivo.replace(/[^a-z_]/g, '').slice(0, 40) : 'resposta_invalida';
-        banco[motivo] = (banco[motivo] || 0) + 1;
-        if (r && r.enfileirado === true) { enfileirados += 1; naoAbertos += 1; }
-        if (motivo === 'teto_diario') break;
-      }
-    }
-
-    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, naoAbertos, decisoes: motivos, banco });
-    console.log(JSON.stringify({ event: 'email_lembretes_rodada', ...saida }));
-    return saida;
   } catch (erro) {
     const codigo = texto(erro?.codigo || erro?.message, 60).replace(/[^a-zA-Z0-9._:-]/g, '_') || 'erro';
     console.error(JSON.stringify({ event: 'email_lembretes_rodada_falhou', code: codigo }));
@@ -184,6 +208,7 @@ export function resumoSeguroRodada(r) {
     codigo: rotulo(r?.codigo),
     candidatos: n(r?.candidatos),
     enfileirados: n(r?.enfileirados),
+    pixVence: n(r?.pixVence),
     decisoes: contagens(r?.decisoes),
     banco: contagens(r?.banco),
   };

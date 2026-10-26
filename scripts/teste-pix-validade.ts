@@ -3,6 +3,7 @@
  * Exit 0 = passou; 1 = falhou. Aviso de validade do Pix do plano (modal).
  */
 import { readFileSync } from 'node:fs';
+import { classificarPixPendente, lerPixPendente, paraGuardar } from '../src/utils/pixPendente.ts';
 import { textoValidadePix } from '../src/utils/pixValidade.ts';
 import { ARTIGO_ARREPENDIMENTO, DIAS_ARREPENDIMENTO, textoArrependimentoCurto } from '../src/content/legal/arrependimento.ts';
 import { PRECO_PRO, PRECO_EMPRESA } from '../src/services/precosPlanos.ts';
@@ -31,6 +32,32 @@ const modal = readFileSync(new URL('../src/components/PixPlanoModal.tsx', import
 ok('modal usa textoValidadePix(cobranca.expiresAt)', /textoValidadePix\(cobranca\.expiresAt\)/.test(modal));
 ok('sem "24 h" fixo no modal', !/24\s*h/i.test(modal));
 ok('sem promessa de e-mail 7 dias no modal', !/7 dias/.test(modal));
+// P0-08: "Pagar depois" só fecha a tela (a cobrança segue valendo); não gera Pix novo nem cancela nada.
+ok('botão "Pagar depois" existe e chama aoFechar', /label="Pagar depois"[^>]*onPress=\{aoFechar\}/.test(modal));
+
+// "Pagar depois" (spec CPO 23/10): Planos reabre o MESMO Pix guardado no aparelho, nunca gera outro.
+{
+  const U1 = 'user-1';
+  const c = { id: 'pix_char_1', brCode: '000201...', brCodeBase64: '', expiresAt: local(2026, 10, 24, 15, 30).toISOString(), plano: { id: 'pro_mensal' as const, nome: 'OLLI Pro · 1 mês', meses: 1, valor: 39 } };
+  const g = paraGuardar(c, U1);
+  const bruto = JSON.parse(JSON.stringify(g));
+  ok('pendente: guarda com a conta e relê igual (no meio do prazo)', JSON.stringify(lerPixPendente(bruto, U1, agora)) === JSON.stringify(c) && !!lerPixPendente(bruto, U1, local(2026, 10, 24, 14, 30)));
+  ok('pendente: outra conta no aparelho não vê', lerPixPendente(bruto, 'user-2', agora) === null);
+  ok('pendente: vencido (ou a 1 min de vencer) some', lerPixPendente(bruto, U1, local(2026, 10, 24, 15, 29)) === null && lerPixPendente(bruto, U1, local(2026, 10, 24, 15, 31)) === null);
+  ok('pendente: sem validade não guarda', paraGuardar({ ...c, expiresAt: null }, U1) === null);
+  ok('pendente: lixo e versão errada = null', lerPixPendente('x', U1, agora) === null && lerPixPendente({ ...bruto, v: 2 }, U1, agora) === null && lerPixPendente({ ...bruto, cobranca: { ...c, plano: { ...c.plano, id: 'gold' } } }, U1, agora) === null);
+  ok('pendente: de outra conta e válido NÃO é apagado; vencido ou lixo é', 'outraConta' in classificarPixPendente(bruto, 'user-2', agora) && 'apagar' in classificarPixPendente(bruto, 'user-2', local(2026, 10, 25, 9, 0)) && 'apagar' in classificarPixPendente({ v: 1 }, U1, agora) && 'cobranca' in classificarPixPendente(bruto, U1, agora));
+  const chaves = readFileSync(new URL('../src/services/storageKeys.ts', import.meta.url), 'utf8');
+  const lista = chaves.slice(chaves.indexOf('export const APP_DATA_STORAGE_KEYS'));
+  ok('pendente: sai no logout (está em APP_DATA_STORAGE_KEYS, definido antes da lista)', /PIX_PENDENTE_KEY/.test(lista.slice(0, lista.indexOf('];'))) && chaves.indexOf("export const PIX_PENDENTE_KEY") < chaves.indexOf('export const APP_DATA_STORAGE_KEYS'));
+  const planos = readFileSync(new URL('../src/screens/PlanosScreen.tsx', import.meta.url), 'utf8');
+  const cartao = planos.slice(planos.indexOf('{pixPendente && !cobrancaPix ? ('), planos.indexOf('{contextoGate ? ('));
+  ok('Planos: cartão "Ver código" reabre a cobrança guardada e não cria cobrança', /onPress=\{\(\) => setCobrancaPix\(pixPendente\)\}/.test(cartao) && !/criarPixPlano/.test(cartao));
+  const leitura = planos.slice(planos.indexOf('const carregarPixPendente = useCallback'), planos.indexOf('useFocusEffect('));
+  ok('Planos: na leitura, Pix pago some do aparelho e resposta velha é ignorada', /if \(st\?\.pago\) \{\s*await esquecerPixPendente\(\)/.test(leitura) && /if \(!valeAinda\(\)\) return;\s*if \(st\?\.pago\)/.test(leitura));
+  const pagar = planos.slice(planos.indexOf('async function pagarComPix'), planos.indexOf('const aoPixPago'));
+  ok('Planos: Pix do mesmo plano já esperando é reaberto antes de criar outro', pagar.indexOf('pixPendente.plano.id === chave') > -1 && pagar.indexOf('pixPendente.plano.id === chave') < pagar.indexOf('criarPixPlano('));
+}
 
 
 // Parecer do Dr. Paulo (24/10): a tela do Pix cita o arrependimento (CDC art. 49) e o preço vem da fonte.
