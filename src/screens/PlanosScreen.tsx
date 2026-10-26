@@ -41,7 +41,9 @@ import {
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
-import { chavePixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
+import { chavePixPlano, checarPixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
+import { buscarPixPendente, esquecerPixPendente, guardarPixPendente } from '../services/pixPendente';
+import { textoValidadePix } from '../utils/pixValidade';
 import {
   ESTADO_PLAY_BILLING,
   carregarOfertasPlay,
@@ -324,6 +326,8 @@ export default function PlanosScreen() {
   // que o Pix está ligado DE VERDADE — sem isso, nenhum botão de Pix aparece.
   const [pixLigado, setPixLigado] = useState(false);
   const [cobrancaPix, setCobrancaPix] = useState<CobrancaPixPlano | null>(null);
+  // "Pagar depois" (P0-08): Pix gerado e ainda não pago, guardado no aparelho para reabrir o MESMO código.
+  const [pixPendente, setPixPendente] = useState<CobrancaPixPlano | null>(null);
   const [pixEmAndamento, setPixEmAndamento] = useState<PlanoId | null>(null);
   // Google Play (só com VENDA_PELA_PLAY): ofertas com preço da loja, compra em curso
   // e restauração. Desligada, o estado nasce e fica em 'desligado'.
@@ -386,12 +390,29 @@ export default function PlanosScreen() {
     setAssinaturaPlay(daPlay);
   }, []);
 
+  /** Lê o Pix guardado; se o servidor já viu o pagamento, some (e o plano é relido). Falha = sem cartão. */
+  const carregarPixPendente = useCallback(async () => {
+    const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
+    if (!sessao) { setPixPendente(null); return; }
+    const c = await buscarPixPendente(sessao.user.id);
+    if (!c) { setPixPendente(null); return; }
+    const st = await checarPixPlano(c.id);
+    if (st?.pago) {
+      await esquecerPixPendente();
+      setPixPendente(null);
+      void carregarPlano();
+      return;
+    }
+    setPixPendente(c);
+  }, [carregarPlano]);
+
   useFocusEffect(
     useCallback(() => {
       carregarPlano();
       // Relê a Play a cada foco: cobre quem foi à Conta fazer login e voltou.
       void carregarPlay();
-    }, [carregarPlano, carregarPlay]),
+      void carregarPixPendente();
+    }, [carregarPlano, carregarPlay, carregarPixPendente]),
   );
 
   const planoConhecido = fontePlano === 'servidor' || fontePlano === 'cache_mesmo_usuario';
@@ -568,12 +589,18 @@ export default function PlanosScreen() {
         return;
       }
       setCobrancaPix(c);
+      void guardarPixPendente(c, sessao.user.id);
     } finally {
       setPixEmAndamento(null);
     }
   }
 
-  const aoPixPago = useCallback(() => { void carregarPlano(); }, [carregarPlano]);
+  const aoPixPago = useCallback(() => {
+    setPixPendente(null);
+    void esquecerPixPendente();
+    void carregarPlano();
+  }, [carregarPlano]);
+
 
   async function gerarNovoPix() {
     const atual = cobrancaPix;
@@ -585,6 +612,8 @@ export default function PlanosScreen() {
       return;
     }
     setCobrancaPix(c);
+    const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
+    if (sessao) void guardarPixPendente(c, sessao.user.id);
   }
 
   /**
@@ -827,6 +856,23 @@ export default function PlanosScreen() {
           </View>
         ) : null}
 
+        {pixPendente && !cobrancaPix ? (
+          <TouchableOpacity
+            style={styles.pixPendente}
+            onPress={() => setCobrancaPix(pixPendente)}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={`Pix aguardando pagamento, ${pixPendente.plano.nome}. ${textoValidadePix(pixPendente.expiresAt) ?? ''}. Ver código`}
+          >
+            <MaterialCommunityIcons name="qrcode" size={22} color={cores.accentLight} />
+            <View style={styles.pixPendenteTxt}>
+              <Text style={styles.pixPendenteTitulo}>Pix aguardando pagamento</Text>
+              <Text style={styles.pixPendenteSub}>{pixPendente.plano.nome.replace('·', '—')}{textoValidadePix(pixPendente.expiresAt) ? ` · ${textoValidadePix(pixPendente.expiresAt)}` : ''}</Text>
+            </View>
+            <Text style={styles.cobrancaAvisoAcao}>Ver código</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {contextoGate ? (
           <View style={styles.contextoGateCard} accessibilityRole="summary">
             <MaterialCommunityIcons name="lightbulb-on-outline" size={21} color={cores.accentLight} />
@@ -1031,7 +1077,7 @@ export default function PlanosScreen() {
       </ScrollView>
       <PixPlanoModal
         cobranca={cobrancaPix}
-        aoFechar={() => { setCobrancaPix(null); void carregarPlano(); }}
+        aoFechar={() => { setCobrancaPix(null); void carregarPlano(); void carregarPixPendente(); }}
         aoPago={aoPixPago}
         aoGerarNovo={() => { void gerarNovoPix(); }}
       />
@@ -1479,6 +1525,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cobrancaAviso: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(247,178,59,0.10)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.3)', borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
   cobrancaAvisoTexto: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
   cobrancaAvisoAcao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
+  pixPendente: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },
+  pixPendenteTxt: { flex: 1 },
+  pixPendenteTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
+  pixPendenteSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   // Alvo de toque de 44px no "Tentar de novo" (o texto sozinho é baixo demais).
   avisoAcaoHit: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 },
   trialCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.35), backgroundColor: comAlfa(c.accentLight, 0.08), borderRadius: BorderRadius.xl, padding: Spacing.md, marginBottom: Spacing.base },

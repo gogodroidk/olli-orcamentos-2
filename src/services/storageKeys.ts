@@ -320,3 +320,9 @@ export const APP_DATA_STORAGE_KEYS = [
   MALA_MARCADOS_KEY,
   RADAR_TEMPO_KEY,
 ];
+
+/**
+ * "Pagar depois" (P0-08): a última cobrança Pix do plano, com o id da conta, para o cartão
+ * "Pix aguardando" em Planos reabrir o mesmo código (services/pixPendente).
+ */
+export const PIX_PENDENTE_KEY = 'olli.planos.pix_pendente';

@@ -3,6 +3,7 @@
  * Exit 0 = passou; 1 = falhou. Aviso de validade do Pix do plano (modal).
  */
 import { readFileSync } from 'node:fs';
+import { lerPixPendente, paraGuardar } from '../src/utils/pixPendente.ts';
 import { textoValidadePix } from '../src/utils/pixValidade.ts';
 import { ARTIGO_ARREPENDIMENTO, DIAS_ARREPENDIMENTO, textoArrependimentoCurto } from '../src/content/legal/arrependimento.ts';
 import { PRECO_PRO, PRECO_EMPRESA } from '../src/services/precosPlanos.ts';
@@ -33,6 +34,21 @@ ok('sem "24 h" fixo no modal', !/24\s*h/i.test(modal));
 ok('sem promessa de e-mail 7 dias no modal', !/7 dias/.test(modal));
 // P0-08: "Pagar depois" só fecha a tela (a cobrança segue valendo); não gera Pix novo nem cancela nada.
 ok('botão "Pagar depois" existe e chama aoFechar', /label="Pagar depois"[^>]*onPress=\{aoFechar\}/.test(modal));
+
+// "Pagar depois" (spec CPO 23/10): Planos reabre o MESMO Pix guardado no aparelho, nunca gera outro.
+{
+  const U1 = 'user-1';
+  const c = { id: 'pix_char_1', brCode: '000201...', brCodeBase64: '', expiresAt: local(2026, 10, 24, 15, 30).toISOString(), plano: { id: 'pro_mensal' as const, nome: 'OLLI Pro · 1 mês', meses: 1, valor: 39 } };
+  const g = paraGuardar(c, U1);
+  ok('pendente: guarda com a conta e relê igual', !!g && JSON.stringify(lerPixPendente(JSON.parse(JSON.stringify(g)), U1, agora)) === JSON.stringify(c));
+  ok('pendente: outra conta no aparelho não vê', lerPixPendente(g, 'user-2', agora) === null);
+  ok('pendente: vencido (ou a 1 min de vencer) some', lerPixPendente(g, U1, local(2026, 10, 24, 15, 29)) === null && lerPixPendente(g, U1, local(2026, 10, 24, 15, 31)) === null);
+  ok('pendente: sem validade não guarda', paraGuardar({ ...c, expiresAt: null }, U1) === null);
+  ok('pendente: lixo e versão errada = null', lerPixPendente('x', U1, agora) === null && lerPixPendente({ ...g, v: 2 }, U1, agora) === null && lerPixPendente({ ...g, cobranca: { ...c, plano: { ...c.plano, id: 'gold' } } }, U1, agora) === null);
+  const planos = readFileSync(new URL('../src/screens/PlanosScreen.tsx', import.meta.url), 'utf8');
+  ok('Planos: cartão "Ver código" reabre a cobrança guardada (setCobrancaPix(pixPendente)), sem criarPixPlano', /onPress=\{\(\) => setCobrancaPix\(pixPendente\)\}/.test(planos));
+  ok('Planos: Pix pago some do aparelho', /esquecerPixPendente\(\)/.test(planos) && /st\?\.pago/.test(planos));
+}
 
 
 // Parecer do Dr. Paulo (24/10): a tela do Pix cita o arrependimento (CDC art. 49) e o preço vem da fonte.
