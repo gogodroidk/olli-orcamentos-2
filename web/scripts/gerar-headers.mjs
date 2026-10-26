@@ -147,6 +147,12 @@ const conteudo = `# GERADO POR scripts/gerar-headers.mjs no build — NÃO EDITA
 # isso quando esta regra foi escrita.)
 /telas/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=86400
+
+# Fontes próprias (LGPD: sem Google Fonts). As páginas do worker (outra origem) carregam daqui,
+# então precisam de CORS aberto. Sem hash no nome (nome estável) => 1 ano, fontes não mudam.
+/fonts/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000, immutable
 `;
 
 writeFileSync(join(DIST, "_headers"), conteudo, "utf8");
