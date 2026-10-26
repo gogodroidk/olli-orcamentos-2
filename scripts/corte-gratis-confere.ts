@@ -9,7 +9,11 @@
  * Nunca executa SQL: só imprime e compara. Quem roda o UPDATE é o TECH, com ordem do Igor.
  */
 import { pathToFileURL } from 'node:url';
-import { CORTE_GRATIS_DATA } from '../src/services/planosBase.ts';
+import * as planosBase from '../src/services/planosBase.ts';
+
+const { CORTE_GRATIS_DATA } = planosBase;
+/** Só existe depois do #234; antes disso (ou desligada) = null. */
+const CORTE_ANTIGAS_DATA: string | null = (planosBase as { CORTE_ANTIGAS_DATA?: string | null }).CORTE_ANTIGAS_DATA ?? null;
 
 const FUSO = 'America/Sao_Paulo';
 
@@ -46,12 +50,22 @@ export function corteConfere(corteBanco: string | null | undefined, constante: s
     : { ok: false, motivo: `corte do banco em Brasília é ${local}, a constante pede ${esperado}` };
 }
 
+/** O `corte_antigas` do banco bate com `CORTE_ANTIGAS_DATA`? Mesma regra do corte das novas. */
+export function corteAntigasConfere(corteBanco: string | null | undefined, constante: string | null): Conferencia {
+  const r = corteConfere(corteBanco, constante);
+  return { ok: r.ok, motivo: `[antigas] ${r.motivo}` };
+}
+
 /** SQL de ligar/desligar e de conferir, a partir da constante. */
 export function sqlDoCorte(constante: string | null): { atualizar: string; conferir: string } {
   if (constante === null) {
     return {
-      atualizar: 'update public.limite_gratis_config set corte = null, atualizado_em = now();',
-      conferir: 'select corte from public.limite_gratis_config;  -- esperado: corte = null',
+      // Desligar zera OS DOIS cortes: deixar corte_antigas ligado seguiria limitando as contas antigas (revisão LIVRE 25/10).
+      // Dois comandos: se a migration do #233 ainda não foi aplicada (sem a coluna), o 1º ainda vale e o 2º é o único a falhar.
+      atualizar:
+        'update public.limite_gratis_config set corte = null, atualizado_em = now();\n' +
+        'update public.limite_gratis_config set corte_antigas = null;  -- exige a migration 20261024150000 (#233) aplicada',
+      conferir: 'select corte, corte_antigas from public.limite_gratis_config;  -- esperado: os dois null',
     };
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(constante)) throw new Error(`CORTE_GRATIS_DATA inválida: ${constante}`);
@@ -59,13 +73,17 @@ export function sqlDoCorte(constante: string | null): { atualizar: string; confe
     atualizar: `update public.limite_gratis_config set corte = timestamptz '${constante} 00:00:00-03', atualizado_em = now();`,
     conferir:
       `select corte, (corte at time zone 'America/Sao_Paulo') = timestamp '${constante} 00:00:00' as confere ` +
-      `from public.limite_gratis_config;  -- esperado: confere = true; passe o valor de corte em --corte para este script`,
+      `, corte_antigas from public.limite_gratis_config;  -- esperado: confere = true; passe corte em --corte e corte_antigas em --corte-antigas para este script`,
   };
 }
 
 // CLI (não roda quando importado pelo teste). pathToFileURL: caminho com espaço/acento vem percent-encoded em import.meta.url.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const i = process.argv.indexOf('--corte');
+  if (i < 0 && process.argv.includes('--corte-antigas')) {
+    console.error('NÃO CONFERE — NÃO PUBLICAR: --corte-antigas exige --corte');
+    process.exit(2);
+  }
   if (i >= 0) {
     const valor = process.argv[i + 1];
     if (valor === undefined || valor.startsWith('--')) {
@@ -73,8 +91,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exit(2);
     }
     const r = corteConfere(valor, CORTE_GRATIS_DATA);
-    console.log(`${r.ok ? 'CONFERE' : 'NÃO CONFERE — NÃO PUBLICAR'}: ${r.motivo}`);
-    process.exit(r.ok ? 0 : 1);
+    const ia = process.argv.indexOf('--corte-antigas');
+    // SEMPRE obrigatório (mesmo com a constante null): sem ler o banco não dá para provar que as antigas estão sem corte.
+    const valorAntigas = ia >= 0 ? process.argv[ia + 1] : undefined;
+    if (ia < 0 || valorAntigas === undefined || valorAntigas.startsWith('--')) {
+      console.error('NÃO CONFERE — NÃO PUBLICAR: --corte-antigas ausente ou sem valor (passe o corte_antigas lido do banco; null se vazio)');
+      process.exit(2);
+    }
+    const ra = corteAntigasConfere(valorAntigas, CORTE_ANTIGAS_DATA);
+    const ok = r.ok && ra.ok;
+    console.log(`${ok ? 'CONFERE' : 'NÃO CONFERE — NÃO PUBLICAR'}: ${r.motivo} | ${ra.motivo}`);
+    process.exit(ok ? 0 : 1);
   }
   const s = sqlDoCorte(CORTE_GRATIS_DATA);
   console.log(`CORTE_GRATIS_DATA = ${CORTE_GRATIS_DATA ?? 'null (desligado)'}\n\n-- passo do banco (SÓ com "pode subir" do Igor):\n${s.atualizar}\n\n-- conferência:\n${s.conferir}`);
