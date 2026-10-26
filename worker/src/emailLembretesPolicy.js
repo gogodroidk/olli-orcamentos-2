@@ -58,7 +58,7 @@ export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 't
  * ativacao (conta nova sem 1º orçamento), assinatura (renovação/vencimento) e reengajamento
  * (última chamada, parou, trial acabando). Antes a régua era uma chave só (tudo ou nada).
  */
-export const TIPOS_LEMBRETE = Object.freeze(new Set(['ativacao', 'assinatura', 'reengajamento', 'pix_vence']));
+export const TIPOS_LEMBRETE = Object.freeze(new Set(['ativacao', 'assinatura', 'reengajamento', 'pix_vence', 'nao_aberto']));
 
 /**
  * Lê a lista de tipos que vem DEPOIS dos dois pontos em EMAIL_LEMBRETES_MODE

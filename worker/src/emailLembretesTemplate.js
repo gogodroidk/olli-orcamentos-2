@@ -305,6 +305,27 @@ function conteudoReengajamento(dados, appUrl) {
     };
   }
 
+  if (dados.tipo === 'nao_aberto') {
+    chavesExatas(dados, ['tipo', 'token', 'enviadoEm'], 'dados_invalidos');
+    exigir(typeof dados.token === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(dados.token), 'dados_invalidos');
+    const enviado = new Date(dados.enviadoEm);
+    exigir(!Number.isNaN(enviado.getTime()) && enviado.toISOString() === dados.enviadoEm, 'dados_invalidos');
+    const quando = dataCurtaBrasilia(dados.enviadoEm);
+    return {
+      subject: 'Seu cliente ainda não abriu o orçamento',
+      preview: `O orçamento enviado em ${quando} continua sem abrir.`,
+      titulo: 'Um orçamento seu ainda não foi aberto',
+      paragrafos: [
+        `Você enviou um orçamento em ${quando} e o cliente ainda não abriu o link.`,
+        'Vale um toque seu: chame o cliente no WhatsApp ou reenvie o link pelo app.',
+      ],
+      passos: null,
+      cta: { rotulo: 'Ver meus orçamentos', href: urlCom(appUrl, '/') },
+      depois: ['Avisamos uma vez por orçamento. Se o cliente já respondeu por outro canal, pode ignorar.'],
+      motivo: 'Você recebe este aviso porque enviou um orçamento pela OLLI Orçamentos e o cliente ainda não abriu o link.',
+    };
+  }
+
   if (dados.tipo === 'trial_acabando') {
     chavesExatas(dados, ['tipo', 'terminaEm'], 'dados_invalidos');
     const termina = new Date(dados.terminaEm);

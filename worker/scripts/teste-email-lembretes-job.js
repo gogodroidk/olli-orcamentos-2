@@ -74,12 +74,13 @@ function gratisComEnvios(n, usados) {
   };
 }
 
-function fetchFalso({ candidatos, respostasEnqueue = [] }) {
+function fetchFalso({ candidatos, respostasEnqueue = [], naoAbertos }) {
   const calls = [];
   const fila = [...respostasEnqueue];
   const fetchImpl = async (url, init) => {
     calls.push({ url, body: JSON.parse(init.body) });
     if (url.endsWith('/rpc/listar_candidatos_lembrete_email')) return Response.json(candidatos);
+    if (url.endsWith('/rpc/listar_nao_abertos_email')) return Response.json(naoAbertos ?? []);
     if (url.endsWith('/rpc/enqueue_lembrete_email')) return Response.json(fila.shift() ?? { enfileirado: true, motivo: 'enfileirado' });
     throw new Error(`url_inesperada:${url}`);
   };
@@ -99,7 +100,22 @@ async function caso(nome, fn) {
   originalLog(`  ok   ${nome}`);
 }
 
+function linhaNaoAberto(n) {
+  return { candidato: { userId: U(n), token: `fixture-${n}-aberto`, enviadoEm: new Date(AGORA.getTime() - 50 * H).toISOString(), visualizadoEm: null, respondidoEm: null, revogadoEm: null, avisadoEm: null, membroDeEquipe: false, suprimido: false } };
+}
+
 try {
+  await caso('não aberto: "production" sozinho NÃO liga; só com o tipo no sufixo', async () => {
+    const f = fetchFalso({ candidatos: [], naoAbertos: [linhaNaoAberto(9)] });
+    await processarLembretesEmail(ENV, { fetchImpl: f.fetchImpl, now: () => AGORA });
+    assert.equal(f.calls.some((c) => c.url.endsWith('/rpc/listar_nao_abertos_email')), false);
+    const g = fetchFalso({ candidatos: [], naoAbertos: [linhaNaoAberto(9)] });
+    const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'production:nao_aberto' }, { fetchImpl: g.fetchImpl, now: () => AGORA });
+    assert.equal(r.naoAbertos, 1);
+    const enq = g.calls.find((c) => c.url.endsWith('/rpc/enqueue_lembrete_email')).body;
+    assert.equal(enq.p_template_dados.tipo, 'nao_aberto');
+    assert.equal(enq.p_idempotency_key, `reengajamento:${U(9)}:nao_aberto:fixture-9-aberto`);
+  });
   await caso('modo off não chama rede', async () => {
     const f = fetchFalso({ candidatos: [] });
     const r = await processarLembretesEmail({ ...ENV, EMAIL_LEMBRETES_MODE: 'off' }, { fetchImpl: f.fetchImpl, now: () => AGORA });
