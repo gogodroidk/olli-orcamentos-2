@@ -21,6 +21,7 @@ import { chamarRpcServico } from './emailRpc.js';
 import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
+import { selecionarNaoAbertos } from './orcamentoNaoAbertoPolicy.js';
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
 const LIMITE_CANDIDATOS = 50;
@@ -92,7 +93,7 @@ async function executarRodada(env, dependencias = {}) {
     if (!Array.isArray(linhas)) throw Object.assign(new Error('candidatos_resposta_invalida'), { codigo: 'candidatos_resposta_invalida' });
     const candidatos = linhas.map((linha) => (linha && typeof linha === 'object' ? linha.candidato : null));
 
-    const { pedidos, motivos } = selecionarPedidos(candidatos, {
+    const { pedidos, motivos: motivosBase } = selecionarPedidos(candidatos, {
       agora,
       precoProMensal: reais(PRECO_PRO.mensalCentavos),
       ativacaoMaxDias,
@@ -100,6 +101,7 @@ async function executarRodada(env, dependencias = {}) {
       tiposPermitidos,
     });
 
+    const motivos = { ...motivosBase };
     const banco = {};
     let enfileirados = 0;
     for (const p of pedidos) {
@@ -119,7 +121,40 @@ async function executarRodada(env, dependencias = {}) {
       if (motivo === 'teto_diario') break;
     }
 
-    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, decisoes: motivos, banco });
+    // "Orçamento não aberto em 48 h" (Z-123): aviso ao PRESTADOR, nunca ao cliente. Só roda com o tipo
+    // `nao_aberto` listado EXPLICITAMENTE no sufixo do MODE ("production" sozinho NÃO liga) e usa o que
+    // sobrou do teto da rodada.
+    let naoAbertos = 0;
+    if (restoModo.length > 0 && tiposPermitidos.has('nao_aberto') && enfileirados < tetoRodada) {
+      const lista = await chamarRpcServico(config, fetchImpl, 'listar_nao_abertos_email', {
+        p_now: agoraIso,
+        p_limit: LIMITE_CANDIDATOS,
+      }, { limiteBytes: LIMITE_BYTES_CANDIDATOS });
+      if (!Array.isArray(lista)) throw Object.assign(new Error('nao_abertos_resposta_invalida'), { codigo: 'nao_abertos_resposta_invalida' });
+      const sel = selecionarNaoAbertos(lista.map((l) => (l && typeof l === 'object' ? l.candidato : null)), {
+        agora,
+        teto: tetoRodada - enfileirados,
+      });
+      for (const [m, n] of Object.entries(sel.motivos)) motivos[`nao_aberto_${m}`] = n;
+      for (const p of sel.pedidos) {
+        const r = await chamarRpcServico(config, fetchImpl, 'enqueue_lembrete_email', {
+          p_user_id: p.userId,
+          p_template: p.template,
+          p_template_version: p.templateVersion,
+          p_purpose: p.purpose,
+          p_idempotency_key: p.idempotencyKey,
+          p_template_dados: p.dados,
+          p_teto_diario: tetoDiario,
+          p_now: agoraIso,
+        });
+        const motivo = r && typeof r.motivo === 'string' ? r.motivo.replace(/[^a-z_]/g, '').slice(0, 40) : 'resposta_invalida';
+        banco[motivo] = (banco[motivo] || 0) + 1;
+        if (r && r.enfileirado === true) { enfileirados += 1; naoAbertos += 1; }
+        if (motivo === 'teto_diario') break;
+      }
+    }
+
+    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, naoAbertos, decisoes: motivos, banco });
     console.log(JSON.stringify({ event: 'email_lembretes_rodada', ...saida }));
     return saida;
   } catch (erro) {
