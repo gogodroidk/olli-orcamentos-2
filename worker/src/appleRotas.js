@@ -64,19 +64,21 @@ function testadoresPermitidos(env) {
 }
 
 // ─── auth do usuário (mesmo padrão do play.js) ───────────────
+/** { user } | { semLogin:true } (token ausente/recusado pelo Auth) | { indisponivel:true } (Auth fora do ar: erro nunca vira "não autorizado"). */
 async function getUser(request, env) {
   const token = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
-  if (!token) return null;
+  if (!token) return { semLogin: true };
   try {
     const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
       headers: { Authorization: `Bearer ${token}`, apikey: env.SUPABASE_ANON_KEY },
       ...(typeof AbortSignal?.timeout === 'function' ? { signal: AbortSignal.timeout(10 * 1000) } : {}),
     });
-    if (!r.ok) return null;
+    if (r.status === 401 || r.status === 403) return { semLogin: true };
+    if (!r.ok) return { indisponivel: true };
     const u = await r.json();
-    return u && ehUuid(u.id) ? u : null;
+    return u && ehUuid(u.id) ? { user: u } : { semLogin: true };
   } catch {
-    return null;
+    return { indisponivel: true };
   }
 }
 
@@ -174,6 +176,8 @@ export async function aplicarDecisaoApple(env, d, { agora = Date.now() } = {}) {
   if (d.acao === 'invalido' || d.acao === 'registrar') return { http: 200, corpo: { ok: true, acao: d.acao, motivo: d.motivo }, marca: 'processado' };
   if (d.acao === 'alarme') {
     console.error('[olli-apple] ALARME: decisão não aplicada —', d.motivo);
+    // A Apple não reenvia em 200: sem Sentry um produto/ambiente novo some em silêncio.
+    capturarExcecao(new Error(`apple_alarme:${d.motivo}`), { origem: 'apple', rota: 'alarme' });
     return { http: 200, corpo: { ok: true, acao: 'alarme', motivo: d.motivo }, marca: 'falhou', erro: d.motivo };
   }
   const atual = await lerAssinatura(env, d.userId);
@@ -223,7 +227,9 @@ function config(ligado) {
 
 // ─── POST /apple/verificar ───────────────────────────────────
 async function verificar(request, env, ver, ligado) {
-  const user = await getUser(request, env);
+  const auth = await getUser(request, env);
+  if (auth.indisponivel) return json({ erro: 'indisponivel' }, 503);
+  const user = auth.user;
   if (!user) return json({ erro: 'nao_autorizado' }, 401);
   if (!ligado) return json({ erro: 'apple_desligado' }, 503);
   if (!(await rateOkSensivel(env, env.ABACATE_RL, `apple:${user.id}`))) return json({ erro: 'muitas_requisicoes' }, 429);

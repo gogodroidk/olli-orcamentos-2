@@ -57,6 +57,7 @@ globalThis.fetch = async (url, init = {}) => {
   const m = init.method || 'GET';
   if (url.endsWith('/auth/v1/user')) {
     const t = String(init.headers?.Authorization || '').replace('Bearer ', '');
+    if (t === 'jwt-auth-caido') return resp({}, 503);
     return t === 'jwt-user' ? resp({ id: USER }) : t === 'jwt-outro' ? resp({ id: OUTRO }) : resp({}, 401);
   }
   const q = new URL(url).searchParams;
@@ -136,6 +137,7 @@ const vinc = await vinculoApple('2000000111111111');
 // 2. auth e entrada
 {
   assert.equal((await chamar('POST', '/apple/verificar', { corpo: {} })).status, 401);
+  assert.equal((await chamar('POST', '/apple/verificar', { jwt: 'jwt-auth-caido', corpo: {} })).status, 503, 'Auth fora do ar = 503, nunca 401');
   assert.equal((await chamar('POST', '/apple/verificar', { jwt: 'jwt-user', corpo: { signedTransaction: 'lixo' } })).status, 400);
   const semBundle = await chamar('POST', '/apple/verificar', { jwt: 'jwt-user', corpo: { signedTransaction: assinar(tx({ bundleId: 'com.outro' })) } });
   assert.equal(semBundle.status, 400);
