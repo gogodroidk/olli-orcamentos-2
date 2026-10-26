@@ -114,7 +114,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Mensagens que você envia ao WhatsApp do OLLI (telefone, nome do perfil e texto)',
-          finalidade: 'Atender o seu pedido quando você nos escreve pelo WhatsApp do OLLI, (11) 94172-7487, mesmo que você ainda não tenha conta, e registrar o que foi combinado. Guardamos o seu telefone, o nome do seu perfil do WhatsApp e o texto da mensagem; não baixamos fotos, áudios nem arquivos. Quem responde primeiro é uma pessoa da nossa equipe. Para não receber mais mensagens, responda SAIR; guardamos só o número, numa lista de quem não quer ser contatado, para não escrever de novo.',
+          finalidade: 'Atender o seu pedido quando você nos escreve pelo WhatsApp do OLLI, (11) 94172-7487, mesmo que você ainda não tenha conta, e registrar o que foi combinado. Guardamos o seu telefone, o nome do seu perfil do WhatsApp e o texto da mensagem; não baixamos fotos, áudios nem arquivos. As mensagens podem ser respondidas por um assistente virtual (inteligência artificial) do OLLI, com uma pessoa da nossa equipe acompanhando; se você perguntar, dizemos sempre se é uma IA. Para não receber mais mensagens, responda SAIR; guardamos só o número, numa lista de quem não quer ser contatado, para não escrever de novo.',
           base: 'Legítimo interesse em atender quem nos procura (art. 7º, IX) e, se você quiser contratar, procedimentos preliminares relacionados a contrato (art. 7º, V). Você pode se opor a qualquer momento.',
         },
         {
