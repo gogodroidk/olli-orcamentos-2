@@ -134,16 +134,29 @@ const secrets = [
   // Chave de ENVIO da Resend (a de LEITURA só serve para o 2b acima).
   ['RESEND_API_KEY', env.RESEND_API_KEY_ENVIO],
   // Service account olli-play-verify: o cofre guarda o CAMINHO do JSON; o secret é o conteúdo.
+  // Arquivo ausente = sem valor (nunca envia o caminho como se fosse o JSON).
   ['PLAY_SA_JSON', env.OLLI_PLAY_VERIFY_SA_JSON && existsSync(env.OLLI_PLAY_VERIFY_SA_JSON)
-    ? readFileSync(env.OLLI_PLAY_VERIFY_SA_JSON, 'utf8').trim() : env.OLLI_PLAY_VERIFY_SA_JSON],
+    ? readFileSync(env.OLLI_PLAY_VERIFY_SA_JSON, 'utf8').trim() : null],
   ['PLAY_TESTE_PERMITIDOS', env.PLAY_TESTE_PERMITIDOS],
 ];
+if (env.OLLI_PLAY_VERIFY_SA_JSON && !existsSync(env.OLLI_PLAY_VERIFY_SA_JSON)) {
+  console.log(`    PLAY_SA_JSON: arquivo do cofre não existe (${env.OLLI_PLAY_VERIFY_SA_JSON})`);
+}
 // Só repõe o que FALTA no worker agora (depois do deploy); o que já está lá não é sobrescrito,
 // para um mapeamento errado do cofre não trocar um secret bom. --forcar regrava todos.
 const FORCAR = process.argv.includes('--forcar');
-if (!DRY_RUN) {
+async function lerAtuais() {
   const j = await cf('/secrets').then((r) => JSON.parse(r.body)).catch(() => ({}));
-  if (j.success) atuais = new Set(j.result.map((s) => s.name));
+  return j.success ? new Set(j.result.map((s) => s.name)) : null;
+}
+if (!DRY_RUN) {
+  // A lista de antes do deploy não vale mais: se a releitura falhar, repõe TUDO que tem valor
+  // (pior caso = regravar um secret igual; o contrário deixaria o worker sem nenhum).
+  atuais = await lerAtuais();
+  if (!atuais) {
+    console.log('    releitura de /secrets falhou depois do deploy: repondo todos os que têm valor');
+    atuais = new Set();
+  }
 }
 const cobertos = new Set(secrets.map(([nome]) => nome));
 const fora = [...atuais].filter((n) => !cobertos.has(n));
@@ -151,7 +164,7 @@ if (fora.length) console.log(`    no worker e FORA desta lista (não repostos): 
 console.log('[2] secrets…');
 for (const [nome, valor] of secrets) {
   if (atuais.has(nome) && !FORCAR) { console.log(`    ${nome.padEnd(28)} já no worker (mantido)${valor ? '' : ' — SEM VALOR NO COFRE'}`); continue; }
-  if (!valor) { console.log(`    ${nome.padEnd(28)} FALTA NO WORKER E SEM VALOR NO COFRE`); continue; }
+  if (!valor) { console.log(`    ${nome.padEnd(28)} ${atuais.has(nome) ? 'SEM VALOR NO COFRE (mantido)' : 'FALTA NO WORKER E SEM VALOR NO COFRE'}`); if (!atuais.has(nome)) process.exitCode = 1; continue; }
   if (DRY_RUN) { console.log(`    ${nome.padEnd(28)} seria reposto (${valor.length} chars) — dry-run, não enviado`); continue; }
   const { status } = await cf('/secrets', {
     method: 'PUT',
@@ -159,11 +172,20 @@ for (const [nome, valor] of secrets) {
     body: JSON.stringify({ name: nome, text: valor, type: 'secret_text' }),
   });
   console.log(`    ${nome.padEnd(28)} ${status === 200 ? 'ok' : 'HTTP ' + status} (${valor.length} chars)`);
+  if (status !== 200) process.exitCode = 1;
 }
 
 if (DRY_RUN) {
   console.log(`\nDry-run: cofre ${COFRE} lido; nenhum deploy nem secret enviado.`);
   process.exit(0);
+}
+
+// Conferência: todo secret que tem valor no cofre precisa estar no worker agora.
+const depois = await lerAtuais();
+const faltando = depois ? secrets.filter(([nome, valor]) => valor && !depois.has(nome)).map(([n]) => n) : ['(releitura falhou)'];
+if (faltando.length) {
+  console.log(`    FALTANDO no worker depois da reposição: ${faltando.join(', ')}`);
+  process.exitCode = 1;
 }
 
 // 4) PROVA (após propagação)
@@ -175,6 +197,7 @@ const j = await health.json().catch(() => ({}));
 console.log(`    GET /  -> ia:${j.ia}  (esperado: on)`);
 const o = await fetch('https://diagnostico.olliorcamentos.online/o/abcdefghijklmnopqrstuvwxyz012345', { headers: { 'User-Agent': UA } });
 console.log(`    GET /o/<inexistente> -> ${o.status} (esperado 404; 503 = service_role faltando)`);
+if (j.ia !== 'on' || o.status !== 404) process.exitCode = 1;
 
 console.log('\nSe ia:off ou /o/ deu 503, espere mais 30s e rode de novo só a prova.');
 console.log('LEMBRETE: isto se repete a cada push na main até o Workers Build por Git ser DESATIVADO no dashboard.');
