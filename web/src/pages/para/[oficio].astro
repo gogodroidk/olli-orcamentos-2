@@ -32,10 +32,10 @@ import {
 	PROFISSAO_POR_OFICIO,
 	OG_PROPRIO_POR_SLUG,
 	SLUG_POR_OFICIO,
+	ALIASES_PARA,
 } from "../../data/oficios";
 // Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
 import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
-import { FRASE_GRATIS } from "../../data/recursos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
@@ -81,20 +81,28 @@ const ICONE_POR_MDI: Record<string, string> = {
 };
 
 export function getStaticPaths() {
-	return [...VERTICAIS, VERTICAL_GERAL].map((v) => ({
-		params: { oficio: SLUG_POR_OFICIO[v.id] },
-		props: { id: v.id },
-	}));
+	return [
+		...[...VERTICAIS, VERTICAL_GERAL].map((v) => ({
+			params: { oficio: SLUG_POR_OFICIO[v.id] },
+			props: { id: v.id, alias: null },
+		})),
+		// Variantes de anúncio por palavra (D-1013): mesma vertical, canonical na página de SEO, fora do sitemap.
+		...ALIASES_PARA.map((a) => ({
+			params: { oficio: a.slug },
+			props: { id: a.id, alias: a },
+		})),
+	];
 }
 
-const { id } = Astro.props;
+const { id, alias } = Astro.props;
 const oficio = id === "geral" ? OFICIO_GERAL : OFICIOS.find((o) => o.id === id)!;
-const profissao = PROFISSAO_POR_OFICIO[id];
+const profissao = alias?.profissao ?? PROFISSAO_POR_OFICIO[id];
 const dor = DOR_POR_OFICIO[id];
 const calculos = calculosDoOficio(id);
 
 const titulo = `App de orçamento e ordem de serviço para ${profissao} — OLLI`;
 const slug = SLUG_POR_OFICIO[id];
+const canonicalPath = alias ? `/para/${slug}/` : undefined;
 const ogImagem = OG_PROPRIO_POR_SLUG.has(slug) ? `/og/${slug}.png` : undefined;
 /**
  * A meta description do ofício "qualquer serviço" dizia "com 0 calculadora de campo"
@@ -136,7 +144,7 @@ const nomesCalc = calculos.map((c) => c.nome).join(", ");
 const faqs = [
 	{
 		q: `Existe app de orçamento grátis para ${profissao}?`,
-		a: `Sim. O plano Grátis da OLLI é permanente, com ${FRASE_GRATIS}; rascunhos, ordem de serviço, recibos, clientes e histórico também ficam sem limite. Depois do primeiro envio, há 14 dias opcionais de Pro sem cartão e sem cobrança automática.`,
+		a: `Sim. A OLLI tem um plano grátis, permanente e sem cartão, com orçamento, ordem de serviço, recibo, clientes e histórico. O que ele inclui hoje está na página de planos. Depois do primeiro envio, há 14 dias opcionais de Pro sem cartão e sem cobrança automática.`,
 	},
 	...(calculos.length > 0
 		? [
@@ -172,7 +180,7 @@ const schemaFaq = {
 };
 ---
 
-<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]} ogImagem={ogImagem}>
+<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]} ogImagem={ogImagem} canonicalPath={canonicalPath}>
 	<Header>
 		<a
 			href={APP_CADASTRO_URL}
@@ -308,7 +316,7 @@ const schemaFaq = {
 				<div class="mt-12 rounded-cartao border border-line bg-white p-8 text-center">
 					<p class="text-lg font-semibold text-ink">Comece de graça, sem cartão.</p>
 					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
-						O Grátis não tem prazo nem limite de orçamentos: {FRASE_GRATIS}.
+						O plano grátis não tem prazo e não pede cartão. O que ele inclui hoje está na <a href="/planos/" class="underline">página de planos</a>.
 					</p>
 					<a
 						href={APP_CADASTRO_URL}
