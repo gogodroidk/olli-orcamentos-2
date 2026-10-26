@@ -14,6 +14,14 @@ Uma conta é **interna** se: está em `funil_exclusoes` (por id ou por e-mail �
 **e-mail** em qualquer caixa — vale também para uma conta recriada) com: `gogodroidk@gmail.com`, `igoreluisa@gmail.com`, `demo@grtech.com.br`
 (motivo `dono/interna (semente)`; `criado_por` fica NULL — a coluna é uuid e não há usuário-autor). Os demais internos entram pelo painel.
 
+## Conta de teste nasce interna (D-0914, 26/10/2026)
+Ordem do Igor: contas de teste não contam como possível cliente. `20261026120000_conta_interna_teste.sql` acrescenta à `conta_interna`
+o e-mail com etiqueta de teste (`+teste`, `+test`, `+qa`, `+e2e`, `+z99`, `+smoke`, `+probe`, `+agente` antes do `@`) e as caixas
+`example.*`, `mailinator.com`, `yopmail.com`. **Regra para agentes:** não criar conta de teste em produção (use o Supabase de staging);
+se for inevitável, o e-mail leva `+teste` e a conta já sai do placar, das métricas, da régua, do WhatsApp e dos anúncios.
+Teste: `scripts/teste-contas-internas.ts` (caso positivo e caso de cliente comum com `+alias`). Apagar conta descartável é passo à parte
+(há chaves `restrict` em `trials_comerciais` e `orcamento_envios_gratis`): usar o fluxo de exclusão de conta, com backup antes.
+
 ## Onde já vale
 | O quê | Como |
 |---|---|
