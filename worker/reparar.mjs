@@ -32,6 +32,9 @@ for (const linha of readFileSync(COFRE, 'utf8').split(/\r?\n/)) {
   const i = linha.indexOf('=');
   env[linha.slice(0, i).trim()] = linha.slice(i + 1).trim().replace(/^"|"$/g, '');
 }
+// O que não está no cofre pode vir do ambiente (~/.config/olli/env.sh, carregado pelo ~/.profile):
+// é onde mora o SUPABASE_ACCESS_TOKEN no Linux. O cofre continua tendo prioridade.
+for (const [k, v] of Object.entries(process.env)) if (!(k in env) && v) env[k] = v;
 const TOK = env.CLOUDFLARE_API_TOKEN;
 const ACC = env.CLOUDFLARE_ACCOUNT_ID;
 const BASE = `https://api.cloudflare.com/client/v4/accounts/${ACC}/workers/scripts/olli-diagnostico`;
