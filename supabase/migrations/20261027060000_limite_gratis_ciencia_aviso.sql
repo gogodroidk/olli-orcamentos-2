@@ -5,7 +5,12 @@
 --
 -- COMO FUNCIONA
 --   `limite_gratis_ciencia`: 1 linha por tenant com a 1ª exibição do aviso (data/hora + versão do texto + canal).
---   Gravada só pela RPC `registrar_ciencia_limite_gratis` (app/painel chamam quando o banner aparece).
+--   Gravada só pela RPC `registrar_ciencia_limite_gratis` (app/painel chamam quando o banner aparece), e só quando
+--   quem vê é o DONO da conta: funcionário (membro) não dá ciência pelo titular do contrato. Por isso `user_id` é
+--   sempre o dono e o FK com cascade dele cobre a exclusão; `tenant_id` (id da organização ou do próprio usuário,
+--   uuid gerado, nunca reaproveitado) não tem FK porque aponta para duas tabelas conforme o caso.
+--   Data mostrada no aviso = a que vale SE o dono vir agora: antes do corte, corte_antigas (ver gera ciência a tempo);
+--   depois do corte, o início real desta conta. Se gravar a ciência falhar, o início real fica mais tarde (a favor).
 --   Início do limite da conta antiga (`limite_gratis_inicio_antiga`):
 --     viu o aviso até corte_antigas        -> corte_antigas (D+30, como antes);
 --     não viu até corte_antigas            -> corte_antigas + 7 dias (o banner segue no ar com ESTA data, então a
@@ -84,6 +89,8 @@ begin
   -- Sem aviso no ar não há do que ter ciência.
   if v_corte_antigas is null then return null; end if;
   select * into strict v_contexto from public.contexto_comercial_atual();
+  -- Só o dono dá ciência (o membro vê o aviso, mas não antecipa o limite do titular).
+  if auth.uid() is distinct from v_contexto.owner_user_id then return null; end if;
   insert into public.limite_gratis_ciencia (tenant_id, user_id, versao_texto, canal)
   values (v_contexto.tenant_id, auth.uid(), trim(p_versao), p_canal)
   on conflict (tenant_id) do nothing;
@@ -282,9 +289,10 @@ begin
       if not v_antiga then
         select count(*) into v_usados_30d from public.orcamento_envios_gratis e
           where e.tenant_id = v_contexto.tenant_id and e.estado = 'confirmado' and e.criado_em >= now() - interval '30 days';
-        -- a_partir_de = o início REAL desta conta (D+30, ou D+37 se ainda não viu o aviso no corte).
+        -- a_partir_de = a data que vale SE o dono vir agora (LIVRE #258 P1): antes do corte, ver gera ciência a
+        -- tempo e o início é corte_antigas; depois do corte, o início real desta conta (sem ciência, corte + 7 dias).
         v_aviso := jsonb_build_object(
-          'a_partir_de', v_desde,
+          'a_partir_de', case when now() < v_corte_antigas then v_corte_antigas else v_desde end,
           'usados_30d', v_usados_30d,
           'limite', v_limite,
           'ciencia_registrada', exists (select 1 from public.limite_gratis_ciencia c where c.tenant_id = v_contexto.tenant_id)

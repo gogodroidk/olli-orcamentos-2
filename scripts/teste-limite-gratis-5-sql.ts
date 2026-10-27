@@ -324,6 +324,36 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'link_email')`, [descad]);
   assert.equal((await oferta(descad)).limite_conta_antiga, true, 'descadastro de lembretes não adia (o aviso chega por e-mail)');
   caso('bounce sem ciência: data anda até ver; depois de ver, 7 dias; descadastro não adia');
+
+  // LIVRE #258 P1: ANTES do corte, sem ciência, o aviso mostra corte_antigas (a data que vale ao ver agora)
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() + interval '10 days'`);
+  const antes = await novoUsuario(40);
+  const avAntes = (await oferta(antes)).aviso_limite_antigas as { a_partir_de: string };
+  const corteCfg = (await db.query<{ c: string }>(`select corte_antigas::text c from public.limite_gratis_config`)).rows[0].c;
+  assert.equal(Date.parse(avAntes.a_partir_de), Date.parse(corteCfg), 'antes do corte: aviso = corte_antigas, não +7d');
+  await como(antes);
+  await db.query(`select public.registrar_ciencia_limite_gratis('v1', 'app')`);
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() - interval '1 minute'`);
+  await db.query(`update public.limite_gratis_ciencia set visto_em = now() - interval '2 minutes' where tenant_id=$1`, [antes]);
+  assert.equal((await oferta(antes)).limite_conta_antiga, true, 'viu antes: limitada exatamente na data mostrada');
+  caso('antes do corte: aviso mostra corte_antigas e quem viu entra no limite nessa data');
+
+  // LIVRE #258 P2: membro (funcionário) não dá ciência pelo dono
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() + interval '10 days'`);
+  const dono = await novoUsuario(40);
+  const membro = await novoUsuario(40);
+  const org = '00000000-0000-4000-8000-0000000ff001';
+  await db.query(`insert into public.organizacoes (id, owner_user_id) values ($1, $2)`, [org, dono]);
+  await db.query(`insert into public.organizacao_membros (org_id, user_id, ativo) values ($1, $2, true)`, [org, membro]);
+  await como(membro);
+  assert.equal((await db.query<{ v: unknown }>(`select public.registrar_ciencia_limite_gratis('v1', 'app') as v`)).rows[0].v, null, 'membro: não grava');
+  assert.equal((await db.query<{ n: number }>(`select count(*)::int n from public.limite_gratis_ciencia where tenant_id=$1`, [org])).rows[0].n, 0);
+  await como(dono);
+  assert.ok((await db.query<{ v: unknown }>(`select public.registrar_ciencia_limite_gratis('v1', 'painel') as v`)).rows[0].v, 'dono: grava');
+  const linha = (await db.query<{ u: string }>(`select user_id::text u from public.limite_gratis_ciencia where tenant_id=$1`, [org])).rows[0];
+  assert.equal(linha.u, dono, 'ciência fica no nome do dono (FK cascade)');
+  caso('só o dono dá ciência; membro vê o aviso mas não antecipa o limite');
+  await desligar();
   await desligar();
 }
 
