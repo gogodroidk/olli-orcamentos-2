@@ -22,4 +22,17 @@ assert.deepEqual(
 	{ acao: "concluir", osId: "x" },
 	"data ausente não quebra",
 );
+assert.deepEqual(
+	planoDeFinalizacao([{ id: "k", status: "concluida", atualizado_em: "2026-10-27" }]),
+	{ acao: "nada" },
+	"já tem OS concluída: não cria outra (duplicaria faturamento)",
+);
+assert.deepEqual(
+	planoDeFinalizacao([
+		{ id: "k", status: "concluida", atualizado_em: "2026-10-20" },
+		{ id: "z", status: "aberta", atualizado_em: "2026-10-27" },
+	]),
+	{ acao: "concluir", osId: "z" },
+	"concluída + aberta: conclui só a aberta",
+);
 console.log("finalizacao.test: OK");

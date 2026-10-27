@@ -178,6 +178,12 @@ export function useQuadro() {
 					.is("excluido_em", null);
 				if (error) throw error;
 				const plano = planoDeFinalizacao((data ?? []) as OsDoOrcamento[]);
+				if (plano.acao === "nada") {
+					// Já finalizado (o quadro estava atrasado): só atualiza, não cria outra OS.
+					await ordens.refetch();
+					toast.info(`${cartao.numero} já está finalizado`, { description: "A OS deste orçamento já estava concluída." });
+					return;
+				}
 				const agora = agoraIso();
 				let os: OrdemServico;
 				if (plano.acao === "concluir") {
