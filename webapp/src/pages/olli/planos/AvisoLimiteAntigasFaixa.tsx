@@ -49,7 +49,7 @@ export function AvisoLimiteAntigasFaixa({ className }: { className?: string }) {
 	};
 
 	return (
-		<Card className={cn("gap-0 border-primary/30 bg-primary/5 p-5", className)} role="status">
+		<Card className={cn("gap-0 border-primary/30 bg-primary/5 p-5", className)} aria-live="polite">
 			<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 				<div className="flex items-start gap-3">
 					<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
