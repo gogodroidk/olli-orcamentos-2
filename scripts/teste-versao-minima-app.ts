@@ -3,7 +3,8 @@
  *     node scripts/teste-versao-minima-app.ts
  */
 import assert from 'node:assert/strict';
-import { consultarVersaoMinima, decidirVersaoMinima, linksPlay } from '../src/services/versaoMinima.ts';
+import { readFileSync } from 'node:fs';
+import { codigoBuildNativo, consultarVersaoMinima, decidirVersaoMinima, linksPlay } from '../src/services/versaoMinima.ts';
 
 assert.equal(decidirVersaoMinima(24, { ok: true, android: 26 }), 'atualizar', 'vc24 abaixo de 26');
 assert.equal(decidirVersaoMinima(26, { ok: true, android: 26 }), 'ok', 'igual passa');
@@ -33,4 +34,15 @@ assert.deepEqual(linksPlay('online.olliorcamentos.app'), {
   loja: 'market://details?id=online.olliorcamentos.app',
   web: 'https://play.google.com/store/apps/details?id=online.olliorcamentos.app',
 });
+// versionCode do build INSTALADO (LIVRE #259 P1): nunca o do app.json
+assert.equal(codigoBuildNativo('27'), 27);
+assert.equal(codigoBuildNativo(' 27 '), 27);
+for (const ruim of [null, undefined, '', '0', 'abc', '27.1', '-3']) assert.equal(codigoBuildNativo(ruim as string | null), null, `nativo ${String(ruim)}`);
+assert.equal(decidirVersaoMinima(codigoBuildNativo(null), { android: 26 }), 'desconhecido', 'build sem número não tranca');
+const comp = readFileSync(new URL('../src/components/AtualizacaoObrigatoria.tsx', import.meta.url), 'utf8');
+assert.match(comp, /codigoBuildNativo\(Application\.nativeBuildVersion\)/, 'hook lê o versionCode nativo');
+assert.doesNotMatch(comp, /APP_VERSION_CODE/, 'hook não usa o versionCode do app.json');
+const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+assert.match(app, /versao !== 'atualizar' && \(/, 'tela de atualizar substitui o navegador (TalkBack/Modais)');
+
 console.log('teste-versao-minima-app: OK');

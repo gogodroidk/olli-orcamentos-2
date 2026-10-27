@@ -30,7 +30,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
 import { AvisoRelogioErrado } from './src/components/AvisoRelogioErrado';
-import { AtualizacaoObrigatoria } from './src/components/AtualizacaoObrigatoria';
+import { AtualizacaoObrigatoria, useVersaoMinima } from './src/components/AtualizacaoObrigatoria';
 import { curvas } from './src/components/motion/curvas';
 import { DURACAO, MOLA, TOQUE, useReduzirMovimento } from './src/theme/motion';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -305,6 +305,8 @@ export default Sentry.wrap(App);
 
 function AppConteudo() {
   const { modo, cores } = useTema();
+  // Build Android abaixo da versão mínima do servidor (D-1326): a tela de atualizar substitui o navegador.
+  const versao = useVersaoMinima();
   // O tema do Paper é recalculado só quando o modo ou a cor de marca mudam.
   const paperTheme = useMemo(() => criarAppTheme(modo, cores), [modo, cores]);
   const [dbReady, setDbReady] = useState(false);
@@ -582,7 +584,8 @@ function AppConteudo() {
               total, como qualquer site responsivo. No nativo isto nunca se
               aplicou — comportamento do APK intacto. */}
           <View style={[styles.appFrame, { backgroundColor: cores.background }]}>
-            {ready && (
+            {ready && versao === 'atualizar' && <AtualizacaoObrigatoria />}
+            {ready && versao !== 'atualizar' && (
               // linking com URLs reais (v4): o mapa é fixado no boot (linkingConfig).
               <NavigationContainer
                 ref={navigationRef}
@@ -659,9 +662,6 @@ function AppConteudo() {
                 por cima das telas, que NÃO bloqueia nada — a sessão já aguenta o
                 relógio errado; o aviso só explica a lentidão e as datas tortas. */}
             {ready && <AvisoRelogioErrado />}
-            {/* Build Android abaixo da versão mínima do servidor (D-1326): cobre tudo e pede a atualização.
-                Leitura que falha não cobre nada. */}
-            {ready && <AtualizacaoObrigatoria />}
             {/* Por cima do navegador até terminar o fade de saída (ver BrandSplash). */}
             {splashNaTela && (
               <BrandSplash saindo={ready} aoDesenhar={marcarSplashDesenhada} aoSair={tirarSplash} />

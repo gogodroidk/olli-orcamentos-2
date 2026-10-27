@@ -18,6 +18,17 @@ export function decidirVersaoMinima(codigoAtual: number | null, resposta: unknow
   return codigoAtual < minimo ? 'atualizar' : 'ok';
 }
 
+/**
+ * versionCode do build INSTALADO (`Application.nativeBuildVersion`, string no Android). Nunca o do app.json: o EAS
+ * numera o build sozinho (`appVersionSource: remote` + `autoIncrement`), então o app.json fica defasado e trancaria o
+ * build novo para sempre. Ausente ou estranho = null = `desconhecido`.
+ */
+export function codigoBuildNativo(nativo: string | null | undefined): number | null {
+  if (typeof nativo !== 'string' || !/^\d{1,9}$/.test(nativo.trim())) return null;
+  const n = Number(nativo.trim());
+  return n > 0 ? n : null;
+}
+
 /** Lê `GET {base}/app/versao-minima` com prazo curto. Nunca lança: falha vira `desconhecido`. */
 export async function consultarVersaoMinima(
   base: string,

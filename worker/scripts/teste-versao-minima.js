@@ -7,14 +7,20 @@ import { fileURLToPath } from 'node:url';
 import { metodosDaRota } from '../src/util.js';
 import { versaoMinimaAndroid } from '../src/versaoMinima.js';
 
-assert.equal(versaoMinimaAndroid({}), 0, 'var ausente = desligada');
+const play = (minima, atual = '30') => versaoMinimaAndroid({ APP_VERSAO_MINIMA_ANDROID: minima, APP_VERSAO_PLAY_ATUAL: atual });
+assert.equal(versaoMinimaAndroid({}), 0, 'vars ausentes = desligada');
 assert.equal(versaoMinimaAndroid(undefined), 0);
-assert.equal(versaoMinimaAndroid({ APP_VERSAO_MINIMA_ANDROID: '' }), 0, 'vazia = desligada');
-assert.equal(versaoMinimaAndroid({ APP_VERSAO_MINIMA_ANDROID: '26' }), 26);
-assert.equal(versaoMinimaAndroid({ APP_VERSAO_MINIMA_ANDROID: ' 26 ' }), 26);
+assert.equal(play(''), 0, 'mínima vazia = desligada');
+assert.equal(play('26'), 26);
+assert.equal(play(' 26 '), 26);
+assert.equal(play('30', '30'), 30, 'mínima igual ao último build publicado vale');
 for (const lixo of ['-1', '26.5', 'abc', '1e3', '9999999', 26]) {
-  assert.equal(versaoMinimaAndroid({ APP_VERSAO_MINIMA_ANDROID: lixo }), 0, `valor estranho (${lixo}) não tranca ninguém`);
+  assert.equal(play(lixo), 0, `valor estranho (${lixo}) não tranca ninguém`);
 }
+// trava de configuração (LIVRE #259 P2): mínima acima do que a Play entrega trancaria todo mundo
+assert.equal(versaoMinimaAndroid({ APP_VERSAO_MINIMA_ANDROID: '26' }), 0, 'sem APP_VERSAO_PLAY_ATUAL: desligada');
+assert.equal(play('31', '30'), 0, 'mínima acima do último build da Play: desligada');
+assert.equal(play('26', 'lixo'), 0, 'Play atual inválida: desligada');
 
 const index = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 const rota = index.indexOf("url.pathname === '/app/versao-minima'");
