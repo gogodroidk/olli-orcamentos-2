@@ -89,7 +89,9 @@ export async function GET() {
 			n > 0
 				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, aterrada${n > 1 ? "s" : ""} em norma técnica.`
 				: "";
-		return `- [OLLI para ${profissao}](${ORIGEM}/para/${slug}/): ${DOR_POR_OFICIO[v.id]}${calculo}`;
+		const nomes = calculosDoOficio(v.id).map((c) => c.nome).join("; ");
+		const lista = nomes ? ` Ferramentas: ${nomes}.` : "";
+		return `- [OLLI para ${profissao}](${ORIGEM}/para/${slug}/): ${DOR_POR_OFICIO[v.id]}${calculo}${lista}`;
 	}).join("\n");
 
 	const planos = PLANOS_LLM.map(

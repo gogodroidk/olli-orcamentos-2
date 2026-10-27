@@ -147,6 +147,12 @@ const faqs = [
 				},
 			]
 		: []),
+	// Uma pergunta por calculadora (até 3): é como o prestador pergunta à IA ("como dimensionar disjuntor?").
+	// A resposta é a descrição e a base técnica da própria ferramenta — nada escrito à mão por ofício.
+	...calculos.slice(0, 3).map((c) => ({
+		q: `Como fazer a conta de ${c.nome.replace(/^calculadora de /i, "").toLowerCase()} no orçamento de ${profissao}?`,
+		a: `${c.descricao} Base técnica: ${c.base} Na OLLI você preenche os campos e o resultado vira item do orçamento com um toque.`,
+	})),
 	{
 		q: `A OLLI serve pra ${profissao} autônomo?`,
 		a: `Serve. É feita pro prestador que fecha e executa o serviço sozinho: orçamento no celular, link pro cliente aprovar e recibo no fim. O plano Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês), com equipe e permissões, entra só quando você tem uma equipe.`,
