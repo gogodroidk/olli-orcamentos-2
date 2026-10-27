@@ -106,8 +106,8 @@ import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImport
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import { withSecurityHeaders } from './securityHeaders.js';
-import {
 import { versaoMinimaAndroid } from './versaoMinima.js';
+import {
   rotuloVertical,
   vozSystem,
   GUARDA_ESCOPO_IA,
