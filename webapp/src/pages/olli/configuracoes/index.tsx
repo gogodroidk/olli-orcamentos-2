@@ -39,7 +39,10 @@ export default function ConfiguracoesPage() {
 	const temStripe = statusStripe.data?.gerenciavel === true;
 	const faturas = useQuery({ queryKey: ["olli", "stripe", "faturas"], queryFn: listarFaturasStripe, enabled: temStripe, staleTime: 60_000, retry: 1 });
 	const metodo = useQuery({ queryKey: ["olli", "stripe", "metodo"], queryFn: obterMetodoStripe, enabled: temStripe, staleTime: 60_000, retry: 1 });
-	const [conta, setConta] = useState({ nome: "", email: "", avatarUrl: "", senha: "" });
+	const [conta, setConta] = useState({ nome: "", email: "", avatarUrl: "", senha: "", senhaAtual: "" });
+	/** A conta tem senha (identidade de e-mail)? Conta só-Google cria a 1ª senha sem "senha atual". */
+	const [temSenha, setTemSenha] = useState(false);
+	const [emailAtual, setEmailAtual] = useState("");
 	const [salvandoConta, setSalvandoConta] = useState(false);
 
 	useEffect(() => {
@@ -51,7 +54,10 @@ export default function ConfiguracoesPage() {
 				email: user.email ?? "",
 				avatarUrl: String(user.user_metadata?.avatar_url ?? ""),
 				senha: "",
+				senhaAtual: "",
 			});
+			setTemSenha((user.identities ?? []).some((i) => i.provider === "email"));
+			setEmailAtual(user.email ?? "");
 		});
 	}, []);
 
@@ -68,10 +74,27 @@ export default function ConfiguracoesPage() {
 				},
 			};
 			if (conta.email.trim()) atualizacao.email = conta.email.trim();
-			if (conta.senha.trim()) atualizacao.password = conta.senha;
+			if (conta.senha.trim()) {
+				// D-1438 (segurança): trocar a senha EXIGE a senha atual de quem já tem uma. Conferida aqui
+				// (entrando com ela) e mandada como `current_password`, que o Supabase confere no servidor
+				// quando a trava "Require current password" estiver ligada. Conta só-Google cria a 1ª senha.
+				if (temSenha) {
+					if (!conta.senhaAtual) throw new Error("Para trocar a senha, digite a sua senha atual.");
+					const confere = await supabase.auth.signInWithPassword({ email: emailAtual, password: conta.senhaAtual });
+					if (confere.error) throw new Error("A senha atual não confere. Nada foi alterado.");
+					atualizacao.current_password = conta.senhaAtual;
+				}
+				atualizacao.password = conta.senha;
+			}
 			const { error } = await supabase.auth.updateUser(atualizacao);
-			if (error) throw error;
-			setConta((atual) => ({ ...atual, senha: "" }));
+			if (error) {
+				if (error.code === "current_password_mismatch" || error.code === "current_password_required") {
+					throw new Error("A senha atual não confere. Nada foi alterado.");
+				}
+				throw error;
+			}
+			if (atualizacao.password) setTemSenha(true);
+			setConta((atual) => ({ ...atual, senha: "", senhaAtual: "" }));
 			toast.success(conta.email.trim() ? "Dados da conta atualizados. Confira seu e-mail se houver confirmação pendente." : "Dados da conta atualizados.");
 		} catch (erro) {
 			toast.error(erro instanceof Error ? erro.message : "Não consegui atualizar a conta.");
@@ -121,6 +144,7 @@ export default function ConfiguracoesPage() {
 					<label className="text-sm font-medium text-text-primary">E-mail<input className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" type="email" value={conta.email} onChange={(e) => setConta((atual) => ({ ...atual, email: e.target.value }))} autoComplete="email" /></label>
 					<label className="text-sm font-medium text-text-primary">URL da foto de perfil<input className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" value={conta.avatarUrl} onChange={(e) => setConta((atual) => ({ ...atual, avatarUrl: e.target.value }))} placeholder="https://…" inputMode="url" /></label>
 					<label className="text-sm font-medium text-text-primary">Nova senha (opcional)<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senha} onChange={(e) => setConta((atual) => ({ ...atual, senha: e.target.value }))} autoComplete="new-password" minLength={8} placeholder="Deixe em branco para manter" /></span></label>
+					{temSenha && conta.senha.trim() !== "" && <label className="text-sm font-medium text-text-primary sm:col-start-2">Senha atual<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senhaAtual} onChange={(e) => setConta((atual) => ({ ...atual, senhaAtual: e.target.value }))} autoComplete="current-password" required aria-describedby="ajuda-senha-atual" /></span><span id="ajuda-senha-atual" className="mt-1 block text-xs font-normal text-text-secondary">Para sua segurança, a troca de senha pede a senha que você usa hoje.</span></label>}
 					<div className="sm:col-span-2 flex flex-wrap items-center gap-3"><Button type="submit" disabled={salvandoConta}>{salvandoConta ? "Salvando…" : "Salvar dados da conta"}</Button><span className="text-xs text-text-secondary">Alterar e-mail pode exigir confirmação no endereço novo.</span></div>
 				</form>
 			</Card>
