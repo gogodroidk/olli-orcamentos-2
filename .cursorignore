@@ -19,3 +19,9 @@ dados-receita/
 **/dump*.sql
 supabase/seed*
 **/supabase/seed*
+.dev.vars*
+**/.dev.vars*
+*service-account*.json
+**/*service-account*.json
+*-sa.json
+**/*-sa.json
