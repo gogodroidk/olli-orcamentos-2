@@ -137,15 +137,16 @@ const nomesCalc = calculos.map((c) => c.nome).join(", ");
 
 /**
  * "Resposta curta" (40–60 palavras): o parágrafo que o buscador de IA pode citar inteiro. Fica no topo do
- * HTML, logo após o H1. Só fatos da fonte: profissão, contagem de calculadoras e plano Grátis vêm dos mesmos
- * dados do resto da página; nenhum preço (P0: preço só de planos.ts) e nada que o app não faça. Se um dado da
+ * HTML, logo após o H1. Só fatos da fonte: profissão, contagem de calculadoras e a regra do Grátis (FRASE_GRATIS_CURTA, que
+ * já carrega a regra vigente) vêm dos mesmos dados do resto da página; nada de "permanente"/"sem cartão"
+ * escrito à mão (CDC: se o limite do Grátis ligar, o texto acompanha); nenhum preço (P0) e nada que o app não faça. Se um dado da
  * fonte mudar e o texto sair do intervalo, o build FALHA em vez de publicar uma resposta torta.
  */
 const calcTrecho =
 	calculos.length > 0
 		? ` com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo`
 		: "";
-const respostaCurta = `A OLLI é um app de orçamento, ordem de serviço e recibo para ${profissao}, no celular ou no computador. O plano Grátis é permanente, sem cartão: ${FRASE_GRATIS_CURTA}, com o selo discreto "${TEXTO_SELO_OLLI}". Para começar, crie a conta, monte o primeiro orçamento${calcTrecho} e envie o link para o cliente aprovar.`;
+const respostaCurta = `A OLLI é um app de orçamento, ordem de serviço e recibo para ${profissao}, no celular ou no computador. No plano Grátis: ${FRASE_GRATIS_CURTA}, com o selo discreto "${TEXTO_SELO_OLLI}". Para começar, crie a conta, monte o primeiro orçamento${calcTrecho} e envie o link para o cliente aprovar.`;
 const palavrasResposta = respostaCurta.split(/\s+/).length;
 if (palavrasResposta < 40 || palavrasResposta > 60) {
 	throw new Error(`/para/${slug}: "Resposta curta" com ${palavrasResposta} palavras (esperado 40–60): ${respostaCurta}`);
