@@ -30,15 +30,19 @@
  * servidor recusar, aquele card volta para a coluna de origem e o erro aparece.
  */
 
-import type { Orcamento, StatusOrcamento } from "@dominio";
+import type { Orcamento, OrdemServico, StatusOrcamento } from "@dominio";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useOlliList } from "@/olli/data";
+import { novoId } from "@/olli/contrato";
 import { agoraIso } from "@/olli/datas";
+import { proximoNumeroOs } from "@/olli/mutacoes";
+import { carregarOsFresca } from "@/pages/olli/ordens-servico/linha";
+import { concluidoEmDaTransicao } from "../../../../../src/utils/ordemServicoStatus";
 import { useSalvar } from "@/olli/mutacoes";
-import { type Cartao, type LinhaOrcamento, montarColunas, rotuloDoStatus } from "../utils/colunas";
+import { type Cartao, type LinhaOrcamento, montarColunas, type OsDoOrcamento, planoDeFinalizacao, rotuloDoStatus } from "../utils/colunas";
 
 /**
  * Opções da lista. Constante de módulo DE PROPÓSITO: é a mesma referência que vira
@@ -61,6 +65,7 @@ export function useQuadro() {
 	const lista = useOlliList<LinhaOrcamento>("orcamentos", OPCOES_LISTA);
 	const ordens = useOlliList<{ orcamento_id: string | null; status: string }>("ordens_servico", OPCOES_OS);
 	const salvar = useSalvar("orcamentos");
+	const salvarOs = useSalvar("ordens_servico");
 
 	/** Ids com gravação em voo — o card fica travado (não some, não vira placeholder). */
 	const [emVoo, setEmVoo] = useState<ReadonlySet<string>>(() => new Set());
@@ -155,8 +160,71 @@ export function useQuadro() {
 		[emVoo, mutacao, qc, remendar],
 	);
 
+	/**
+	 * FINALIZA o serviço do orçamento: conclui a OS em andamento ou cria uma OS já concluída (`planoDeFinalizacao`).
+	 * Quem chama confirma antes (é uma gravação de verdade). Sem otimismo: o card só vai para Finalizados quando a OS
+	 * concluída voltar do servidor — erro aparece no banner e no toast, e o card fica onde estava.
+	 */
+	const finalizar = useCallback(
+		async (cartao: Cartao) => {
+			if (emVoo.has(cartao.id)) return;
+			setEmVoo((s) => new Set(s).add(cartao.id));
+			setErro(null);
+			try {
+				const { data, error } = await supabase
+					.from("ordens_servico")
+					.select("id,status,atualizado_em")
+					.eq("orcamento_id", cartao.id)
+					.is("excluido_em", null);
+				if (error) throw error;
+				const plano = planoDeFinalizacao((data ?? []) as OsDoOrcamento[]);
+				const agora = agoraIso();
+				let os: OrdemServico;
+				if (plano.acao === "concluir") {
+					const fresca = await carregarOsFresca(plano.osId);
+					os = { ...fresca, status: "concluida", concluidoEm: concluidoEmDaTransicao(fresca, "concluida", agora), atualizadoEm: agora };
+				} else {
+					const blob = cartao.linha.dados;
+					const valor = cartao.valor !== null && cartao.valor > 0 ? cartao.valor : undefined;
+					os = {
+						id: novoId(),
+						numero: await proximoNumeroOs(),
+						orcamentoId: cartao.id,
+						clienteId: blob?.clienteId || undefined,
+						clienteNome: cartao.cliente,
+						titulo: `Serviço do orçamento ${cartao.numero}`,
+						status: "concluida",
+						concluidoEm: agora,
+						checklist: [],
+						fotos: [],
+						valor,
+						criadoEm: agora,
+						atualizadoEm: agora,
+					};
+				}
+				await salvarOs.mutateAsync(os);
+				await ordens.refetch();
+				toast.success(`${cartao.numero} → Finalizados`, {
+					description: plano.acao === "concluir" ? `OS ${os.numero} concluída.` : `OS ${os.numero} criada já concluída.`,
+				});
+			} catch (e) {
+				const msg = mensagemDoErro(e);
+				setErro(`Não consegui finalizar o orçamento ${cartao.numero}. ${msg}`);
+				toast.error("Não consegui finalizar o serviço", { description: msg });
+			} finally {
+				setEmVoo((s) => {
+					const n = new Set(s);
+					n.delete(cartao.id);
+					return n;
+				});
+			}
+		},
+		[emVoo, ordens, salvarOs],
+	);
+
 	return {
 		colunas,
+		finalizar,
 		total,
 		isLoading: lista.isLoading || ordens.isLoading,
 		isError: lista.isError || ordens.isError,
