@@ -3,6 +3,12 @@
  *
  * Gateway de PIX do OLLI — e SÓ de Pix.
  *
+ * D-1063 (Igor, 26/10: "não vamos usar [o Mercado Pago] pra nada"): as rotas /mp/* ficam
+ * (o app instalado chama /mp/pix e /mp/status), mas com a AbacatePay LIGADA quem cobra é
+ * ela (abacate.js). O MP só responde se a AbacatePay estiver desligada (rollback sem
+ * deploy) e para pagamentos MP antigos (id numérico) e o webhook deles. O código do MP
+ * sai depois que a troca estiver no ar com smoke verde.
+ *
  * DECISÃO DO DONO (jul/2026, textual e final): "deixe os pagamentos do CARTÃO no
  * STRIPE, e os pagamentos PIX no MERCADO PAGO." Cada caminho de dinheiro tem UM
  * dono: cartão → worker/src/stripe.js. Pix → este módulo. Não há terceiro arranjo.
@@ -35,6 +41,7 @@
  * (após confirmar o pagamento via GET) concede — ref = id do pagamento (idempotência
  * via (origem,ref) único no ledger; upsert por user_id nas assinaturas).
  */
+import { criarCobrancaCredito, handleAbacate, liberarSePaga, modoAbacate } from './abacate.js';
 import { lancarCreditos } from './creditos.js';
 import { cabeNoTeto, checarLimite, deixaPassar, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 import { upsertAssinatura, getAssinatura } from './stripe.js';
@@ -47,7 +54,7 @@ const WORKER_BASE = 'https://diagnostico.olliorcamentos.online';
 // ── catálogos (fonte única de preço) ─────────────────────────
 // Créditos: `amount` em CENTAVOS (convertido p/ reais na chamada ao MP). Mesma
 // tabela de produção do abacate.js — margem provada (ver docs/PESQUISA_GATEWAY_PRECOS.md).
-const PACOTES = {
+export const PACOTES = {
   creditos_50: { id: 'creditos_50', nome: '50 créditos', creditos: 50, amount: 2490 },
   creditos_150: { id: 'creditos_150', nome: '150 créditos', creditos: 150, amount: 4990 },
   creditos_400: { id: 'creditos_400', nome: '400 créditos', creditos: 400, amount: 9990 },
@@ -174,11 +181,16 @@ async function criarPixCredito(request, env) {
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
   if (!(await rateOk(env, user.id))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
-  if (!env.MP_ACCESS_TOKEN) return json({ ok: false, erro: 'mp_nao_configurado' }, 503);
 
   const body = await request.json().catch(() => ({}));
   const pacote = PACOTES[body && body.pacote];
   if (!pacote) return json({ ok: false, erro: 'pacote_invalido' }, 400);
+
+  if (modoAbacate(env) !== 'desligado') {
+    const cobranca = await criarCobrancaCredito(env, user, pacote);
+    return cobranca ? json(cobranca) : json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  }
+  if (!env.MP_ACCESS_TOKEN) return json({ ok: false, erro: 'mp_nao_configurado' }, 503);
 
   const pedidoId = crypto.randomUUID();
   const externalRef = `olli:cr:${user.id}:${pedidoId}:${pacote.id}`;
@@ -320,10 +332,22 @@ export async function cancelarPreapprovalMp(env, preapprovalId) {
 async function checarStatus(request, env, url) {
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
-  if (!env.MP_ACCESS_TOKEN) return json({ ok: false, erro: 'mp_nao_configurado' }, 503);
   const id = url.searchParams.get('id');
   if (!id) return json({ ok: false, erro: 'id_ausente' }, 400);
   if (!(await rateOk(env, `status:${user.id}`))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+
+  // Id do MP é numérico; o resto é cobrança da AbacatePay (D-1063). Lá a leitura também
+  // credita, uma vez só — mesmo caminho do /abacate/status.
+  if (!/^\d+$/.test(id)) {
+    if (modoAbacate(env) === 'desligado') return json({ ok: false, erro: 'pix_desligado' }, 503);
+    if (!/^[A-Za-z0-9_-]{6,80}$/.test(id)) return json({ ok: false, erro: 'id_invalido' }, 400);
+    const r = await liberarSePaga(env, id, user.id);
+    if (r.estado === 'invalida' || r.estado === 'alheia') return json({ ok: false, erro: 'nao_encontrado' }, 404);
+    if (r.estado === 'indisponivel') return json({ ok: false, erro: 'falha_status' }, 502);
+    const pago = r.estado === 'liberado';
+    return json({ ok: true, status: pago ? 'PAID' : 'PENDING', pago });
+  }
+  if (!env.MP_ACCESS_TOKEN) return json({ ok: false, erro: 'mp_nao_configurado' }, 503);
 
   const { ok, data } = await mpGet(env, `/v1/payments/${encodeURIComponent(id)}`);
   if (!ok || !data) return json({ ok: false, erro: 'falha_status' }, 502);
@@ -736,7 +760,16 @@ export async function handleMercadoPago(request, env, url) {
 
   if (p === '/mp/pacotes' && request.method === 'GET') return listarPacotes();
   if (p === '/mp/pix' && request.method === 'POST') return criarPixCredito(request, env);
-  if (p === '/mp/plano/pix' && request.method === 'POST') return criarPixPlano(request, env);
+  if (p === '/mp/plano/pix' && request.method === 'POST') {
+    // D-1063: com a AbacatePay ligada, o Pix de plano é o MESMO de /abacate/plano/pix
+    // (mesma validade, vigência, lembrete e consumo único); a resposta é um superconjunto.
+    if (modoAbacate(env) !== 'desligado') {
+      const alvo = new URL(url);
+      alvo.pathname = '/abacate/plano/pix';
+      return handleAbacate(request, env, alvo);
+    }
+    return criarPixPlano(request, env);
+  }
   if (p === '/mp/status' && request.method === 'GET') return checarStatus(request, env, url);
   if (p === '/mp/webhook' && request.method === 'POST') return webhook(request, env, url);
 
