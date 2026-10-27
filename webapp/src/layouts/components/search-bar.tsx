@@ -122,6 +122,8 @@ const SearchBar = () => {
 			>
 				<div className="flex items-center justify-center gap-4">
 					<Icon icon="local:ic-search" size="20" />
+					{/* Em tela larga a caixa diz o que é ("Buscar"), não só a lupa (D-1438: "caixinha feia"). */}
+					<span className="hidden text-sm font-medium text-text-secondary lg:inline">Buscar</span>
 					{/* Azul CHEIO, não `bg-primary/80`: medido no navegador, o branco sobre o azul
 					    a 80% (composto sobre o botão cinza da busca) dava 3,64:1 — reprova nos
 					    4,5:1 da WCAG para texto pequeno. Sem a transparência vai a 5,02:1. */}

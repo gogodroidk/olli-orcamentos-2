@@ -133,6 +133,9 @@
 
 /* Shadcn UI Light Theme */
 :root {
+	/* D-1438 ("scroll branco, não sincroniza com o sistema"): sem `color-scheme` o navegador desenha
+	   barra de rolagem e controles nativos SEMPRE claros, inclusive no tema escuro. */
+	color-scheme: light;
 	--radius: 0.5rem;
 	--background: var(--colors-common-white);
 	--foreground: var(--colors-common-black);
@@ -173,6 +176,7 @@
    luminosidade: background (mais escuro) → card/popover → secondary/muted/
    accent/sidebar (--colors-background-neutral, mais claro ainda). */
 [data-theme-mode="dark"] {
+	color-scheme: dark;
 	--background: var(--colors-background-default);
 	--foreground: var(--colors-common-white);
 	--card: var(--colors-background-paper);
