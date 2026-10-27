@@ -37,7 +37,8 @@ import {
 	reais,
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS } from "../data/recursos";
+import { FRASE_GRATIS, GRATIS_CONDICAO } from "../data/recursos";
+import { TRIAL_PRO_DIAS } from "../../../src/services/limitesComerciais";
 import { postsPublicados } from "./blog/_dados";
 
 const ORIGEM = "https://olliorcamentos.online";
@@ -48,7 +49,7 @@ const ORIGEM = "https://olliorcamentos.online";
  * três lugares" foi paga: o número mora num lugar só e todo o resto importa dele.
  */
 const PLANOS_LLM = [
-	{ nome: "Grátis", preco: reais(0), nota: `permanente, sem cartão, com ${FRASE_GRATIS}` },
+	{ nome: "Grátis", preco: reais(0), nota: `${GRATIS_CONDICAO}, com ${FRASE_GRATIS}` },
 	{
 		nome: "Pro",
 		preco: `${reais(PRECO_PRO.mensalCentavos)}/mês`,
@@ -133,7 +134,7 @@ ${quemSomos}
 
 ${planos}
 
-O plano anual sai mais barato que o mensal. O Grátis é permanente; depois do primeiro envio, o dono pode ativar um teste Pro opcional de 14 dias, sem cartão, sem cobrança automática e sem apagar dados ao terminar. ${NOTA_DOZE}
+O plano anual sai mais barato que o mensal. O Grátis é ${GRATIS_CONDICAO}; depois do primeiro envio, o dono pode ativar um teste Pro opcional de ${TRIAL_PRO_DIAS} dias, sem cartão, sem cobrança automática e sem apagar dados ao terminar. ${NOTA_DOZE}
 ${pagamento}
 Comparativo completo dos planos: ${ORIGEM}/planos/
 

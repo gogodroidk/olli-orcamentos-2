@@ -36,7 +36,8 @@ import {
 } from "../../data/oficios";
 // Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
 import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
-import { FRASE_GRATIS, FRASE_GRATIS_CURTA, TEXTO_SELO_OLLI } from "../../data/recursos";
+import { FRASE_GRATIS, FRASE_GRATIS_CURTA, GRATIS_CONDICAO, TEXTO_SELO_OLLI } from "../../data/recursos";
+import { TRIAL_PRO_DIAS } from "../../../../src/services/limitesComerciais";
 
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
@@ -146,15 +147,24 @@ const calcTrecho =
 	calculos.length > 0
 		? ` com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo`
 		: "";
-const respostaCurta = `A OLLI é um app de orçamento, ordem de serviço e recibo para ${profissao}, no celular ou no computador. No plano Grátis: ${FRASE_GRATIS_CURTA}, com o selo discreto "${TEXTO_SELO_OLLI}". Para começar, crie a conta, monte o primeiro orçamento${calcTrecho} e envie o link para o cliente aprovar.`;
-const palavrasResposta = respostaCurta.split(/\s+/).length;
-if (palavrasResposta < 40 || palavrasResposta > 60) {
-	throw new Error(`/para/${slug}: "Resposta curta" com ${palavrasResposta} palavras (esperado 40–60): ${respostaCurta}`);
+const montaResposta = (comSelo: boolean) =>
+	`A OLLI é um app de orçamento, ordem de serviço e recibo para ${profissao}, no celular ou no computador. No plano Grátis, ${GRATIS_CONDICAO}: ${FRASE_GRATIS_CURTA}${comSelo ? `, com o selo discreto "${TEXTO_SELO_OLLI}"` : ""}. Para começar, crie a conta, monte o primeiro orçamento${calcTrecho} e envie o link para o cliente aprovar.`;
+const contaPalavras = (t: string) => t.split(/\s+/).length;
+/**
+ * Alvo: 40–60 palavras. Se o corte do Grátis ligar, FRASE_GRATIS_CURTA passa a carregar o limite (data e número)
+ * e o texto cresce: primeiro tira o selo (ele continua em FAQ e no cartão do plano), e só então aceita até 75,
+ * porque o limite dito com honestidade vale mais que o tamanho. Fora de 40–75 o build falha.
+ */
+let respostaCurta = montaResposta(true);
+if (contaPalavras(respostaCurta) > 60) respostaCurta = montaResposta(false);
+const palavrasResposta = contaPalavras(respostaCurta);
+if (palavrasResposta < 40 || palavrasResposta > 75) {
+	throw new Error(`/para/${slug}: "Resposta curta" com ${palavrasResposta} palavras (esperado 40–60, teto 75 com o limite do Grátis): ${respostaCurta}`);
 }
 const faqs = [
 	{
 		q: `Existe app de orçamento grátis para ${profissao}?`,
-		a: `Sim. O plano Grátis da OLLI é permanente, com ${FRASE_GRATIS}; rascunhos, ordem de serviço, recibos, clientes e histórico também ficam sem limite. Depois do primeiro envio, há 14 dias opcionais de Pro sem cartão e sem cobrança automática.`,
+		a: `Sim. No plano Grátis da OLLI, ${GRATIS_CONDICAO}: ${FRASE_GRATIS}; rascunhos, ordem de serviço, recibos, clientes e histórico também ficam sem limite. Depois do primeiro envio, há ${TRIAL_PRO_DIAS} dias opcionais de Pro sem cartão e sem cobrança automática.`,
 	},
 	...(calculos.length > 0
 		? [
@@ -337,9 +347,9 @@ const schemaFaq = {
 				</ol>
 
 				<div class="mt-12 rounded-cartao border border-line bg-white p-8 text-center">
-					<p class="text-lg font-semibold text-ink">Comece de graça, sem cartão.</p>
+					<p class="text-lg font-semibold text-ink">Comece de graça, {GRATIS_CONDICAO}.</p>
 					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
-						O Grátis não tem prazo nem limite de orçamentos: {FRASE_GRATIS}.
+						No Grátis: {FRASE_GRATIS}.
 					</p>
 					<a
 						href={APP_CADASTRO_URL}
