@@ -249,6 +249,19 @@ export function useSalvar<T extends TabelaOlli>(tabela: T) {
 					for (const c of COLUNAS_AGENDA_EQUIPE) delete linha[c];
 					({ error } = await supabase.from(tabelaRemota(tabela)).upsert(linha, { onConflict: CONFLITO[tabela] }));
 				}
+				if (error && tabela === "clientes" && (error.code === "42703" || error.code === "PGRST204")) {
+					// Servidor ainda sem a migration do e-mail do cliente (20261030050000). Sem e-mail
+					// digitado, grava sem as colunas novas (o cadastro não pode parar). Com e-mail
+					// digitado, NÃO grava calado sem ele: avisa (erro nunca vira vazio).
+					if (linha.email || linha.email2) {
+						throw new Error(
+							"O e-mail do cliente ainda não pode ser salvo: o servidor recebe essa atualização na sexta (30/10). Apague o e-mail para salvar o resto agora.",
+						);
+					}
+					delete linha.email;
+					delete linha.email2;
+					({ error } = await supabase.from(tabelaRemota(tabela)).upsert(linha, { onConflict: CONFLITO[tabela] }));
+				}
 				if (!error) return candidato;
 				ultimoErro = error;
 

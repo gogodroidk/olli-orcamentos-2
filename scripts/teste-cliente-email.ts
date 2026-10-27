@@ -37,7 +37,7 @@ for (const src of [sync, painel]) {
 }
 // nuvem sem a coluna não pode apagar o e-mail do aparelho
 assert.match(sync, /clientesSemColunasEmail \? \(local\?\.email \?\? null\)/);
-const mig = readFileSync(new URL('../supabase/migrations/20261022130000_clientes_email_secundario.sql', import.meta.url), 'utf8');
+const mig = readFileSync(new URL('../supabase/migrations/20261030050000_clientes_email_secundario.sql', import.meta.url), 'utf8');
 assert.match(mig, /add column if not exists email\s+text/);
 assert.match(mig, /add column if not exists email2 text/);
 
