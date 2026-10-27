@@ -4,7 +4,7 @@ import { formatDate, formatDateBR, formatDateTime } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
 import { escapeHtml, safeHexColor } from './html';
-import { DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
+import { ctaPrestadorPdfHtml, DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
 import { formatarNumeroExibicao } from './numeroDocumento';
 
 // Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
@@ -581,7 +581,7 @@ export function gerarHtmlOrcamento(
 
   // Selo "Feito com OLLI" (Grátis ilimitado): discreto, clicável e com UTM. Sai
   // só quando removerMarca é falsy (Pro/Empresa removem). Marcação fixa/controlada.
-  const brandOlliHtml = removerMarca ? '' : `<div class="brand-olli">${seloOlliHtml('pdf_orcamento')}</div>`;
+  const brandOlliHtml = removerMarca ? '' : `<div class="brand-olli">${seloOlliHtml('pdf_orcamento')}${ctaPrestadorPdfHtml()}</div>`;
 
   // Escapa CADA parte antes de juntar com o <br/> (marcação fixa controlada).
   const clienteLinhas = [

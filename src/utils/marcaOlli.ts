@@ -46,6 +46,37 @@ export function urlSeloOlli(origem: OrigemSeloOlli): string {
 }
 
 /**
+ * CONVITE AO PRESTADOR (estratégia #2, CPO/CMO 26/10): quem recebe o orçamento e
+ * TAMBÉM vende serviço. Pergunta que o cliente comum ignora sem custo; vai abaixo do
+ * selo, nas MESMAS condições dele (some com `remove_olli_brand`) e nunca no recibo.
+ * "grátis e sem cartão" é promessa de plano: `scripts/teste-cta-prestador.ts` trava a
+ * frase contra `planosBase.ts` (se o Grátis passar a pedir cartão, o teste quebra).
+ */
+export const TEXTO_CTA_PRESTADOR = 'Você também faz orçamento para seus clientes? Crie o seu, grátis e sem cartão.';
+export const TEXTO_LINK_CTA_PRESTADOR = 'Criar o meu orçamento grátis';
+/** No PDF não há clique garantido (impresso, visualizador): o endereço vai escrito. */
+export const TEXTO_CTA_PRESTADOR_PDF = 'Você também faz orçamento? Crie o seu grátis: olliorcamentos.online';
+
+/** Mesma UTM do selo + `utm_content=cta_prestador`, para medir o convite separado do selo. */
+export function urlCtaPrestador(origem: OrigemSeloOlli): string {
+  return `${urlSeloOlli(origem)}&utm_content=cta_prestador`;
+}
+
+/** Linha do convite na página pública: texto secundário de 13 px, link sublinhado, sem botão. */
+export function ctaPrestadorHtml(origem: OrigemSeloOlli): string {
+  return (
+    '<p style="margin:10px auto 0;max-width:420px;font-size:13px;line-height:1.45;color:#6B7686;">' +
+    `${TEXTO_CTA_PRESTADOR} <a href="${urlCtaPrestador(origem)}" target="_blank" rel="noopener" ` +
+    `style="color:#4A5566;text-decoration:underline;">${TEXTO_LINK_CTA_PRESTADOR}</a></p>`
+  );
+}
+
+/** Linha de texto do convite no PDF (só no Grátis; quem decide é o call site). */
+export function ctaPrestadorPdfHtml(): string {
+  return `<div style="margin-top:6px;font-size:9px;color:#9AA3B2;">${TEXTO_CTA_PRESTADOR_PDF}</div>`;
+}
+
+/**
  * Monograma OLLI (marca d'água / selo) na cor pedida.
  * Símbolo oficial (rebrand v3) em versão mono — balão-documento + check.
  */

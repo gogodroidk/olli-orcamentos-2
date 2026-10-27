@@ -39,7 +39,7 @@
 import { gerarPixCopiaECola, normalizarChavePix, pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
 import { FONTES_CSS } from './fontesProprias.js';
 import { qrSvg } from '../../src/utils/qrcode.ts';
-import { seloOlliHtml } from '../../src/utils/marcaOlli.ts';
+import { ctaPrestadorHtml, seloOlliHtml } from '../../src/utils/marcaOlli.ts';
 import { RECURSO_REMOVE_MARCA, temAcessoRecurso } from '../../src/services/entitlements.ts';
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
 
@@ -939,7 +939,7 @@ ${og}
 </style>
 </head>
 <body><div class="wrap">${inner}</div>
-${mostrarSelo ? `<div class="olli-cta">${seloOlliHtml('link_orcamento')}</div>` : ''}
+${mostrarSelo ? `<div class="olli-cta">${seloOlliHtml('link_orcamento')}${ctaPrestadorHtml('link_orcamento')}</div>` : ''}
 </body>
 </html>`;
 }

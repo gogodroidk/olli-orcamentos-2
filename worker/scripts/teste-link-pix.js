@@ -502,6 +502,8 @@ await caso('dono no Grátis: selo "Feito com OLLI" com UTM e SEM Pix (cliente nu
   assert.doesNotMatch(html, /Disponível no Pro|plano Pro|assine/i, 'o cliente final não vê oferta de plano');
   assert.match(html, /Feito com <span[^>]*>OLLI<\/span>/);
   assert.match(html, /utm_source=link_orcamento&amp;utm_medium=selo&amp;utm_campaign=feito_com_olli|utm_source=link_orcamento&utm_medium=selo&utm_campaign=feito_com_olli/);
+  assert.match(html, /Você também faz orçamento para seus clientes\?/, 'convite ao prestador abaixo do selo');
+  assert.match(html, /utm_campaign=feito_com_olli&(amp;)?utm_content=cta_prestador/);
 });
 
 await caso('dono no Pro: Pix aparece e o selo some', async () => {
@@ -509,6 +511,7 @@ await caso('dono no Pro: Pix aparece e o selo some', async () => {
   assert.match(html, />Pagar com Pix</);
   assert.doesNotMatch(html, /Feito com <span/);
   assert.doesNotMatch(html, /utm_medium=selo/);
+  assert.doesNotMatch(html, /Você também faz orçamento/, 'convite some junto com o selo');
 });
 
 await caso('dono no Empresa: Pix aparece e o selo some', async () => {
