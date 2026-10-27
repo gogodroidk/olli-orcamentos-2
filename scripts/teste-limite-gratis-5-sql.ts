@@ -35,6 +35,10 @@ await db.exec(`
   create table auth.users (id uuid primary key, created_at timestamptz not null default now());
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('teste.uid', true), '')::uuid $$;
+  create table public.email_supressoes (
+    user_id uuid not null references auth.users(id) on delete cascade, motivo text not null, origem text not null,
+    criado_em timestamptz not null default now(), primary key (user_id, motivo)
+  ); -- forma de 20260929200000 (só o que a regra lê)
   create table public.organizacoes (id uuid primary key, owner_user_id uuid not null references auth.users(id));
   create table public.organizacao_membros (org_id uuid not null, user_id uuid not null, ativo boolean not null default true);
   create table public.assinaturas (
@@ -294,10 +298,32 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   assert.equal(priv.rows[0].r, false);
   assert.equal(priv.rows[0].w, false);
   const inicioPriv = await db.query<{ x: boolean }>(
-    `select has_function_privilege('authenticated','public.limite_gratis_inicio_antiga(uuid,timestamptz)','execute') x`,
+    `select has_function_privilege('authenticated','public.limite_gratis_inicio_antiga(uuid,uuid,timestamptz)','execute') x`,
   );
   assert.equal(inicioPriv.rows[0].x, false, 'helper interno fechado');
   caso('limite_gratis_ciencia e o helper: fechados para authenticated (só via RPC)');
+
+  // e-mail devolvido (hard_bounce) e sem ciência: nunca entra no limite sem ver o aviso (LEGAL D-1323 cond. 3)
+  const devolvido = await novoUsuario(40);
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'hard_bounce', 'resend_webhook')`, [devolvido]);
+  for (let i = 1; i <= 7; i++) assert.equal((await enviar(devolvido, `dv-${i}`)).permitido, true, `bounce sem ciência: envio ${i} livre`);
+  const od = await oferta(devolvido);
+  assert.equal(od.limite_conta_antiga, false, 'corte+8d e bounce sem ciência: ainda livre');
+  const dataD = Date.parse((od.aviso_limite_antigas as { a_partir_de: string }).a_partir_de) - Date.now();
+  assert.ok(dataD > 6.9 * 864e5 && dataD < 7.1 * 864e5, 'aviso mostra agora+7d (data que anda até ver)');
+  await como(devolvido);
+  await db.query(`select public.registrar_ciencia_limite_gratis('v1', 'painel')`);
+  assert.equal((await oferta(devolvido)).limite_conta_antiga, false, 'viu agora: 7 dias a partir de ver');
+  await db.query(`update public.limite_gratis_ciencia set visto_em = now() - interval '8 days' where tenant_id=$1`, [devolvido]);
+  await db.query(`update public.orcamento_envios_gratis set criado_em = now() - interval '9 days' where tenant_id=$1`, [devolvido]);
+  assert.equal((await oferta(devolvido)).limite_conta_antiga, true, 'viu há 8 dias: limitada');
+  for (let i = 1; i <= 5; i++) assert.equal((await enviar(devolvido, `dv2-${i}`)).permitido, true);
+  assert.equal((await reservar(devolvido, 'dv2-6')).permitido, false, 'o 6º barrado');
+  // complaint também conta como "sem e-mail"; descadastro (só lembretes) não
+  const descad = await novoUsuario(40);
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'link_email')`, [descad]);
+  assert.equal((await oferta(descad)).limite_conta_antiga, true, 'descadastro de lembretes não adia (o aviso chega por e-mail)');
+  caso('bounce sem ciência: data anda até ver; depois de ver, 7 dias; descadastro não adia');
   await desligar();
 }
 

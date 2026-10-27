@@ -11,10 +11,15 @@
 --     não viu até corte_antigas            -> corte_antigas + 7 dias (o banner segue no ar com ESTA data, então a
 --                                             data mostrada é sempre a verdadeira; quem vê depois do corte não
 --                                             antecipa nada).
+--     e-mail suprimido (hard_bounce/complaint) e não viu até o corte (LEGAL D-1323 cond. 3: não recebeu o e-mail)
+--                                          -> sem ciência: agora + 7 dias (a data anda; nunca limita sem ver);
+--                                             viu depois do corte: maior entre corte+7d e visto_em+7d.
+--   O +7 SOMA aos 30 dias de aviso (corte_antigas = D+30), nunca os substitui (LEGAL D-1323 cond. 1).
 --   Envio feito ANTES do início não conta para o limite da antiga (mudança vale só para o futuro).
 --   Conta nova (criada >= corte) não muda.
 --   Com corte_antigas NULL (padrão) nada muda e a RPC não grava nada.
--- Rollback: recriar as 2 funções de 20261024150000 e `drop table public.limite_gratis_ciencia`.
+-- Rollback: recriar as 2 funções de 20261024150000, `drop function public.registrar_ciencia_limite_gratis(text,text)`,
+-- `drop function public.limite_gratis_inicio_antiga(uuid,uuid,timestamptz)` e `drop table public.limite_gratis_ciencia`.
 -- Teste: scripts/teste-limite-gratis-5-sql.ts.
 
 begin;
@@ -32,23 +37,34 @@ create index if not exists limite_gratis_ciencia_user_id_idx on public.limite_gr
 alter table public.limite_gratis_ciencia enable row level security;
 revoke all on table public.limite_gratis_ciencia from public, anon, authenticated;
 
-create or replace function public.limite_gratis_inicio_antiga(p_tenant_id uuid, p_corte_antigas timestamptz)
+create or replace function public.limite_gratis_inicio_antiga(
+  p_tenant_id uuid,
+  p_owner_user_id uuid,
+  p_corte_antigas timestamptz
+)
 returns timestamptz
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
-  select case
-    when p_corte_antigas is null then null
-    when exists (
-      select 1 from public.limite_gratis_ciencia c
-      where c.tenant_id = p_tenant_id and c.visto_em <= p_corte_antigas
-    ) then p_corte_antigas
-    else p_corte_antigas + interval '7 days'
-  end
+declare
+  v_visto timestamptz;
+  v_sem_email boolean;
+begin
+  if p_corte_antigas is null then return null; end if;
+  select c.visto_em into v_visto from public.limite_gratis_ciencia c where c.tenant_id = p_tenant_id;
+  if v_visto is not null and v_visto <= p_corte_antigas then return p_corte_antigas; end if;
+  v_sem_email := exists (
+    select 1 from public.email_supressoes s
+    where s.user_id = p_owner_user_id and s.motivo in ('hard_bounce', 'complaint')
+  );
+  if not v_sem_email then return p_corte_antigas + interval '7 days'; end if;
+  if v_visto is null then return greatest(p_corte_antigas, now()) + interval '7 days'; end if;
+  return greatest(p_corte_antigas, v_visto) + interval '7 days';
+end;
 $$;
-revoke all on function public.limite_gratis_inicio_antiga(uuid, timestamptz) from public, anon, authenticated;
+revoke all on function public.limite_gratis_inicio_antiga(uuid, uuid, timestamptz) from public, anon, authenticated;
 
 create or replace function public.registrar_ciencia_limite_gratis(p_versao text, p_canal text)
 returns timestamptz
@@ -139,7 +155,7 @@ begin
     if v_nova then
       v_limitada := true;
     elsif v_criada is not null and v_corte_antigas is not null then
-      v_desde := public.limite_gratis_inicio_antiga(v_contexto.tenant_id, v_corte_antigas);
+      v_desde := public.limite_gratis_inicio_antiga(v_contexto.tenant_id, v_contexto.owner_user_id, v_corte_antigas);
       v_limitada := now() >= v_desde;
     end if;
   end if;
@@ -261,7 +277,7 @@ begin
     select u.created_at into v_criada from auth.users u where u.id = v_contexto.owner_user_id;
     v_nova := v_criada is not null and v_corte is not null and v_criada >= v_corte;
     if not v_nova and v_criada is not null and v_corte_antigas is not null then
-      v_desde := public.limite_gratis_inicio_antiga(v_contexto.tenant_id, v_corte_antigas);
+      v_desde := public.limite_gratis_inicio_antiga(v_contexto.tenant_id, v_contexto.owner_user_id, v_corte_antigas);
       v_antiga := now() >= v_desde;
       if not v_antiga then
         select count(*) into v_usados_30d from public.orcamento_envios_gratis e
