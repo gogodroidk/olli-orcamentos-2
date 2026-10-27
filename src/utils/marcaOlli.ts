@@ -73,7 +73,7 @@ export function ctaPrestadorHtml(origem: OrigemSeloOlli): string {
 
 /** Linha de texto do convite no PDF (só no Grátis; quem decide é o call site). */
 export function ctaPrestadorPdfHtml(): string {
-  return `<div style="margin-top:6px;font-size:9px;color:#9AA3B2;">${TEXTO_CTA_PRESTADOR_PDF}</div>`;
+  return `<div style="margin-top:6px;font-size:9.5px;color:#6B7686;">${TEXTO_CTA_PRESTADOR_PDF}</div>`;
 }
 
 /**

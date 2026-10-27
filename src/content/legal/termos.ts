@@ -63,6 +63,9 @@ export const TERMOS: LegalDoc = {
       titulo: '4. Planos, preços e cobrança',
       paragrafos: [
         'O OLLI oferece um plano gratuito e planos pagos (Pro e Empresa) com recursos adicionais. ' +
+          'No plano gratuito, o PDF, o recibo e o link do orçamento levam o selo "Feito com OLLI", e o PDF e o ' +
+          'link do orçamento levam também uma linha convidando quem recebe o orçamento a conhecer o OLLI; nos ' +
+          'planos Pro e Empresa, o selo e o convite não aparecem. ' +
           'Nos canais em que o checkout estiver explicitamente disponível, os planos pagos podem ser ' +
           'contratados nas modalidades mensal, anual ou em até 12 vezes, com pagamento processado pela Stripe.',
         'Quando o Pix estiver disponível no canal de contratação, os planos pagos também podem ser pagos ' +

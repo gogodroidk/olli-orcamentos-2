@@ -234,7 +234,8 @@ export const RECURSOS_GRATIS: readonly string[] = [
 ];
 
 /** O preço do Grátis, dito com honestidade: o que ele leva no documento. */
-export const NOTA_SELO_GRATIS = `O PDF, o recibo e o link do Grátis levam um selo discreto "${TEXTO_SELO_OLLI}".`;
+export const NOTA_SELO_GRATIS =
+  `O PDF, o recibo e o link do Grátis levam um selo discreto "${TEXTO_SELO_OLLI}"; o PDF e o link do orçamento levam também uma linha convidando outros prestadores a conhecer o OLLI.`;
 
 /** Frase curta do Grátis para FAQ, SEO e ajuda. */
 export const FRASE_GRATIS =
