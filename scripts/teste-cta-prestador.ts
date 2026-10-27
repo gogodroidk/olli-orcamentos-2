@@ -14,9 +14,11 @@
  *  4. No PDF o convite mora DENTRO da linha da marca, então some com `removerMarca`.
  */
 import { readFileSync } from 'node:fs';
-import { planoBase, PREVIEW_EMAIL_GRATIS } from '../src/services/planosBase.ts';
+import { NOTA_SELO_GRATIS, planoBase, PREVIEW_EMAIL_GRATIS } from '../src/services/planosBase.ts';
 import {
+  CTA_PRESTADOR_NO_AR_EM,
   ctaPrestadorHtml,
+  ctaPrestadorPdfHtml,
   footerSeloOlliHtml,
   TEXTO_CTA_PRESTADOR,
   TEXTO_CTA_PRESTADOR_PDF,
@@ -47,14 +49,31 @@ checar(
   urlCtaPrestador('link_orcamento'),
   'https://olliorcamentos.online/?utm_source=link_orcamento&utm_medium=selo&utm_campaign=feito_com_olli&utm_content=cta_prestador',
 );
-checar('html da página aponta para a url do convite', ctaPrestadorHtml('link_orcamento').includes(urlCtaPrestador('link_orcamento')), true);
-checar('html da página traz o texto', ctaPrestadorHtml('link_orcamento').includes(TEXTO_CTA_PRESTADOR), true);
+checar('html da página aponta para a url do convite', ctaPrestadorHtml('link_orcamento', true).includes(urlCtaPrestador('link_orcamento')), true);
+checar('html da página traz o texto', ctaPrestadorHtml('link_orcamento', true).includes(TEXTO_CTA_PRESTADOR), true);
 
 console.log('\n3) recibo e documentos não levam o convite');
 checar('rodapé do recibo sem convite', footerSeloOlliHtml('recibo').includes('Você também faz orçamento'), false);
 checar('rodapé de documento sem convite', footerSeloOlliHtml().includes('cta_prestador'), false);
 
-console.log('\n4) PDF: o convite está dentro da linha que some com removerMarca');
+console.log('\n4) liga/desliga (parecer do Dr. Paulo: aviso de 7 dias antes de ligar)');
+// termos.ts usa imports sem extensão (não roda no node): confere a FIAÇÃO no fonte.
+const termos = readFileSync(new URL('../src/content/legal/termos.ts', import.meta.url), 'utf8');
+checar('Termos: parágrafo só entra com a constante', termos.includes('...(PARAGRAFO_CTA_TERMOS === null ? [] : [PARAGRAFO_CTA_TERMOS])'), true);
+checar('Termos: parágrafo nulo quando desligado', /PARAGRAFO_CTA_TERMOS: string \| null =\s*CTA_PRESTADOR_NO_AR_EM === null\s*\? null/.test(termos), true);
+checar('Termos: data derivada da constante', /ATUALIZADO_EM = CTA_PRESTADOR_NO_AR_EM === null \? '2 de outubro de 2026' : diaExtenso\(CTA_PRESTADOR_NO_AR_EM\)/.test(termos), true);
+checar('Termos: atualizadoEm e aviso usam a data derivada', termos.includes('atualizadoEm: ATUALIZADO_EM') && termos.includes('Documento atualizado em ${ATUALIZADO_EM}'), true);
+if (CTA_PRESTADOR_NO_AR_EM === null) {
+  checar('desligado: página sem convite', ctaPrestadorHtml('link_orcamento'), '');
+  checar('desligado: PDF sem convite', ctaPrestadorPdfHtml(), '');
+  checar('desligado: nota do Grátis não cita convite', NOTA_SELO_GRATIS.includes('convidando'), false);
+} else {
+  checar('ligado: data ISO', /^\d{4}-\d{2}-\d{2}$/.test(CTA_PRESTADOR_NO_AR_EM), true);
+  checar('ligado: nota do Grátis cita convite', NOTA_SELO_GRATIS.includes('convidando'), true);
+}
+checar('ligado (forçado): PDF traz o texto', ctaPrestadorPdfHtml(true).includes(TEXTO_CTA_PRESTADOR_PDF), true);
+
+console.log('\n5) PDF: o convite está dentro da linha que some com removerMarca');
 const pdf = readFileSync(new URL('../src/utils/pdfGenerator.ts', import.meta.url), 'utf8');
 checar(
   'linha da marca condicionada a removerMarca inclui o convite',

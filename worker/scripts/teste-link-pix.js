@@ -8,6 +8,7 @@
  * sem a coluna nova = botão escondido e POST "recurso_desligado" (nunca finge);
  * nada do prestador entra no HTML sem escape.
  */
+import { CTA_PRESTADOR_NO_AR_EM } from '../../src/utils/marcaOlli.ts';
 import assert from 'node:assert/strict';
 import { pixDaPagina, regrasDaPagina, renderLinkPage, responderLink, validadeVencida, valorDoPix } from '../src/link.js';
 import { pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
@@ -502,8 +503,9 @@ await caso('dono no Grátis: selo "Feito com OLLI" com UTM e SEM Pix (cliente nu
   assert.doesNotMatch(html, /Disponível no Pro|plano Pro|assine/i, 'o cliente final não vê oferta de plano');
   assert.match(html, /Feito com <span[^>]*>OLLI<\/span>/);
   assert.match(html, /utm_source=link_orcamento&amp;utm_medium=selo&amp;utm_campaign=feito_com_olli|utm_source=link_orcamento&utm_medium=selo&utm_campaign=feito_com_olli/);
-  assert.match(html, /Você também faz orçamento para seus clientes\?/, 'convite ao prestador abaixo do selo');
-  assert.match(html, /utm_campaign=feito_com_olli&(amp;)?utm_content=cta_prestador/);
+  // Convite ao prestador: DESLIGADO até CTA_PRESTADOR_NO_AR_EM ter data (aviso de 7 dias, parecer do Paulo).
+  // O desenho ligado é testado em scripts/teste-cta-prestador.ts.
+  assert.equal(/Você também faz orçamento/.test(html), CTA_PRESTADOR_NO_AR_EM !== null, 'convite segue a constante');
 });
 
 await caso('dono no Pro: Pix aparece e o selo some', async () => {

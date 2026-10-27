@@ -52,6 +52,15 @@ export function urlSeloOlli(origem: OrigemSeloOlli): string {
  * "grátis e sem cartão" é promessa de plano: `scripts/teste-cta-prestador.ts` trava a
  * frase contra `planosBase.ts` (se o Grátis passar a pedir cartão, o teste quebra).
  */
+/**
+ * LIGA/DESLIGA do convite (parecer do Dr. Paulo, 26/10): mudar o que o Grátis entrega exige
+ * aviso no app + e-mail às contas Grátis com 7+ dias de antecedência (Termos §13; CDC 51 XIII).
+ * `null` = DESLIGADO: página, PDF, nota do Grátis e Termos ficam como antes. Data ISO
+ * `AAAA-MM-DD` = dia em que entrou no ar (vira o "atualizado em" dos Termos). Ligar = trocar
+ * esta constante num PR próprio, na janela de deploy, 7+ dias depois do aviso.
+ */
+export const CTA_PRESTADOR_NO_AR_EM: string | null = null;
+
 export const TEXTO_CTA_PRESTADOR = 'Você também faz orçamento para seus clientes? Crie o seu, grátis e sem cartão.';
 export const TEXTO_LINK_CTA_PRESTADOR = 'Criar o meu orçamento grátis';
 /** No PDF não há clique garantido (impresso, visualizador): o endereço vai escrito. */
@@ -63,7 +72,8 @@ export function urlCtaPrestador(origem: OrigemSeloOlli): string {
 }
 
 /** Linha do convite na página pública: texto secundário de 13 px, link sublinhado, sem botão. */
-export function ctaPrestadorHtml(origem: OrigemSeloOlli): string {
+export function ctaPrestadorHtml(origem: OrigemSeloOlli, ligado = CTA_PRESTADOR_NO_AR_EM !== null): string {
+  if (!ligado) return '';
   return (
     '<p style="margin:10px auto 0;max-width:420px;font-size:13px;line-height:1.45;color:#6B7686;">' +
     `${TEXTO_CTA_PRESTADOR} <a href="${urlCtaPrestador(origem)}" target="_blank" rel="noopener" ` +
@@ -72,7 +82,8 @@ export function ctaPrestadorHtml(origem: OrigemSeloOlli): string {
 }
 
 /** Linha de texto do convite no PDF (só no Grátis; quem decide é o call site). */
-export function ctaPrestadorPdfHtml(): string {
+export function ctaPrestadorPdfHtml(ligado = CTA_PRESTADOR_NO_AR_EM !== null): string {
+  if (!ligado) return '';
   return `<div style="margin-top:6px;font-size:9.5px;color:#6B7686;">${TEXTO_CTA_PRESTADOR_PDF}</div>`;
 }
 

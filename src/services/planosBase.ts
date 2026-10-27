@@ -25,7 +25,7 @@ import {
   type PlanoId,
   type Recurso,
 } from './entitlements.ts';
-import { TEXTO_SELO_OLLI } from '../utils/marcaOlli.ts';
+import { CTA_PRESTADOR_NO_AR_EM, TEXTO_SELO_OLLI } from '../utils/marcaOlli.ts';
 
 export { TEXTO_SELO_OLLI };
 
@@ -234,8 +234,10 @@ export const RECURSOS_GRATIS: readonly string[] = [
 ];
 
 /** O preço do Grátis, dito com honestidade: o que ele leva no documento. */
-export const NOTA_SELO_GRATIS =
-  `O PDF, o recibo e o link do Grátis levam um selo discreto "${TEXTO_SELO_OLLI}"; o PDF e o link do orçamento levam também uma linha convidando outros prestadores a conhecer o OLLI.`;
+export const NOTA_SELO_GRATIS: string =
+  CTA_PRESTADOR_NO_AR_EM === null
+    ? `O PDF, o recibo e o link do Grátis levam um selo discreto "${TEXTO_SELO_OLLI}".`
+    : `O PDF, o recibo e o link do Grátis levam um selo discreto "${TEXTO_SELO_OLLI}"; o PDF e o link do orçamento levam também uma linha convidando outros prestadores a conhecer o OLLI.`;
 
 /** Frase curta do Grátis para FAQ, SEO e ajuda. */
 export const FRASE_GRATIS =
