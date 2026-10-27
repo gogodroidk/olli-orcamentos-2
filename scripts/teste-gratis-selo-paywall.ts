@@ -145,7 +145,7 @@ console.log('\n4) selo "Feito com OLLI" (marcaOlli.ts)');
   checar('selo diz "Feito com OLLI"', /Feito com <span[^>]*>OLLI<\/span>/.test(html), true);
 
   const pdf = semComentarios(ler('../src/utils/pdfGenerator.ts'));
-  checar('PDF do orçamento: selo atrás do removerMarca', /removerMarca \? '' : `<div class="brand-olli">\$\{seloOlliHtml\('pdf_orcamento'\)\}<\/div>`/.test(pdf), true);
+  checar('PDF do orçamento: selo atrás do removerMarca', /removerMarca \? '' : `<div class="brand-olli">\$\{seloOlliHtml\('pdf_orcamento'\)\}(\$\{ctaPrestadorPdfHtml\(\)\})?<\/div>`/.test(pdf), true);
   const recibo = semComentarios(ler('../src/utils/reciboPdf.ts'));
   checar('recibo: selo atrás do removerMarca', recibo.includes("opts?.removerMarca === true ? '' : `<div class=\"footer-seal\">${footerSeloOlliHtml('recibo')}</div>`"), true);
   const link = semComentarios(ler('../worker/src/link.js'));
