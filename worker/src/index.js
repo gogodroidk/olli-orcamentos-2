@@ -106,6 +106,7 @@ import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImport
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import { withSecurityHeaders } from './securityHeaders.js';
+import { versaoMinimaAndroid } from './versaoMinima.js';
 import {
   rotuloVertical,
   vozSystem,
@@ -1240,6 +1241,11 @@ const handler = {
     // seguidas — ver saudeIA em ai.js); não chama o provedor a cada GET.
     // `ia_saude.amostra:0` = isolate novo, ainda sem evidência nem de sucesso
     // nem de falha. Nunca expõe código de erro nem modelo aqui (rota pública).
+    // VERSÃO MÍNIMA DO APP ANDROID (D-1326): o app pede a atualização abaixo deste build. Pública, sem dado de
+    // conta; 0 (padrão, var ausente) = desligada. Cache curto para a troca valer em minutos.
+    if (request.method === 'GET' && url.pathname === '/app/versao-minima') {
+      return json({ ok: true, android: versaoMinimaAndroid(env) }, 200, { 'Cache-Control': 'public, max-age=300' });
+    }
     if (request.method === 'GET' && url.pathname === '/') {
       const saude = saudeIA(env);
       return json({
