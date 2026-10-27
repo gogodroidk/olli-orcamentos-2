@@ -30,6 +30,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
 import { AvisoRelogioErrado } from './src/components/AvisoRelogioErrado';
+import { AtualizacaoObrigatoria } from './src/components/AtualizacaoObrigatoria';
 import { curvas } from './src/components/motion/curvas';
 import { DURACAO, MOLA, TOQUE, useReduzirMovimento } from './src/theme/motion';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -658,6 +659,9 @@ function AppConteudo() {
                 por cima das telas, que NÃO bloqueia nada — a sessão já aguenta o
                 relógio errado; o aviso só explica a lentidão e as datas tortas. */}
             {ready && <AvisoRelogioErrado />}
+            {/* Build Android abaixo da versão mínima do servidor (D-1326): cobre tudo e pede a atualização.
+                Leitura que falha não cobre nada. */}
+            {ready && <AtualizacaoObrigatoria />}
             {/* Por cima do navegador até terminar o fade de saída (ver BrandSplash). */}
             {splashNaTela && (
               <BrandSplash saindo={ready} aoDesenhar={marcarSplashDesenhada} aoSair={tirarSplash} />
