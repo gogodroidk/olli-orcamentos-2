@@ -260,6 +260,10 @@ export const PRIVACIDADE: LegalDoc = {
         'OpenRouter e provedores de inferência selecionados — roteamento e processamento dos ' +
           'pedidos de IA em texto. Exigimos rotas que declarem não usar o conteúdo para treinamento; ' +
           'o modelo e o provedor efetivamente usados podem variar dentro da lista aprovada por nós.',
+        'Ferramentas de inteligência artificial de terceiros usadas pela nossa equipe — no ' +
+          'atendimento (inclusive no WhatsApp do OLLI), nas vendas e no desenvolvimento do produto. ' +
+          'Mantemos desligado o uso do conteúdo para treinamento e enviamos só o necessário para a ' +
+          'tarefa; listas de contatos e documentos pessoais não são enviados a essas ferramentas.',
         'Sentry — monitoramento de erros e travamentos do aplicativo, para identificar e ' +
           'corrigir falhas técnicas. Recebe apenas dados técnicos do erro, sem o seu IP ou ' +
           'outros dados pessoais.',
