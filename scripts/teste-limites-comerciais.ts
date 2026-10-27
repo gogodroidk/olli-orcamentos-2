@@ -157,7 +157,7 @@ const comAviso = (extra: Record<string, unknown> = {}) => teto({
   limite_conta_nova: false, limite_envios: null, envios_restantes: null, envios_usados: 3,
   aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00+00:00', usados_30d: 7 }, ...extra,
 });
-assert.deepEqual(comAviso()?.avisoLimiteAntigas, { aPartirDe: '2026-11-24T03:00:00+00:00', usados30d: 7, cienciaRegistrada: false });
+assert.deepEqual(comAviso()?.avisoLimiteAntigas, { aPartirDe: '2026-11-24T03:00:00+00:00', usados30d: 7, cienciaRegistrada: false, limite: null });
 assert.equal(
   comAviso({ aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00Z', usados_30d: 7, ciencia_registrada: true } })?.avisoLimiteAntigas?.cienciaRegistrada,
   true, 'ciência já gravada no servidor',

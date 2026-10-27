@@ -265,6 +265,7 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   const seis = Date.parse(av.a_partir_de) - Date.now();
   assert.ok(seis > 5.9 * 864e5 && seis < 6.1 * 864e5, 'aviso traz corte+7d (a data verdadeira desta conta)');
   assert.equal(av.ciencia_registrada, false);
+  assert.equal((av as unknown as { limite: number }).limite, 5, 'aviso traz o teto do servidor');
   // ver o aviso DEPOIS do corte não antecipa o limite (a data mostrada continua valendo)
   await como(naoViu);
   await db.query(`select public.registrar_ciencia_limite_gratis('v1', 'app')`);

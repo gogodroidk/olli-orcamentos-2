@@ -53,6 +53,19 @@ export async function obterEstadoOfertaComercial(): Promise<EstadoOfertaComercia
 	}
 }
 
+/**
+ * Grava a CIÊNCIA do aviso do limite do Grátis (conta antiga): 1ª exibição + versão do texto. Sem ela o banco só
+ * limita a conta antiga 7 dias depois da data do aviso. Idempotente; nunca lança.
+ */
+export async function registrarCienciaLimiteGratis(versao: string, canal: "app" | "painel"): Promise<boolean> {
+	try {
+		const { error } = await supabase.rpc("registrar_ciencia_limite_gratis", { p_versao: versao, p_canal: canal });
+		return !error;
+	} catch {
+		return false;
+	}
+}
+
 export async function iniciarTrialPro(): Promise<InicioTrialPro | null> {
 	try {
 		const { data, error } = await supabase.rpc("iniciar_trial_pro", { p_gatilho: "pro_attempt" });

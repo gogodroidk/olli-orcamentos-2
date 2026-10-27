@@ -270,6 +270,7 @@ begin
         v_aviso := jsonb_build_object(
           'a_partir_de', v_desde,
           'usados_30d', v_usados_30d,
+          'limite', v_limite,
           'ciencia_registrada', exists (select 1 from public.limite_gratis_ciencia c where c.tenant_id = v_contexto.tenant_id)
         );
       end if;

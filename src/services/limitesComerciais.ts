@@ -48,6 +48,8 @@ export interface AvisoLimiteAntigas {
   usados30d: number;
   /** O servidor já tem a ciência deste aviso (1ª exibição gravada); false = o app deve registrar ao mostrar. */
   cienciaRegistrada: boolean;
+  /** Teto que vai valer, lido do servidor (null = servidor antigo, que não manda). */
+  limite: number | null;
 }
 
 export interface EstadoOfertaComercial {
@@ -159,7 +161,8 @@ function interpretarAvisoAntigas(valor: unknown): AvisoLimiteAntigas | null {
   const a = valor as Record<string, unknown>;
   if (typeof a.a_partir_de !== 'string' || Number.isNaN(Date.parse(a.a_partir_de))) return null;
   if (typeof a.usados_30d !== 'number' || !Number.isSafeInteger(a.usados_30d) || a.usados_30d < 0) return null;
-  return { aPartirDe: a.a_partir_de, usados30d: a.usados_30d, cienciaRegistrada: a.ciencia_registrada === true };
+  const limite = typeof a.limite === 'number' && Number.isSafeInteger(a.limite) && a.limite > 0 ? a.limite : null;
+  return { aPartirDe: a.a_partir_de, usados30d: a.usados_30d, cienciaRegistrada: a.ciencia_registrada === true, limite };
 }
 
 export function interpretarInicioTrial(valor: unknown): InicioTrialPro | null {
