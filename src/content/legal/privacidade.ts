@@ -164,13 +164,13 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Histórico de compras na Google Play (Android): identificador da compra, plano contratado, estado e datas da assinatura',
-          finalidade: 'Confirmar com a Google Play que a assinatura existe, liberar o plano certo para a sua conta, renová-lo, suspendê-lo ou encerrá-lo conforme a Google informar (cancelamento, falha de pagamento, estorno) e permitir restaurar a assinatura em outro aparelho. Para a Google Play, a compra fica ligada à sua conta OLLI por um código irreversível (hash do identificador da conta), nunca pelo seu e-mail. Se você excluir a conta, a assinatura ativa na Google Play é cancelada e esses registros são apagados ou anonimizados, ressalvado o que a lei exigir guardar.',
+          finalidade: 'Confirmar com a Google Play que a assinatura existe, liberar o plano certo para a sua conta, renová-lo, suspendê-lo ou encerrá-lo conforme a Google informar (cancelamento, falha de pagamento, estorno) e permitir restaurar a assinatura em outro aparelho. Para a Google Play, a compra fica ligada à sua conta OLLI por um código (hash do identificador da conta), nunca pelo seu e-mail. Se você excluir a conta, a assinatura ativa na Google Play é cancelada e esses registros são apagados ou anonimizados, ressalvado o que a lei exigir guardar.',
           base: 'Execução de contrato e cumprimento de obrigação legal/fiscal (art. 7º, V e II).',
         },
         {
           dado: 'Hash do IP e navegador nos scans da etiqueta QR',
           finalidade: 'Registrar acessos à etiqueta pública para segurança e prevenção de abuso, sem identificar quem escaneou.',
-          base: 'Legítimo interesse em segurança (art. 7º, IX). Guardamos apenas o hash irreversível do IP, nunca o IP original.',
+          base: 'Legítimo interesse em segurança (art. 7º, IX). Guardamos apenas um código derivado do IP (hash), nunca o IP original. Esse código é um dado pseudonimizado, não anônimo, e segue as mesmas proteções dos demais dados.',
         },
         {
           dado: 'Interação com o link do orçamento enviado ao cliente',
@@ -295,7 +295,7 @@ export const PRIVACIDADE: LegalDoc = {
           'equipamento, a categoria e a situação operacional, além do seu canal de contato. ' +
           'Ela NUNCA expõe o nome ou endereço do cliente, o número de série completo, valores, ' +
           'contratos ou qualquer outro dado sensível. Cada acesso é registrado apenas com um ' +
-          'hash irreversível do IP e uma versão curta do navegador.',
+          'código derivado do IP (hash, sem guardar o IP original) e uma versão curta do navegador.',
       ],
     },
     {
