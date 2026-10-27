@@ -42,7 +42,6 @@ export default function ConfiguracoesPage() {
 	const [conta, setConta] = useState({ nome: "", email: "", avatarUrl: "", senha: "", senhaAtual: "" });
 	/** A conta tem senha (identidade de e-mail)? Conta só-Google cria a 1ª senha sem "senha atual". */
 	const [temSenha, setTemSenha] = useState(false);
-	const [emailAtual, setEmailAtual] = useState("");
 	const [salvandoConta, setSalvandoConta] = useState(false);
 
 	useEffect(() => {
@@ -57,7 +56,6 @@ export default function ConfiguracoesPage() {
 				senhaAtual: "",
 			});
 			setTemSenha((user.identities ?? []).some((i) => i.provider === "email"));
-			setEmailAtual(user.email ?? "");
 		});
 	}, []);
 
@@ -75,13 +73,12 @@ export default function ConfiguracoesPage() {
 			};
 			if (conta.email.trim()) atualizacao.email = conta.email.trim();
 			if (conta.senha.trim()) {
-				// D-1438 (segurança): trocar a senha EXIGE a senha atual de quem já tem uma. Conferida aqui
-				// (entrando com ela) e mandada como `current_password`, que o Supabase confere no servidor
-				// quando a trava "Require current password" estiver ligada. Conta só-Google cria a 1ª senha.
+				// D-1438 (segurança): trocar a senha EXIGE a senha atual de quem já tem uma. Quem confere é o
+				// SERVIDOR (Auth com "require current password" ligado; GoTrue user.go): conferência só na tela
+				// se burla pelo console com a sessão aberta (LIVRE #261 P1). Nada de signInWithPassword aqui: ele
+				// troca a sessão e derruba o nível do MFA (P2). Conta só-Google cria a 1ª senha.
 				if (temSenha) {
 					if (!conta.senhaAtual) throw new Error("Para trocar a senha, digite a sua senha atual.");
-					const confere = await supabase.auth.signInWithPassword({ email: emailAtual, password: conta.senhaAtual });
-					if (confere.error) throw new Error("A senha atual não confere. Nada foi alterado.");
 					atualizacao.current_password = conta.senhaAtual;
 				}
 				atualizacao.password = conta.senha;
