@@ -46,6 +46,8 @@ const METODOS_POR_ROTA = new Map([
   ['/geocodificar', 'POST'],
   ['/clima', 'GET'],
   ['/alertas', 'GET'],
+  // Versão mínima do app Android (D-1326): pública, só leitura.
+  ['/app/versao-minima', 'GET'],
   ['/geo', 'POST'],
   ['/resend/webhook', 'POST'],
   ['/auth/email-hook', 'POST'],
