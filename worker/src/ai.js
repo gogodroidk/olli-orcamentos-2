@@ -572,7 +572,8 @@ async function gerarWorkersAI(
     if (causa?.message === 'workersai_prazo') throw causa;
     const detalhe = typeof causa?.message === 'string' ? causa.message : '';
     // 4006 = cota grátis diária esgotada; 3040/429 = capacidade; JSON Mode não cumprido.
-    const sobrecarga = /(?:429|4006|3040|quota|neuron|rate|capacity|overload|unavailable|json mode)/i.test(detalhe);
+    // LIVRE #263 P3: `rate` solto casava "generated"/"accurate"; só limite de taxa de verdade.
+    const sobrecarga = /\brate.?limit|\b(?:429|4006|3040)\b|quota|neuron|capacity|overload|unavailable|json mode/i.test(detalhe);
     console.warn('[olli-worker] workersai_falha', { modelo, sobrecarga });
     throw erroSeguro(sobrecarga ? 'workersai_sobrecarregado' : 'falha_workersai', { overloaded: sobrecarga });
   } finally {
