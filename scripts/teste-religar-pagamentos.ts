@@ -16,4 +16,9 @@ assert.match(sync.slice(chamada, chamada + 120), /\.catch\(\(\) => 0\)/, 'falha 
 // a rotina cobre os dois casos: ledger pendente e vínculo que faltou
 assert.match(pag, /recibo\.ledgerStatus === 'pendente'/);
 assert.match(pag, /recibo\.ledgerReciboVinculado !== true/);
+// LIVRE P2: só no aparelho do dono/pessoal; recusa definitiva sai do laço
+assert.match(sync.slice(sync.indexOf("contextoEquipe.status === 'pessoal'"), chamada), /contextoEquipe\.status === 'pessoal'/, 'membro e desconhecido não religam');
+assert.ok(sync.lastIndexOf("contextoEquipe.status === 'pessoal'", chamada) > push, 'guarda do dono logo antes da chamada');
+const negado = pag.lastIndexOf("ledger.status === 'negado'");
+assert.ok(negado > 0 && /ledgerStatus: 'falhou'/.test(pag.slice(negado, negado + 400)), 'negado vira falhou (sai do filtro)');
 console.log('teste-religar-pagamentos: OK');
