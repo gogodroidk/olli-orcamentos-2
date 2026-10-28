@@ -3291,6 +3291,15 @@ async function executarSyncOnLogin(): Promise<void> {
       .then(m => m.espelharVersoesPendentes())
       .catch(() => 0);
     if (syncAbortado(geracao)) return;
+    // Pagamentos do ledger que ficaram PENDENTES (registrados offline) ou SEM VÍNCULO com o recibo (o vínculo
+    // foi tentado antes de o recibo subir: 23503 'recibo_do_pagamento_nao_encontrado'). A rotina existia, mas
+    // não tinha chamador: o pendente ficava pendente para sempre (28/10: R$ 1.460 sem vínculo). Vem DEPOIS do
+    // pushAllLocal, quando o recibo já está na nuvem. Idempotente (idempotency_key no servidor); falha fica
+    // para a próxima retomada.
+    await import('./pagamentos')
+      .then(m => m.sincronizarPagamentosPendentes())
+      .catch(() => 0);
+    if (syncAbortado(geracao)) return;
     // Fotos da OS (I0 · selo "no aparelho/enviada"): o arquivo já está salvo no
     // aparelho desde o clique; aqui só sobe a cópia para o bucket privado. Vem
     // DEPOIS das linhas (a OS existe na nuvem antes da foto) e respeita a espera
