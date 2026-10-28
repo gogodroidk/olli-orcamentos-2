@@ -107,7 +107,8 @@
     "GEO_BACKFILL_MODE": "production",
     "GEO_BACKFILL_MAX_POR_RODADA": "5",
     "GEO_BACKFILL_MAX_NOMINATIM": "10",
-    "AI_PROVIDER": "openrouter",
+    // D-1527 (28/10): texto no Workers AI (binding AI, cota grátis, sem treino com o dado). Rollback: "openrouter" (exige saldo).
+    "AI_PROVIDER": "workersai",
     // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
     // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
     // com cada ID na allowlist de worker/src/ai.js, que também manda o teto de
@@ -190,7 +191,7 @@
         "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
         "AUTH_EMAIL_CONFIRM_URL": "https://staging.app.olliorcamentos.online/auth/confirm",
         "AUTH_OTP_VALIDADE_MINUTOS": "10",
-        "AI_PROVIDER": "openrouter",
+        "AI_PROVIDER": "workersai",
         "AUTOPILOT_WORKERS_AI_ENABLED": "true",
         "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,openai/gpt-4o-mini,mistralai/mistral-small-24b-instruct-2501",
         "OPENROUTER_PERMITIR_PAGO": "true",

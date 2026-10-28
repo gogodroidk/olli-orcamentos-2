@@ -1416,7 +1416,11 @@ const handler = {
         // fica de fora; cota negada já saiu acima. PII: beforeSend (sentryScrub).
         capturarExcecao(e, { origem: 'ia', rota: url.pathname });
       }
-      return json({ ok: false, erro: overloaded ? 'sobrecarregado' : 'falha_ia' }, overloaded ? 503 : 502);
+      // `mensagem` (D-1527): texto amigável pronto; o app antigo segue lendo só o `erro`.
+      return json(
+        { ok: false, erro: overloaded ? 'sobrecarregado' : 'falha_ia', mensagem: 'IA indisponível no momento. Tente de novo em alguns minutos; nada do que você salvou se perdeu.' },
+        overloaded ? 503 : 502,
+      );
     }
   },
 };

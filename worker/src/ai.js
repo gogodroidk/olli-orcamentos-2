@@ -7,8 +7,16 @@
 // no binding Workers AI antes de qualquer geração textual. O Gemini permanece
 // somente como rollback explícito (`AI_PROVIDER=gemini`), sem failover
 // silencioso entre fornecedores.
+//
+// `AI_PROVIDER=workersai` (hotfix D-1527, 28/10): texto no Workers AI pelo
+// binding `AI` (o mesmo da transcrição). Cota grátis diária e a Cloudflare não
+// treina com o conteúdo do cliente. Modelo padrão testado contra os 6 schemas
+// reais (Entregas Claude/OLLI/2026-10-28-ia-workersai/TABELA.md).
 
 import { gemini } from './gemini.js';
+
+/** Modelo de texto do Workers AI (JSON Mode). Trocável por `WORKERSAI_MODEL`. */
+export const WORKERSAI_MODELO_PADRAO = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
@@ -91,7 +99,7 @@ function textoCabecalhoAscii(valor, fallback) {
 export function provedorIA(env = {}) {
   const configurado = textoConfig(env.AI_PROVIDER).toLowerCase();
   if (configurado) {
-    if (configurado === 'openrouter' || configurado === 'gemini') return configurado;
+    if (configurado === 'openrouter' || configurado === 'gemini' || configurado === 'workersai') return configurado;
     return null;
   }
   return null;
@@ -101,6 +109,7 @@ export function aiConfigurada(env = {}) {
   const provedor = provedorIA(env);
   if (provedor === 'openrouter') return Boolean(textoConfig(env.OPENROUTER_API_KEY));
   if (provedor === 'gemini') return Boolean(textoConfig(env.GEMINI_API_KEY));
+  if (provedor === 'workersai') return Boolean(env.AI && typeof env.AI.run === 'function');
   return false;
 }
 
@@ -379,7 +388,8 @@ async function gerarOpenRouter(
           : `openrouter_${response.status}`;
       const error = erroSeguro(codigoErro, {
         // 404 autoriza outro modelo volátil, mas não significa sobrecarga.
-        overloaded: retryable && response.status !== 404,
+        // 402 (conta sem saldo, D-1527) não é bug: o cliente vê "IA indisponível".
+        overloaded: (retryable && response.status !== 404) || response.status === 402,
         status: response.status,
       });
       // 400 com json_schema = este modelo não serve ESTE schema (a OpenAI exige
@@ -521,6 +531,62 @@ async function gerarComRegistro(provedor, gerar) {
 }
 
 /**
+ * Geração de TEXTO no Workers AI (binding `AI`). Mesmo contrato do OpenRouter:
+ * devolve o texto (JSON serializado quando há schema). JSON Mode do Workers AI
+ * recebe o schema PURO em `json_schema` (sem o envelope name/strict do OpenAI)
+ * e devolve o objeto já pronto em `response`. Uma tentativa por pedido, sem
+ * cadeia: o modelo único foi escolhido no teste dos 6 schemas.
+ * Cota grátis esgotada, capacidade ou "JSON Mode couldn't be met" = sobrecarga
+ * (503 amigável no cliente), nunca dado inventado.
+ */
+async function gerarWorkersAI(
+  env,
+  { system, user, userParts, wantJson = false, jsonSchema, temperature = 0.4, timeoutMs = 25_000, maxTokens, beforeAttempt } = {},
+) {
+  if (!env?.AI || typeof env.AI.run !== 'function') throw erroSeguro('workersai_nao_configurado');
+  const modelo = textoConfig(env.WORKERSAI_MODEL) || WORKERSAI_MODELO_PADRAO;
+  const messages = mensagensOpenRouter({ system, user, userParts });
+  if (!messages.some((m) => m.role === 'user')) throw erroSeguro('entrada_vazia');
+  const schemaValido = jsonSchema && typeof jsonSchema === 'object' && !Array.isArray(jsonSchema) ? jsonSchema : null;
+  const entrada = {
+    messages,
+    temperature: numeroLimitado(temperature, 0.4, 0, 2),
+    max_tokens: Math.round(numeroLimitado(maxTokens, wantJson ? 1_800 : 1_200, 64, 4_096)),
+    ...(wantJson
+      ? { response_format: schemaValido ? { type: 'json_schema', json_schema: schemaValido } : { type: 'json_object' } }
+      : {}),
+  };
+  if (typeof beforeAttempt === 'function') await beforeAttempt({ model: modelo, tentativa: 1, total: 1 });
+
+  const prazoMs = Math.round(numeroLimitado(timeoutMs, 25_000, 10, 120_000));
+  let relogio;
+  let resultado;
+  try {
+    resultado = await Promise.race([
+      env.AI.run(modelo, entrada),
+      new Promise((_, rejeitar) => {
+        relogio = setTimeout(() => rejeitar(erroSeguro('workersai_prazo', { overloaded: true })), prazoMs);
+      }),
+    ]);
+  } catch (causa) {
+    if (causa?.message === 'workersai_prazo') throw causa;
+    const detalhe = typeof causa?.message === 'string' ? causa.message : '';
+    // 4006 = cota grátis diária esgotada; 3040/429 = capacidade; JSON Mode não cumprido.
+    const sobrecarga = /(?:429|4006|3040|quota|neuron|rate|capacity|overload|unavailable|json mode)/i.test(detalhe);
+    console.warn('[olli-worker] workersai_falha', { modelo, sobrecarga });
+    throw erroSeguro(sobrecarga ? 'workersai_sobrecarregado' : 'falha_workersai', { overloaded: sobrecarga });
+  } finally {
+    clearTimeout(relogio);
+  }
+
+  const resposta = resultado?.response;
+  if (resposta && typeof resposta === 'object') return JSON.stringify(resposta);
+  const texto = typeof resposta === 'string' ? resposta.trim() : '';
+  if (!texto) throw erroSeguro('workersai_vazio', { overloaded: true });
+  return texto;
+}
+
+/**
  * Interface compatível com gemini(): retorna apenas o texto gerado.
  * O rollback só ocorre quando AI_PROVIDER=gemini; nunca após erro do
  * OpenRouter e nunca por ausência de configuração.
@@ -541,6 +607,7 @@ export async function gerarIA(env = {}, opcoes = {}) {
     return gerarComRegistro('gemini', () => gemini(env, opcoes));
   }
   if (provedor === 'openrouter') return gerarComRegistro('openrouter', () => gerarOpenRouter(env, opcoes));
+  if (provedor === 'workersai') return gerarComRegistro('workersai', () => gerarWorkersAI(env, opcoes));
   throw erroSeguro(textoConfig(env?.AI_PROVIDER) ? 'provedor_ia_invalido' : 'ia_nao_configurada');
 }
 
