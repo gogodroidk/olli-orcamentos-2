@@ -579,8 +579,10 @@ async function gerarWorkersAI(
       }),
     ]);
   } catch (causa) {
-    await devolverReserva(beforeAttempt);
+    // Prazo NÃO devolve (LIVRE #264 P2): o AI.run segue rodando e é cobrado quando termina; devolver
+    // soltaria o teto de gasto justo no dia em que o provedor está lento. Só devolve quando ele recusou.
     if (causa?.message === 'workersai_prazo') throw causa;
+    await devolverReserva(beforeAttempt);
     const detalhe = typeof causa?.message === 'string' ? causa.message : '';
     // 4006 = cota grátis diária esgotada; 3040/429 = capacidade; JSON Mode não cumprido.
     // LIVRE #263 P3: `rate` solto casava "generated"/"accurate"; só limite de taxa de verdade.

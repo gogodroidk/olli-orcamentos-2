@@ -35,7 +35,8 @@ assert.equal(await devolver(A), true, 'devolve a reserva da tentativa que falhou
 assert.deepEqual(await usados(), { g: 1, u: 1, r: 1 }, 'contagens global e do usuário voltam 1');
 assert.equal(await devolver(A), false, '2ª devolução da mesma reserva não faz nada');
 assert.equal(await devolver('33333333-3333-4333-8333-333333333333'), false, 'reserva desconhecida: false');
-assert.deepEqual(await usados(), { g: 1, u: 1, r: 1 }, 'nada mudou nas devoluções inválidas');
+assert.equal(await devolver(`  ${B}  `), true, 'request_id com espaço acha a reserva (btrim, como a reserva)');
+assert.deepEqual(await usados(), { g: 0, u: 0, r: 0 }, 'as duas devolvidas');
 const priv = await db.query<{ a: boolean; s: boolean }>(`select
   has_function_privilege('authenticated','public.devolver_cota_ia_diaria(uuid,text,text)','execute') a,
   has_function_privilege('service_role','public.devolver_cota_ia_diaria(uuid,text,text)','execute') s`);

@@ -100,10 +100,15 @@ assert.equal((wr.match(/"OPENROUTER_GLOBAL_DAILY_LIMIT": "30"/g) || []).length, 
 // CPO 1 (migration 20261030060000): provedor falhou depois de reservar = devolve a unidade 1 vez; sucesso não devolve
 {
   const gate = (reg) => { const f = async () => { reg.reservas++; }; f.devolverUltima = async () => { reg.devolvidas++; return true; }; return f; };
-  for (const AI of [binding(new Error('4006 neurons')), binding({ response: '' }), { run: () => new Promise(() => {}) }]) {
+  for (const AI of [binding(new Error('4006 neurons')), binding({ response: '' })]) {
     const reg = { reservas: 0, devolvidas: 0 };
     await gerarIA({ AI_PROVIDER: 'workersai', AI }, { user: 'x', timeoutMs: 20, beforeAttempt: gate(reg) }).catch(() => {});
-    assert.deepEqual(reg, { reservas: 1, devolvidas: 1 }, 'falha do provedor devolve a reserva');
+    assert.deepEqual(reg, { reservas: 1, devolvidas: 1 }, 'provedor recusou: devolve a reserva');
+  }
+  {
+    const reg = { reservas: 0, devolvidas: 0 };
+    await gerarIA({ AI_PROVIDER: 'workersai', AI: { run: () => new Promise(() => {}) } }, { user: 'x', timeoutMs: 20, beforeAttempt: gate(reg) }).catch(() => {});
+    assert.deepEqual(reg, { reservas: 1, devolvidas: 0 }, 'prazo NÃO devolve (o provedor segue gastando)');
   }
   const ok = { reservas: 0, devolvidas: 0 };
   await gerarIA({ AI_PROVIDER: 'workersai', AI: binding({ response: { ok: true } }) }, { user: 'x', wantJson: true, jsonSchema: schema, beforeAttempt: gate(ok) });
