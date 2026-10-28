@@ -107,7 +107,8 @@
     "GEO_BACKFILL_MODE": "production",
     "GEO_BACKFILL_MAX_POR_RODADA": "5",
     "GEO_BACKFILL_MAX_NOMINATIM": "10",
-    "AI_PROVIDER": "openrouter",
+    // D-1527 (28/10): texto no Workers AI (binding AI, cota grátis, sem treino com o dado). Rollback: "openrouter" (exige saldo).
+    "AI_PROVIDER": "workersai",
     // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob
     // data_collection=deny. Só funciona com OPENROUTER_PERMITIR_PAGO="true" E
     // com cada ID na allowlist de worker/src/ai.js, que também manda o teto de
@@ -125,8 +126,11 @@
     //            ~US$ 0,0058 × 500 ≈ US$ 2,90/dia (~US$ 87/mês)
     // Subir o GLOBAL sobe esse teto na mesma proporção. Recomendado também um
     // limite de crédito na própria chave do OpenRouter (painel), como 2ª trava.
-    "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",
-    "OPENROUTER_USER_DAILY_LIMIT": "100",
+    // D-1527 / LIVRE #263 P2: o mesmo teto (família "openrouter" da cota) vale para o Workers AI.
+    // 30/dia × ~230 neurônios (Llama 3.3 70B) ≈ 7k < 10k neurônios grátis/dia, mesmo no plano pago.
+    // Uso real 05–27/10: 1 a 4 chamadas/dia.
+    "OPENROUTER_GLOBAL_DAILY_LIMIT": "30",
+    "OPENROUTER_USER_DAILY_LIMIT": "15",
     // Whisper é contado em neurônios estimados, não em requests. 46,63/min;
     // 8.000 ≈ 171 min/dia e 940 ≈ 20 min/dia por usuário.
     "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
@@ -190,14 +194,14 @@
         "WELCOME_LOGO_URL": "https://olliorcamentos.online/icon-192.png",
         "AUTH_EMAIL_CONFIRM_URL": "https://staging.app.olliorcamentos.online/auth/confirm",
         "AUTH_OTP_VALIDADE_MINUTOS": "10",
-        "AI_PROVIDER": "openrouter",
+        "AI_PROVIDER": "workersai",
         "AUTOPILOT_WORKERS_AI_ENABLED": "true",
         "OPENROUTER_TEXT_MODELS": "openai/gpt-4.1-nano,openai/gpt-4o-mini,mistralai/mistral-small-24b-instruct-2501",
         "OPENROUTER_PERMITIR_PAGO": "true",
         "OPENROUTER_SITE_URL": "https://staging.olliorcamentos.online",
         "OPENROUTER_APP_NAME": "OLLI Orcamentos Staging",
-        "OPENROUTER_GLOBAL_DAILY_LIMIT": "500",
-        "OPENROUTER_USER_DAILY_LIMIT": "100",
+        "OPENROUTER_GLOBAL_DAILY_LIMIT": "30",
+        "OPENROUTER_USER_DAILY_LIMIT": "15",
         "WHISPER_GLOBAL_DAILY_LIMIT": "8000",
         "WHISPER_USER_DAILY_LIMIT": "940",
         "GEMINI_MODEL": "gemini-2.5-flash",
