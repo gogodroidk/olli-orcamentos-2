@@ -539,6 +539,16 @@ async function gerarComRegistro(provedor, gerar) {
  * Cota grátis esgotada, capacidade ou "JSON Mode couldn't be met" = sobrecarga
  * (503 amigável no cliente), nunca dado inventado.
  */
+/** Provedor falhou depois de reservar: devolve a unidade da cota diária (critério do CPO, D-1527). */
+async function devolverReserva(gate) {
+  if (typeof gate?.devolverUltima !== 'function') return;
+  try {
+    await gate.devolverUltima();
+  } catch {
+    // A devolução nunca troca o erro original.
+  }
+}
+
 async function gerarWorkersAI(
   env,
   { system, user, userParts, wantJson = false, jsonSchema, temperature = 0.4, timeoutMs = 25_000, maxTokens, beforeAttempt } = {},
@@ -569,6 +579,7 @@ async function gerarWorkersAI(
       }),
     ]);
   } catch (causa) {
+    await devolverReserva(beforeAttempt);
     if (causa?.message === 'workersai_prazo') throw causa;
     const detalhe = typeof causa?.message === 'string' ? causa.message : '';
     // 4006 = cota grátis diária esgotada; 3040/429 = capacidade; JSON Mode não cumprido.
@@ -583,7 +594,10 @@ async function gerarWorkersAI(
   const resposta = resultado?.response;
   if (resposta && typeof resposta === 'object') return JSON.stringify(resposta);
   const texto = typeof resposta === 'string' ? resposta.trim() : '';
-  if (!texto) throw erroSeguro('workersai_vazio', { overloaded: true });
+  if (!texto) {
+    await devolverReserva(beforeAttempt);
+    throw erroSeguro('workersai_vazio', { overloaded: true });
+  }
   return texto;
 }
 

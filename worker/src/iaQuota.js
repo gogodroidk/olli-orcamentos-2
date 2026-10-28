@@ -135,12 +135,12 @@ function linhaDaResposta(dados) {
   return { estado, dia, usadosGlobal, usadosUsuario, limiteGlobal, limiteUsuario, unidades };
 }
 
-function urlRpc(supabaseUrl) {
+function urlRpc(supabaseUrl, funcao = 'reservar_cota_ia_diaria') {
   const base = new URL(supabaseUrl);
   if (base.protocol !== 'https:' && base.hostname !== 'localhost' && base.hostname !== '127.0.0.1') {
     throw new TypeError('SUPABASE_URL insegura');
   }
-  return new URL('/rest/v1/rpc/reservar_cota_ia_diaria', base).toString();
+  return new URL(`/rest/v1/rpc/${funcao}`, base).toString();
 }
 
 /**
@@ -288,20 +288,62 @@ export async function reservarCotaConfigurada(
  * manual nunca usa uma unidade reservada para outra chamada. O erro carrega
  * somente o resultado saneado da cota, sem prompt, modelo, usuario ou segredo.
  */
+/**
+ * Desfaz UMA reserva (`devolver_cota_ia_diaria`, migration 20261030060000) quando o provedor falhou
+ * depois de reservado. Nunca lança: sem a RPC (antes da migration), rede ou erro, devolve false e a
+ * reserva fica como estava (o comportamento anterior). Não toca no uso do Grátis.
+ */
+export async function devolverCotaIA(env, { userId, familia, requestId } = {}) {
+  const supabaseUrl = typeof env?.SUPABASE_URL === 'string' ? env.SUPABASE_URL.trim() : '';
+  const serviceRole = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string' ? env.SUPABASE_SERVICE_ROLE_KEY.trim() : '';
+  if (!supabaseUrl || !serviceRole || !UUID_RE.test(String(userId)) || !FAMILIAS.has(familia)) return false;
+  if (typeof requestId !== 'string' || !requestId) return false;
+  const controlador = new AbortController();
+  const temporizador = setTimeout(() => controlador.abort(), TIMEOUT_PADRAO_MS);
+  try {
+    const headers = { apikey: serviceRole, 'Content-Type': 'application/json', Accept: 'application/json' };
+    if (!serviceRole.startsWith('sb_secret_')) headers.Authorization = `Bearer ${serviceRole}`;
+    const resposta = await fetch(urlRpc(supabaseUrl, 'devolver_cota_ia_diaria'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ p_user: userId, p_familia: familia, p_request_id: requestId }),
+      signal: controlador.signal,
+    });
+    if (!resposta.ok) return false;
+    return (await resposta.json().catch(() => false)) === true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(temporizador);
+  }
+}
+
 export function criarGateTentativasOpenRouter(env, userId) {
-  return async function antesDaTentativa() {
+  let ultima = null;
+  async function antesDaTentativa() {
     const reserva = await reservarCotaConfigurada(env, {
       userId,
       familia: FAMILIAS_COTA_IA.OPENROUTER,
       requestId: crypto.randomUUID(),
     });
-    if (reserva.permitido === true && reserva.estado === 'permitido') return reserva;
+    if (reserva.permitido === true && reserva.estado === 'permitido') {
+      ultima = reserva;
+      return reserva;
+    }
 
     const erro = new Error('cota_ia_negada');
     erro.name = 'CotaIAError';
     erro.reservaCota = reserva;
     throw erro;
+  }
+  /** Devolve a última reserva (falha do provedor depois de reservar). Uma vez só por reserva. */
+  antesDaTentativa.devolverUltima = async () => {
+    const r = ultima;
+    ultima = null;
+    if (!r) return false;
+    return devolverCotaIA(env, { userId, familia: r.familia, requestId: r.requestId });
   };
+  return antesDaTentativa;
 }
 
 export function reservaCotaDoErro(erro) {
