@@ -504,7 +504,7 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 				}
 				acao={{
 					rotulo: "Resolver pagamento",
-					href: linkWhatsApp(`Olá! O pagamento do meu plano ${nome} no OLLI falhou e eu quero regularizar.`),
+					portal: true,
 				}}
 			/>
 		);
@@ -566,13 +566,16 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 				}
 				acao={{
 					rotulo: `Voltar para o ${nome}`,
-					href: linkWhatsApp(`Olá! Quero reativar o meu plano ${nome} no OLLI.`),
+					href: "#escolha-seu-plano",
+					externa: false,
 				}}
 			/>
 		);
 	}
 
 	// GRÁTIS de verdade (a tabela respondeu e não há assinatura).
+	// O pagamento mora nos cartões ("Assinar Pro" / Pix). A faixa só desce até eles.
+	// O WhatsApp continua no cartão, como ajuda, se o checkout falhar.
 	return (
 		<Faixa
 			tom="neutro"
@@ -580,7 +583,8 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 			texto={`O Grátis tem ${FRASE_GRATIS}. Sem prazo e sem cartão.`}
 			acao={{
 				rotulo: "Quero assinar o Pro",
-				href: linkWhatsApp("Olá! Quero assinar o plano Pro do OLLI."),
+				href: "#escolha-seu-plano",
+				externa: false,
 			}}
 		/>
 	);
@@ -632,7 +636,9 @@ function Faixa({
 	tom: "success" | "warning" | "neutro";
 	titulo: string;
 	texto: string;
-	acao?: { rotulo: string; href: string; discreta?: boolean };
+	acao?:
+		| { rotulo: string; href: string; discreta?: boolean; externa?: boolean }
+		| { rotulo: string; portal: true };
 }) {
 	const cores = {
 		success: { card: "border-success/30 bg-success/5", tile: "bg-success/10 text-success" },
@@ -652,10 +658,15 @@ function Faixa({
 						<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">{texto}</p>
 					</div>
 				</div>
-				{acao ? (
+				{acao && "portal" in acao ? (
+					<BotaoPortalStripe className="shrink-0 self-start sm:self-auto" rotulo={acao.rotulo} />
+				) : acao ? (
 					<Button asChild variant={acao.discreta ? "outline" : "default"} className="shrink-0 self-start sm:self-auto">
-						<a href={acao.href} target="_blank" rel="noreferrer noopener">
-							<MessageCircle className="size-4" aria-hidden />
+						<a
+							href={acao.href}
+							{...(acao.externa === false ? {} : { target: "_blank", rel: "noreferrer noopener" })}
+						>
+							{acao.externa === false ? null : <MessageCircle className="size-4" aria-hidden />}
 							{acao.rotulo}
 						</a>
 					</Button>
