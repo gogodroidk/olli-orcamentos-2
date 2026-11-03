@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, FlatList, StyleSheet, TextInput,
   TouchableOpacity, Alert, RefreshControl, Animated, Modal, Pressable,
+  ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -46,6 +47,15 @@ import { useTermometro } from '../hooks/useTermometro';
 import { termometroDe } from '../services/termometro';
 import { mensagemDaAcao, type EstadoTermometro } from '../services/termometroRegra';
 import { validaAteYmd } from '../services/radarFollowUpRegra';
+import {
+  ORDENS_LISTA,
+  ORDEM_PADRAO,
+  PERIODOS_LISTA,
+  lerValorFiltro,
+  rotuloOrdem,
+  type OrdemLista,
+  type PeriodoLista,
+} from '../utils/listaOrcamentos';
 
 // Perf: com listas longas, animar a entrada (fade+slide) de CADA linha monta um
 // Animated.Value + timing por item conforme a FlatList vai revelando novas
@@ -63,12 +73,29 @@ const LIMITE_ANIMACAO_ENTRADA = 20;
 // antes de todas as páginas serem carregadas.
 const PAGE_SIZE = 50;
 
-/** Monta o filtro compartilhado (busca/status/cliente) a partir do estado atual da tela. */
-function montarFiltro(query: string, statusFilter: StatusOrcamento | 'todos', clienteId?: string): FiltroOrcamentos {
+interface EstadoFiltroLista {
+  query: string;
+  statusFilter: StatusOrcamento | 'todos';
+  clienteId?: string;
+  periodo: PeriodoLista;
+  ordem: OrdemLista;
+  valorMinTexto: string;
+  valorMaxTexto: string;
+}
+
+/** Monta o filtro compartilhado (busca, status, cliente, data, valor, ordem). */
+function montarFiltro(e: EstadoFiltroLista): FiltroOrcamentos {
+  const min = lerValorFiltro(e.valorMinTexto);
+  const max = lerValorFiltro(e.valorMaxTexto);
   return {
-    clienteId,
-    status: statusFilter === 'todos' ? undefined : statusFilter,
-    busca: query.trim() || undefined,
+    clienteId: e.clienteId,
+    status: e.statusFilter === 'todos' ? undefined : e.statusFilter,
+    busca: e.query.trim() || undefined,
+    periodo: e.periodo,
+    ordem: e.ordem,
+    valorMin: min.valor,
+    valorMax: max.valor,
+    valorInvalido: min.invalido || max.invalido,
   };
 }
 
@@ -281,6 +308,11 @@ export default function OrcamentosScreen() {
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusOrcamento | 'todos'>('todos');
+  const [periodo, setPeriodo] = useState<PeriodoLista>('todos');
+  const [ordem, setOrdem] = useState<OrdemLista>(ORDEM_PADRAO);
+  const [valorMinTexto, setValorMinTexto] = useState('');
+  const [valorMaxTexto, setValorMaxTexto] = useState('');
+  const [folhaOrdem, setFolhaOrdem] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [sincronizando, setSincronizando] = useState(false);
@@ -308,8 +340,16 @@ export default function OrcamentosScreen() {
   // re-registraria o effect de foco). pedidoIdRef: descarta respostas de uma
   // busca/filtro já ultrapassado por um mais novo (corrida ao digitar rápido).
   const itensRef = useRef<Orcamento[]>([]);
-  const filtroRef = useRef({ query: '', statusFilter: 'todos' as StatusOrcamento | 'todos', clienteId: undefined as string | undefined });
-  filtroRef.current = { query, statusFilter, clienteId };
+  const filtroRef = useRef<EstadoFiltroLista>({
+    query: '',
+    statusFilter: 'todos',
+    clienteId: route.params?.clienteId,
+    periodo: 'todos',
+    ordem: ORDEM_PADRAO,
+    valorMinTexto: '',
+    valorMaxTexto: '',
+  });
+  filtroRef.current = { query, statusFilter, clienteId, periodo, ordem, valorMinTexto, valorMaxTexto };
   const pedidoIdRef = useRef(0);
   const temMaisRef = useRef(false);
   const carregandoMaisRef = useRef(false);
@@ -349,10 +389,9 @@ export default function OrcamentosScreen() {
     }
   }, []);
 
-  /** Recarrega do zero com o filtro ATUAL (query/statusFilter/clienteId mais recentes). */
+  /** Recarrega do zero com o filtro ATUAL (busca, status, cliente, data, valor, ordem). */
   const recarregar = useCallback(() => {
-    const f = filtroRef.current;
-    return carregarPagina(montarFiltro(f.query, f.statusFilter, f.clienteId), { reset: true });
+    return carregarPagina(montarFiltro(filtroRef.current), { reset: true });
   }, [carregarPagina]);
 
   const recarregarRecibos = useCallback(async () => {
@@ -368,8 +407,7 @@ export default function OrcamentosScreen() {
   }, [podeFinanceiro]);
 
   const carregarMais = useCallback(() => {
-    const f = filtroRef.current;
-    carregarPagina(montarFiltro(f.query, f.statusFilter, f.clienteId), { reset: false });
+    carregarPagina(montarFiltro(filtroRef.current), { reset: false });
   }, [carregarPagina]);
 
   useFocusEffect(useCallback(() => {
@@ -395,23 +433,53 @@ export default function OrcamentosScreen() {
 
   function limparFiltroCliente() {
     setClienteId(undefined);
-    carregarPagina(montarFiltro(filtroRef.current.query, filtroRef.current.statusFilter, undefined), { reset: true });
+    filtroRef.current = { ...filtroRef.current, clienteId: undefined };
+    carregarPagina(montarFiltro(filtroRef.current), { reset: true });
+  }
+
+  function agendarLista() {
+    if (buscaTimerRef.current) clearTimeout(buscaTimerRef.current);
+    buscaTimerRef.current = setTimeout(() => {
+      carregarPagina(montarFiltro(filtroRef.current), { reset: true });
+    }, 250);
   }
 
   function handleSearch(q: string) {
     setQuery(q);
+    filtroRef.current = { ...filtroRef.current, query: q };
     // debounce: SQL por tecla seria exagero — espera a digitação assentar.
-    if (buscaTimerRef.current) clearTimeout(buscaTimerRef.current);
-    buscaTimerRef.current = setTimeout(() => {
-      carregarPagina(montarFiltro(q, filtroRef.current.statusFilter, filtroRef.current.clienteId), { reset: true });
-    }, 250);
+    agendarLista();
   }
 
   useEffect(() => () => { if (buscaTimerRef.current) clearTimeout(buscaTimerRef.current); }, []);
 
   function handleStatusFilter(s: typeof statusFilter) {
     setStatusFilter(s);
-    carregarPagina(montarFiltro(filtroRef.current.query, s, filtroRef.current.clienteId), { reset: true });
+    filtroRef.current = { ...filtroRef.current, statusFilter: s };
+    carregarPagina(montarFiltro(filtroRef.current), { reset: true });
+  }
+
+  function handlePeriodo(p: PeriodoLista) {
+    setPeriodo(p);
+    filtroRef.current = { ...filtroRef.current, periodo: p };
+    carregarPagina(montarFiltro(filtroRef.current), { reset: true });
+  }
+
+  function handleOrdem(o: OrdemLista) {
+    setOrdem(o);
+    filtroRef.current = { ...filtroRef.current, ordem: o };
+    carregarPagina(montarFiltro(filtroRef.current), { reset: true });
+  }
+
+  function handleValor(qual: 'min' | 'max', texto: string) {
+    if (qual === 'min') setValorMinTexto(texto);
+    else setValorMaxTexto(texto);
+    filtroRef.current = {
+      ...filtroRef.current,
+      valorMinTexto: qual === 'min' ? texto : filtroRef.current.valorMinTexto,
+      valorMaxTexto: qual === 'max' ? texto : filtroRef.current.valorMaxTexto,
+    };
+    agendarLista();
   }
 
   /**
@@ -465,8 +533,7 @@ export default function OrcamentosScreen() {
 
   /** Seleciona TODOS os ids que batem o filtro atual (não só a página já carregada). */
   async function selecionarTodos() {
-    const f = filtroRef.current;
-    const ids = await getOrcamentosIdsFiltro(montarFiltro(f.query, f.statusFilter, f.clienteId));
+    const ids = await getOrcamentosIdsFiltro(montarFiltro(filtroRef.current));
     setSelecionados(new Set(ids));
   }
 
@@ -700,6 +767,44 @@ export default function OrcamentosScreen() {
         />
       </View>
 
+      {/* DATA + ORDEM. O status fica na fileira de cima. A busca (cliente ou número)
+          continua no cabeçalho. Valor mínimo/máximo mora na folha de ordenar. */}
+      <View style={styles.ordemRow}>
+        <TouchableOpacity
+          style={[styles.chip, styles.ordemBtn]}
+          onPress={() => setFolhaOrdem(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Ordenar a lista. Agora: ${rotuloOrdem(ordem)}`}
+        >
+          <MaterialCommunityIcons name="sort" size={16} color={cores.primary} />
+          <Text style={[styles.chipLabel, styles.ordemBtnLabel]} numberOfLines={1}>
+            {rotuloOrdem(ordem)}
+            {(valorMinTexto.trim() || valorMaxTexto.trim()) ? ' · valor' : ''}
+          </Text>
+        </TouchableOpacity>
+        <FlatList
+          horizontal
+          data={PERIODOS_LISTA}
+          keyExtractor={(i) => i.id}
+          showsHorizontalScrollIndicator={false}
+          style={styles.periodoLista}
+          contentContainerStyle={styles.periodoConteudo}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.chip, periodo === item.id && styles.chipActive]}
+              onPress={() => handlePeriodo(item.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: periodo === item.id }}
+              accessibilityLabel={`Filtrar por data: ${item.rotulo}`}
+            >
+              <Text style={[styles.chipLabel, periodo === item.id && styles.chipLabelActive]}>
+                {item.rotulo}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+
       {/* DICA (1º uso) — o que o status significa e como ele anda sozinho. O link
           do cliente é gerado ao abrir o orçamento (gerarLinkOrcamento) e o status
           local avança quando o cliente responde (sincronizarStatusLinks, no foco). */}
@@ -798,12 +903,13 @@ export default function OrcamentosScreen() {
               icon="file-document-outline"
               title="Nenhum orçamento"
               subtitle={
-                query ? 'Nenhum resultado para sua busca.'
+                query || statusFilter !== 'todos' || periodo !== 'todos' || valorMinTexto.trim() || valorMaxTexto.trim()
+                  ? 'Nenhum orçamento com esses filtros.'
                   : clienteId ? `${clienteNome || 'Este cliente'} ainda não tem orçamentos. Crie o primeiro!`
                   : 'Crie seu primeiro orçamento!'
               }
-              actionLabel={!query ? 'Criar orçamento' : undefined}
-              onAction={!query ? () => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {}) : undefined}
+              actionLabel={query || statusFilter !== 'todos' || periodo !== 'todos' || valorMinTexto.trim() || valorMaxTexto.trim() ? undefined : 'Criar orçamento'}
+              onAction={query || statusFilter !== 'todos' || periodo !== 'todos' || valorMinTexto.trim() || valorMaxTexto.trim() ? undefined : () => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {})}
             />
           }
         />
@@ -822,6 +928,71 @@ export default function OrcamentosScreen() {
           />
         </View>
       )}
+
+      {/* ORDEM E FAIXA DE VALOR — a lista inteira (não só a página) obedece. */}
+      <Modal visible={folhaOrdem} transparent animationType="fade" onRequestClose={() => setFolhaOrdem(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.menuFundo}
+        >
+          <Pressable style={styles.menuFundo} onPress={() => setFolhaOrdem(false)} accessibilityLabel="Fechar ordenação">
+            <Pressable style={[styles.menuFolha, { paddingBottom: insets.bottom + 12, maxHeight: '86%' }]} onPress={() => {}}>
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                <Text style={styles.menuTitulo}>Ordenar por</Text>
+                {ORDENS_LISTA.map((opcao) => {
+                  const ativa = ordem.campo === opcao.campo && ordem.direcao === opcao.direcao;
+                  return (
+                    <TouchableOpacity
+                      key={`${opcao.campo}-${opcao.direcao}`}
+                      style={styles.menuItem}
+                      onPress={() => handleOrdem(opcao)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: ativa }}
+                    >
+                      <MaterialCommunityIcons
+                        name={ativa ? 'check-circle' : 'circle-outline'}
+                        size={20}
+                        color={ativa ? cores.primary : cores.onSurfaceVariant}
+                      />
+                      <Text style={[styles.menuItemLabel, ativa && { color: cores.primary }]}>{opcao.rotulo}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                <Text style={[styles.menuTitulo, { marginTop: 8 }]}>Valor do orçamento</Text>
+                <Text style={styles.menuItemSub}>Deixe em branco para não limitar. Se o mínimo passar do máximo, a faixa é invertida.</Text>
+                <View style={styles.valorRow}>
+                  <TextInput
+                    style={styles.valorInput}
+                    value={valorMinTexto}
+                    onChangeText={(t) => handleValor('min', t)}
+                    placeholder="Mínimo"
+                    placeholderTextColor={cores.onSurfaceMuted}
+                    keyboardType="decimal-pad"
+                    accessibilityLabel="Valor mínimo"
+                  />
+                  <TextInput
+                    style={styles.valorInput}
+                    value={valorMaxTexto}
+                    onChangeText={(t) => handleValor('max', t)}
+                    placeholder="Máximo"
+                    placeholderTextColor={cores.onSurfaceMuted}
+                    keyboardType="decimal-pad"
+                    accessibilityLabel="Valor máximo"
+                  />
+                </View>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => setFolhaOrdem(false)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fechar"
+                >
+                  <Text style={[styles.menuItemLabel, { color: cores.primary }]}>Ver a lista</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* MENU ⋯ DO CARD — ações menos frequentes e a destrutiva, longe do polegar. */}
       <Modal visible={!!menuDe} transparent animationType="fade" onRequestClose={() => setMenuDe(null)}>
@@ -930,6 +1101,34 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Era '#fff' fixo sobre fundo chapado c.primary — vira onPrimary (contraste
   // calculado), correto pra qualquer cor de marca escolhida pelo usuário.
   chipLabelActive: { color: c.onPrimary },
+
+  ordemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: Spacing.base,
+    gap: 8,
+  },
+  ordemBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    maxWidth: 168,
+  },
+  ordemBtnLabel: { color: c.primary, flexShrink: 1 },
+  periodoLista: { flex: 1 },
+  periodoConteudo: { paddingRight: Spacing.base, paddingVertical: 4, gap: 8 },
+  valorRow: { flexDirection: 'row', gap: 8, marginTop: 10, marginBottom: 4 },
+  valorInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: c.outline,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: c.onSurface,
+    backgroundColor: c.surfaceVariant,
+  },
 
   // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
   clienteBanner: {

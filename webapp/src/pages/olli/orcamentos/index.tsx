@@ -23,6 +23,19 @@
 import { avisoTrialAutomatico } from "@ativacao";
 import type { Cliente, Empresa, Orcamento, StatusOrcamento } from "@dominio";
 import { STATUS_LABELS } from "@dominio";
+import {
+	ORDEM_PADRAO,
+	ORDENS_LISTA,
+	PERIODOS_LISTA,
+	alternarCampoOrdem,
+	aplicarListaOrcamentos,
+	chaveOrdem,
+	lerValorFiltro,
+	ordemPelaChave,
+	type CampoOrdemLista,
+	type OrdemLista,
+	type PeriodoLista,
+} from "@lista-orcamentos";
 import { useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -318,6 +331,40 @@ function AcoesDoOrcamento({
 	);
 }
 
+function ThOrdem({
+	campo,
+	rotulo,
+	ordem,
+	aoOrdenar,
+	alinhadoFim,
+}: {
+	campo: CampoOrdemLista;
+	rotulo: string;
+	ordem: OrdemLista;
+	aoOrdenar: (proxima: OrdemLista) => void;
+	alinhadoFim?: boolean;
+}) {
+	const ativo = ordem.campo === campo;
+	return (
+		<th
+			aria-sort={ativo ? (ordem.direcao === "asc" ? "ascending" : "descending") : "none"}
+			className={cn("whitespace-nowrap px-4 py-3 font-semibold", alinhadoFim && "text-right")}
+		>
+			<button
+				type="button"
+				className={cn(
+					"inline-flex items-center gap-1 uppercase tracking-wider text-text-secondary hover:text-text-primary",
+					alinhadoFim && "ml-auto",
+				)}
+				onClick={() => aoOrdenar(alternarCampoOrdem(ordem, campo))}
+			>
+				{rotulo}
+				{ativo ? (ordem.direcao === "asc" ? " ↑" : " ↓") : ""}
+			</button>
+		</th>
+	);
+}
+
 export default function OrcamentosPage() {
 	const { data, isLoading, isError, error, refetch, isFetching } = useOlliList<LinhaOrcamento>("orcamentos", {
 		orderBy: "criado_em",
@@ -347,6 +394,10 @@ export default function OrcamentosPage() {
 
 	const [busca, setBusca] = useState("");
 	const [filtroStatus, setFiltroStatus] = useState<"todos" | StatusOrcamento>("todos");
+	const [periodo, setPeriodo] = useState<PeriodoLista>("todos");
+	const [ordem, setOrdem] = useState<OrdemLista>(ORDEM_PADRAO);
+	const [valorMinTexto, setValorMinTexto] = useState("");
+	const [valorMaxTexto, setValorMaxTexto] = useState("");
 	// O filtro que veio da URL manda até o dono trocar o status manualmente no
 	// dropdown — a partir daí a escolha dele prevalece (mesmo que ele volte a "Todos").
 	const [filtroManual, setFiltroManual] = useState(false);
@@ -374,14 +425,40 @@ export default function OrcamentosPage() {
 		} else if (filtroStatus !== "todos") {
 			lista = lista.filter((l) => l.status === filtroStatus);
 		}
-		const termo = busca.trim().toLowerCase();
-		if (!termo) return lista;
-		return lista.filter(
-			(l) => (l.numero ?? "").toLowerCase().includes(termo) || (l.cliente_nome ?? "").toLowerCase().includes(termo),
-		);
-	}, [data, busca, filtroStatus, statusDaUrl, filtroManual]);
+		const min = lerValorFiltro(valorMinTexto);
+		const max = lerValorFiltro(valorMaxTexto);
+		// A data da lista do painel é a emissão (o que a coluna mostra). Sem emissão,
+		// cai na criação. A busca ignora acento, como no celular.
+		return aplicarListaOrcamentos(
+			lista.map((l) => ({
+				id: l.id,
+				status: l.status,
+				clienteNome: l.cliente_nome,
+				numero: l.numero,
+				valorTotal: l.valor_total,
+				criadoEm: l.data_emissao || l.criado_em,
+				ref: l,
+			})),
+			{
+				busca,
+				periodo,
+				valorMin: min.valor,
+				valorMax: max.valor,
+				valorInvalido: min.invalido || max.invalido,
+				ordem,
+				modoData: "texto",
+			},
+		).map((item) => item.ref);
+	}, [data, busca, filtroStatus, statusDaUrl, filtroManual, periodo, valorMinTexto, valorMaxTexto, ordem]);
 
 	const somaVisivel = useMemo(() => linhas.reduce((s, l) => s + (l.valor_total ?? 0), 0), [linhas]);
+	const temFiltroLista =
+		busca.trim() !== "" ||
+		filtroStatus !== "todos" ||
+		periodo !== "todos" ||
+		valorMinTexto.trim() !== "" ||
+		valorMaxTexto.trim() !== "" ||
+		(!filtroManual && statusDaUrl != null);
 
 	/* ─────────────────────────────────  Ações  ───────────────────────────────── */
 
@@ -705,7 +782,7 @@ export default function OrcamentosPage() {
 					/>
 				)}
 
-				<div className="flex flex-col gap-2 sm:flex-row">
+				<div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
 					<div className="relative flex-1 sm:max-w-xs">
 						<Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-disabled" />
 						<Input
@@ -736,6 +813,49 @@ export default function OrcamentosPage() {
 							))}
 						</SelectContent>
 					</Select>
+
+					<Select value={periodo} onValueChange={(v) => setPeriodo(v as PeriodoLista)}>
+						<SelectTrigger className="h-10 w-full rounded-full sm:w-44" aria-label="Filtrar por data">
+							<SelectValue placeholder="Data" />
+						</SelectTrigger>
+						<SelectContent>
+							{PERIODOS_LISTA.map((p) => (
+								<SelectItem key={p.id} value={p.id}>
+									{p.rotulo}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+
+					<Select value={chaveOrdem(ordem)} onValueChange={(v) => setOrdem(ordemPelaChave(v))}>
+						<SelectTrigger className="h-10 w-full rounded-full sm:w-52" aria-label="Ordenar a lista">
+							<SelectValue placeholder="Ordenar" />
+						</SelectTrigger>
+						<SelectContent>
+							{ORDENS_LISTA.map((o) => (
+								<SelectItem key={chaveOrdem(o)} value={chaveOrdem(o)}>
+									{o.rotulo}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+
+					<Input
+						value={valorMinTexto}
+						onChange={(e) => setValorMinTexto(e.target.value)}
+						placeholder="Valor mín."
+						inputMode="decimal"
+						aria-label="Valor mínimo"
+						className="h-10 w-full rounded-full sm:w-36"
+					/>
+					<Input
+						value={valorMaxTexto}
+						onChange={(e) => setValorMaxTexto(e.target.value)}
+						placeholder="Valor máx."
+						inputMode="decimal"
+						aria-label="Valor máximo"
+						className="h-10 w-full rounded-full sm:w-36"
+					/>
 				</div>
 			</div>
 
@@ -778,15 +898,15 @@ export default function OrcamentosPage() {
 					</div>
 					<div>
 						<p className="text-base font-semibold text-text-primary">
-							{busca || filtroStatus !== "todos" ? "Nenhum orçamento com esse filtro" : "Você ainda não tem orçamentos"}
+							{temFiltroLista ? "Nenhum orçamento com esse filtro" : "Você ainda não tem orçamentos"}
 						</p>
 						<p className="mx-auto mt-1 max-w-sm text-sm text-text-secondary">
-							{busca || filtroStatus !== "todos"
-								? "Tente outro termo ou limpe o filtro de status."
+							{temFiltroLista
+								? "Tente outro termo ou limpe status, data ou valor."
 								: "Crie o primeiro — leva menos de um minuto."}
 						</p>
 					</div>
-					{!busca && filtroStatus === "todos" && (
+					{!temFiltroLista && (
 						<Button onClick={abrirNovo}>
 							<Plus className="mr-2 size-4" />
 							Criar o primeiro orçamento
@@ -801,11 +921,11 @@ export default function OrcamentosPage() {
 							<table className="w-full text-sm">
 								<thead>
 									<tr className="border-b border-border bg-bg-neutral/40 text-left text-[11px] uppercase tracking-wider text-text-secondary">
-										<th className="whitespace-nowrap px-4 py-3 font-semibold">Nº</th>
-										<th className="px-4 py-3 font-semibold">Cliente</th>
-										<th className="whitespace-nowrap px-4 py-3 font-semibold">Status</th>
-										<th className="whitespace-nowrap px-4 py-3 font-semibold">Emissão</th>
-										<th className="whitespace-nowrap px-4 py-3 text-right font-semibold">Total</th>
+										<ThOrdem campo="numero" rotulo="Nº" ordem={ordem} aoOrdenar={setOrdem} />
+										<ThOrdem campo="cliente" rotulo="Cliente" ordem={ordem} aoOrdenar={setOrdem} />
+										<ThOrdem campo="status" rotulo="Status" ordem={ordem} aoOrdenar={setOrdem} />
+										<ThOrdem campo="data" rotulo="Emissão" ordem={ordem} aoOrdenar={setOrdem} />
+										<ThOrdem campo="valor" rotulo="Total" ordem={ordem} aoOrdenar={setOrdem} alinhadoFim />
 										{/* w-24: a coluna passou a ter DOIS controles (lápis + "…"). Com w-12 o
 										    navegador esticava a coluna assim mesmo, roubando largura do Cliente. */}
 										<th className="w-24 px-2 py-3">

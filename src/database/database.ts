@@ -35,6 +35,12 @@ import {
   SQL_ULTIMO_ORCAMENTO_DO_CLIENTE,
 } from './consultasSql';
 import { carimbarDecisao } from '../utils/orcamentoDecisao';
+import {
+  clausulasPeriodoValor,
+  ordemSqlLista,
+  type OrdemLista,
+  type PeriodoLista,
+} from '../utils/listaOrcamentos';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { generateId } from '../utils/id';
 import { lerEncerramento } from '../utils/encerramentoOS';
@@ -1388,6 +1394,16 @@ export interface FiltroOrcamentos {
   status?: StatusOrcamento;
   /** Busca livre — mesma regra da tela: cliente (case-insensitive) OU número do orçamento (substring). */
   busca?: string;
+  /** Corte pela data de criação (`criadoEm`), no fuso local. Ausente = qualquer data. */
+  periodo?: PeriodoLista;
+  /** Instantâneo do corte. Ausente = agora, na hora da consulta. */
+  agora?: Date;
+  valorMin?: number;
+  valorMax?: number;
+  /** Texto de valor que não é número: a consulta devolve vazio, não ignora o campo. */
+  valorInvalido?: boolean;
+  /** Ausente = mais recentes primeiro, como a lista sempre foi. */
+  ordem?: OrdemLista;
 }
 
 // Acento/LIKE: `semAcentoLowerSql`, `semAcentoLower` e `escaparLike` moram em
@@ -1415,6 +1431,11 @@ function whereOrcamentosFiltro(filtro: FiltroOrcamentos): { clausula: string; pa
     const termo = semAcentoLower(filtro.busca.trim());
     params.push(`%${escaparLike(termo)}%`, `%${escaparLike(termo.replace(/\//g, '') || termo)}%`);
   }
+  const extra = clausulasPeriodoValor(filtro);
+  if (extra.sql) {
+    condicoes.push(extra.sql);
+    params.push(...extra.params);
+  }
   return { clausula: condicoes.join(' AND '), params };
 }
 
@@ -1428,7 +1449,7 @@ export async function getOrcamentosPagina(filtro: FiltroOrcamentos, limite: numb
   const db = await getDb();
   const { clausula, params } = whereOrcamentosFiltro(filtro);
   const rows = await db.getAllAsync<any>(
-    `SELECT * FROM orcamentos WHERE ${clausula} ORDER BY json_extract(data, '$.criadoEm') DESC, numero DESC LIMIT ? OFFSET ?`,
+    `SELECT * FROM orcamentos WHERE ${clausula} ORDER BY ${ordemSqlLista(filtro.ordem)} LIMIT ? OFFSET ?`,
     [...params, limite, offset],
   );
   return rows.map(r => JSON.parse(r.data));

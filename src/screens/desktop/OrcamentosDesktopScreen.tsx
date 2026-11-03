@@ -1,6 +1,6 @@
 import { formatarNumeroExibicao } from '../../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, TextInput } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +19,13 @@ import { RootStackParamList, TabParamList } from '../../navigation/AppNavigator'
 import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../../types';
 import { getStatusFinanceiro } from '../../services/pagamentos';
 import { FinanceiroBadge } from '../../components/FinanceiroBadge';
+import {
+  PERIODOS_LISTA,
+  instanteNoPeriodo,
+  lerValorFiltro,
+  passaValor,
+  type PeriodoLista,
+} from '../../utils/listaOrcamentos';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<TabParamList, 'OrcamentosTab'>;
@@ -60,6 +67,9 @@ export default function OrcamentosDesktopScreen() {
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState<StatusOrcamento | 'todos'>('todos');
+  const [periodo, setPeriodo] = useState<PeriodoLista>('todos');
+  const [valorMinTexto, setValorMinTexto] = useState('');
+  const [valorMaxTexto, setValorMaxTexto] = useState('');
   const [recorteInicial, setRecorteInicial] = useState<typeof recorteDaRota>(recorteDaRota);
   const [carregando, setCarregando] = useState(true);
 
@@ -89,8 +99,13 @@ export default function OrcamentosDesktopScreen() {
       const q = normalizarBusca(busca);
       r = r.filter((o) => normalizarBusca(o.clienteNome).includes(q) || o.numero.includes(q) || formatarNumeroExibicao(o.numero).includes(q));
     }
+    const min = lerValorFiltro(valorMinTexto);
+    const max = lerValorFiltro(valorMaxTexto);
+    if (min.invalido || max.invalido) return [];
+    const agora = new Date();
+    r = r.filter((o) => instanteNoPeriodo(o.criadoEm, periodo, agora) && passaValor(o.valorTotal, min.valor, max.valor));
     return r;
-  }, [todos, clienteId, statusFiltro, busca, recorteInicial, recibos]);
+  }, [todos, clienteId, statusFiltro, busca, recorteInicial, recibos, periodo, valorMinTexto, valorMaxTexto]);
 
   const colunas: Coluna<Orcamento>[] = useMemo(() => [
     {
@@ -203,6 +218,34 @@ export default function OrcamentosDesktopScreen() {
           />
         ))}
       </View>
+      <View style={styles.chips}>
+        {PERIODOS_LISTA.map((p) => (
+          <Chip
+            key={p.id}
+            label={p.rotulo}
+            ativo={periodo === p.id}
+            onPress={() => setPeriodo(p.id)}
+          />
+        ))}
+        <TextInput
+          value={valorMinTexto}
+          onChangeText={setValorMinTexto}
+          placeholder="Valor mín."
+          placeholderTextColor={cores.onSurfaceMuted}
+          keyboardType="decimal-pad"
+          accessibilityLabel="Valor mínimo"
+          style={styles.valorInput}
+        />
+        <TextInput
+          value={valorMaxTexto}
+          onChangeText={setValorMaxTexto}
+          placeholder="Valor máx."
+          placeholderTextColor={cores.onSurfaceMuted}
+          keyboardType="decimal-pad"
+          accessibilityLabel="Valor máximo"
+          style={styles.valorInput}
+        />
+      </View>
 
       {clienteId && (
         <View style={styles.bannerCliente}>
@@ -223,9 +266,9 @@ export default function OrcamentosDesktopScreen() {
           <EmptyState
             icon="file-document-outline"
             title="Nenhum orçamento"
-            subtitle={busca ? 'Nenhum resultado para sua busca.' : 'Crie seu primeiro orçamento!'}
-            actionLabel={!busca ? 'Criar orçamento' : undefined}
-            onAction={!busca ? () => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {}) : undefined}
+            subtitle={busca || statusFiltro !== 'todos' || periodo !== 'todos' || valorMinTexto.trim() || valorMaxTexto.trim() ? 'Nenhum orçamento com esses filtros.' : 'Crie seu primeiro orçamento!'}
+            actionLabel={busca || statusFiltro !== 'todos' || periodo !== 'todos' || valorMinTexto.trim() || valorMaxTexto.trim() ? undefined : 'Criar orçamento'}
+            onAction={busca || statusFiltro !== 'todos' || periodo !== 'todos' || valorMinTexto.trim() || valorMaxTexto.trim() ? undefined : () => nav.navigate('NovoOrcamento', clienteId ? { clienteId } : {})}
           />
         }
       />
@@ -295,8 +338,20 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: Spacing.sm,
     marginBottom: Spacing.lg,
+  },
+  valorInput: {
+    minWidth: 120,
+    borderWidth: 1,
+    borderColor: c.outline,
+    borderRadius: BorderRadius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    fontSize: 13,
+    color: c.onSurface,
+    backgroundColor: c.surface,
   },
   chip: {
     paddingHorizontal: 14,
