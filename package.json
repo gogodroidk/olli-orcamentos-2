@@ -223,6 +223,7 @@
     "test:c5-orcamentos-financeiro": "node scripts/teste-c5-orcamentos-financeiro.ts",
     "test:c6-config-equipe": "node scripts/teste-c6-config-equipe.ts",
     "test:c7-integracoes-recursos": "node scripts/teste-c7-integracoes-recursos.ts",
+    "test:integracoes-d1438": "node scripts/teste-integracoes-d1438.ts",
     "test:c8-ia-segura": "node scripts/teste-c8-ia-segura.ts",
     "test:c9-precificacao": "node scripts/teste-c9-precificacao.ts",
     "test:agente-publico": "node scripts/teste-agente-publico.ts",

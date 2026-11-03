@@ -11,6 +11,7 @@ import {
 	Home,
 	Kanban,
 	Package,
+	Plug,
 	Receipt,
 	Stethoscope,
 	Store,
@@ -88,6 +89,7 @@ export const frontendNavData: NavProps["data"] = [
 		items: [
 			{ title: "Planos", path: "/planos", icon: <Crown size={24} /> },
 			{ title: "Meu negócio", path: "/meu-negocio", icon: <Store size={24} /> },
+			{ title: "Integrações", path: "/integracoes", icon: <Plug size={24} /> },
 			{ title: "Configurações", path: "/configuracoes", icon: <Settings2 size={24} /> },
 		],
 	},
