@@ -29,7 +29,7 @@ import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnv
 import { ContadorEnvios } from '../components/ContadorEnvios';
 import { AvisoLimiteAntigas } from '../components/AvisoLimiteAntigas';
 import { useAvisoLimiteAntigas } from '../hooks/useAvisoLimiteAntigas';
-import { contadorEnvios, type EstadoOfertaComercial } from '../services/limitesComerciais';
+import { avisoTrialNaoIniciado, contadorEnvios, type EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
   PRECO_PRO,
   PRECO_EMPRESA,
@@ -795,9 +795,10 @@ export default function PlanosScreen() {
   async function executarInicioTrial() {
     setIniciandoTrial(true);
     const inicio = await iniciarTrialPro();
-    if (!inicio) {
+    if (!inicio || inicio.motivo === 'revisao_caixa') {
       setIniciandoTrial(false);
-      Alert.alert('Não foi possível iniciar', 'Confirme sua conexão e tente novamente. O teste não foi consumido.');
+      const aviso = avisoTrialNaoIniciado(inicio);
+      Alert.alert(aviso.titulo, aviso.mensagem);
       return;
     }
     await carregarPlano();
