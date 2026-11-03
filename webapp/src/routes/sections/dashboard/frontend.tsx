@@ -21,6 +21,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		// ─── Comercial ──────────────────────────────────────────
 		{ path: "orcamentos", element: Component("/pages/olli/orcamentos") },
 		{ path: "clientes", element: Component("/pages/olli/clientes") },
+		{ path: "prospeccao", element: Component("/pages/olli/prospeccao") },
 		{ path: "produtos", element: Component("/pages/olli/catalogo/produtos") },
 		{ path: "servicos", element: Component("/pages/olli/catalogo/servicos") },
 		{ path: "precificacao", element: Component("/pages/olli/precificacao") },

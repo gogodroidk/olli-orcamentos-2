@@ -90,7 +90,10 @@
 			"@atribuicao": ["../web/src/lib/atribuicao.ts"],
 			"@meta-pixel": ["../web/src/lib/metaPixel.ts"],
 			"@consentimento": ["../web/src/lib/consentimento.ts"],
-			"@google-tag": ["../web/src/lib/googleTag.ts"]
+			"@google-tag": ["../web/src/lib/googleTag.ts"],
+			// PROSPECÇÃO — raio, rota e nicho em cima das coordenadas que o cadastro
+			// já tem (D-1438 G19). Módulo puro, sem API de mapa.
+			"@prospeccao": ["../src/utils/prospeccaoMapa.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

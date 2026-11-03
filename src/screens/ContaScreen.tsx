@@ -240,6 +240,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais, marcas e preços', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
+    { key: 'prospeccao', icon: 'map-marker-radius-outline', label: 'Prospecção', desc: 'Seus clientes no mapa, por raio', color: '#38BDF8', route: 'Prospeccao' },
     // Importar grava clientes, serviços e produtos: é de quem cuida do cadastro.
     { key: 'importar', icon: 'database-import-outline', label: TEXTO_CONVITE_IMPORTAR.titulo, desc: TEXTO_CONVITE_IMPORTAR.descricao, color: c.accentLight, route: 'Importar', ocultarTecnico: true },
     { key: 'contratos', icon: 'calendar-sync-outline', label: 'Contratos recorrentes', desc: 'Visitas e cobrança todo mês', color: c.success, route: 'Contratos', ocultarTecnico: true },

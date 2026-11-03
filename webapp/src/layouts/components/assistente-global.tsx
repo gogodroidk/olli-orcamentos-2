@@ -97,6 +97,7 @@ function nomeDaTela(pathname: string): string {
 		"/inicio": "Início",
 		"/orcamentos": "Orçamentos",
 		"/clientes": "Clientes",
+		"/prospeccao": "Prospecção",
 		"/produtos": "Produtos",
 		"/servicos": "Serviços",
 		"/agenda": "Agenda",

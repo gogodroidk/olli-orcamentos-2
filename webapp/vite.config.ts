@@ -45,6 +45,9 @@ const atribuicaoFonte = fileURLToPath(new URL("../web/src/lib/atribuicao.ts", im
 const metaPixelFonte = fileURLToPath(new URL("../web/src/lib/metaPixel.ts", import.meta.url));
 const consentimentoFonte = fileURLToPath(new URL("../web/src/lib/consentimento.ts", import.meta.url));
 const googleTagFonte = fileURLToPath(new URL("../web/src/lib/googleTag.ts", import.meta.url));
+// Prospecção (D-1438 G19): raio, rota e nicho sobre as coordenadas já salvas.
+// Módulo puro — não puxa React Native nem API paga de mapa.
+const prospeccaoFonte = fileURLToPath(new URL("../src/utils/prospeccaoMapa.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -113,6 +116,7 @@ export default defineConfig(({ mode }) => {
 				"@meta-pixel": metaPixelFonte,
 				"@consentimento": consentimentoFonte,
 				"@google-tag": googleTagFonte,
+				"@prospeccao": prospeccaoFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some
