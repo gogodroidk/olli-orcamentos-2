@@ -9,8 +9,8 @@
  * • 3 ESTADOS DE VERDADE — carregando · ERRO (com "Tentar de novo") · vazio. Erro
  *   NUNCA vira "catálogo vazio": o dono acharia que perdeu os preços e recadastraria
  *   tudo por cima.
- * • BUSCA sem acento — "servico" acha "Serviço", "R410" acha "R-410A". Mesmos campos
- *   que o filtro do celular (nome, descrição, marca, modelo).
+ * • BUSCA sem acento — "servico" acha "Serviço", "R410" acha "R-410A". Serviço olha
+ *   nome e descrição; produto também olha marca e modelo.
  * • EXCLUIR é SOFT DELETE (vai para a lixeira) — o diálogo diz isso, sem mentir.
  * • MARGEM na tabela, com a MESMA conta do celular (ver `margemInfo`). Preço abaixo
  *   do custo aparece em vermelho na lista inteira — não só dentro do formulário.
@@ -110,6 +110,24 @@ function CelulaMargem({ item }: { item: ItemCatalogo }) {
 		);
 	}
 	return <span className="font-medium tabular-nums text-success-dark dark:text-success">{m.pct}%</span>;
+}
+
+/** Preço 0 entra de graça no orçamento. A cor avisa na lista, sem esconder o valor. */
+function PrecoCatalogo({ preco, sufixo }: { preco: number; sufixo?: string }) {
+	const zerado = !(preco > 0);
+	return (
+		<span
+			className={cn(
+				"font-medium tabular-nums",
+				zerado ? "text-error-dark dark:text-error" : "text-text-primary",
+			)}
+			title={zerado ? "Preço zerado — entra de graça no orçamento" : undefined}
+		>
+			{emReais(preco)}
+			{sufixo ? <span className="ml-1 text-xs font-normal text-text-secondary">{sufixo}</span> : null}
+			{zerado && <span className="sr-only">, preço zerado, entra de graça no orçamento</span>}
+		</span>
+	);
 }
 
 /** Editar / Duplicar / Excluir. Menu do Radix: abre no teclado (Enter/Espaço), navega nas setas. */
@@ -361,7 +379,9 @@ export default function ListaCatalogo({ tipo }: Props) {
 						</p>
 						<p className="mx-auto mt-1 max-w-sm text-sm text-text-secondary">
 							{busca.trim()
-								? "Tente outro termo — a busca olha nome, descrição, marca e modelo."
+								? tipo === "servico"
+									? "Tente outro termo — a busca olha nome e descrição."
+									: "Tente outro termo — a busca olha nome, descrição, marca e modelo."
 								: podeEditar
 									? `Cadastre um ${rotulo} uma vez e ele passa a estar a um clique de qualquer orçamento.`
 									: `Ainda não há ${plural} no catálogo da empresa. Só o dono da conta pode cadastrar.`}
@@ -453,8 +473,8 @@ export default function ListaCatalogo({ tipo }: Props) {
 											{item.custo != null && item.custo > 0 ? emReais(item.custo) : "—"}
 										</td>
 
-										<td className="whitespace-nowrap px-4 py-3.5 text-right align-middle font-medium tabular-nums text-text-primary">
-											{emReais(item.preco)}
+										<td className="whitespace-nowrap px-4 py-3.5 text-right align-middle">
+											<PrecoCatalogo preco={item.preco} />
 										</td>
 
 										<td className="whitespace-nowrap px-4 py-3.5 text-right align-middle">
@@ -500,9 +520,8 @@ export default function ListaCatalogo({ tipo }: Props) {
 								<dl className="mt-3 grid grid-cols-3 gap-x-4">
 									<div>
 										<dt className="text-[11px] uppercase tracking-wide text-text-disabled">Preço</dt>
-										<dd className="mt-0.5 font-medium tabular-nums text-text-primary">
-											{emReais(item.preco)}
-											<span className="ml-1 text-xs font-normal text-text-secondary">/{item.unidade}</span>
+										<dd className="mt-0.5">
+											<PrecoCatalogo preco={item.preco} sufixo={`/${item.unidade}`} />
 										</dd>
 									</div>
 									<div>
