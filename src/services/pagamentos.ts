@@ -303,6 +303,12 @@ export async function sincronizarPagamentosPendentes(): Promise<number> {
           tamanhoBytes: atual.comprovanteTamanhoBytes,
         } : undefined,
       });
+      if (ledger.status === 'negado') {
+        // Recusa DEFINITIVA (saldo, chave reutilizada, orçamento de outro dono): não tenta a cada sync
+        // (LIVRE #266 P2). 'falhou' sai do filtro acima; o recibo continua válido no aparelho.
+        await saveRecibo({ ...atual, ledgerStatus: 'falhou', ledgerErro: undefined });
+        continue;
+      }
       if (ledger.status !== 'confirmado') continue;
       atual = {
         ...atual,
