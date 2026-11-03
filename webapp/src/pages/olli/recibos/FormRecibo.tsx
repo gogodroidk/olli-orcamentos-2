@@ -244,7 +244,11 @@ export default function FormRecibo({ aberto, aoFechar, recibo, orcamentoIdInicia
 	}
 
 	/* ────────────────────────────  validação  ────────────────────────────────── */
-	const erroCliente = !cliente?.clienteId ? "Escolha o cliente que pagou." : undefined;
+	const erroCliente = !cliente?.clienteId
+		? cliente?.clienteNome?.trim()
+			? "Este orçamento tem só o nome do cliente. Escolha ou cadastre o cliente para emitir o recibo."
+			: "Escolha o cliente que pagou."
+		: undefined;
 	const erroValor = !(valorRecebido > 0) ? "Informe o valor recebido." : undefined;
 	// Valido o YMD do <input type="date"> pela ida-e-volta do conversor que a gravação
 	// usa: se `ymdParaBr` não conseguir converter, o blob receberia uma data quebrada.

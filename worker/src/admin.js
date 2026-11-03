@@ -1092,8 +1092,8 @@ export async function handleAdmin(request, env, url) {
         // script/style inline (sem framework) + fetch same-origin para
         // /admin/api e para o Supabase Auth (login).
         'Content-Security-Policy':
-          `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline' https://fonts.googleapis.com; ` +
-          "font-src https://fonts.gstatic.com; img-src 'self' data: " +
+          `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; ` +
+          "font-src https://olliorcamentos.online; img-src 'self' data: " +
           // Prévia do comprovante do crédito de troca (URL assinada de 5 min do Storage).
           (env.SUPABASE_URL || '') +
           "; connect-src 'self' " +

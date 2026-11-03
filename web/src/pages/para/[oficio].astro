@@ -30,6 +30,7 @@ import {
 	OFICIOS,
 	OFICIO_GERAL,
 	PROFISSAO_POR_OFICIO,
+	OG_PROPRIO_POR_SLUG,
 	SLUG_POR_OFICIO,
 } from "../../data/oficios";
 // Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
@@ -93,6 +94,8 @@ const dor = DOR_POR_OFICIO[id];
 const calculos = calculosDoOficio(id);
 
 const titulo = `App de orçamento e ordem de serviço para ${profissao} — OLLI`;
+const slug = SLUG_POR_OFICIO[id];
+const ogImagem = OG_PROPRIO_POR_SLUG.has(slug) ? `/og/${slug}.png` : undefined;
 /**
  * A meta description do ofício "qualquer serviço" dizia "com 0 calculadora de campo"
  * — o Google mostrava isso no resultado. Sem calculadora, a frase fala do ciclo, que
@@ -169,7 +172,7 @@ const schemaFaq = {
 };
 ---
 
-<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]}>
+<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]} ogImagem={ogImagem}>
 	<Header>
 		<a
 			href={APP_CADASTRO_URL}
@@ -189,7 +192,7 @@ const schemaFaq = {
 
 			<span class="eyebrow mt-6 block"><Icone nome={ICONE_POR_OFICIO[oficio.id]} class="h-3.5 w-3.5" />{oficio.label}</span>
 			<h1 class="mt-4 text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
-				App de orçamento e OS<br class="hidden sm:inline" />para <span class="brand-text">{profissao}</span>.
+				App de orçamento e OS<br class="hidden sm:inline" /> para <span class="brand-text">{profissao}</span>.
 			</h1>
 			<p class="mt-6 max-w-2xl text-lg leading-relaxed text-slate">{dor}</p>
 

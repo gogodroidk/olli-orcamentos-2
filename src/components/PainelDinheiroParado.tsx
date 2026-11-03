@@ -41,6 +41,7 @@ import { OlliPressable } from './OlliPressable';
 import { OlliSkeleton } from './OlliSkeleton';
 import { CountUp } from './CountUp';
 import { ContadorAnimado } from './motion/ContadorAnimado';
+import { textoEstadoCalmo } from '../services/radarDinheiro';
 import type { OrcamentoParaCobrar } from '../services/radarCobranca';
 import type { OrcamentoParaFollowUp } from '../services/radarFollowUp';
 
@@ -120,6 +121,13 @@ interface Props {
    * NÃO escondemos nada: não saber não pode virar decisão de esconder.
    */
   temHistorico: boolean | null;
+
+  /**
+   * Rascunhos CRIADOS há >= 3 dias e ainda não enviados (`contarRascunhosEsquecidos`,
+   * a mesma regra do painel). `null`/ausente = não sei (carregando ou leitura falhou):
+   * nesse caso o estado calmo NÃO afirma "nada parado" — só o que foi apurado.
+   */
+  rascunhosParados?: number | null;
 
   /** Abre a lista completa de orçamentos (só aparece quando há mais do que cabe). */
   onVerTodos: () => void;
@@ -270,7 +278,7 @@ function VerTodos({ tons, texto, onPress, rotulo }: { tons: Tons; texto: string;
 export function PainelDinheiroParado({
   cobranca, cobrancaCarregando, cobrancaErro, onRecarregarCobranca, onCobrar, onCadastrarPix,
   followUp, followUpCarregando, followUpErro, onRecarregarFollowUp, onFollowUp,
-  temHistorico, onVerTodos,
+  temHistorico, rascunhosParados, onVerTodos,
 }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -355,8 +363,8 @@ export function PainelDinheiroParado({
     return (
       <View style={[styles.calmo, { backgroundColor: tonsNeutro.fundo }]}>
         <MaterialCommunityIcons name="check-circle-outline" size={17} color={tonsNeutro.ok} />
-        <Text style={[styles.calmoTexto, { color: tonsNeutro.secundario }]} numberOfLines={2}>
-          Nada parado: todo orçamento aprovado já foi recebido e nenhuma proposta está sem resposta.
+        <Text style={[styles.calmoTexto, { color: tonsNeutro.secundario }]} numberOfLines={3}>
+          {textoEstadoCalmo(rascunhosParados)}
         </Text>
       </View>
     );

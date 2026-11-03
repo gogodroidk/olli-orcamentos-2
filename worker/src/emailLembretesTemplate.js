@@ -13,8 +13,9 @@
  */
 
 import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
+import { COBRANCA_ID_RE } from './pixVencePolicy.js';
 import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
-import { FRASE_GRATIS, frasePro } from '../../src/services/planosBase.ts';
+import { FRASE_GRATIS, PREVIEW_EMAIL_GRATIS, frasePro } from '../../src/services/planosBase.ts';
 
 export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-05.v3';
 export const EMAIL_LEMBRETES_BRAND = 'OLLI Orçamentos';
@@ -32,6 +33,13 @@ const INPUT_KEYS = Object.freeze([
 ]);
 const JANELAS = new Set(['activation_day_3', 'activation_day_7']);
 const NOME_PLANO = Object.freeze({ pro: 'Pro', empresa: 'Empresa' });
+/** Nome curto dos planos vendidos por Pix (chaves = `PIX_VENCE_PLANOS` = `PLANO_PIX`; o teste confere). */
+const NOME_PLANO_PIX = Object.freeze({
+  pro_mensal: 'Pro (1 mês)',
+  pro_anual: 'Pro (1 ano)',
+  empresa_mensal: 'Empresa (1 mês)',
+  empresa_anual: 'Empresa (1 ano)',
+});
 const DIAS_SEMANA = Object.freeze(['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']);
 const OFFSET_BRASILIA_MS = -3 * 60 * 60 * 1000;
 
@@ -96,6 +104,14 @@ export function dataCurtaBrasilia(iso) {
   const dia = String(b.getUTCDate()).padStart(2, '0');
   const mes = String(b.getUTCMonth() + 1).padStart(2, '0');
   return `${dia}/${mes} (${DIAS_SEMANA[b.getUTCDay()]})`;
+}
+
+/** "15:30" no horário de Brasília. */
+export function horaBrasilia(iso) {
+  const d = new Date(iso);
+  exigir(!Number.isNaN(d.getTime()), 'data_invalida');
+  const b = new Date(d.getTime() + OFFSET_BRASILIA_MS);
+  return `${String(b.getUTCHours()).padStart(2, '0')}:${String(b.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 export function urlCom(base, caminho, params = {}) {
@@ -215,7 +231,7 @@ function conteudoReengajamento(dados, appUrl) {
     chavesExatas(dados, ['tipo'], 'dados_invalidos');
     return {
       subject: 'Sua conta na OLLI Orçamentos continua aqui',
-      preview: 'No plano Grátis os orçamentos são ilimitados, sem cartão.',
+      preview: PREVIEW_EMAIL_GRATIS,
       titulo: 'Sua conta continua aqui',
       paragrafos: [
         'Você criou sua conta na OLLI Orçamentos há mais de um mês e ainda não fez nenhum orçamento.',
@@ -265,12 +281,38 @@ function conteudoReengajamento(dados, appUrl) {
     };
   }
 
+  if (dados.tipo === 'pix_vence') {
+    chavesExatas(dados, ['tipo', 'cobrancaId', 'plano', 'expiraEm'], 'dados_invalidos');
+    exigir(typeof dados.cobrancaId === 'string' && COBRANCA_ID_RE.test(dados.cobrancaId), 'dados_invalidos');
+    exigir(Object.hasOwn(NOME_PLANO_PIX, dados.plano), 'dados_invalidos');
+    const expira = new Date(dados.expiraEm);
+    exigir(!Number.isNaN(expira.getTime()) && expira.toISOString() === dados.expiraEm, 'dados_invalidos');
+    const hora = horaBrasilia(dados.expiraEm);
+    const dia = dataCurtaBrasilia(dados.expiraEm);
+    const nome = NOME_PLANO_PIX[dados.plano];
+    return {
+      subject: `Seu Pix do plano ${nome} vence às ${hora}`,
+      preview: `O código Pix que você gerou vale até ${hora} de ${dia}.`,
+      titulo: `Seu Pix vence às ${hora}`,
+      paragrafos: [
+        `Você gerou um Pix para o plano ${nome} e ele ainda não foi pago. O código vale até ${hora} de ${dia} (horário de Brasília).`,
+        'Se ainda está com o código aberto, é só pagar no app do seu banco antes disso. Se fechou ou passou da hora, gere um Pix novo na tela de planos.',
+      ],
+      passos: null,
+      cta: { rotulo: 'Abrir a tela de planos', href: urlCom(appUrl, '/planos') },
+      depois: ['Avisamos uma vez por Pix. Se você já pagou ou desistiu, pode ignorar este e-mail.'],
+      motivo: 'Você recebe este aviso porque gerou um Pix para assinar um plano na OLLI Orçamentos.',
+    };
+  }
+
   if (dados.tipo === 'trial_acabando') {
     chavesExatas(dados, ['tipo', 'terminaEm'], 'dados_invalidos');
     const termina = new Date(dados.terminaEm);
     exigir(!Number.isNaN(termina.getTime()) && termina.toISOString() === dados.terminaEm, 'dados_invalidos');
     const quando = dataCurtaBrasilia(dados.terminaEm);
     const preco = reais(PRECO_PRO.mensalCentavos);
+    // Desconto do anual DERIVADO da fonte (precosPlanos.ts), nunca escrito à mão.
+    const descontoAnualPro = Math.round((PRECO_PRO.economiaAnualCentavos / (PRECO_PRO.mensalCentavos * 12)) * 100);
     return {
       subject: `Seu teste do Pro termina em ${quando}`,
       preview: 'O teste não cobra nada e não renova sozinho.',
@@ -278,6 +320,7 @@ function conteudoReengajamento(dados, appUrl) {
       paragrafos: [
         'O teste não cobra nada e não renova sozinho: quando terminar, a conta volta ao plano Grátis e seus dados continuam salvos.',
         `Para continuar com o Pro, assine por ${preco}/mês — dá para pagar com Pix — e mantenha ${frasePro()}.`,
+        `Se preferir pagar uma vez só, o plano anual sai por ${reais(PRECO_PRO.anualCentavos)}, ${descontoAnualPro}% a menos que 12 meses no mensal, também com Pix.`,
       ],
       passos: null,
       cta: { rotulo: 'Assinar o Pro', href: urlCom(appUrl, '/planos') },

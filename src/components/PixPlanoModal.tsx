@@ -6,6 +6,8 @@ import { Spacing, BorderRadius, Fonts, useCores, useEstilos, sombrasDe, type Cor
 import { OlliButton } from './OlliButton';
 import { qrSvg } from '../utils/qrcode';
 import { formatCurrency } from '../utils/currency';
+import { textoValidadePix } from '../utils/pixValidade';
+import { textoArrependimentoCurto } from '../content/legal/arrependimento';
 import { checarPixPlano, type CobrancaPixPlano } from '../services/pixPlano';
 
 /**
@@ -81,6 +83,7 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
     }
   }
 
+  const validadeTexto = cobranca ? textoValidadePix(cobranca.expiresAt) : null;
   const periodoTexto = cobranca ? (cobranca.plano.meses >= 12 ? '12 meses' : '1 mês') : '';
 
   return (
@@ -116,6 +119,7 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
               <View style={styles.qrWrap}>{qr(cobranca) ?? <Text style={styles.instr}>Use o código copia-e-cola abaixo.</Text>}</View>
               <Text style={styles.valor}>{formatCurrency(cobranca.plano.valor)}</Text>
               <Text style={styles.periodo}>Libera {periodoTexto} de plano</Text>
+              {validadeTexto ? <Text style={styles.validade}>{validadeTexto}</Text> : null}
               <Text style={styles.instr}>Aponte a câmera do banco no QR, ou copie o código:</Text>
               <View style={styles.codeBox}>
                 <Text style={styles.code} selectable numberOfLines={4}>{cobranca.brCode}</Text>
@@ -132,6 +136,10 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
                 <ActivityIndicator size="small" color={cores.accentLight} />
                 <Text style={styles.aguardandoTxt}>Aguardando o pagamento…</Text>
               </View>
+              {/* P0-08: sair sem pagar agora. Só fecha: a cobrança continua valendo até a validade acima. */}
+              <OlliButton label="Pagar depois" variant="ghost" fullWidth onPress={aoFechar} />
+              <Text style={styles.nota}>Pode fechar o app e pagar depois: o plano libera sozinho quando o banco confirmar.</Text>
+              <Text style={styles.nota}>{textoArrependimentoCurto()}</Text>
               <Text style={styles.nota}>
                 Pix não renova sozinho: perto do vencimento você paga de novo{cobranca.plano.meses >= 12 ? '.' : ' (no anual, só 1 vez por ano).'}
               </Text>
@@ -166,6 +174,7 @@ const criarEstilos = (c: Cores) =>
     qrImg: { width: 208, height: 208 },
     valor: { fontSize: 26, fontFamily: Fonts.serifBold, color: c.accentLight, marginTop: Spacing.xs },
     periodo: { fontSize: 14, fontFamily: Fonts.semiBold, color: c.onSurface },
+    validade: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.warning },
     instr: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center' },
     codeBox: { alignSelf: 'stretch', backgroundColor: c.background, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.md },
     code: { fontSize: 11, fontFamily: 'monospace', color: c.onSurface, lineHeight: 16 },

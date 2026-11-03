@@ -15,6 +15,8 @@
  * há `${...}` dentro deles — a configuração entra por um objeto CFG.
  */
 
+import { FONTES_CSS } from './fontesProprias.js';
+
 const SYM = '<svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="true"><defs><linearGradient id="og" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3FD8EA"/><stop offset="1" stop-color="#0B6FCE"/></linearGradient></defs><path d="M22 49 L12 59.5 L30 50 Z" fill="url(#og)"/><rect x="9" y="8" width="46" height="44" rx="14.5" fill="url(#og)"/><rect x="13" y="11.5" width="38" height="15" rx="9" fill="#fff" opacity="0.1"/><rect x="20" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5"/><rect x="35.5" y="18.5" width="8.5" height="11" rx="4.2" fill="#7FE9F5"/><path d="M19 41 l6.6 6.9 l16 -15" fill="none" stroke="#EAFEFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const CSS = String.raw`
@@ -1279,8 +1281,7 @@ export function adminHtml(env, nonce, opts = {}) {
     '<meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="robots" content="noindex,nofollow"/>' +
     '<meta name="color-scheme" content="light dark"/>' +
     '<title>Painel OLLI</title>' +
-    '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
-    '<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">' +
+    `<style>${FONTES_CSS}</style>` +
     '<style>' + CSS + '</style></head><body>' +
     BODY.split('__SYM__').map((parte, i) => (i ? SYM.split('og').join(`og${i}`) : '') + parte).join('') +
     '<script nonce="' + nonce + '">const CFG=' + cfg + ';' + SCRIPT + '</script></body></html>';
