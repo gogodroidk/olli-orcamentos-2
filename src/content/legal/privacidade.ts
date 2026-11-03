@@ -177,9 +177,9 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Legítimo interesse do prestador em acompanhar a proposta que enviou (art. 7º, IX), com dados mínimos e não identificáveis.',
         },
         {
-          dado: 'Uso do app (analytics local no aparelho)',
-          finalidade: 'Entender quais telas ajudam e melhorar o produto.',
-          base: 'Legítimo interesse (art. 7º, IX).',
+          dado: 'Uso do app (telas visitadas e ações dentro do app)',
+          finalidade: "Entender passo a passo como o OLLI é usado: quais telas e botões você usa, em que ponto as pessoas travam e quais erros acontecem, para corrigir problemas e decidir o que melhorar. Registramos o tipo da ação e a hora (por exemplo, 'abriu a tela de orçamento', 'tocou em Enviar'), ligados a um código da sua conta, e não ao seu nome. Não registramos o que você digita, nem senhas, nem o conteúdo dos seus orçamentos, nem nome, telefone, endereço ou localização dos seus clientes, e não gravamos a tela. Os eventos ficam no seu aparelho e são enviados aos nossos servidores. Guardamos o registro detalhado por até 90 dias; depois, só um resumo diário por tela por até 12 meses, e depois só números gerais.",
+          base: "Legítimo interesse (art. 7º, IX) em melhorar o produto, usando o mínimo de dados necessário. Você pode desativar em Conta > Privacidade > 'Ajudar a melhorar o OLLI', e vale a partir desse momento, em todos os seus aparelhos; ao desativar, apagamos o que já foi registrado de você.",
         },
         {
           dado: 'Origem da visita (site e telas de entrada do painel web)',
