@@ -4,7 +4,7 @@ import {
   TextInput, Alert, RefreshControl, Modal, Image, Platform, Share,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { vibrar } from '../utils/haptico';
@@ -18,7 +18,7 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { registrarEventoDica } from '../services/dicasRoteiroStore';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
 import { useVerticais } from '../hooks/useVerticais';
@@ -49,8 +49,11 @@ import { searchClientes, getEmpresa } from '../database/database';
 import {
   montarHtmlEtiqueta,
   montarHtmlEtiquetasLote,
+  montarHtmlGrafica,
   TAMANHOS_ETIQUETA,
   TAMANHO_ETIQUETA_PADRAO,
+  TEXTO_ETIQUETA_IDEAL,
+  POR_FOLHA_PADRAO,
   etiquetasPorLinha,
   type TamanhoEtiqueta,
 } from '../utils/etiquetaQrPdf';
@@ -277,36 +280,56 @@ export default function EquipamentoScreen() {
       return;
     }
     vibrar('selecao');
+    const n = comQr.length;
     Alert.alert(
-      'Tamanho do adesivo',
-      `${comQr.length} etiqueta${comQr.length === 1 ? '' : 's'} numa folha A4. Escolha o tamanho do adesivo:`,
+      'Etiquetas',
+      `${n} equipamento${n === 1 ? '' : 's'} com QR. ${TEXTO_ETIQUETA_IDEAL}`,
       [
-        ...(Object.keys(TAMANHOS_ETIQUETA) as TamanhoEtiqueta[]).map((t) => ({
+        { text: 'Casa (99×38)', onPress: () => { void gerarFolhaEtiquetas(comQr, 'padrao', 'casa'); } },
+        { text: 'Gráfica (99×38)', onPress: () => { void gerarFolhaEtiquetas(comQr, 'padrao', 'grafica'); } },
+        { text: 'Recortar', onPress: () => escolherRecorte(comQr) },
+        { text: 'Cancelar', style: 'cancel' as const },
+      ],
+    );
+  }
+
+  function escolherRecorte(comQr: Equipamento[]) {
+    const recorte = (Object.keys(TAMANHOS_ETIQUETA) as TamanhoEtiqueta[]).filter((t) => t !== 'padrao');
+    Alert.alert(
+      'Recortar na tesoura',
+      'Estes tamanhos não caem numa folha adesiva pronta. Imprima e recorte na linha tracejada.',
+      [
+        ...recorte.map((t) => ({
           text: TAMANHOS_ETIQUETA[t].rotulo,
-          onPress: () => { void gerarFolhaEtiquetas(comQr, t); },
+          onPress: () => { void gerarFolhaEtiquetas(comQr, t, 'casa'); },
         })),
         { text: 'Cancelar', style: 'cancel' as const },
       ],
     );
   }
 
-  async function gerarFolhaEtiquetas(comQr: Equipamento[], tamanho: TamanhoEtiqueta) {
+  async function gerarFolhaEtiquetas(
+    comQr: Equipamento[],
+    tamanho: TamanhoEtiqueta,
+    destino: 'casa' | 'grafica',
+  ) {
     setImprimindoLote(true);
     try {
-      const opcoes = await opcoesEtiquetaDaEmpresa(tamanho, removerMarca);
-      const { html } = montarHtmlEtiquetasLote(
-        comQr.map((e) => ({
-          titulo: e.codigoInterno
-            || [e.fabricante, e.modelo].filter(Boolean).join(' ')
-            || labelCategoria(e.categoria)
-            || 'Equipamento',
-          subtitulo: e.localizacao || undefined,
-          qrToken: e.qrToken,
-        })),
-        opcoes,
-      );
-      await exportarHtmlComoPdf(html, 'etiquetas-equipamentos', {
-        dialogTitle: 'Etiquetas de equipamentos',
+      const tamanhoEfetivo: TamanhoEtiqueta = destino === 'grafica' ? 'padrao' : tamanho;
+      const opcoes = await opcoesEtiquetaDaEmpresa(tamanhoEfetivo, removerMarca);
+      const itens = comQr.map((e) => ({
+        titulo: e.codigoInterno
+          || [e.fabricante, e.modelo].filter(Boolean).join(' ')
+          || labelCategoria(e.categoria)
+          || 'Equipamento',
+        subtitulo: [e.localizacao, e.patrimonio].filter(Boolean).join(' · ') || undefined,
+        qrToken: e.qrToken,
+      }));
+      const html = destino === 'grafica'
+        ? montarHtmlGrafica(itens, opcoes).html
+        : montarHtmlEtiquetasLote(itens, opcoes).html;
+      await exportarHtmlComoPdf(html, destino === 'grafica' ? 'etiquetas-grafica' : 'etiquetas-equipamentos', {
+        dialogTitle: destino === 'grafica' ? 'Etiquetas para a gráfica' : 'Etiquetas de equipamentos',
       });
       registrarEventoDica('primeiro_qr');
     } catch {
@@ -982,16 +1005,20 @@ function EtiquetaSheet({
   const [tamanho, setTamanho] = useState<TamanhoEtiqueta>(TAMANHO_ETIQUETA_PADRAO);
   const [copias, setCopias] = useState(1);
 
-  async function imprimir() {
+  async function imprimir(destino: 'casa' | 'grafica' = 'casa') {
     if (imprimindo) return;
     vibrar('selecao');
     setImprimindo(true);
     try {
       // Logo, nome, contato e cor do prestador (best-effort — nunca bloqueia).
-      const opcoes = await opcoesEtiquetaDaEmpresa(tamanho, removerMarca);
-      const html = montarHtmlEtiqueta({ titulo, subtitulo, qrToken }, { ...opcoes, copias });
-      await exportarHtmlComoPdf(html, `etiqueta-${qrToken.slice(-6)}`, {
-        dialogTitle: `Etiqueta ${titulo}`,
+      const tamanhoEfetivo: TamanhoEtiqueta = destino === 'grafica' ? 'padrao' : tamanho;
+      const opcoes = await opcoesEtiquetaDaEmpresa(tamanhoEfetivo, removerMarca);
+      const item = { titulo, subtitulo, qrToken };
+      const html = destino === 'grafica'
+        ? montarHtmlGrafica([item], { ...opcoes, copias }).html
+        : montarHtmlEtiqueta(item, { ...opcoes, copias });
+      await exportarHtmlComoPdf(html, destino === 'grafica' ? `etiqueta-grafica-${qrToken.slice(-6)}` : `etiqueta-${qrToken.slice(-6)}`, {
+        dialogTitle: destino === 'grafica' ? `Gráfica — ${titulo}` : `Etiqueta ${titulo}`,
       });
       registrarEventoDica('primeiro_qr');
     } catch {
@@ -1048,6 +1075,11 @@ function EtiquetaSheet({
               Imprima a etiqueta com sua marca para colar na máquina. O cliente escaneia e
               vê a última manutenção, a próxima recomendada e pode pedir orçamento a você.
             </Text>
+            <Text style={styles.etiquetaNota}>
+              {tamanho === 'padrao'
+                ? TEXTO_ETIQUETA_IDEAL
+                : 'Este tamanho é para recortar na tesoura. A etiqueta adesiva pronta é a de 99 × 38 mm.'}
+            </Text>
             <View style={styles.chipsWrap}>
               {(Object.keys(TAMANHOS_ETIQUETA) as TamanhoEtiqueta[]).map((t) => {
                 const ativo = tamanho === t;
@@ -1083,18 +1115,32 @@ function EtiquetaSheet({
               >
                 <MaterialCommunityIcons name="plus" size={18} color={cores.accentLight} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setCopias(etiquetasPorLinha(tamanho) * 2)} accessibilityRole="button">
-                <Text style={styles.copiasAtalho}>{etiquetasPorLinha(tamanho) * 2} (2 linhas)</Text>
+              <TouchableOpacity
+                onPress={() => setCopias(tamanho === 'padrao' ? POR_FOLHA_PADRAO : etiquetasPorLinha(tamanho) * 2)}
+                accessibilityRole="button"
+              >
+                <Text style={styles.copiasAtalho}>
+                  {tamanho === 'padrao' ? `${POR_FOLHA_PADRAO} (folha)` : `${etiquetasPorLinha(tamanho) * 2} (2 linhas)`}
+                </Text>
               </TouchableOpacity>
             </View>
             <OlliButton
-              label="Imprimir etiqueta (PDF)"
+              label={tamanho === 'padrao' ? 'Imprimir em casa' : 'Imprimir (recortar)'}
               variant="gradient"
               size="lg"
               fullWidth
               loading={imprimindo}
-              onPress={imprimir}
+              onPress={() => { void imprimir('casa'); }}
               icon={<MaterialCommunityIcons name="printer" size={20} color="#fff" />}
+            />
+            <OlliButton
+              label="Arquivo para a gráfica"
+              variant="outline"
+              size="lg"
+              fullWidth
+              loading={imprimindo}
+              onPress={() => { void imprimir('grafica'); }}
+              icon={<MaterialCommunityIcons name="file-pdf-box" size={20} color={cores.accentLight} />}
             />
             <View style={styles.urlBox}>
               <Text style={styles.urlText} numberOfLines={2} selectable>{url}</Text>
@@ -1687,6 +1733,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surfaceGlass, borderWidth: 1, borderColor: c.strokeGlow,
   },
   etiquetaHint: { fontSize: 13.5, color: c.onSurfaceVariant, lineHeight: 20, textAlign: 'center' },
+  etiquetaNota: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18 },
   urlBox: {
     backgroundColor: c.surface, borderRadius: BorderRadius.md,
     borderWidth: 1, borderColor: c.outline, padding: Spacing.md,

@@ -155,7 +155,7 @@ export const VERBETES_COMO_FUNCIONA: Readonly<Record<TelaComoFunciona, VerbeteCo
     resumo: 'Os aparelhos de cada cliente, com a história de manutenção.',
     passos: [
       { icone: 'air-conditioner', texto: 'Cadastre marca, modelo, série e onde está instalado.' },
-      { icone: 'qrcode', texto: 'Gere a etiqueta QR e cole no aparelho.' },
+      { icone: 'qrcode', texto: 'Gere a etiqueta de 99×38 mm e cole no aparelho.' },
       { icone: 'cellphone-nfc', texto: 'Quem escanear vê a última manutenção e pode pedir orçamento a você, sem login.' },
     ],
     artigoId: 'equipamentos-qr',

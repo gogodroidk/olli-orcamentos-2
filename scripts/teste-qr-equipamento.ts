@@ -36,8 +36,13 @@ import {
 import {
   codigoCurto,
   etiquetasPorLinha,
+  FOLHA_ADESIVO_PADRAO,
   logoSegura,
   montarHtmlEtiqueta,
+  montarHtmlGrafica,
+  POR_FOLHA_PADRAO,
+  posicaoEtiquetaPadrao,
+  TEXTO_ETIQUETA_IDEAL,
   montarHtmlEtiquetasLote,
   TAMANHOS_ETIQUETA,
 } from '../src/utils/etiquetaQrPdf.ts';
@@ -316,6 +321,54 @@ ok('cor da marca inválida não entra no CSS', () => {
   assert.ok(!html.includes('<script>'));
   assert.match(html, /#0B6FCE/);
 });
+ok('folha padrão é a Pimaco A4363 / Colacril CA4363, 14 por A4, QR de 28 mm', () => {
+  assert.equal(POR_FOLHA_PADRAO, 14);
+  assert.equal(FOLHA_ADESIVO_PADRAO.larguraMm, 99.1);
+  assert.equal(FOLHA_ADESIVO_PADRAO.alturaMm, 38.1);
+  assert.ok(FOLHA_ADESIVO_PADRAO.qrMm >= 24);
+  const fechaA4 = (n: number) => Math.round(n * 100) / 100;
+  assert.equal(fechaA4(FOLHA_ADESIVO_PADRAO.margemEsqMm + FOLHA_ADESIVO_PADRAO.passoXMm
+    + FOLHA_ADESIVO_PADRAO.larguraMm + FOLHA_ADESIVO_PADRAO.margemEsqMm), 210);
+  assert.equal(fechaA4(FOLHA_ADESIVO_PADRAO.margemTopoMm * 2
+    + FOLHA_ADESIVO_PADRAO.linhas * FOLHA_ADESIVO_PADRAO.passoYMm), 297);
+  assert.equal(etiquetasPorLinha('padrao'), 2);
+  assert.deepEqual(posicaoEtiquetaPadrao(0), { pagina: 0, esquerdaMm: 4.65, topoMm: 15.15 });
+  assert.deepEqual(posicaoEtiquetaPadrao(1), { pagina: 0, esquerdaMm: 106.25, topoMm: 15.15 });
+  assert.deepEqual(posicaoEtiquetaPadrao(13), { pagina: 0, esquerdaMm: 106.25, topoMm: 243.75 });
+  assert.deepEqual(posicaoEtiquetaPadrao(14), { pagina: 1, esquerdaMm: 4.65, topoMm: 15.15 });
+  const html = montarHtmlEtiqueta(base, { tamanho: 'padrao', copias: 15, empresa: 'Frio & Cia' });
+  assert.equal((html.match(/class="folha"/g) ?? []).length, 2);
+  assert.equal((html.match(/class="label /g) ?? []).length, 15);
+  assert.match(html, /width:99\.1mm/);
+  assert.match(html, /height:38\.1mm/);
+  assert.match(html, /left:4\.65mm/);
+  assert.match(html, /top:15\.15mm/);
+  assert.match(html, /left:106\.25mm/);
+  assert.match(html, /top:243\.75mm/);
+  assert.ok(!html.includes('dashed'), 'folha pronta não imprime linha de corte no adesivo');
+  assert.match(html, /Pimaco A4363/);
+  assert.match(html, /100%/);
+  assert.match(html, /Escaneie: manutenção e orçamento/);
+  assert.match(html, /Sala 302/);
+  assert.match(html, /Frio &amp; Cia/);
+  assert.ok(TEXTO_ETIQUETA_IDEAL.includes('Pimaco A4363'));
+  assert.ok(TEXTO_ETIQUETA_IDEAL.includes('laminação fosca'));
+});
+ok('arquivo da gráfica traz tamanho, material, marcas de corte e não leva dado do cliente', () => {
+  const html = montarHtmlGrafica([base, { ...base, qrToken: '' }], { copias: 2, empresa: 'Frio & Cia' }).html;
+  assert.equal((html.match(/class="pagina-grafica"/g) ?? []).length, 2);
+  assert.match(html, /99,1 × 38,1 mm/);
+  assert.match(html, /vinil adesivo branco fosco/);
+  assert.match(html, /laminação fosca/);
+  assert.match(html, /class="corte"/);
+  assert.match(html, /Não colocamos nome, telefone nem CPF do cliente/);
+  assert.ok(!html.includes('dashed'));
+  assert.ok(!html.includes('Sala>') , 'título continua escapado');
+  const vazio = montarHtmlGrafica([{ ...base, qrToken: '' }]);
+  assert.equal(vazio.impressos, 0);
+  assert.equal(vazio.ignorados, 1);
+  assert.ok(!vazio.html.includes('class="label'));
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 console.log('\n5) pedido pela etiqueta');
@@ -366,6 +419,17 @@ ok('worker: /e/ apelido e POST do pedido', () => {
   const idx = ler('worker/src/index.js');
   assert.match(idx, /url\.pathname\.startsWith\('\/q\/'\) \|\| url\.pathname\.startsWith\('\/e\/'\)/);
   assert.match(idx, /if \(request\.method === 'POST'\) return receberPedidoEtiqueta\(resto, env, request\);/);
+});
+ok('app e painel imprimem a folha de casa e o arquivo da gráfica', () => {
+  const tela = ler('src/screens/EquipamentoScreen.tsx');
+  assert.match(tela, /montarHtmlGrafica/);
+  assert.match(tela, /TEXTO_ETIQUETA_IDEAL/);
+  assert.match(tela, /Arquivo para a gráfica/);
+  const painel = ler('webapp/src/pages/olli/equipamentos/etiquetaQr.tsx');
+  assert.match(painel, /montarHtmlEtiqueta/);
+  assert.match(painel, /montarHtmlGrafica/);
+  assert.match(painel, /useMarcaDoDocumento/);
+  assert.match(ler('src/content/ajuda/index.ts'), /Pimaco A4363/);
 });
 ok('migration com timestamp único e sem aplicar dados', () => {
   const mig = ler('supabase/migrations/20261002153217_qr_equipamento_atendimento.sql');
