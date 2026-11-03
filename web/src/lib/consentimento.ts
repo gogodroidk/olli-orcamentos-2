@@ -218,8 +218,36 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 	const aceitar = botao("Aceitar", true);
 	acoes.append(recusar, aceitar);
 	banner.append(texto, acoes);
+	document.body.appendChild(banner);
 
-	const fechar = () => banner.remove();
+	// No celular o cartão cobre o "Criar conta". A reserva deixa a página rolar
+	// e, se o botão de enviar está por baixo, sobe ele uma vez — sem pular de novo
+	// quando o teclado abre.
+	const paddingAnterior = document.body.style.paddingBottom;
+	const scrollAnterior = document.documentElement.style.scrollPaddingBottom;
+	const reservar = (subir: boolean) => {
+		const altura = banner.offsetHeight + 24;
+		document.body.style.paddingBottom = `${altura}px`;
+		document.documentElement.style.scrollPaddingBottom = `${altura}px`;
+		if (!subir) return;
+		const alvo = document.querySelector("main button[type='submit']");
+		if (!(alvo instanceof HTMLElement)) return;
+		requestAnimationFrame(() => {
+			if (alvo.getBoundingClientRect().bottom > window.innerHeight - altura) {
+				alvo.scrollIntoView({ block: "end", inline: "nearest" });
+			}
+		});
+	};
+	reservar(true);
+	const aoRedimensionar = () => reservar(false);
+	window.addEventListener("resize", aoRedimensionar);
+
+	const fechar = () => {
+		window.removeEventListener("resize", aoRedimensionar);
+		document.body.style.paddingBottom = paddingAnterior;
+		document.documentElement.style.scrollPaddingBottom = scrollAnterior;
+		banner.remove();
+	};
 	recusar.addEventListener("click", () => {
 		gravarConsentimento("nao");
 		fechar();
@@ -233,6 +261,4 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 			// Medição nunca derruba a página.
 		}
 	});
-
-	document.body.appendChild(banner);
 }

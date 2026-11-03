@@ -369,6 +369,11 @@ for (const csp of [headersPainel, vercel]) {
 assert.match(registro, /\.\.\.origemUtmParaCadastro\(\)/, 'signUp envia origem_utm em options.data');
 assert.match(registro, /registrarCadastroConcluido\("email", data\.user\?\.id\)/, 'CompleteRegistration no cadastro por e-mail, com o id que deduplica');
 assert.match(scriptLanding, /mostrarBannerConsentimento/, 'landing mostra o aviso de cookies');
+const consentimento = ler('../web/src/lib/consentimento.ts');
+assert.match(consentimento, /paddingBottom/, 'o banner reserva espaço: o Criar conta não fica debaixo do cartão');
+assert.match(consentimento, /scrollPaddingBottom/, 'o scroll para acima do cartão');
+assert.match(consentimento, /button\[type='submit'\]/, 'sobe o botão de enviar quando ele está coberto');
+assert.match(consentimento, /paddingAnterior/, 'fechar o banner devolve o espaço que a página já tinha');
 assert.match(registro, /identities\?\.length !== 0/, 'e-mail já cadastrado não vira conversão');
 assert.match(store, /registrarNovaContaSocial/, 'cadastro social grava a origem via updateUser');
 assert.match(main, /iniciarMarketing\(\);/, 'captura roda no boot do painel');
