@@ -118,7 +118,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Login com o Google: nome, e-mail e foto do perfil da sua conta Google',
-          finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google". Recebemos do Google apenas o que identifica a conta (nome, e-mail e foto do perfil); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
+          finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google", inclusive quando um convite de equipe pede o Google do e-mail que recebeu o convite. Recebemos do Google apenas o que identifica a conta (nome, e-mail e foto do perfil); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
           base: 'Execução de contrato (art. 7º, V) e consentimento ao autorizar o login (art. 7º, I).',
         },
         {
@@ -232,9 +232,9 @@ export const PRIVACIDADE: LegalDoc = {
         'Supabase — banco de dados, autenticação e armazenamento de arquivos (fotos, logomarcas ' +
           'e PDFs, em depósito privado) na nuvem, com isolamento por usuário ' +
           '(Row Level Security), de forma que cada conta só enxerga os próprios dados.',
-        'Google — login com o Google ("Continuar com o Google"), quando você escolhe essa opção: ' +
-          'o Google confirma a sua identidade e nos informa o nome, o e-mail e a foto do perfil da conta. ' +
-          'O Google trata esse login conforme a própria política de privacidade.',
+        'Google — login com o Google ("Continuar com o Google"), quando você escolhe essa opção, ' +
+          'inclusive no convite de equipe: o Google confirma a sua identidade e nos informa o nome, ' +
+          'o e-mail e a foto do perfil da conta. O Google trata esse login conforme a própria política de privacidade.',
         'Google Play — no aplicativo Android, cobrança e gestão das assinaturas dos planos pagos ' +
           '(processador de pagamento da loja), quando essa opção estiver disponível. A Google ' +
           'recebe os dados do pagamento, e o OLLI recebe da Google Play o histórico da compra ' +

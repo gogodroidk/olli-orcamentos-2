@@ -438,7 +438,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         conteudo: [
           'Vá em Conta → Equipe.',
           'Toque em "Convidar" e escolha o papel (Administrador, Gestor ou Técnico).',
-          'Compartilhe o link de convite gerado — a pessoa aceita e já entra na sua organização.',
+          'Compartilhe o link. Se você informou o e-mail, a pessoa entra com o Google dessa conta. Sem e-mail, o link vale para quem você enviar.',
           'Você pode ativar/desativar um membro a qualquer momento, sem excluir o histórico dele.',
         ],
       },
