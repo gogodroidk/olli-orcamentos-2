@@ -40,7 +40,7 @@ import { getOrcamentos, getClientes, getEmpresa, getRecibos } from '../database/
 import { montarMensagemFollowUpOrcamento } from '../utils/mensagensOrcamento';
 import { formatCurrency } from '../utils/currency';
 import type { Empresa } from '../types';
-import { LIMIAR_PROPOSTA_PARADA_DIAS } from './radarDinheiro';
+import { LIMIAR_PROPOSTA_PARADA_DIAS, contarRascunhosEsquecidos } from './radarDinheiro';
 import { montarMensagemPropostaVencida, selecionarFollowUp, validaAteYmd, type OrcamentoParaFollowUp } from './radarFollowUpRegra';
 import { termometrosSeLiberado } from './termometro';
 import { mensagemDaAcao, type EstadoTermometro } from './termometroRegra';
@@ -73,6 +73,16 @@ let sinaisCache: ReadonlyMap<string, EstadoTermometro> = new Map();
  * decide o estado de erro (3 estados).
  */
 export async function orcamentosParaFollowUp(): Promise<OrcamentoParaFollowUp[]> {
+  return (await radarPropostas()).followUp;
+}
+
+/**
+ * Follow-up + rascunhos esquecidos numa LEITURA só do SQLite (a Home precisa dos dois e
+ * lia `orcamentos` duas vezes). `rascunhos` é a MESMA regra do painel
+ * (`contarRascunhosEsquecidos`): `null` = não sei (rascunhos sem data legível), nunca 0.
+ * Propaga erro de leitura — quem chama decide o estado.
+ */
+export async function radarPropostas(): Promise<{ followUp: OrcamentoParaFollowUp[]; rascunhos: number | null }> {
   const [orcamentos, clientes, empresa, recibos] = await Promise.all([
     getOrcamentos(), getClientes(), getEmpresa(), getRecibos(),
   ]);
@@ -81,7 +91,11 @@ export async function orcamentosParaFollowUp(): Promise<OrcamentoParaFollowUp[]>
   void termometrosSeLiberado(lista.map((i) => i.orcamento)).then((mapa) => {
     sinaisCache = mapa ?? new Map();
   });
-  return lista;
+  const rascunhos = contarRascunhosEsquecidos(
+    orcamentos.map((o) => ({ status: o.status, criado_em: o.criadoEm, atualizado_em: o.atualizadoEm })),
+    DIAS_LIMIAR,
+  );
+  return { followUp: lista, rascunhos };
 }
 
 /**

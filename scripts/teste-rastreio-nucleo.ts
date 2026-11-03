@@ -41,7 +41,7 @@ caso('eventos novos do funil têm call site (Pix gerado, Pix pago, Planos)', /Ev
 caso('Conta > Privacidade tem o switch "Ajudar a melhorar o OLLI" com 3 estados', /Ajudar a melhorar o OLLI/.test(ler('src/screens/ContaScreen.tsx')) && /rastreioPref === 'desconhecido'/.test(ler('src/screens/ContaScreen.tsx')));
 const priv = ler('src/content/legal/privacidade.ts');
 caso('política de privacidade deixou de dizer "analytics local" e cita desativar em Conta > Privacidade', !/analytics local no aparelho/.test(priv) && /Ajudar a melhorar o OLLI/.test(priv) && /90 dias/.test(priv));
-const sql = ler('supabase/migrations/20261022100000_user_tela_log.sql');
+const sql = ler('supabase/migrations/20261022110000_user_tela_log.sql');
 caso('migration: RPC security definer, sem INSERT direto e teto diário', /security definer/.test(sql) && !/grant insert on public\.user_tela_log/.test(sql) && />= 1000/.test(sql));
 
 console.log('\nfalha de envio nunca é ignorada (P2 da LIVRE)');

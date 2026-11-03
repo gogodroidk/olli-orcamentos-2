@@ -46,6 +46,7 @@
  */
 
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
+import { FONTES_CSS } from './fontesProprias.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 
 const ACCENT = '#0B6FCE';
@@ -121,7 +122,7 @@ function htmlResp(body, status = 200) {
       // script-src. Google Fonts para tipografia; img-src data: para o QR e a
       // logo do prestador inline; form-action 'self' só para o "Pedir orçamento".
       'Content-Security-Policy':
-        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: https://link.olliorcamentos.online; base-uri 'none'; form-action 'self'",
+        "default-src 'none'; style-src 'unsafe-inline'; font-src https://olliorcamentos.online; img-src data: https://link.olliorcamentos.online; base-uri 'none'; form-action 'self'",
     },
   });
 }
@@ -667,9 +668,7 @@ function shell(inner, accentRaw = ACCENT) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
 <title>Etiqueta do equipamento · OLLI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@600;700&display=swap" rel="stylesheet">
+<style>${FONTES_CSS}</style>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EAEEF3;color:#1A2230;-webkit-font-smoothing:antialiased;padding:24px 14px 48px}

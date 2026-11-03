@@ -33,7 +33,7 @@ import {
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
 import { TRIAL_PRO_DIAS } from "../../../src/services/entitlements";
-import { planoBase } from "../data/recursos";
+import { FRASE_GRATIS_CURTA, planoBase } from "../data/recursos";
 
 // O app (painel) mora em outro subdomínio. CTA de assinatura abre o cadastro
 // direto (?modo=cadastro), Empresa fala no WhatsApp de vendas.
@@ -223,7 +223,7 @@ const cartoes: Cartao[] = [
 		))}
 	</div>
 
-	<p class="mt-10 text-center text-sm text-muted">Grátis sem prazo e sem limite de orçamentos. Depois do primeiro envio, você pode ativar {TRIAL_PRO_DIAS} dias de Pro — sem cartão e sem cobrança automática.</p>
+	<p class="mt-10 text-center text-sm text-muted">Grátis sem prazo: {FRASE_GRATIS_CURTA}. Depois do primeiro envio, você pode ativar {TRIAL_PRO_DIAS} dias de Pro — sem cartão e sem cobrança automática.</p>
 	{/* Pix só aparece quando o worker confirmou no build que está ligado (data/pix.ts).
 	    "Mesmo preço" é verdade travada em teste: PLANO_PIX do worker = data/planos.ts. */}
 	{PIX_PLANO_LIGADO && (

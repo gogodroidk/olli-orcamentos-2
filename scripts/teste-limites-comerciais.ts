@@ -56,16 +56,33 @@ for (const usados of [6, 10, 50]) {
   assert.equal(r.usados, usados);
 }
 
-// Servidor ANTIGO (migration 20261002150000 ainda não aplicada) dizendo cota_esgotada:
-// a cota não existe mais no produto — o envio segue, só sem registro.
-const antigo = interpretarReservaEnvio({
-  permitido: false, plano_efetivo: 'gratis', usados: 5, restantes: 0, contabilizado_agora: false,
+// LIMITE DO GRÁTIS em conta nova (P0-09): cota_esgotada com permitido:false é a ÚNICA recusa.
+// O app respeita (a Visualizar para o ENVIO e mostra o aviso); orçamento segue salvo.
+const esgotada = interpretarReservaEnvio({
+  permitido: false, plano_efetivo: 'gratis', usados: 5, restantes: 0, limite_envios: 5, contabilizado_agora: false,
   trial_elegivel: true, motivo: 'cota_esgotada', requer_confirmacao: false, reserva_token: null,
 });
-assert.equal(antigo.permitido, true, 'cota_esgotada do servidor antigo não barra mais o envio');
-assert.equal(antigo.motivo, 'sem_registro');
-assert.equal(antigo.reservaToken, null, 'sem registro, sem token: não há o que confirmar');
-assert.equal(antigo.trialElegivel, false, 'falha de registro não inventa elegibilidade');
+assert.equal(esgotada.permitido, false, 'cota_esgotada recusa o envio');
+assert.equal(esgotada.motivo, 'cota_esgotada');
+assert.equal(esgotada.limiteEnvios, 5);
+assert.equal(esgotada.reservaToken, null);
+assert.equal(esgotada.requerConfirmacao, false);
+// Só vale com os DOIS sinais: permitido:true + motivo cota_esgotada, ou lixo, nunca recusa.
+assert.equal(interpretarReservaEnvio({ permitido: true, motivo: 'cota_esgotada' }).permitido, true, 'sinal contraditório não barra');
+assert.equal(interpretarReservaEnvio({ permitido: false, motivo: 'qualquer_outro' }).permitido, true, 'recusa desconhecida não barra (falha aberta)');
+assert.equal(interpretarReservaEnvio({ permitido: false }).permitido, true, 'recusa sem motivo não barra');
+assert.equal(interpretarReservaEnvio(null).permitido, true, 'resposta nula não barra');
+// A tela que envia trata a recusa (senão o servidor barra e o app ignora).
+const visualizar = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
+assert.match(visualizar, /if \(!reserva\.permitido\)/, 'autorizarEntrega precisa tratar permitido === false');
+// Painel web: os DOIS pontos de envio (PDF e WhatsApp) respeitam a recusa — o servidor barra e o painel não pode ignorar.
+const painelPdf = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
+const painelWhats = ler('../webapp/src/pages/olli/orcamentos/useEnviarWhatsApp.tsx');
+assert.match(painelPdf, /if \(!reserva\.permitido\)/, 'painel PDF trata permitido === false');
+assert.match(painelWhats, /if \(!reserva\.permitido\)/, 'painel WhatsApp trata permitido === false');
+assert.match(ler('../webapp/src/olli/cota-envios.ts'), /export function avisoLimiteEnvios/, 'painel tem o aviso do limite');
+assert.doesNotMatch(ler('../webapp/src/olli/cota-envios.ts').match(/avisoLimiteEnvios[\s\S]{0,400}/)?.[0] ?? '', /bloquead/i, 'aviso do painel sem a palavra bloqueado');
+assert.doesNotMatch(visualizar.match(/Limite do mês atingido[\s\S]{0,40}/)?.[0] ?? '', /bloquead/i, 'aviso sem a palavra bloqueado');
 
 const pago = interpretarReservaEnvio({
   permitido: true,
@@ -96,14 +113,99 @@ const ofertaAtiva = interpretarEstadoOferta({
 assert.equal(ofertaAtiva?.planoEfetivo, 'pro', 'trial ativo precisa liberar o Pro');
 assert.equal(ofertaAtiva?.trialEstado, 'active');
 const ofertaGratisAntiga = interpretarEstadoOferta({
-  plano_efetivo: 'gratis', limite_envios: 5, envios_usados: 7, envios_restantes: 0,
+  plano_efetivo: 'gratis', limite_conta_nova: true, limite_envios: 5, envios_usados: 7, envios_restantes: 0,
   trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
   requires_card: false, auto_renews: false, data_disposition: 'preserve',
 });
 assert.ok(ofertaGratisAntiga, 'oferta do servidor antigo continua legível');
 assert.equal(ofertaGratisAntiga.enviosUsados, 7);
-assert.equal('limiteEnvios' in ofertaGratisAntiga, false, 'o limite 5 do servidor antigo é ignorado');
-assert.equal('enviosRestantes' in ofertaGratisAntiga, false);
+// P0-09: quando o servidor MANDA o teto (conta nova do Grátis com o corte ligado), o app o lê; o app nunca inventa teto.
+assert.equal(ofertaGratisAntiga.limiteEnvios, 5);
+assert.equal(ofertaGratisAntiga.enviosRestantes, 0);
+const semTeto = interpretarEstadoOferta({
+  plano_efetivo: 'gratis', limite_envios: null, envios_usados: 40, envios_restantes: null,
+  trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
+  requires_card: false, auto_renews: false, data_disposition: 'preserve',
+});
+assert.equal(semTeto?.limiteEnvios, null, 'conta antiga / corte desligado: sem teto');
+assert.equal(semTeto?.enviosRestantes, null);
+const teto = (extra: Record<string, unknown>) => interpretarEstadoOferta({
+  plano_efetivo: 'gratis', limite_conta_nova: true, limite_envios: 5, envios_usados: 3, envios_restantes: 2,
+  trial_estado: 'ended', trial_termina_em: null, trial_dias: 14,
+  requires_card: false, auto_renews: false, data_disposition: 'preserve', ...extra,
+});
+assert.equal(teto({ limite_envios: 0 })?.limiteEnvios, null, 'teto 0 é lixo: sem teto');
+// SERVIDOR ANTIGO: manda limite_envios=5 para todo Grátis SEM o sinal limite_conta_nova → o app ignora (nada de 'X de 5' falso).
+assert.equal(teto({ limite_conta_nova: undefined })?.limiteEnvios, null, 'sem o sinal do servidor novo: sem teto');
+assert.equal(teto({ limite_conta_nova: false })?.limiteEnvios, null, 'sinal falso: sem teto');
+assert.deepEqual(limites.contadorEnvios(teto({ limite_conta_nova: undefined, envios_usados: 4 })), { mostrar: false }, 'servidor antigo nunca gera contador');
+assert.equal(teto({ limite_envios: '5' })?.limiteEnvios, null, 'teto em texto é lixo: sem teto');
+assert.equal(teto({ plano_efetivo: 'pro' })?.limiteEnvios, null, 'Pro nunca tem teto');
+assert.equal(teto({ envios_restantes: -1 })?.enviosRestantes, null, 'restantes negativo é lixo');
+
+// CONTA ANTIGA no limite (D+30): o sinal próprio `limite_conta_antiga` liga o teto/contador; o aviso vem em `aviso_limite_antigas`.
+assert.equal(teto({ limite_conta_nova: false, limite_conta_antiga: true })?.limiteEnvios, 5, 'antiga limitada: teto lido');
+assert.equal(teto({ limite_conta_nova: undefined, limite_conta_antiga: false })?.limiteEnvios, null, 'antiga ainda não limitada: sem teto');
+assert.deepEqual(
+  limites.contadorEnvios(teto({ limite_conta_nova: false, limite_conta_antiga: true, envios_usados: 4, envios_restantes: 1 })),
+  limites.contadorEnvios(teto({ envios_usados: 4, envios_restantes: 1 })),
+  'antiga limitada tem o mesmo contador da nova',
+);
+const semAviso = teto({ limite_conta_nova: false });
+assert.equal(semAviso?.avisoLimiteAntigas, null, 'sem aviso do servidor: null');
+const comAviso = (extra: Record<string, unknown> = {}) => teto({
+  limite_conta_nova: false, limite_envios: null, envios_restantes: null, envios_usados: 3,
+  aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00+00:00', usados_30d: 7 }, ...extra,
+});
+assert.deepEqual(comAviso()?.avisoLimiteAntigas, { aPartirDe: '2026-11-24T03:00:00+00:00', usados30d: 7 });
+assert.equal(comAviso({ aviso_limite_antigas: { a_partir_de: 'lixo', usados_30d: 7 } })?.avisoLimiteAntigas, null, 'data lixo: sem aviso');
+assert.equal(comAviso({ aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00Z', usados_30d: -1 } })?.avisoLimiteAntigas, null, 'N negativo: sem aviso');
+assert.equal(comAviso({ plano_efetivo: 'pro' })?.avisoLimiteAntigas, null, 'Pro não recebe aviso');
+const agoraD = new Date('2026-10-24T18:00:00Z');
+assert.deepEqual(limites.avisoAntigas(null, 5, agoraD), { mostrar: false }, 'oferta que não carregou: nada');
+assert.deepEqual(limites.avisoAntigas(semAviso, 5, agoraD), { mostrar: false }, 'sem sinal do servidor: nada');
+const av = limites.avisoAntigas(comAviso(), 5, agoraD);
+assert.ok(av.mostrar);
+assert.equal(av.dataBR, '24/11/2026', 'D+30 00:00 -03 = 03:00Z cai no dia 24 em Brasília');
+assert.equal(av.texto, 'A partir de 24/11/2026 o Grátis passa a permitir até 5 envios por mês. Você usou 7 nos últimos 30 dias.');
+assert.equal(av.chave, 'olli:aviso_limite_antigas:2026-11-24T03:00:00+00:00');
+assert.match((limites.avisoAntigas(comAviso({ aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00Z', usados_30d: 1 } }), 5, agoraD) as { texto: string }).texto, /Você usou 1 nos últimos/);
+assert.deepEqual(limites.avisoAntigas(comAviso(), 5, new Date('2026-11-24T03:00:00Z')), { mostrar: false }, 'depois do início do limite o banner some');
+// As telas ligam o banner pelo hook de 3 estados.
+assert.match(ler('../src/hooks/useAvisoLimiteAntigas.ts'), /estado: 'indisponivel'/, 'hook do aviso tem o estado indisponível');
+for (const [nome, caminho] of [['Planos', '../src/screens/PlanosScreen.tsx'], ['Conta', '../src/screens/ContaScreen.tsx']] as const) {
+  assert.match(ler(caminho), /useAvisoLimiteAntigas\(\)/, `${nome} usa o hook do aviso`);
+  assert.match(ler(caminho), /<AvisoLimiteAntigas /, `${nome} desenha o aviso`);
+}
+
+// Contador "X de 5": só conta nova do Grátis (teto do servidor), só a partir do 3º envio; nunca inventa.
+const { contadorEnvios, CONTADOR_ENVIOS_A_PARTIR_DE } = limites;
+assert.equal(CONTADOR_ENVIOS_A_PARTIR_DE, 3);
+assert.deepEqual(contadorEnvios(null), { mostrar: false }, 'oferta que não carregou: nada');
+assert.deepEqual(contadorEnvios(semTeto), { mostrar: false }, 'conta antiga (limite nulo): nada, mesmo com 40 envios');
+assert.deepEqual(contadorEnvios(teto({ envios_usados: 2, envios_restantes: 3 })), { mostrar: false }, 'antes do 3º envio: nada');
+assert.deepEqual(contadorEnvios(teto({ plano_efetivo: 'pro' })), { mostrar: false }, 'Pro: nada');
+const tres = contadorEnvios(teto({}));
+assert.equal(tres.mostrar, true);
+if (tres.mostrar) {
+  assert.equal(tres.texto, '3 de 5 envios do Grátis usados neste mês.');
+  assert.equal(tres.esgotado, false);
+  assert.equal(tres.restantes, 2);
+}
+const cinco = contadorEnvios(teto({ envios_usados: 5, envios_restantes: 0 }));
+assert.equal(cinco.mostrar && cinco.esgotado, true);
+assert.match(cinco.mostrar ? cinco.texto : '', /Você usou os 5 envios do Grátis deste mês\. Eles voltam no próximo mês\./);
+assert.doesNotMatch(cinco.mostrar ? cinco.texto : '', /bloquead/i, 'sem a palavra bloqueado');
+// Passou do teto por reserva/corrida: não mostra "7 de 5".
+const sete = contadorEnvios(teto({ envios_usados: 7, envios_restantes: 0 }));
+assert.equal(sete.mostrar && sete.usados, 5, 'usados é limitado ao teto');
+// As 3 telas ligam o contador pelo hook de 3 estados.
+for (const [nome, caminho] of [['Visualizar', '../src/screens/VisualizarOrcamentoScreen.tsx'], ['Home', '../src/screens/HomeScreen.tsx']] as const) {
+  assert.match(ler(caminho), /useContadorEnvios\(\)/, `${nome} usa o hook do contador`);
+  assert.match(ler(caminho), /<ContadorEnvios /, `${nome} desenha o contador`);
+}
+assert.match(ler('../src/screens/PlanosScreen.tsx'), /<ContadorEnvios estado=\{oferta \?/, 'Planos desenha o contador a partir da oferta');
+assert.match(ler('../src/hooks/useContadorEnvios.ts'), /estado: 'indisponivel'/, 'hook tem o estado indisponível (erro nunca vira vazio)');
 assert.equal(
   interpretarEstadoOferta({ ...ofertaAtiva, trial_estado: 'active' }),
   null,
@@ -132,7 +234,7 @@ assert.equal(envioSemRegistro().permitido, true, 'o Grátis é ilimitado: falha 
 // O ramo de recusa ("Cota mensal utilizada") saiu do detalhe em 02/10/2026, e com
 // ele a copy de bloqueio: o tipo de `permitido` agora é o literal `true`.
 assert.equal('mensagemBloqueioEnvio' in limites, false, 'nenhuma copy de bloqueio de envio sobrou');
-assert.doesNotMatch(mobile, /cota_esgotada|Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/, 'o detalhe não tem mais ramo de cota');
+assert.doesNotMatch(mobile, /Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/, 'o detalhe não volta ao texto antigo de cota (a recusa nova é só o limite de conta nova)');
 
 assert.match(sql, /primary key \(tenant_id, periodo, orcamento_id\)/i, 'idempotência deve ser por tenant/mês/orçamento');
 assert.match(sql, /pg_advisory_xact_lock/i, 'a cota precisa de trava transacional');

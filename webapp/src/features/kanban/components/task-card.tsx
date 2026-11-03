@@ -147,9 +147,10 @@ type Props = {
 	/** Abre o mesmo editor da lista de Orçamentos sobre este card. Só chamado quando
 	 *  há blob (ver `blobDoCartao`) — sem documento não há o que editar. */
 	onAbrir: (cartao: Cartao) => void;
+	onFinalizar: (cartao: Cartao) => void;
 };
 
-export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, onAbrir }: Props) {
+export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, onAbrir, onFinalizar }: Props) {
 	const finalizado = coluna.id === "finalizados";
 	const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
 		id: cartao.id,
@@ -263,6 +264,16 @@ export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, 
 									})}
 								</div>
 							))}
+							{/* Finalizar sem arrastar: a mesma ação de soltar em "Finalizados" (conclui a OS). */}
+							{coluna.id !== "finalizados" && (
+								<>
+									<DropdownMenuSeparator />
+									<DropdownMenuItem onSelect={() => onFinalizar(cartao)} className="gap-2">
+										<Check className="size-3.5 shrink-0 text-primary" aria-hidden />
+										<span className="flex-1">Finalizar serviço</span>
+									</DropdownMenuItem>
+								</>
+							)}
 						</DropdownMenuContent>
 					</DropdownMenu>}
 				</div>

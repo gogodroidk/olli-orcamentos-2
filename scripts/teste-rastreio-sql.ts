@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
-const M1 = readFileSync('supabase/migrations/20261022100000_user_tela_log.sql', 'utf8');
+const M1 = readFileSync('supabase/migrations/20261022110000_user_tela_log.sql', 'utf8');
 const M2 = readFileSync('supabase/migrations/20261023160000_rastreio_funil.sql', 'utf8');
 let ok = 0, falhas = 0;
 function checar(nome: string, cond: unknown, detalhe = ''): void {

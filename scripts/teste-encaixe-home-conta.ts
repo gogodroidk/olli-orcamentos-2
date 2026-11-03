@@ -198,11 +198,12 @@ caso('Conta: importar é ferramenta (não de técnico) e as duas linhas entram n
   assert.ok(buscarAjustes(itens, 'comprovante').ids.has('creditoTroca'));
 });
 
-caso('Detalhe: o ramo morto da cota saiu (e o tipo não deixa voltar)', () => {
-  assert.doesNotMatch(detalhe, /cota_esgotada|Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/);
-  assert.match(detalhe, /return reservarEnvioOrcamento\(orc\.id, canal\);/);
-  assert.match(limites, /permitido: true;/);
-  assert.doesNotMatch(limites, /\| 'cota_esgotada'/);
+caso('Detalhe: só o limite de conta nova (P0-09) recusa envio; textos antigos de cota seguem fora', () => {
+  assert.doesNotMatch(detalhe, /Cota mensal utilizada|mensagemBloqueioEnvio|verificar a cota/);
+  assert.match(detalhe, /const reserva = await reservarEnvioOrcamento\(orc\.id, canal\);/);
+  assert.match(detalhe, /if \(!reserva\.permitido\)/);
+  assert.match(limites, /permitido: boolean;/);
+  assert.match(limites, /\| 'cota_esgotada'/);
 });
 
 caso('Detalhe: cartão do link com pagamento perto do envio, só para quem decide o plano', () => {

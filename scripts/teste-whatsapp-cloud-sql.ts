@@ -26,6 +26,7 @@ const igual = (atual: unknown, esperado: unknown, msg: string) => {
 const ler = (c: string) => readFileSync(new URL(c, import.meta.url), 'utf8').split(String.fromCharCode(13)).join('');
 const optout = ler('../supabase/migrations/20261006090000_whatsapp_nao_contatar.sql');
 const wa = ler('../supabase/migrations/20261007110000_whatsapp_cloud_multinumero.sql');
+const passagem = ler('../supabase/migrations/20261102180000_wa_passagem_humano.sql');
 
 const db = new PGlite();
 await db.exec(`
@@ -44,6 +45,8 @@ await db.exec(`
 await db.exec(optout);
 await db.exec(wa);
 await db.exec(wa); // idempotente
+await db.exec(passagem);
+await db.exec(passagem); // idempotente
 checks++;
 
 const q = async (sql: string, params: unknown[] = []) => (await db.query(sql, params)).rows as any[];
@@ -201,10 +204,41 @@ if (r.pode) {
   igual((await um('select estado from public.wa_envios where id = $1', [r.envio_id])).estado, 'enviado', 'concluir grava enviado + wamid');
 }
 const fila = await q('select * from public.wa_fila_entrada(50)');
-ok(fila.length >= 1 && fila.every((f) => f.estado === 'novo' || f.estado === 'em_atendimento'), 'a fila só mostra novo/em_atendimento (SAIR e resolvido ficam fora)');
+ok(fila.length >= 1 && fila.every((f) => f.estado === 'novo' || f.estado === 'em_atendimento' || f.estado === 'humano'), 'a fila mostra novo, em atendimento e humano (SAIR e resolvido ficam fora)');
 ok(fila.every((f) => f.marca), 'a fila diz de qual marca/número veio');
 igual((await um('select public.wa_fila_atualizar($1, $2, $3) r', [fila[0].id, 'resolvido', 'Bruno'])).r, true, 'atender/resolver atualiza a fila');
 igual((await um('select public.wa_fila_atualizar($1, $2, $3) r', [fila[0].id, 'novo', 'Bruno'])).r, false, 'não volta para "novo" por aqui');
+
+// ─── P0-34: seis gatilhos. SAIR ganha. Cancelar sozinho não vira reclamação. ──
+const D = '5511900002222';
+const linha = async (id: string, texto: string, tel = D) => {
+  const r = await entrada([{ id, telefone: tel, tipo: 'text', texto, ts: agoraUnix() }]);
+  const row = await um('select estado, motivo from public.wa_entrada where wa_message_id = $1', [id]);
+  return { r, row };
+};
+const p1 = await linha('wamid.P03401', 'Consegue fazer por 20 reais por mês?');
+igual([p1.row.estado, p1.row.motivo, p1.r.humano], ['humano', 'preco', 1], 'gatilho 1 preço cai em humano e não responde pelo banco');
+const p2 = await linha('wamid.P03402', 'Me manda o contrato e a nota fiscal.', '5511900003333');
+igual([p2.row.estado, p2.row.motivo], ['humano', 'contrato'], 'gatilho 2 contrato');
+const p3 = await linha('wamid.P03403', 'Vou no Procon. Isso foi um absurdo.', '5511900004444');
+igual([p3.row.estado, p3.row.motivo], ['humano', 'reclamacao'], 'gatilho 3 reclamação');
+const segredo = 'teste-falso-000';
+const p4 = await linha('wamid.P03404', `Segue a senha do meu banco: ${segredo}.`, '5511900005555');
+igual([p4.row.estado, p4.row.motivo], ['humano', 'dado'], 'gatilho 4 dado');
+ok(!JSON.stringify(p4.r).includes(segredo), 'o retorno do registro não repete o segredo');
+const p5 = await linha('wamid.P03405', 'Você é robô?', '5511900006666');
+igual([p5.row.estado, p5.row.motivo], ['humano', 'ia'], 'gatilho 5 marca ia; a frase fica no worker, não no banco');
+const p6a = await linha('wamid.P03406', 'qual o prazo da peça que ainda não existe?', '5511900007777');
+igual([p6a.row.estado, p6a.row.motivo], ['novo', null], 'gatilho 6: a primeira fica novo');
+const p6b = await linha('wamid.P03407', 'então, qual é o prazo?', '5511900007777');
+igual([p6b.row.estado, p6b.row.motivo], ['humano', 'incerteza'], 'gatilho 6: a segunda para');
+const pSair = await linha('wamid.P03408', 'SAIR. Vou no Procon.', '5511900008888');
+igual([pSair.row.estado, pSair.row.motivo, pSair.r.saiu], ['saiu', null, 1], 'SAIR ganha da reclamação');
+const pCanc = await linha('wamid.P03409', 'Cancelar', '5511900009999');
+igual([pCanc.row.estado, pCanc.row.motivo, pCanc.r.saiu], ['novo', null, 0], 'Cancelar sozinho não é SAIR nem reclamação');
+const idHumano = (await um("select id from public.wa_entrada where wa_message_id = 'wamid.P03401'")).id;
+ok((await q('select estado from public.wa_fila_entrada(200) where id = $1', [idHumano]))[0].estado === 'humano', 'humano aparece na fila');
+igual((await um('select public.wa_fila_atualizar($1, $2, $3) r', [idHumano, 'em_atendimento', 'Igor'])).r, true, 'humano passa para atendimento');
 
 // ─── segredos e fechamento das tabelas ────────────────────────────────────────
 await db.exec(`insert into vault.decrypted_secrets values ('wa_app_secret','s1'), ('wa_envio_token','s2'), ('wa_aprovacao_token','s3'), ('wa_access_token','tok')`);

@@ -31,6 +31,8 @@ import { SeletorTema } from '../components/SeletorTema';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
 import { usePermissao } from '../hooks/usePermissao';
 import { usePlano } from '../hooks/usePlano';
+import { useAvisoLimiteAntigas } from '../hooks/useAvisoLimiteAntigas';
+import { AvisoLimiteAntigas } from '../components/AvisoLimiteAntigas';
 import { useVerticais } from '../hooks/useVerticais';
 import type { VerticalId } from '../services/verticais';
 import { haCalculoParaOficio } from '../services/calculosOficio';
@@ -277,6 +279,7 @@ export default function ContaScreen() {
   );
   // Frente 2 — plano atual: pagante não vê propaganda; vê "Sua assinatura".
   const { plano, carregando: carregandoPlano, temAcesso } = usePlano();
+  const avisoAntigas = useAvisoLimiteAntigas();
   // Enquanto plano ou conta carregam PELA PRIMEIRA VEZ, o card não se decide: o hook
   // nasce em 'gratis' e o pagante via o anúncio do PRO piscar antes do "Sua
   // assinatura". Só a 1ª leitura: usePlano/useTipoConta voltam a `carregando` a cada
@@ -927,6 +930,11 @@ export default function ContaScreen() {
           <Text style={styles.screenTitle} accessibilityRole="header">Conta</Text>
           <BotaoComoFunciona tela="conta" style={styles.ajudaBtn} />
           <OlliMascot size={34} onDark />
+        </View>
+
+        {/* Conta ANTIGA, antes do limite do Grátis (D+30): aviso dispensável 1 vez; sinal do servidor. */}
+        <View style={{ marginHorizontal: Spacing.base, marginBottom: Spacing.sm }}>
+          <AvisoLimiteAntigas estado={avisoAntigas.estado} onDispensar={avisoAntigas.dispensar} />
         </View>
 
         {/* Dica do momento (roteiro I5): 30 dias de uso → backup ligado. Só para quem

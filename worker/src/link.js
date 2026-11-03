@@ -37,6 +37,7 @@
  *    nunca mostra o Pix sem confirmar, nem finge que não existe.
  */
 import { gerarPixCopiaECola, normalizarChavePix, pixCopiaEColaValido } from '../../src/utils/pixBrCode.ts';
+import { FONTES_CSS } from './fontesProprias.js';
 import { qrSvg } from '../../src/utils/qrcode.ts';
 import { seloOlliHtml } from '../../src/utils/marcaOlli.ts';
 import { RECURSO_REMOVE_MARCA, temAcessoRecurso } from '../../src/services/entitlements.ts';
@@ -101,7 +102,7 @@ function html(body, status = 200) {
       // Defesa em profundidade: mesmo com todo dado escapado, o CSP barra
       // exfiltração externa. A página usa <script>/<style> inline + Google Fonts.
       'Content-Security-Policy':
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src https://olliorcamentos.online; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'",
     },
   });
 }
@@ -852,9 +853,7 @@ function shell(inner, accentRaw = ACCENT, mostrarSelo = true, og = '') {
 <meta name="robots" content="noindex, nofollow"/>
 ${og}
 <title>Orçamento · OLLI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@600;700&display=swap" rel="stylesheet">
+<style>${FONTES_CSS}</style>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EAEEF3;color:#1A2230;-webkit-font-smoothing:antialiased;padding:24px 14px 48px}
