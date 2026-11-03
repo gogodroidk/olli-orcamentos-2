@@ -14,9 +14,9 @@ import type { LegalDoc } from './privacidade';
 
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
-  atualizadoEm: '2 de outubro de 2026',
+  atualizadoEm: '2 de novembro de 2026',
   aviso:
-    'Documento atualizado em 2 de outubro de 2026. Ao criar uma conta ou usar o OLLI, ' +
+    'Documento atualizado em 2 de novembro de 2026. Ao criar uma conta ou usar o OLLI, ' +
     'você concorda com estes Termos e com a Política de Privacidade.',
   intro: [
     'Estes Termos regulam o uso do aplicativo OLLI, uma ferramenta de gestão para ' +
@@ -26,8 +26,7 @@ export const TERMOS: LegalDoc = {
     'Se você usa o OLLI em nome de uma empresa, declara ter poderes para aceitar ' +
       'estes Termos em nome dela. Se não concordar com algum ponto, não utilize o app.',
     'O OLLI é fornecido por OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA, CNPJ ' +
-      '65.361.266/0001-05, com sede na Rua Henrique Perdigão, 350, Jardim Ipanema ' +
-      '(Cidade Líder), São Paulo/SP, CEP 03582-110.',
+      '65.361.266/0001-05.',
   ],
   secoes: [
     {

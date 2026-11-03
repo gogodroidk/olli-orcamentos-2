@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '26 de outubro de 2026',
+  atualizadoEm: '2 de novembro de 2026',
   aviso:
-    'Documento atualizado em 26 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 2 de novembro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -68,8 +68,7 @@ export const PRIVACIDADE: LegalDoc = {
       titulo: '1. Quem é o controlador dos dados',
       paragrafos: [
         'O OLLI é operado por OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA, CNPJ ' +
-          '65.361.266/0001-05, com sede na Rua Henrique Perdigão, 350, Jardim Ipanema ' +
-          '(Cidade Líder), São Paulo/SP, CEP 03582-110 ("OLLI", "nós"). Somos o ' +
+          '65.361.266/0001-05 ("OLLI", "nós"). Somos o ' +
           'controlador dos dados necessários para criar e manter a sua conta, processar ' +
           'a sua assinatura e operar o aplicativo.',
         'Para dúvidas sobre privacidade, exercício de direitos ou para falar com o canal ' +
