@@ -30,6 +30,7 @@
  * Qualquer falha vira um estado honesto com "Tentar de novo" e o WhatsApp como
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
+import { registrarEtapaAtivacao } from "@/store/userStore";
 import { AlertTriangle, Check, Clock, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -132,6 +133,11 @@ export default function Planos() {
 	const [pixAberto, setPixAberto] = useState<{ plano: "pro" | "empresa"; periodo: PeriodoCobranca } | null>(null);
 
 	const carregarOferta = () => ofertaQ.refetch();
+
+	// Funil de receita: quem chega a ver o preço (1 vez por sessão da página).
+	useEffect(() => {
+		void registrarEtapaAtivacao("planos_visto");
+	}, []);
 
 	useEffect(() => {
 		let ativo = true;
@@ -340,11 +346,17 @@ export default function Planos() {
 						carregando={checkout.plano === p.id && checkout.carregando}
 						erro={checkout.plano === p.id ? checkout.erro : null}
 						aoAssinar={() => {
-							if (p.id === "pro" || p.id === "empresa") assinar(p.id);
+							if (p.id === "pro" || p.id === "empresa") {
+								void registrarEtapaAtivacao("plano_pagar_clicado");
+								assinar(p.id);
+							}
 						}}
 						pixDisponivel={pixLigado}
 						aoPagarComPix={() => {
-							if (p.id === "pro" || p.id === "empresa") setPixAberto({ plano: p.id, periodo });
+							if (p.id === "pro" || p.id === "empresa") {
+								void registrarEtapaAtivacao("plano_pagar_clicado");
+								setPixAberto({ plano: p.id, periodo });
+							}
 						}}
 					/>
 				))}
