@@ -37,8 +37,19 @@ import OlliLogo from "./OlliLogo.astro";
 interface Props {
 	variante?: "completo" | "minimal";
 	class?: string;
+	/** Só dígitos, com DDI. Padrão: WhatsApp do app. /servicos/ passa o número do segundo andar. */
+	whatsapp?: string;
+	whatsappLegivel?: string;
+	/** Linha de copyright. /servicos/ usa "OLLI" para não misturar com o app de orçamentos. */
+	marca?: string;
 }
-const { variante = "completo", class: containerClass = "max-w-7xl" } = Astro.props;
+const {
+	variante = "completo",
+	class: containerClass = "max-w-7xl",
+	whatsapp = EMPRESA.whatsapp,
+	whatsappLegivel = EMPRESA.whatsappLegivel,
+	marca = "OLLI Orçamentos",
+} = Astro.props;
 
 const APP_URL = "https://app.olliorcamentos.online";
 const ano = new Date().getFullYear();
@@ -54,7 +65,7 @@ const CONSULTA_CNPJ =
  */
 const empresa = identidadePublicavel();
 const emailContato = emailContatoPublicavel();
-const whatsappUrl = `https://wa.me/${EMPRESA.whatsapp}`;
+const whatsappUrl = `https://wa.me/${whatsapp}`;
 
 /**
  * `text-slate` (#475569), NÃO `text-muted` (#64748b): medido sobre `bg-paper`
@@ -80,7 +91,7 @@ const CLASSE_LEGAL = "text-slate";
           <a href="/admin/" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Área administrativa</a>
           <a href={APP_URL} class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Entrar</a>
         </div>
-        <p class="text-sm text-muted">© {ano} OLLI Orçamentos</p>
+        <p class="text-sm text-muted">© {ano} {marca}</p>
       </div>
 
       {/* Os 6 ofícios: é daqui que /ajuda/, /legal/* e a 404 passam a alcançar —
@@ -103,7 +114,7 @@ const CLASSE_LEGAL = "text-slate";
           <span> · </span>
           <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center underline-offset-2 transition hover:text-brand-fg hover:underline">Conferir na Receita Federal</a>
           <br />
-           <a href={whatsappUrl} class="inline-flex min-h-11 items-center transition hover:text-brand-fg">WhatsApp {EMPRESA.whatsappLegivel}</a>
+           <a href={whatsappUrl} class="inline-flex min-h-11 items-center transition hover:text-brand-fg">WhatsApp {whatsappLegivel}</a>
           {emailContato && (
             <>
               <span> · </span>
@@ -119,7 +130,7 @@ const CLASSE_LEGAL = "text-slate";
     <div class={`mx-auto ${containerClass} px-6 py-8`}>
       <div class="flex flex-col items-center justify-between gap-3 text-sm text-muted sm:flex-row">
         <a href="/" class="inline-flex min-h-11 items-center hover:text-brand-fg">← Voltar para o início</a>
-        <p>© {ano} OLLI Orçamentos</p>
+        <p>© {ano} {marca}</p>
       </div>
 
       {/* A segunda linha que faltava nas 7 páginas de conversão. Uma linha,
