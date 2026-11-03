@@ -153,6 +153,16 @@ export const AVISO_EXEMPLO =
 export const TITULO_PRIMEIRO_ORCAMENTO = 'Seu primeiro orçamento em 1 minuto';
 
 /**
+ * Corpo do cartão quando o exemplo do ofício existe. Uma frase só, no app e no
+ * painel: o gancho é a pessoa que pediu preço, não a palavra "cliente".
+ * Não promete prazo de conserto nem preço de plano. O total já vem formatado
+ * pela tela (`formatCurrency` no app, `formatBRL` no painel).
+ */
+export function fraseDoPrimeiroCliente(servico: string, totalFormatado: string): string {
+  return `Preparamos um exemplo de ${servico} (${totalFormatado}). Pense em quem te pediu preço esta semana: ponha o nome e os valores dele e envie.`;
+}
+
+/**
  * O exemplo do ofício. `undefined` (conta sem ofício) devolve `null`: a tela
  * PERGUNTA o ofício em 1 toque, em vez de chutar um — o exemplo de ar-condicionado
  * na tela de um pintor é exatamente a sensação de "isso não é pra mim".

@@ -18,7 +18,7 @@ import { usePermissao } from '../hooks/usePermissao';
 import { useSyncInicial } from '../hooks/useSyncInicial';
 import {
   AVISO_EXEMPLO, STATUS_JA_ENVIADO, TITULO_PRIMEIRO_ORCAMENTO,
-  calcularChecklistAtivacao, contaMadura, exemploOrcamentoPara, fatosDaEmpresa, itensPrefillDoExemplo,
+  calcularChecklistAtivacao, contaMadura, exemploOrcamentoPara, fatosDaEmpresa, fraseDoPrimeiroCliente, itensPrefillDoExemplo,
   mostrarCartaoPrimeiroOrcamento, totalDoExemplo, verticalDoExemplo,
   type ChecklistAtivacao, type PassoAtivacaoId,
 } from '../services/ativacao';
@@ -208,7 +208,7 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
                 <Text style={styles.titulo} accessibilityRole="header">{TITULO_PRIMEIRO_ORCAMENTO}</Text>
                 <Text style={styles.texto}>
                   {exemplo
-                    ? `Preparamos um exemplo de ${exemplo.titulo.toLowerCase()} (${formatCurrency(totalDoExemplo(exemplo))}). Troque o cliente e os valores pelos seus e envie.`
+                    ? fraseDoPrimeiroCliente(exemplo.titulo.toLowerCase(), formatCurrency(totalDoExemplo(exemplo)))
                     : 'Qual é o seu ofício? Com um toque, preparamos um orçamento de exemplo do seu serviço.'}
                 </Text>
               </View>

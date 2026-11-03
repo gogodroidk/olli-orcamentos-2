@@ -4,6 +4,7 @@ import {
 	calcularChecklistAtivacao,
 	exemploOrcamentoPara,
 	fatosDaEmpresa,
+	fraseDoPrimeiroCliente,
 	itensPrefillDoExemplo,
 	mostrarCartaoPrimeiroOrcamento,
 	type PassoAtivacaoId,
@@ -126,7 +127,7 @@ export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 							<h2 className="text-base font-semibold text-text-primary">{TITULO_PRIMEIRO_ORCAMENTO}</h2>
 							<p className="mt-0.5 text-sm text-text-secondary">
 								{exemplo
-									? `Preparamos um exemplo de ${exemplo.titulo.toLowerCase()} (${formatBRL(totalDoExemplo(exemplo))}). Troque o cliente e os valores pelos seus e envie.`
+									? fraseDoPrimeiroCliente(exemplo.titulo.toLowerCase(), formatBRL(totalDoExemplo(exemplo)))
 									: "Qual é o seu ofício? Com um clique, preparamos um orçamento de exemplo do seu serviço."}
 							</p>
 						</div>
