@@ -56,6 +56,7 @@ import { VERTICAL_PARA_SEGMENTO } from "@vertical-segmento";
 import { ferramentasSugeridas, VERTICAIS, VERTICAL_GERAL, type VerticalId } from "@verticais";
 import { oficioEscolhidoLembrado, semearComOficio } from "@/olli/oficioEscolhido";
 import { supabase } from "@/lib/supabase";
+import { OfertaIdentidade } from "./OfertaIdentidade";
 import { applyBrandColor } from "@/olli/branding";
 import { Campo, CampoMascarado, cnpjValido, cpfValido } from "@/olli/components/campos";
 import { useMinhaEmpresa } from "@/olli/data";
@@ -1000,6 +1001,8 @@ export default function MeuNegocio() {
 						</div>
 					</div>
 				</Bloco>
+
+				<OfertaIdentidade temLogo={Boolean(form.logoUri)} bloqueado={bloqueado} />
 
 				{/* ───────────────  CONTATO  ─────────────── */}
 				<Bloco titulo="Contato" descricao="Como o cliente encontra e fala com a sua empresa.">

@@ -540,6 +540,28 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           </Text>
         </View>
 
+        <TouchableOpacity
+          style={styles.ofertaCard}
+          onPress={() => nav.navigate('IdentidadeUpsell')}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Ver a oferta de identidade visual à parte. Nada é cobrado nesta tela."
+        >
+          <View style={[styles.ofertaIcon, { backgroundColor: cores.primary }]}>
+            <MaterialCommunityIcons name="palette-swatch-outline" size={22} color={textoSobre(cores.primary)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.ofertaTitulo}>Identidade visual à parte</Text>
+            <Text style={styles.ofertaTexto}>
+              {empresa.logoUri
+                ? 'Identidade completa e arte da camiseta são um serviço extra, fora do plano.'
+                : 'Sem logo ainda. A OLLI desenha logo, identidade e a arte da camiseta, fora do plano.'}
+              {' '}Nada é cobrado nesta tela.
+            </Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={22} color={cores.primary} />
+        </TouchableOpacity>
+
         {/* DADOS */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Dados da empresa</Text>
@@ -910,6 +932,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // (ver `textoSobreAccent` no componente), correto pra qualquer cor de marca.
   segChipTextActive: { color: textoSobre(c.accentLight) },
   aiBrandCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.accentLight + '55', borderRadius: BorderRadius.lg, padding: 13, marginBottom: Spacing.base },
+  ofertaCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.outline, ...sombrasDe(c).sm },
+  ofertaIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  ofertaTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface },
+  ofertaTexto: { fontSize: 12, lineHeight: 17, color: c.onSurfaceVariant, marginTop: 2 },
   aiBrandIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accentLight },
   aiBrandTitle: { fontSize: 14, fontWeight: '800', color: c.onSurface },
   aiBrandHint: { fontSize: 11.5, lineHeight: 16, color: c.onSurfaceVariant, marginTop: 2 },
