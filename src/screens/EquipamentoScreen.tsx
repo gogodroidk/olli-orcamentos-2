@@ -22,6 +22,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
 import { useVerticais } from '../hooks/useVerticais';
+import { resolverTipoEquipamento } from '../services/tiposEquipamentoDiagnostico';
 // Contrato da FRENTE A — ÚNICA superfície de import desta frente (além de types).
 import {
   getEquipamentos,
@@ -630,6 +631,19 @@ function DetalheEquipamento({
     nav.navigate('Diagnostico', { equipamentoId });
   }
 
+  // A base de códigos continua de ar-condicionado. A IA recebe a família
+  // (split → ar-condicionado, câmara → câmara fria, "outro" não vira split).
+  function abrirDiagnosticoIa() {
+    if (!eq) return;
+    vibrar('selecao');
+    onFechar();
+    nav.navigate('DiagnosticoIA', {
+      marca: eq.fabricante,
+      modelo: eq.modelo,
+      tipoEquipamento: resolverTipoEquipamento(eq.categoria).id,
+    });
+  }
+
   const carregar = useCallback(async () => {
     setCarregando(true);
     const e = await getEquipamento(equipamentoId);
@@ -913,6 +927,16 @@ function DetalheEquipamento({
                   fullWidth
                   onPress={abrirDiagnostico}
                   icon={<MaterialCommunityIcons name="card-search-outline" size={20} color={cores.primary} />}
+                />
+              ) : null}
+              {mostraHvac ? (
+                <OlliButton
+                  label="Diagnóstico do aparelho"
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  onPress={abrirDiagnosticoIa}
+                  icon={<MaterialCommunityIcons name="robot-happy-outline" size={20} color={cores.primary} />}
                 />
               ) : null}
               <OlliButton

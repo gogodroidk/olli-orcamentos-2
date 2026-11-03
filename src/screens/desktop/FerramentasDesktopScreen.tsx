@@ -42,7 +42,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
   return [
     { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: c.accentLight, route: 'OlliVoz' },
     { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: c.primaryLight, route: 'OlliChat' },
-    { key: 'diagnosticoIA', icon: 'robot-outline', label: 'Diagnóstico IA', desc: 'Descreva o defeito, a OLLI ajuda', color: c.accentLight, route: 'DiagnosticoIA', verticalHvac: true },
+    { key: 'diagnosticoIA', icon: 'robot-outline', label: 'Diagnóstico IA', desc: 'Ar, geladeira, TV, lavadora e outros', color: c.accentLight, route: 'DiagnosticoIA', verticalHvac: true },
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: c.warning, route: 'CalculadoraTinta', vertical: 'pintura' },
     { key: 'anvisa', icon: 'file-certificate-outline', label: 'Comprovante de controle de pragas', desc: 'Dedetização · RDC 622/2022, art. 19', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },
