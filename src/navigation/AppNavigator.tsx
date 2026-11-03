@@ -209,8 +209,9 @@ export type RootStackParamList = {
   Pmoc: undefined;
   PmocPlano: { id: string };
   // Contratos recorrentes por ativo (lista + criar/editar). Sem id = contrato novo.
+  // `copiarDe` abre um contrato novo, pausado, copiado daquele id — não edita o original.
   Contratos: undefined;
-  Contrato: { id?: string } | undefined;
+  Contrato: { id?: string; copiarDe?: string } | undefined;
   // ─── Frentes novas ────────────────────────────────────────────────────────
   // Landing pública (web deslogado) — full-bleed, sem wrap desktop nem path.
   Landing: undefined;
