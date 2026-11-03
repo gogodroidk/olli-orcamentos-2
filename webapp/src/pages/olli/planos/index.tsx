@@ -69,6 +69,8 @@ import { TRIAL_PRO_DIAS } from "@limites-comerciais";
 import { lerIntencaoPlano } from "@/olli/plano-intent";
 import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
 import { comecarTesteProComAviso, opcoesOfertaComercial } from "./useLembreteAssinatura";
+import { AudioIaPrototipo } from "./AudioIaPrototipo";
+import { planosAudioIaLigada } from "../../../../../src/services/planosAudioIa";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -392,6 +394,9 @@ export default function Planos() {
 				) : null}{" "}
 				Se precisar de ajuda, o WhatsApp continua disponível.
 			</p>
+
+			{/* D1438-G20: protótipo de áudio. Flag apagada = este bloco não monta. */}
+			{planosAudioIaLigada(import.meta.env.VITE_PLANOS_AUDIO_IA as string | undefined) ? <AudioIaPrototipo /> : null}
 		</div>
 	);
 }

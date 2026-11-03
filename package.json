@@ -242,6 +242,7 @@
     "test:conta-excluir-mp": "node scripts/teste-conta-excluir-mp.ts",
     "test:planos-ios": "node scripts/teste-planos-ios.ts",
     "test:planos-fonte": "node scripts/teste-planos-fonte.ts",
+    "test:planos-audio-ia": "node scripts/teste-planos-audio-ia.ts",
     "test:denuncia-ia": "node scripts/teste-denuncia-ia.ts",
     "test:assinatura-cliente": "node scripts/teste-assinatura-cliente.ts",
     "test:eta-saida": "node scripts/teste-eta-saida.ts",
