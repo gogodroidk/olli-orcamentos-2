@@ -54,6 +54,7 @@ registerHooks({
 const {
   gerarHtmlContrato,
   termosPadraoContrato,
+  linhasDeClausulas,
   MULTA_ATRASO_PADRAO,
   JUROS_MES_PADRAO,
   AVISO_PREVIO_PADRAO,
@@ -699,6 +700,12 @@ checar('sem cor no orçamento, cai na cor da empresa', corDoHtml(gerarHtmlTermoG
 // A cor segue validada antes de entrar no <style> — A-4 não pode afrouxar XSS.
 const corVenenosa: any = { ...ORCAMENTO, corMarca: 'red;}body{display:none' };
 checar('cor de orçamento inválida não entra no <style> do termo', gerarHtmlTermoGarantia(dadosGarantiaDeOrcamento(corVenenosa, EMPRESA), EMPRESA, SEM_IMAGENS).includes('display:none'), false);
+
+const vista = linhasDeClausulas(termosPadraoContrato(ORCAMENTO, EMPRESA, { clausulasExtras: 'Acesso das 8h às 18h.', multaAtrasoPercent: 50 }));
+checar('a vista mostra a garantia combinada neste orçamento', vista.find((l: { titulo: string; texto: string }) => l.titulo === 'Da garantia')?.texto, '1 (um) ano sobre a instalação.');
+checar('a vista da multa respeita o teto do CDC', vista.find((l: { titulo: string; texto: string }) => l.titulo === 'Do atraso no pagamento')?.texto.includes('2%') === true, true);
+checar('a vista inclui a cláusula complementar', vista.some((l: { texto: string }) => l.texto.includes('Acesso das 8h às 18h.')), true);
+checar('sem texto complementar, a vista não inventa a cláusula', linhasDeClausulas(termosPadraoContrato(ORCAMENTO, EMPRESA)).some((l: { titulo: string }) => l.titulo === 'Das disposições complementares'), false);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);
