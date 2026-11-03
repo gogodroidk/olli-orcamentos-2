@@ -536,7 +536,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             })}
           </View>
           <Text style={[styles.segHint, { marginBottom: 0, marginTop: 6 }]}>
-            Essa cor vira o padrão dos seus documentos novos. O orçamento guarda a identidade usada para não mudar depois de enviado.
+            Essa cor vira o padrão dos seus documentos novos. Se ela for clara demais para texto branco, o PDF escurece só o necessário. O orçamento guarda a identidade usada para não mudar depois de enviado.
           </Text>
         </View>
 

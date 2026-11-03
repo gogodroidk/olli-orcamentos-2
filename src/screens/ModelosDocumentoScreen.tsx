@@ -27,6 +27,8 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { todayISO, nowISO } from '../utils/date';
+import { corMarcaSobre } from '../utils/coresMarca';
+import { safeHexColor } from '../utils/html';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -147,6 +149,8 @@ export default function ModelosDocumentoScreen() {
   const [exemploDoc, setExemploDoc] = useState<TipoDocumento | null>(null);
   const [gerarDoc, setGerarDoc] = useState<TipoDocumento | null>(null);
   const [editorAberto, setEditorAberto] = useState(false);
+  const corAmostra = safeHexColor(empresa?.corMarca ?? cores.primary, cores.primary);
+  const corIcone = corMarcaSobre(corAmostra, cores.surface);
 
   useFocusEffect(useCallback(() => {
     (async () => {
@@ -261,8 +265,8 @@ export default function ModelosDocumentoScreen() {
             accessibilityRole="button"
             accessibilityLabel="Editar logo, cor e assinatura da empresa"
           >
-            <View style={[styles.iconChip, { backgroundColor: comAlfa(empresa?.corMarca ?? cores.primary, 0.16) }]}>
-              <MaterialCommunityIcons name="image-edit-outline" size={24} color={empresa?.corMarca ?? cores.primary} />
+            <View style={[styles.iconChip, { backgroundColor: comAlfa(corAmostra, 0.16) }]}>
+              <MaterialCommunityIcons name="image-edit-outline" size={24} color={corIcone} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.nome}>Logo, cor e assinatura</Text>

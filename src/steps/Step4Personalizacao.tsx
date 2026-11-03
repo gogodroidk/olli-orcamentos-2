@@ -23,6 +23,8 @@ import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { exigirCadastroParaEnviar } from '../services/exigirCadastro';
+import { corMarcaSobre } from '../utils/coresMarca';
+import { safeHexColor } from '../utils/html';
 
 interface Props {
   orc: Orcamento;
@@ -97,7 +99,8 @@ export default function Step4Personalizacao({ orc, onChange, empresa, onAjustarD
 
   const modelo = PDF_MODELS.find(item => item.id === (orc.modeloPdf ?? empresa?.modeloPdfPadrao ?? 'editorial'))
     ?? PDF_MODELS[0];
-  const corDocumento = orc.corMarca ?? empresa?.corMarca ?? cores.primary;
+  const corAmostra = safeHexColor(orc.corMarca ?? empresa?.corMarca ?? cores.primary, cores.primary);
+  const corIcone = corMarcaSobre(corAmostra, cores.surface);
 
   async function abrirPreview() {
     setCarregandoPreview(true);
@@ -163,15 +166,15 @@ export default function Step4Personalizacao({ orc, onChange, empresa, onAjustarD
         Modelo, cor, logo e identidade ficam centralizados em Conta › Modelos de documento. Este orçamento guarda uma cópia do padrão usado para não mudar depois de enviado.
       </Text>
       <View style={styles.brandCard}>
-        <View style={[styles.modelIcon, { backgroundColor: comAlfa(corDocumento, 0.12), borderColor: comAlfa(corDocumento, 0.32) }]}>
-          <MaterialCommunityIcons name={modelo.icon} size={25} color={corDocumento} />
+        <View style={[styles.modelIcon, { backgroundColor: comAlfa(corAmostra, 0.12), borderColor: comAlfa(corAmostra, 0.32) }]}>
+          <MaterialCommunityIcons name={modelo.icon} size={25} color={corIcone} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.brandEyebrow}>Padrão aplicado</Text>
           <Text style={styles.brandName}>{orc.modeloNome || modelo.nome}</Text>
           <Text style={styles.brandDetail}>{empresa?.nome || 'Sua empresa'} · identidade salva</Text>
         </View>
-        <View style={[styles.colorDot, { backgroundColor: corDocumento }]} accessibilityLabel="Cor da marca aplicada" />
+        <View style={[styles.colorDot, { backgroundColor: corAmostra }]} accessibilityLabel="Cor da marca aplicada" />
       </View>
       <View style={styles.previewActions}>
         <OlliButton
@@ -314,7 +317,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   brandEyebrow: { fontSize: 10.5, fontWeight: '800', color: c.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.4 },
   brandName: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginTop: 1 },
   brandDetail: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 2 },
-  colorDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: c.surface },
+  colorDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: c.outlineDark },
   previewActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 9, marginBottom: Spacing.lg },
   switchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,

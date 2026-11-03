@@ -1,6 +1,7 @@
 import { qrSvg } from './qrcode.ts';
 import { urlEtiqueta } from './qrEtiqueta.ts';
 import { footerSeloOlliHtml } from './marcaOlli.ts';
+import { corMarcaNoPapel } from './coresMarca.ts';
 
 /**
  * etiquetaQrPdf.ts — gera a ETIQUETA física do QR para colar na máquina.
@@ -87,10 +88,6 @@ export function logoSegura(uri?: string | null): string | null {
   return /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(uri) ? uri : null;
 }
 
-function corSegura(c?: string): string {
-  return c && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c) ? c : '#0B6FCE';
-}
-
 /** Código curto legível para conferência humana (fallback do QR danificado). */
 export function codigoCurto(qrToken: string): string {
   return qrToken.slice(-8).toUpperCase();
@@ -155,7 +152,7 @@ function css(cor: string): string {
 function paginaHtml(labels: string, tituloDoc: string, o: OpcoesEtiqueta): string {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width, initial-scale=1">` +
-    `<title>${esc(tituloDoc)}</title><style>${css(corSegura(o.corMarca))}</style></head><body>` +
+    `<title>${esc(tituloDoc)}</title><style>${css(corMarcaNoPapel(o.corMarca))}</style></head><body>` +
     `<div class="grid">${labels}</div>` +
     `<div class="rodape">Recorte na linha tracejada. Dica: cubra a etiqueta com fita transparente ou plastifique para durar no equipamento.</div>` +
     (o.removerMarca ? '' : `<div class="selo">${footerSeloOlliHtml()}</div>`) +
