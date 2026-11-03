@@ -1,3 +1,4 @@
+import { track, Eventos } from './analytics';
 import { supabase } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
 
@@ -85,6 +86,7 @@ export async function criarPixPlano(plano: PlanoPixKey): Promise<CobrancaPixPlan
     const d = await r.json();
     if (d?.ok !== true || typeof d.id !== 'string' || typeof d.brCode !== 'string' || !d.brCode) return null;
     if (!d.plano || typeof d.plano.valor !== 'number' || typeof d.plano.meses !== 'number') return null;
+    track(Eventos.pixGerado); // funil: só o nome do evento (sem plano, valor ou id)
     return {
       id: d.id,
       brCode: d.brCode,
