@@ -7,6 +7,7 @@ import { footerSeloOlliHtml, DEFAULT_ACCENT } from './pdfGenerator';
 import { ajustarParaContraste } from '../theme/cores';
 import { normalizarChavePix } from './pixBrCode';
 import { formatarNumeroExibicao } from './numeroDocumento';
+import { CAIXA_LOGO_RECIBO, siteParaDocumento, tagImgLogo } from './identidadeVisual';
 
 /** Normaliza para #RRGGBB — `safeHexColor` aceita 3 dígitos, e `${cor}0F` (o tint
  *  do PIX) só é CSS válido com 6 dígitos (#RRGGBBAA). Sem isso o fundo do PIX some. */
@@ -72,6 +73,7 @@ export async function montarHtmlRecibo(
   const empresaEspecialidade = escapeHtml(empresa.especialidade);
   const empresaCnpj = escapeHtml(empresa.cnpj);
   const empresaTelefone = escapeHtml(empresa.telefone);
+  const empresaSite = escapeHtml(siteParaDocumento(empresa.site));
   const empresaPrestador = escapeHtml(empresa.nomePrestador);
   // Chave Pix normalizada (mesma regra fail-closed do resto do app): a máscara que o
   // prestador digitou ("(11) 98888-7777", CPF com dígito errado) não vai pro papel.
@@ -134,9 +136,9 @@ export async function montarHtmlRecibo(
 <div class="page">
   <div class="header">
     <div>
-      ${logoData ? `<img src="${escapeHtml(logoData)}" class="brand-logo" />` : ''}
+      ${tagImgLogo(logoData ? escapeHtml(logoData) : '', 'brand-logo', CAIXA_LOGO_RECIBO)}
       <div class="empresa-nome">${empresaNome}</div>
-      <div class="empresa-info">${empresaEspecialidade}<br/>CNPJ: ${empresaCnpj}<br/>${empresaTelefone}</div>
+      <div class="empresa-info">${empresaEspecialidade}<br/>CNPJ: ${empresaCnpj}<br/>${empresaTelefone}${empresaSite ? `<br/>${empresaSite}` : ''}</div>
     </div>
     <div class="empresa-info" style="text-align:right">Documento gerado em<br/>${formatDateTime(r.criadoEm)}</div>
   </div>
@@ -185,7 +187,7 @@ export async function montarHtmlRecibo(
     </div>
   </div>
 
-  <div class="footer">${empresaNome} · CNPJ: ${empresaCnpj} · ${empresaTelefone}</div>
+  <div class="footer">${empresaNome} · CNPJ: ${empresaCnpj} · ${empresaTelefone}${empresaSite ? ` · ${empresaSite}` : ''}</div>
   ${opts?.removerMarca === true ? '' : `<div class="footer-seal">${footerSeloOlliHtml('recibo')}</div>`}
 </div>
 </body>

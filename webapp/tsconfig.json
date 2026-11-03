@@ -90,7 +90,10 @@
 			"@atribuicao": ["../web/src/lib/atribuicao.ts"],
 			"@meta-pixel": ["../web/src/lib/metaPixel.ts"],
 			"@consentimento": ["../web/src/lib/consentimento.ts"],
-			"@google-tag": ["../web/src/lib/googleTag.ts"]
+			"@google-tag": ["../web/src/lib/googleTag.ts"],
+			// IDENTIDADE VISUAL — site próprio, link de avaliação do Google, recorte e
+			// a caixa em px da logo no PDF. A MESMA regra do app. Módulo puro, zero imports.
+			"@identidade-visual": ["../src/utils/identidadeVisual.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

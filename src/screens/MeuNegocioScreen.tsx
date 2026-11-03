@@ -32,6 +32,7 @@ import { track, Eventos } from '../services/analytics';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
 import { imagemEscolhidaParaDataUri } from '../utils/imagemPortatil';
+import { normalizarLinkAvaliacaoGoogle, normalizarSiteProprio } from '../utils/identidadeVisual';
 import { camposPendentesPerfil, completarPerfilDeduzido, juntarPendentes, ROTULO_CAMPO_PERFIL } from '../services/perfilOperacional';
 import { isValidCNPJ } from '../utils/masks';
 import { normalizarChavePix } from '../utils/pixBrCode';
@@ -250,10 +251,26 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
       Alert.alert('CNPJ inválido', 'Confira os números antes de salvar.');
       return;
     }
+    const site = normalizarSiteProprio(empresa.site);
+    if (!site.ok) {
+      Alert.alert('Site próprio', site.erro);
+      return;
+    }
+    const google = normalizarLinkAvaliacaoGoogle(empresa.linkGoogleAvaliacoes ?? '');
+    if (!google.ok) {
+      Alert.alert('Link de avaliação no Google', google.erro);
+      return;
+    }
+    const pronto = completarPerfilDeduzido({
+      ...empresa,
+      site: site.url,
+      linkGoogleAvaliacoes: google.url,
+    });
     setSalvando(true);
     try {
       // Grava também o que foi deduzido (mesma regra do contador de pendências).
-      await saveEmpresa(completarPerfilDeduzido(empresa));
+      await saveEmpresa(pronto);
+      setEmpresa(pronto);
       void registrarAtividadeUsuario('empresa_salva');
       void recarregarVerticais(); // atualiza o gate de ferramentas por ofício na hora
       vibrar('sucesso');
@@ -268,9 +285,37 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
 
   async function pickImage(field: 'logoUri' | 'assinaturaUri') {
     if (imagemProcessando) return;
+    let recortar = false;
+    let aspect: [number, number] | undefined;
+    if (field === 'logoUri') {
+      const modo = await new Promise<'inteira' | 'faixa' | 'quadrada' | null>((resolver) => {
+        Alert.alert(
+          'Como o logo entra no documento',
+          'A moldura é o que aparece no cabeçalho do PDF. A imagem inteira não corta nada.',
+          [
+            { text: 'Imagem inteira', onPress: () => resolver('inteira') },
+            { text: 'Recorte horizontal', onPress: () => resolver('faixa') },
+            { text: 'Recorte quadrado', onPress: () => resolver('quadrada') },
+            { text: 'Cancelar', style: 'cancel', onPress: () => resolver(null) },
+          ],
+        );
+      });
+      if (!modo) return;
+      if (modo === 'faixa') {
+        recortar = true;
+        aspect = [5, 2];
+      } else if (modo === 'quadrada') {
+        recortar = true;
+        aspect = [1, 1];
+      }
+    }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Permissão', 'Permita o acesso às fotos.'); return; }
-    const r = await ImagePicker.launchImageLibraryAsync({ quality: 0.9 });
+    const r = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.9,
+      allowsEditing: recortar,
+      ...(aspect ? { aspect } : {}),
+    });
     if (!r.canceled && empresa) {
       setImagemProcessando(field);
       try {
@@ -423,6 +468,9 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
     );
   }
 
+  const siteNorm = normalizarSiteProprio(empresa.site);
+  const googleNorm = normalizarLinkAvaliacaoGoogle(empresa.linkGoogleAvaliacoes ?? '');
+
   return (
     <View style={styles.container}>
       <GradientHeader title="Meu Negócio" subtitle="Aparece no cabeçalho dos seus PDFs" onBack={() => goBackOrHome(nav)} />
@@ -460,6 +508,7 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
                 )}
               </TouchableOpacity>
               <Text style={styles.brandLabel}>Logotipo</Text>
+              <Text style={styles.imageHint}>Inteira, faixa ou quadrado</Text>
             </View>
             <View style={styles.brandItem}>
               <TouchableOpacity style={styles.imageBox} onPress={() => pickImage('assinaturaUri')} disabled={!!imagemProcessando} activeOpacity={0.8}>
@@ -626,13 +675,26 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
           </View>
           <OlliInput label="Telefone" required mask="phone" value={empresa.telefone} onChangeText={v => set('telefone', v)} leftIcon="phone" />
           <OlliInput label="WhatsApp (só números)" mask="phone" value={empresa.whatsapp} onChangeText={v => set('whatsapp', v.replace(/\D/g, ''))} leftIcon="whatsapp" />
-          <OlliInput label="Site" value={empresa.site} onChangeText={v => set('site', v)} placeholder="www.suaempresa.com.br" leftIcon="web" autoCapitalize="none" />
           <OlliInput
-            label="Link do Google (avaliações)"
+            label="Site próprio"
+            value={empresa.site}
+            onChangeText={v => set('site', v)}
+            placeholder="www.suaempresa.com.br"
+            leftIcon="web"
+            autoCapitalize="none"
+            keyboardType="url"
+            error={empresa.site.trim() && !siteNorm.ok ? siteNorm.erro : undefined}
+            helper="Sai no orçamento, no recibo e no contrato. Sem http, a gente completa com https."
+          />
+          <OlliInput
+            label="Link de avaliação no Google"
             value={empresa.linkGoogleAvaliacoes ?? ''}
             onChangeText={v => set('linkGoogleAvaliacoes', v)}
-            placeholder="Link 'Escrever avaliação' do seu perfil no Google"
-            helper="Cole aqui pra liberar o botão 'Pedir avaliação' no recibo, depois do serviço."
+            placeholder="https://g.page/r/…"
+            helper={(empresa.linkGoogleAvaliacoes ?? '').trim() && googleNorm.ok
+              ? 'Link do Google reconhecido. O pedido só sai no WhatsApp, depois do serviço.'
+              : 'No Google, abra seu perfil e copie o link de escrever avaliação.'}
+            error={(empresa.linkGoogleAvaliacoes ?? '').trim() && !googleNorm.ok ? googleNorm.erro : undefined}
             leftIcon="google-maps"
             autoCapitalize="none"
             keyboardType="url"

@@ -78,7 +78,9 @@ import {
 	VALIDADES_PADRAO,
 } from "./constantes";
 import { normalizarChavePix } from "../../../../../src/utils/pixBrCode";
-import { arquivoParaLogoDataUri, LOGO_TIPOS_ACEITOS } from "./logoUpload";
+import { normalizarLinkAvaliacaoGoogle, normalizarSiteProprio, type RecortePx } from "@identidade-visual";
+import { RecorteImagem } from "@/olli/RecorteImagem";
+import { erroArquivoLogo, LOGO_TIPOS_ACEITOS, recorteParaLogoDataUri } from "./logoUpload";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 import { consultarCnpjWeb, sugerirMarcaWeb, type SugestaoMarcaWeb } from "./assistentes";
 
@@ -104,7 +106,9 @@ type Erros = Partial<
 		| "estado"
 		| "cnpj"
 		| "cpf"
-		| "email",
+		| "email"
+		| "site"
+		| "linkGoogleAvaliacoes",
 		string
 	>
 >;
@@ -125,6 +129,10 @@ function validar(f: Empresa): Erros {
 	if (f.cnpj.trim() && !cnpjValido(f.cnpj)) e.cnpj = "Esse CNPJ não existe (dígito verificador). Confira os números.";
 	if (f.cpf.trim() && !cpfValido(f.cpf)) e.cpf = "Esse CPF não existe (dígito verificador). Confira os números.";
 	if (f.email.trim() && !EMAIL.test(f.email.trim())) e.email = "E-mail inválido.";
+	const site = normalizarSiteProprio(f.site);
+	if (f.site.trim() && !site.ok) e.site = site.erro;
+	const google = normalizarLinkAvaliacaoGoogle(f.linkGoogleAvaliacoes ?? "");
+	if ((f.linkGoogleAvaliacoes ?? "").trim() && !google.ok) e.linkGoogleAvaliacoes = google.erro;
 	return e;
 }
 
@@ -180,6 +188,7 @@ export default function MeuNegocio() {
 	// processamento do canvas + ref do <input type="file"> escondido.
 	const [erroLogo, setErroLogo] = useState<string | null>(null);
 	const [processandoLogo, setProcessandoLogo] = useState(false);
+	const [arquivoLogo, setArquivoLogo] = useState<File | null>(null);
 	const inputLogoRef = useRef<HTMLInputElement | null>(null);
 	const [buscandoCnpj, setBuscandoCnpj] = useState(false);
 	const [cnpjInfo, setCnpjInfo] = useState<string | null>(null);
@@ -301,6 +310,10 @@ export default function MeuNegocio() {
 			//    conhece (assinatura, licenças, ofício, modelos de PDF…) vêm de `base` e
 			//    ficam intactas.
 			const base: Empresa = { ...empresaEmBranco(), ...(atual?.dados ?? {}) };
+			const siteNorm = normalizarSiteProprio(f.site);
+			if (!siteNorm.ok) throw new Error(siteNorm.erro);
+			const googleNorm = normalizarLinkAvaliacaoGoogle(f.linkGoogleAvaliacoes ?? "");
+			if (!googleNorm.ok) throw new Error(googleNorm.erro);
 			const dados: Empresa = {
 				...base,
 				tipoNegocio: f.tipoNegocio,
@@ -318,7 +331,7 @@ export default function MeuNegocio() {
 				estado: f.estado.trim().toUpperCase().slice(0, 2),
 				telefone: f.telefone.trim(),
 				whatsapp: f.whatsapp.trim(),
-				site: f.site.trim(),
+				site: siteNorm.url,
 				email: f.email.trim(),
 				chavePix: f.chavePix.trim(),
 				normas: f.normas.trim(),
@@ -333,7 +346,7 @@ export default function MeuNegocio() {
 			if (condicoes !== undefined) dados.condicoesPagamentoPadrao = condicoes;
 			const observacoes = opcional(f.observacoesPadrao, base.observacoesPadrao);
 			if (observacoes !== undefined) dados.observacoesPadrao = observacoes;
-			const linkGoogle = opcional(f.linkGoogleAvaliacoes, base.linkGoogleAvaliacoes);
+			const linkGoogle = opcional(googleNorm.url, base.linkGoogleAvaliacoes);
 			if (linkGoogle !== undefined) dados.linkGoogleAvaliacoes = linkGoogle;
 			// Logo: mesmo contrato dos demais opcionais — data URI novo grava por cima
 			// (inclusive do `file://` do celular: é a troca que o dono pediu), "Remover"
@@ -512,19 +525,26 @@ export default function MeuNegocio() {
 		setAssistenteAberto(false);
 	}
 
-	/** Arquivo escolhido → data URI compacta no RASCUNHO (só persiste no Salvar). */
-	async function aoEscolherLogo(e: React.ChangeEvent<HTMLInputElement>) {
+	/** Arquivo escolhido → recorte, e só então o data URI no RASCUNHO (persiste no Salvar). */
+	function aoEscolherLogo(e: React.ChangeEvent<HTMLInputElement>) {
 		const arquivo = e.target.files?.[0];
 		// Zera o input JÁ: onChange não dispara se o valor não mudar — sem isto,
 		// re-escolher o MESMO arquivo depois de um erro não faria nada.
 		e.target.value = "";
 		if (!arquivo || bloqueado) return;
-		setErroLogo(null);
+		const erro = erroArquivoLogo(arquivo);
+		setErroLogo(erro);
+		if (!erro) setArquivoLogo(arquivo);
+	}
+
+	function aplicarRecorteLogo(img: HTMLImageElement, recorte: RecortePx) {
 		setProcessandoLogo(true);
-		const resultado = await arquivoParaLogoDataUri(arquivo);
+		const resultado = recorteParaLogoDataUri(img, recorte);
 		setProcessandoLogo(false);
 		if (resultado.ok) {
 			set("logoUri", resultado.dataUri);
+			setArquivoLogo(null);
+			setErroLogo(null);
 		} else {
 			setErroLogo(resultado.erro);
 		}
@@ -571,6 +591,12 @@ export default function MeuNegocio() {
 	}
 
 	const logo = logoExibivel(form.logoUri);
+	const siteNorm = normalizarSiteProprio(form.site);
+	const googleNorm = normalizarLinkAvaliacaoGoogle(form.linkGoogleAvaliacoes ?? "");
+	const erroSite = (form.site.trim() && !siteNorm.ok ? siteNorm.erro : undefined) || erros.site;
+	const erroGoogle =
+		((form.linkGoogleAvaliacoes ?? "").trim() && !googleNorm.ok ? googleNorm.erro : undefined) ||
+		erros.linkGoogleAvaliacoes;
 	const temLogoNaoExibivel = !!form.logoUri && !logo;
 	const validadeAtiva = form.validadeDiasPadrao ?? VALIDADE_DIAS_DEFAULT;
 	const pendentesAtuais = camposPendentesPerfil(form);
@@ -946,7 +972,7 @@ export default function MeuNegocio() {
 							<p className="mt-2 text-xs text-text-secondary">
 								{temLogoNaoExibivel
 									? "Seu logo atual foi enviado pelo app e está guardado naquele aparelho — ele sai nos PDFs gerados lá, mas o navegador não consegue exibi-lo. Envie o arquivo aqui para vê-lo também no painel."
-									: "PNG, JPG ou WebP. A imagem é reduzida automaticamente e sai no topo dos seus documentos."}
+									: "PNG, JPG ou WebP. Você escolhe imagem inteira, faixa do cabeçalho ou quadrado. A moldura é o que sai no PDF."}
 							</p>
 						</div>
 
@@ -1040,14 +1066,22 @@ export default function MeuNegocio() {
 							/>
 						</Campo>
 
-						<Campo rotulo="Site">
-							<Input
-								disabled={bloqueado}
-								value={form.site}
-								onChange={(e) => set("site", e.target.value)}
-								placeholder="www.suaempresa.com.br"
-							/>
-						</Campo>
+						<div data-erro={erroSite ? "1" : undefined}>
+							<Campo
+								rotulo="Site próprio"
+								erro={erroSite}
+								dica="Sai no orçamento, no recibo e no contrato. Sem http, a gente completa com https."
+							>
+								<Input
+									data-erro={erroSite ? "1" : undefined}
+									disabled={bloqueado}
+									value={form.site}
+									onChange={(e) => set("site", e.target.value)}
+									placeholder="www.suaempresa.com.br"
+									inputMode="url"
+								/>
+							</Campo>
+						</div>
 
 						<Campo
 							rotulo="Chave Pix (para receber dos clientes)"
@@ -1069,18 +1103,26 @@ export default function MeuNegocio() {
 							/>
 						</Campo>
 
-						<Campo
-							rotulo="Link de avaliação no Google"
-							dica='O link "Escrever avaliação" do seu perfil no Google. Habilita o pedido de avaliação depois do serviço.'
-							className="sm:col-span-2"
-						>
-							<Input
-								disabled={bloqueado}
-								value={form.linkGoogleAvaliacoes ?? ""}
-								onChange={(e) => set("linkGoogleAvaliacoes", e.target.value)}
-								placeholder="https://g.page/r/…"
-							/>
-						</Campo>
+						<div data-erro={erroGoogle ? "1" : undefined} className="sm:col-span-2">
+							<Campo
+								rotulo="Link de avaliação no Google"
+								erro={erroGoogle}
+								dica={
+									(form.linkGoogleAvaliacoes ?? "").trim() && googleNorm.ok
+										? "Link do Google reconhecido. O pedido de avaliação só sai no WhatsApp, depois do serviço."
+										: "No Google, abra seu perfil e copie o link de escrever avaliação. A página inicial do Google não serve."
+								}
+							>
+								<Input
+									data-erro={erroGoogle ? "1" : undefined}
+									disabled={bloqueado}
+									value={form.linkGoogleAvaliacoes ?? ""}
+									onChange={(e) => set("linkGoogleAvaliacoes", e.target.value)}
+									placeholder="https://g.page/r/…"
+									inputMode="url"
+								/>
+							</Campo>
+						</div>
 					</div>
 				</Bloco>
 
@@ -1219,6 +1261,17 @@ export default function MeuNegocio() {
 					</div>
 				</div>
 			</form>
+			{arquivoLogo && (
+				<RecorteImagem
+					arquivo={arquivoLogo}
+					uso="logo"
+					aplicando={processandoLogo}
+					onCancelar={() => {
+						if (!processandoLogo) setArquivoLogo(null);
+					}}
+					onAplicar={aplicarRecorteLogo}
+				/>
+			)}
 		</Pagina>
 	);
 }

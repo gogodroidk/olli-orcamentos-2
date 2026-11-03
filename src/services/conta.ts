@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
+import { fotoPerfilAceita } from '../utils/identidadeVisual';
 
 /**
  * Serviço de CONTA do usuário (Frente 2):
@@ -35,7 +36,9 @@ export async function getFotoPerfil(): Promise<string | null> {
  */
 export async function salvarFotoPerfil(uri: string): Promise<void> {
   if (!supabase) throw new Error('Conecte-se à nuvem para salvar sua foto.');
-  const { error } = await supabase.auth.updateUser({ data: { avatar_url: uri } });
+  const aceite = fotoPerfilAceita(uri);
+  if (!aceite.ok) throw new Error(aceite.erro);
+  const { error } = await supabase.auth.updateUser({ data: { avatar_url: uri.trim() } });
   if (error) throw error;
 }
 
