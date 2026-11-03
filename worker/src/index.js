@@ -54,6 +54,7 @@ import * as Sentry from '@sentry/cloudflare';
 import { limparBreadcrumbSentry, limparEventoSentry } from '../../src/services/sentryScrub.ts';
 import { capturarExcecao, conectarSentry } from '../../src/services/sentryCaptura.ts';
 import { limparEventosAntigos, registrarSinal, renderLinkPage, responderLink } from './link.js';
+import { limparRastreioUso } from './rastreioRetencao.js';
 import { limparWhatsappAntigo } from './whatsappRetencao.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
@@ -935,6 +936,7 @@ const handler = {
     // Termômetro do orçamento (LGPD): apaga eventos de interação com mais de 180
     // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
     ctx.waitUntil(limparEventosAntigos(env, agendado));
+    ctx.waitUntil(limparRastreioUso(env, agendado)); // retenção do rastreio de uso: 90 dias
     // Retenção do WhatsApp (parecer LEGAL 07/10): fila de entrada 180 dias/12 meses, envios 12 meses; uma vez por dia (06:19 UTC).
     ctx.waitUntil(limparWhatsappAntigo(env, agendado));
     // Conversões de anúncio pelo servidor (Meta CAPI: cadastro e assinatura de quem

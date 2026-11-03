@@ -40,6 +40,7 @@ import {
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
+import { track, Eventos } from '../services/analytics';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { chavePixPlano, checarPixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
 import { buscarPixPendente, esquecerPixPendente, guardarPixPendente } from '../services/pixPendente';
@@ -299,6 +300,11 @@ export default function PlanosScreen() {
   // A descrição é DERIVADA: o preço vem de precosPlanos (nunca escrito de
   // memória — já erramos aqui, "o Pro libera orçamentos ilimitados" era falso
   // porque o Grátis já os tem). Ao mexer nos planos, reveja este texto.
+  // Funil de receita: abriu a tela de Planos (só o nome do evento).
+  useEffect(() => {
+    track(Eventos.planosAberto);
+  }, []);
+
   useEffect(() => {
     aplicarSeo({
       titulo: 'Planos e preços — OLLI Orçamentos',
