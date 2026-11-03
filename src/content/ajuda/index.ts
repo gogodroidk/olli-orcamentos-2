@@ -8,6 +8,14 @@
  */
 
 import {
+  AVISO_CONTADOR,
+  CAMINHOS_NFSE,
+  INTRO_CONTADOR,
+  PASSOS_NFSE,
+  RODAPE_CONTADOR,
+  TIPOS_EMPRESA,
+} from '../contador.ts';
+import {
   IA_USOS_GRATIS_MES,
   TRIAL_PRO_DIAS,
 } from '../../services/entitlements.ts';
@@ -353,6 +361,32 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         conteudo:
           'O emissor, as regras e a disponibilidade dependem do município. Para integração por API, o governo exige credenciamento e os layouts técnicos vigentes; o OLLI não raspa o portal nem guarda credenciais.',
       },
+      {
+        tipo: 'paragrafo',
+        conteudo:
+          'Para a diferença entre MEI, ME, EPP e empresa fora do Simples, abra o artigo "Contador: nota fiscal e tipos de empresa".',
+      },
+    ],
+  },
+  {
+    id: 'contador-tipos-empresa',
+    categoriaId: 'governo',
+    titulo: 'Contador: nota fiscal e tipos de empresa',
+    resumo: 'MEI, ME e EPP: como emitir a NFS-e no portal oficial. A OLLI não emite a nota.',
+    tags: ['contador', 'mei', 'me', 'epp', 'cnpj', 'nota fiscal', 'nfs-e', 'simples nacional', 'empresa'],
+    corpo: [
+      { tipo: 'aviso', conteudo: AVISO_CONTADOR },
+      { tipo: 'paragrafo', conteudo: INTRO_CONTADOR },
+      ...TIPOS_EMPRESA.map((tipo) => ({
+        tipo: 'paragrafo' as const,
+        conteudo: `${tipo.nome} (${tipo.titulo}). ${tipo.texto} Fonte: ${tipo.fontes.map((f) => `${f.rotulo} — ${f.href}`).join(' · ')}`,
+      })),
+      {
+        tipo: 'paragrafo',
+        conteudo: CAMINHOS_NFSE.map((c) => `${c.titulo}: ${c.quando} Fonte: ${c.fonte.href}`).join(' '),
+      },
+      { tipo: 'passos', conteudo: PASSOS_NFSE.map((p) => p.texto) },
+      { tipo: 'aviso', conteudo: RODAPE_CONTADOR },
     ],
   },
   {
