@@ -163,6 +163,26 @@ export function fraseDoPrimeiroCliente(servico: string, totalFormatado: string):
 }
 
 /**
+ * Antes deste tempo o cartão de início não desenha o esqueleto.
+ * Uma leitura rápida do aparelho não pisca.
+ */
+export const ATRASO_ESQUELETO_MS = 100;
+
+/**
+ * O cartão de início reserva o lugar com esqueleto enquanto a leitura ou o
+ * download não fecharam. Não reserva para quem não é dono, em erro, em
+ * download que falhou, nem em conta já madura. Os 100 ms ficam na tela.
+ */
+export function mostrarEsqueletoAtivacao(opts: {
+  ehDono: boolean;
+  erro: boolean;
+  madura: boolean;
+  aguardando: boolean;
+}): boolean {
+  return opts.ehDono && !opts.erro && !opts.madura && opts.aguardando;
+}
+
+/**
  * O exemplo do ofício. `undefined` (conta sem ofício) devolve `null`: a tela
  * PERGUNTA o ofício em 1 toque, em vez de chutar um — o exemplo de ar-condicionado
  * na tela de um pintor é exatamente a sensação de "isso não é pra mim".
