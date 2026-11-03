@@ -1,0 +1,64 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Layout from "../layouts/Layout.astro";
+import { emailContatoPublicavel, identidadePublicavel } from "../data/empresa";
+import { EMPRESA } from "../data/empresa";
+
+const empresa = identidadePublicavel();
+const email = emailContatoPublicavel();
+const schemaBreadcrumb = {
+	"@context": "https://schema.org",
+	"@type": "BreadcrumbList",
+	itemListElement: [
+		{ "@type": "ListItem", position: 1, name: "OLLI", item: Astro.site?.origin },
+		{ "@type": "ListItem", position: 2, name: "Sobre", item: new URL("/sobre/", Astro.site ?? "https://olliorcamentos.online").href },
+	],
+};
+---
+
+<Layout
+	titulo="Sobre a OLLI — feita por quem vive de campo"
+	descricao="A OLLI nasceu dentro da GR Tech, empresa de climatização em São Paulo. Orçamento, ordem de serviço e recibo para quem atende em campo."
+	schemas={[schemaBreadcrumb]}
+>
+	<Header />
+	<main id="conteudo">
+		<article class="mx-auto max-w-3xl px-5 py-12 sm:px-6 md:py-16">
+			<p class="text-sm text-muted"><a href="/" class="rodape-link">Início</a> <span aria-hidden="true">/</span> Sobre</p>
+			<span class="eyebrow mt-4">Quem faz a OLLI</span>
+			<h1 class="mt-4 text-4xl leading-[1.08] tracking-tight text-ink sm:text-5xl">Feita por quem vive de campo.</h1>
+			<div class="mt-8 space-y-5 text-lg leading-relaxed text-slate">
+				<p>
+					A OLLI nasceu dentro da <strong class="text-ink">GR Tech</strong>, uma empresa de climatização em São Paulo cansada de fazer orçamento no caderno e perder foto no grupo do WhatsApp. Cada coisa aqui existe porque a gente precisou dela primeiro — os <strong class="text-ink">698 códigos de erro</strong>, o PMOC, as calculadoras de campo.
+				</p>
+				<p>
+					Não é software feito por quem nunca subiu num telhado pra trocar um compressor. É a ferramenta que a gente queria ter tido — e agora ela é sua também, de graça pra começar.
+				</p>
+			</div>
+
+			{empresa && (
+				<section class="mt-12 rounded-cartao border border-line bg-card p-6 shadow-e1">
+					<h2 class="text-xl text-ink">Quem opera</h2>
+					<p class="mt-3 text-slate">
+						<span class="font-semibold text-ink">{empresa.razaoSocial}</span>
+						<span> · CNPJ {empresa.cnpj}</span>
+					</p>
+					<p class="mt-2 text-sm text-muted">{EMPRESA.atendimento}.</p>
+					{email && (
+						<p class="mt-3">
+							<a class="rodape-link font-semibold text-brand-fg" href={`mailto:${email}`}>{email}</a>
+						</p>
+					)}
+				</section>
+			)}
+
+			<p class="mt-10 text-slate">
+				O produto está em <a href="/produto/" class="font-semibold text-brand-fg">Produto</a>.
+				O preço, em <a href="/planos/" class="font-semibold text-brand-fg">Preços</a>.
+				Para falar com a gente, <a href="/contato/" class="font-semibold text-brand-fg">Contato</a>.
+			</p>
+		</article>
+	</main>
+	<Footer />
+</Layout>

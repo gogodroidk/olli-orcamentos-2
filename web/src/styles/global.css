@@ -184,7 +184,7 @@
 	   ───────────────────────────────────────────────────────────────────────── */
 	--olli-dur-1: 160ms; /* hover/foco de link e chip */
 	--olli-dur-2: 260ms; /* hover de cartão, botão */
-	--olli-dur-3: 420ms; /* mudança de estado maior. TETO — acima disto a
+	--olli-dur-3: 400ms; /* mudança de estado maior. TETO — acima disto a
 	                        interface deixa de responder e passa a fazer esperar. */
 
 	/* ALCANCE — é ESTE token que significa "mais lento".
@@ -228,6 +228,18 @@ html {
 	-webkit-font-smoothing: antialiased;
 	text-rendering: optimizeLegibility;
 	scroll-behavior: smooth;
+	scroll-padding-top: 5.5rem;
+}
+
+h1,
+h2,
+h3 {
+	text-wrap: balance;
+	font-weight: 700;
+}
+
+p {
+	text-wrap: pretty;
 }
 
 body {
@@ -296,8 +308,10 @@ body {
 .brand-gradient {
 	background: linear-gradient(135deg, var(--color-cyan), var(--color-brand));
 }
+/* Os dois extremos passam contraste de título grande no fundo claro.
+   O ciano da marca (#3FD8EA) fica de fora: no cartão ele dá 1,72:1. */
 .brand-text {
-	background: linear-gradient(120deg, var(--color-brand), var(--color-cyan));
+	background: linear-gradient(90deg, var(--color-brand-ink), var(--color-brand-fg));
 	-webkit-background-clip: text;
 	background-clip: text;
 	color: transparent;
@@ -696,6 +710,209 @@ body {
 }
 
 /* Reduced-motion: mata toda animação/transição contínua. */
+/* ── Site: botões, navegação, menu do celular ─────────────────────────── */
+
+.pular {
+	position: absolute;
+	inset-inline-start: 1rem;
+	top: 1rem;
+	z-index: 70;
+	transform: translateY(-200%);
+	border-radius: var(--radius-campo);
+	background: var(--color-brand);
+	padding: 0.5rem 1rem;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: #fff;
+}
+
+.pular:focus {
+	transform: none;
+}
+
+.nav-link {
+	display: inline-flex;
+	min-height: 2.75rem;
+	align-items: center;
+	padding-inline: 0.625rem;
+	border-radius: var(--radius-campo);
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--color-slate);
+	transition: color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.nav-link[aria-current="page"] {
+	color: var(--color-ink);
+	box-shadow: inset 0 -2px 0 var(--color-brand);
+}
+
+.nav-link:focus-visible,
+.menu-painel a:focus-visible,
+.rodape-link:focus-visible,
+summary:focus-visible {
+	outline: 2px solid var(--color-brand-fg);
+	outline-offset: 3px;
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 3rem;
+	padding: 0.75rem 1.5rem;
+	border-radius: var(--radius-acao);
+	font-size: 1rem;
+	font-weight: 600;
+	line-height: 1.5;
+	text-align: center;
+	text-decoration: none;
+	transition-property: transform, background-color, border-color, color, box-shadow;
+	transition-duration: 160ms;
+	transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.btn:focus-visible {
+	outline: 2px solid var(--color-brand-fg);
+	outline-offset: 3px;
+}
+
+.btn:active {
+	transform: scale(0.98);
+}
+
+.btn-header {
+	min-height: 2.75rem;
+	padding: 0.5rem 0.875rem;
+	border-radius: var(--radius-campo);
+	font-size: 0.875rem;
+}
+
+.btn-primario {
+	background: var(--color-brand);
+	color: #fff;
+	box-shadow: var(--shadow-e2);
+}
+
+.btn-secundario {
+	border: 1px solid var(--color-line);
+	background: var(--color-card);
+	color: var(--color-ink);
+	box-shadow: var(--shadow-e1);
+}
+
+.btn-fantasma {
+	background: transparent;
+	color: var(--color-slate);
+}
+
+.btn-claro {
+	background: #fff;
+	color: var(--color-brand-fg);
+	box-shadow: var(--shadow-e2);
+}
+
+.rodape-link {
+	display: inline-flex;
+	min-height: 2.75rem;
+	align-items: center;
+	font-size: 0.875rem;
+	color: var(--color-slate);
+	transition: color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.menu-site {
+	position: relative;
+}
+
+.menu-site > summary {
+	display: inline-flex;
+	min-height: 2.75rem;
+	min-width: 2.75rem;
+	cursor: pointer;
+	list-style: none;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-campo);
+	background: var(--color-card);
+	padding-inline: 0.75rem;
+	font-size: 0.875rem;
+	font-weight: 600;
+	color: var(--color-ink);
+}
+
+.menu-site > summary::-webkit-details-marker {
+	display: none;
+}
+
+.menu-painel {
+	position: absolute;
+	inset-inline-end: 0;
+	top: calc(100% + 0.5rem);
+	z-index: 60;
+	width: min(18rem, calc(100vw - 2rem));
+	border: 1px solid var(--color-line);
+	border-radius: var(--radius-caixa);
+	background: var(--color-card);
+	padding: 0.5rem;
+	box-shadow: var(--shadow-e3);
+}
+
+.site-header .menu-painel a {
+	display: flex;
+	width: 100%;
+	min-height: 2.75rem;
+	align-items: center;
+	justify-content: flex-start;
+	border-radius: var(--radius-campo);
+	padding-inline: 0.75rem;
+	font-weight: 500;
+	color: var(--color-ink);
+}
+
+.menu-painel a[aria-current="page"] {
+	background: var(--color-tint);
+	color: var(--color-brand-fg);
+}
+
+.faq-mais {
+	transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+details[open] .faq-mais {
+	transform: rotate(45deg);
+}
+
+.cartao-link {
+	transition: border-color 160ms cubic-bezier(0.23, 1, 0.32, 1), color 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.nav-link:hover,
+	.rodape-link:hover,
+	.btn-fantasma:hover {
+		color: var(--color-ink);
+	}
+
+	.btn-primario:hover {
+		background: var(--color-brand-strong);
+	}
+
+	.btn-secundario:hover {
+		border-color: var(--color-brand);
+		color: var(--color-brand-fg);
+	}
+
+	.btn-claro:hover {
+		background: var(--color-fundo);
+	}
+
+	.cartao-link:hover {
+		border-color: color-mix(in srgb, var(--color-brand) 40%, var(--color-line));
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	html {
 		scroll-behavior: auto;

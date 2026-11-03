@@ -1,0 +1,75 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import FaixaCta from "../components/site/FaixaCta.astro";
+import Layout from "../layouts/Layout.astro";
+import { APP_CADASTRO_URL, PASSOS } from "../data/conteudoSite";
+
+const schemaBreadcrumb = {
+	"@context": "https://schema.org",
+	"@type": "BreadcrumbList",
+	itemListElement: [
+		{ "@type": "ListItem", position: 1, name: "OLLI", item: Astro.site?.origin },
+		{ "@type": "ListItem", position: 2, name: "Serviços", item: new URL("/servicos/", Astro.site ?? "https://olliorcamentos.online").href },
+	],
+};
+---
+
+<Layout
+	titulo="Serviços e produtos na OLLI — catálogo, OS e recibo"
+	descricao="O catálogo de serviços e produtos fica dentro do orçamento. Aprovado, vira ordem de serviço com checklist e assinatura, e depois recibo."
+	schemas={[schemaBreadcrumb]}
+>
+	<Header />
+	<main id="conteudo">
+		<section class="mx-auto max-w-3xl px-5 pb-6 pt-12 sm:px-6 md:pt-16">
+			<p class="text-sm text-muted"><a href="/" class="rodape-link">Início</a> <span aria-hidden="true">/</span> Serviços</p>
+			<span class="eyebrow mt-4">Serviços e produtos</span>
+			<h1 class="mt-4 max-w-[42rem] text-4xl leading-[1.08] tracking-tight text-ink sm:text-5xl">A tabela do serviço, dentro do orçamento.</h1>
+			<p class="mt-5 max-w-[42rem] text-lg leading-relaxed text-slate">
+				O plano Grátis já inclui catálogo de serviços e produtos, clientes e agenda, ordem de serviço com checklist, fotos e assinatura na tela, e o link para o cliente aprovar. Não é um segundo aplicativo.
+			</p>
+		</section>
+
+		<section class="mx-auto max-w-7xl px-5 py-10 sm:px-6">
+			<ol class="grid gap-5 md:grid-cols-3">
+				{PASSOS.map((p) => (
+					<li class="rounded-cartao border border-line bg-card p-6 shadow-e1">
+						<div class="text-sm font-bold text-brand-fg tnum">{p.n}</div>
+						<h2 class="mt-2 text-xl text-ink">{p.titulo}</h2>
+						<p class="mt-2 text-slate">{p.texto}</p>
+					</li>
+				))}
+			</ol>
+		</section>
+
+		<section class="faixa-recuo">
+			<div class="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-6 md:grid-cols-2 md:py-20">
+				<div>
+					<h2 class="text-3xl tracking-tight text-ink">O que entra no catálogo</h2>
+					<ul class="mt-5 space-y-3 text-slate">
+						<li class="flex gap-2"><span class="text-check">✓</span> Serviços e produtos com preço, para não digitar a mesma linha todo dia.</li>
+						<li class="flex gap-2"><span class="text-check">✓</span> Clientes e agenda no mesmo lugar.</li>
+						<li class="flex gap-2"><span class="text-check">✓</span> Ordem de serviço com checklist, fotos e assinatura do cliente na tela.</li>
+						<li class="flex gap-2"><span class="text-check">✓</span> Recibo e PDF com a sua marca.</li>
+					</ul>
+				</div>
+				<div class="rounded-cartao border border-line bg-card p-7 shadow-e1">
+					<h2 class="text-xl text-ink">O que muda por ofício</h2>
+					<p class="mt-3 leading-relaxed text-slate">
+						Climatização, elétrica, hidráulica, pintura, dedetização, jardinagem e os outros ofícios da lista usam o mesmo ciclo. O que muda são as calculadoras e os documentos que já estão prontos naquele ofício.
+					</p>
+					<a href="/para/" class="rodape-link mt-4 font-semibold text-brand-fg">Escolher o ofício</a>
+				</div>
+			</div>
+		</section>
+
+		<FaixaCta
+			titulo="Monte o primeiro serviço no Grátis."
+			texto="Sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no Pro."
+			href={APP_CADASTRO_URL}
+			rotulo="Criar minha conta grátis"
+		/>
+	</main>
+	<Footer />
+</Layout>
