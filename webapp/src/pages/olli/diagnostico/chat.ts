@@ -38,6 +38,7 @@ export type TipoErroIA =
 	| "naoConfigurada"
 	| "indisponivel"
 	| "resposta"
+	| "cancelado"
 	| "desconhecido";
 
 export interface FalhaIA {
@@ -90,7 +91,8 @@ export function mapearFalhaIA(tipo: TipoErroIA): FalhaIA {
 			return {
 				tipo,
 				titulo: "Franquia gratuita do mês concluída",
-				mensagem: "Você pode continuar com 1 crédito por resposta, sempre com confirmação antes do débito, ou conferir seus planos.",
+				mensagem:
+					"Você pode continuar com 1 crédito por resposta, sempre com confirmação antes do débito, ou conferir seus planos.",
 				acao: "Continuar com crédito",
 			};
 		case "auth":
@@ -111,7 +113,8 @@ export function mapearFalhaIA(tipo: TipoErroIA): FalhaIA {
 			return {
 				tipo,
 				titulo: "A OLLI está validando sua conta",
-				mensagem: "A resposta não foi gerada porque a validação de uso da IA não terminou. Nada foi cobrado; tente novamente em instantes.",
+				mensagem:
+					"A resposta não foi gerada porque a validação de uso da IA não terminou. Nada foi cobrado; tente novamente em instantes.",
 				acao: "Tentar de novo",
 			};
 		case "resposta":
@@ -119,6 +122,13 @@ export function mapearFalhaIA(tipo: TipoErroIA): FalhaIA {
 				tipo,
 				titulo: "A IA não devolveu uma resposta válida",
 				mensagem: "Nenhuma alteração foi feita. Tente reformular a pergunta ou enviar novamente.",
+				acao: "Tentar de novo",
+			};
+		case "cancelado":
+			return {
+				tipo,
+				titulo: "Envio cancelado",
+				mensagem: "Você interrompeu a espera. Pode perguntar de novo quando quiser.",
 				acao: "Tentar de novo",
 			};
 		default:
@@ -136,7 +146,9 @@ export interface MensagemChat {
 	texto: string;
 }
 
-export type RespostaChat = { ok: true; resposta: string; rascunho?: RascunhoAcaoIaRemota } | { ok: false; erro: FalhaIA };
+export type RespostaChat =
+	| { ok: true; resposta: string; rascunho?: RascunhoAcaoIaRemota }
+	| { ok: false; erro: FalhaIA };
 
 export interface OpcoesAssistente {
 	/** Ofício/vertical, quando a tela conhece. Vazio mantém o modo geral do Worker. */
@@ -146,6 +158,8 @@ export interface OpcoesAssistente {
 	creditoRef?: string;
 	/** Solicita saída estruturada e persistida; nunca executa a mudança. */
 	modo?: "consulta" | "rascunho_acao";
+	/** Cancela a espera no navegador. Não muda o provedor nem o corpo cobrado. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -167,6 +181,9 @@ export async function perguntarAoAssistente(
 
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+	const cancelarPedido = () => controller.abort();
+	opcoes.signal?.addEventListener("abort", cancelarPedido);
+	if (opcoes.signal?.aborted) controller.abort();
 	try {
 		const r = await fetch(`${WORKER_URL}/chat`, {
 			method: "POST",
@@ -182,7 +199,13 @@ export async function perguntarAoAssistente(
 		});
 
 		const data: unknown = await r.json().catch(() => null);
-		const obj = (data ?? {}) as { ok?: boolean; resposta?: unknown; rascunho?: unknown; motivo?: string; erro?: string };
+		const obj = (data ?? {}) as {
+			ok?: boolean;
+			resposta?: unknown;
+			rascunho?: unknown;
+			motivo?: string;
+			erro?: string;
+		};
 
 		if (obj.ok && typeof obj.resposta === "string" && obj.resposta.trim()) {
 			const rascunho = normalizarRascunhoAcaoIa(obj.rascunho);
@@ -199,22 +222,29 @@ export async function perguntarAoAssistente(
 		if (obj.erro === "muitas_requisicoes") return { ok: false, erro: mapearFalhaIA("limite") };
 		if (obj.erro === "limite_indisponivel") {
 			const falha = mapearFalhaIA("indisponivel");
-			const diagnostico = typeof (obj as { diagnostico?: unknown }).diagnostico === "string"
-				? String((obj as { diagnostico: string }).diagnostico).slice(0, 48)
-				: "";
-			return { ok: false, erro: diagnostico ? { ...falha, mensagem: `${falha.mensagem} Código técnico: ${diagnostico}.` } : falha };
+			const diagnostico =
+				typeof (obj as { diagnostico?: unknown }).diagnostico === "string"
+					? String((obj as { diagnostico: string }).diagnostico).slice(0, 48)
+					: "";
+			return {
+				ok: false,
+				erro: diagnostico ? { ...falha, mensagem: `${falha.mensagem} Código técnico: ${diagnostico}.` } : falha,
+			};
 		}
-		if (obj.erro === "resposta_vazia" || obj.erro === "resposta_invalida") return { ok: false, erro: mapearFalhaIA("resposta") };
+		if (obj.erro === "resposta_vazia" || obj.erro === "resposta_invalida")
+			return { ok: false, erro: mapearFalhaIA("resposta") };
 		if (obj.erro === "sobrecarregado") return { ok: false, erro: mapearFalhaIA("servidor") };
 		if (r.status === 401) return { ok: false, erro: mapearFalhaIA("auth") };
 		if (r.status === 429) return { ok: false, erro: mapearFalhaIA("limite") };
 		if (r.status === 503 || r.status >= 500) return { ok: false, erro: mapearFalhaIA("servidor") };
 		return { ok: false, erro: mapearFalhaIA("desconhecido") };
 	} catch (e) {
+		if (opcoes.signal?.aborted) return { ok: false, erro: mapearFalhaIA("cancelado") };
 		const abortado = e instanceof DOMException && e.name === "AbortError";
 		return { ok: false, erro: mapearFalhaIA(abortado ? "timeout" : "offline") };
 	} finally {
 		clearTimeout(timer);
+		opcoes.signal?.removeEventListener("abort", cancelarPedido);
 	}
 }
 
