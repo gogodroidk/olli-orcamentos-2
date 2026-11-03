@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "gcloud": {
-      "command": "npx",
-      "args": ["-y", "@google-cloud/gcloud-mcp"]
-    }
-  }
-}

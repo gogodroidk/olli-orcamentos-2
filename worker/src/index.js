@@ -54,12 +54,14 @@ import * as Sentry from '@sentry/cloudflare';
 import { limparBreadcrumbSentry, limparEventoSentry } from '../../src/services/sentryScrub.ts';
 import { capturarExcecao, conectarSentry } from '../../src/services/sentryCaptura.ts';
 import { limparEventosAntigos, registrarSinal, renderLinkPage, responderLink } from './link.js';
+import { limparRastreioUso } from './rastreioRetencao.js';
 import { limparWhatsappAntigo } from './whatsappRetencao.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
 import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
+import { handleApple } from './appleRotas.js';
 import { cronPlayComBatimento } from './playBatimento.js';
 import { horaDoAlarmePix, rodarAlarmePix } from './alarmePix.js';
 import { handleResendWebhook } from './resendWebhook.js';
@@ -105,6 +107,7 @@ import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImport
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import { withSecurityHeaders } from './securityHeaders.js';
+import { versaoMinimaAndroid } from './versaoMinima.js';
 import {
   rotuloVertical,
   vozSystem,
@@ -933,6 +936,7 @@ const handler = {
     // Termômetro do orçamento (LGPD): apaga eventos de interação com mais de 180
     // dias, uma vez por dia (06:17 UTC). Fora desse minuto não faz nada.
     ctx.waitUntil(limparEventosAntigos(env, agendado));
+    ctx.waitUntil(limparRastreioUso(env, agendado)); // retenção do rastreio de uso: 90 dias
     // Retenção do WhatsApp (parecer LEGAL 07/10): fila de entrada 180 dias/12 meses, envios 12 meses; uma vez por dia (06:19 UTC).
     ctx.waitUntil(limparWhatsappAntigo(env, agendado));
     // Conversões de anúncio pelo servidor (Meta CAPI: cadastro e assinatura de quem
@@ -1028,6 +1032,13 @@ const handler = {
     // gate da IA, mesmo perfil das rotas de pagamento acima. Ver worker/src/play.js.
     if (url.pathname.startsWith('/play/')) {
       return handlePlay(request, env, url);
+    }
+
+    // ── ASSINATURA PELA APP STORE (StoreKit 2) — kill switch de código APPLE_IAP_HABILITADO (hoje false) ──
+    // GET /apple/config, POST /apple/verificar (JWT) e POST /apple/notificacoes (App Store Server Notifications v2,
+    // sem login: a autenticidade é a cadeia de certificados da Apple). Ver worker/src/appleRotas.js.
+    if (url.pathname.startsWith('/apple/')) {
+      return handleApple(request, env, url);
     }
 
     // ── EQUIPE (multi-tenant): convite (POST JWT) + página do convite (GET) ──
@@ -1232,6 +1243,11 @@ const handler = {
     // seguidas — ver saudeIA em ai.js); não chama o provedor a cada GET.
     // `ia_saude.amostra:0` = isolate novo, ainda sem evidência nem de sucesso
     // nem de falha. Nunca expõe código de erro nem modelo aqui (rota pública).
+    // VERSÃO MÍNIMA DO APP ANDROID (D-1326): o app pede a atualização abaixo deste build. Pública, sem dado de
+    // conta; 0 (padrão, var ausente) = desligada. Cache curto para a troca valer em minutos.
+    if (request.method === 'GET' && url.pathname === '/app/versao-minima') {
+      return json({ ok: true, android: versaoMinimaAndroid(env) }, 200, { 'Cache-Control': 'public, max-age=300' });
+    }
     if (request.method === 'GET' && url.pathname === '/') {
       const saude = saudeIA(env);
       return json({
@@ -1402,7 +1418,11 @@ const handler = {
         // fica de fora; cota negada já saiu acima. PII: beforeSend (sentryScrub).
         capturarExcecao(e, { origem: 'ia', rota: url.pathname });
       }
-      return json({ ok: false, erro: overloaded ? 'sobrecarregado' : 'falha_ia' }, overloaded ? 503 : 502);
+      // `mensagem` (D-1527): texto amigável pronto; o app antigo segue lendo só o `erro`.
+      return json(
+        { ok: false, erro: overloaded ? 'sobrecarregado' : 'falha_ia', mensagem: 'IA indisponível no momento. Tente de novo em alguns minutos; nada do que você salvou se perdeu.' },
+        overloaded ? 503 : 502,
+      );
     }
   },
 };

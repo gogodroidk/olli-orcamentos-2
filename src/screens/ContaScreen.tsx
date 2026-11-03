@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, TextInput, Image, Platform, Linking } from 'react-native';
+import { definirPreferenciaRastreio, lerPreferenciaRastreio } from '../services/rastreioPreferencia';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -30,6 +31,8 @@ import { SeletorTema } from '../components/SeletorTema';
 import { useTipoConta, recarregarTipoConta } from '../hooks/useTipoConta';
 import { usePermissao } from '../hooks/usePermissao';
 import { usePlano } from '../hooks/usePlano';
+import { useAvisoLimiteAntigas } from '../hooks/useAvisoLimiteAntigas';
+import { AvisoLimiteAntigas } from '../components/AvisoLimiteAntigas';
 import { useVerticais } from '../hooks/useVerticais';
 import type { VerticalId } from '../services/verticais';
 import { haCalculoParaOficio } from '../services/calculosOficio';
@@ -122,6 +125,7 @@ const TEXTO_AJUSTE = {
   ajuda: { titulo: 'Ajuda e suporte', descricao: 'Dúvidas, tutoriais e falar com a gente' },
   dicas: { titulo: 'Mostrar dicas contextuais', descricao: 'Balões curtos explicando elementos da tela' },
   apresentacao: { titulo: 'Rever apresentação e dicas', descricao: 'Mostra a introdução e as dicas de novo' },
+  rastreioUso: { titulo: 'Ajudar a melhorar o OLLI', descricao: 'Registra quais telas e botões você usa, nunca o que você digita. Desligar apaga o que já foi registrado' },
   privacidade: { titulo: 'Política de privacidade', descricao: 'Quais dados o OLLI usa e por quê' },
   termos: { titulo: 'Termos de uso', descricao: 'As regras de uso do OLLI' },
   excluirWeb: { titulo: 'Excluir conta pela web', descricao: 'Pedir a exclusão pelo site, sem precisar do app' },
@@ -275,6 +279,7 @@ export default function ContaScreen() {
   );
   // Frente 2 — plano atual: pagante não vê propaganda; vê "Sua assinatura".
   const { plano, carregando: carregandoPlano, temAcesso } = usePlano();
+  const avisoAntigas = useAvisoLimiteAntigas();
   // Enquanto plano ou conta carregam PELA PRIMEIRA VEZ, o card não se decide: o hook
   // nasce em 'gratis' e o pagante via o anúncio do PRO piscar antes do "Sua
   // assinatura". Só a 1ª leitura: usePlano/useTipoConta voltam a `carregando` a cada
@@ -328,6 +333,8 @@ export default function ContaScreen() {
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   // Toggle "Mostrar dicas contextuais" (onboarding.ts) — carregado no foco.
   const [ajudaAtiva, setAjudaAtiva] = useState(true);
+  // Opt-out do rastreio de uso (rastreioPreferencia.ts): 3 estados; 'carregando' até a leitura voltar.
+  const [rastreioPref, setRastreioPref] = useState<'ligado' | 'desligado' | 'desconhecido' | 'carregando'>('carregando');
   // Preferências do Ritual diário ("Bom dia da OLLI" / "Fechar o dia") — 3
   // canais independentes (services/ritualDiario.ts). Defaults do produto: os
   // 2 avisos ligados, domingo mudo — refletidos aqui só até o load() real chegar.
@@ -373,6 +380,7 @@ export default function ContaScreen() {
       } catch { /* best-effort: mantém o default (ativo) */ }
       // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
       setAjudaAtiva(await estaAtiva());
+      setRastreioPref(await lerPreferenciaRastreio());
       // Preferências do Ritual diário (getPreferenciasRitual nunca lança — cai
       // nos defaults do produto se a leitura falhar).
       const ritual = await getPreferenciasRitual();
@@ -476,6 +484,14 @@ export default function ContaScreen() {
       toast.erro('Não foi possível salvar essa preferência agora. A opção voltou como estava.');
       setAutoBackupAtivo(!v);
     }
+  }
+
+  /** Liga/desliga o rastreio de uso (opt-out LGPD): vale a partir deste momento. Só muda o switch se salvou. */
+  async function handleToggleRastreio(v: boolean) {
+    vibrar('selecao');
+    const salvou = await definirPreferenciaRastreio(v);
+    if (salvou) setRastreioPref(v ? 'ligado' : 'desligado');
+    else toast.erro('Não consegui salvar essa escolha agora. Tente de novo.', { titulo: 'Ajudar a melhorar o OLLI' });
   }
 
   /** Liga/desliga as dicas contextuais (onboarding.ts). Otimista. */
@@ -857,6 +873,7 @@ export default function ContaScreen() {
     { id: 'ajuda', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.ajuda },
     { id: 'dicas', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.dicas },
     { id: 'apresentacao', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.apresentacao },
+    { id: 'rastreioUso', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.rastreioUso },
     { id: 'privacidade', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.privacidade },
     { id: 'termos', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.termos },
     { id: 'excluirWeb', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.excluirWeb },
@@ -913,6 +930,11 @@ export default function ContaScreen() {
           <Text style={styles.screenTitle} accessibilityRole="header">Conta</Text>
           <BotaoComoFunciona tela="conta" style={styles.ajudaBtn} />
           <OlliMascot size={34} onDark />
+        </View>
+
+        {/* Conta ANTIGA, antes do limite do Grátis (D+30): aviso dispensável 1 vez; sinal do servidor. */}
+        <View style={{ marginHorizontal: Spacing.base, marginBottom: Spacing.sm }}>
+          <AvisoLimiteAntigas estado={avisoAntigas.estado} onDispensar={avisoAntigas.dispensar} />
         </View>
 
         {/* Dica do momento (roteiro I5): 30 dias de uso → backup ligado. Só para quem
@@ -1427,6 +1449,29 @@ export default function ContaScreen() {
         {/* PRIVACIDADE E TERMOS — a Play exige a política acessível DENTRO do app, e a
             exclusão de conta também fora dele (página web pública). */}
         <GrupoAjustes titulo={SECAO_AJUSTES.privacidade} indice={ind(8)}>
+          {mostra('rastreioUso') ? (
+            <LinhaAjuste
+              key="rastreioUso"
+              icone="chart-timeline-variant"
+              cor={cores.accentLight}
+              {...TEXTO_AJUSTE.rastreioUso}
+              direita={
+                rastreioPref === 'carregando' ? (
+                  <ActivityIndicator size="small" color={cores.primary} />
+                ) : rastreioPref === 'desconhecido' ? (
+                  <Text style={{ color: cores.onSurfaceVariant, fontSize: 12 }}>indisponível</Text>
+                ) : (
+                  <Switch
+                    value={rastreioPref === 'ligado'}
+                    onValueChange={handleToggleRastreio}
+                    trackColor={switchTrilho}
+                    thumbColor={rastreioPref === 'ligado' ? cores.primary : '#fff'}
+                    accessibilityLabel={TEXTO_AJUSTE.rastreioUso.titulo}
+                  />
+                )
+              }
+            />
+          ) : null}
           {mostra('privacidade') ? (
             <LinhaAjuste key="privacidade" icone="shield-lock-outline" cor={cores.success} {...TEXTO_AJUSTE.privacidade} onPress={() => nav.navigate('Privacidade')} />
           ) : null}

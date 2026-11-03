@@ -36,11 +36,14 @@
     "test:abacate-webhook": "node scripts/teste-abacate-webhook.js",
     "test:abacate-plano-pix": "node ../scripts/teste-abacate-plano-pix.ts",
     "test:auth-email-hook": "node scripts/teste-auth-email-hook.js",
-    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-regua-reengajamento && npm run test:email-descadastro && npm run test:funil-receita && npm run test:play-verificacao && npm run test:play-batimento && npm run test:alarme-pix && npm run test:faturas-android && npm run test:resumo-dinheiro-policy && npm run test:resumo-dinheiro-template && npm run test:resumo-dinheiro-job && npm run test:link-pix && npm run test:abacate-webhook && npm run test:abacate-plano-pix && npm run test:contratos-job && npm run test:auth-email-hook && npm run test:clima && npm run test:alertas && npm run test:ai-contexto-diagnostico",
+    "test:versao-minima": "node scripts/teste-versao-minima.js",
+    "test:ai-workersai": "node scripts/teste-ai-workersai.js",
+    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-regua-reengajamento && npm run test:pix-vence && npm run test:email-descadastro && npm run test:funil-receita && npm run test:play-verificacao && npm run test:play-batimento && npm run test:alarme-pix && npm run test:faturas-android && npm run test:resumo-dinheiro-policy && npm run test:resumo-dinheiro-template && npm run test:resumo-dinheiro-job && npm run test:link-pix && npm run test:abacate-webhook && npm run test:abacate-plano-pix && npm run test:contratos-job && npm run test:auth-email-hook && npm run test:clima && npm run test:alertas && npm run test:ai-contexto-diagnostico && npm run test:versao-minima && npm run test:ai-workersai",
     "test:contratos-job": "node scripts/teste-contratos-job.js",
     "deploy": "npm run types:check && wrangler deploy",
     "test:clima": "node scripts/teste-clima.js",
-    "test:alertas": "node scripts/teste-alertas.js"
+    "test:alertas": "node scripts/teste-alertas.js",
+    "test:pix-vence": "node scripts/teste-pix-vence.js"
   },
   "dependencies": {
     "@sentry/cloudflare": "^10.66.0"

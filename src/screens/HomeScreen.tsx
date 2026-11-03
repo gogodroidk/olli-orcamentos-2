@@ -56,7 +56,7 @@ import { useClimaDoDia } from '../services/clima';
 import { useReservaClima, type LeituraCadastro } from '../services/climaReserva';
 import { clientesParaReconquistar, lembrarNoWhatsApp, adiarClienteRadar, ClienteParaReconquistar } from '../services/radarClientes';
 import { orcamentosParaCobrar, cobrarNoWhatsApp as cobrarItemNoWhatsApp, OrcamentoParaCobrar } from '../services/radarCobranca';
-import { orcamentosParaFollowUp, mensagemFollowUp, type OrcamentoParaFollowUp } from '../services/radarFollowUp';
+import { radarPropostas, mensagemFollowUp, type OrcamentoParaFollowUp } from '../services/radarFollowUp';
 import { LIMIAR_PROPOSTA_PARADA_DIAS } from '../services/radarDinheiro';
 import { abrirWhatsApp } from '../utils/pdfGenerator';
 import { formatCurrency } from '../utils/currency';
@@ -97,6 +97,8 @@ import { usePermissao } from '../hooks/usePermissao';
 import { useSyncInicial } from '../hooks/useSyncInicial';
 import { useVerticais } from '../hooks/useVerticais';
 import { useLembreteAssinatura } from '../hooks/useLembreteAssinatura';
+import { useContadorEnvios } from '../hooks/useContadorEnvios';
+import { ContadorEnvios } from '../components/ContadorEnvios';
 import { track, Eventos } from '../services/analytics';
 import { useCadastroNegocio } from '../components/AvisoCompletarNegocio';
 
@@ -189,6 +191,8 @@ export default function HomeScreen() {
   const styles = useEstilos(criarEstilos);
   // Lembrete de assinatura (regra única em services/lembreteAssinatura.ts); relê a cada foco.
   const lembreteAssinatura = useLembreteAssinatura();
+  // P0-09: "X de 5 envios" só em conta nova do Grátis, a partir do 3º envio (3 estados no hook).
+  const contadorEnviosHome = useContadorEnvios();
 
   /**
    * Cores do hero, derivadas do fundo EFETIVO (véu achatado sobre `background`).
@@ -262,6 +266,9 @@ export default function HomeScreen() {
   const [followUp, setFollowUp] = useState<OrcamentoParaFollowUp[]>([]);
   const [followUpCarregando, setFollowUpCarregando] = useState(true);
   const [followUpErro, setFollowUpErro] = useState(false);
+  // Rascunhos criados há >= 3 dias e não enviados. `null` = ainda não sei (carregando
+  // ou leitura falhou): o palco NUNCA trata isso como zero.
+  const [rascunhosParados, setRascunhosParados] = useState<number | null>(null);
 
   // ROTA DE HOJE — visitas do dia (com as repetições das séries), em sequência.
   const [rota, setRota] = useState<ParadaDoDia<OcorrenciaAgendamento>[]>([]);
@@ -423,8 +430,9 @@ export default function HomeScreen() {
     if (!veDinheiro) return; // fora da régua do papel: nem lê
     setFollowUpErro(false);
     try {
-      const lista = await orcamentosParaFollowUp();
+      const { followUp: lista, rascunhos } = await radarPropostas();
       setFollowUp(lista);
+      setRascunhosParados(rascunhos);
       if (lista.length > 0) registrarEventoDica('primeiro_orcamento_parado');
     } catch {
       setFollowUpErro(true);
@@ -709,6 +717,13 @@ export default function HomeScreen() {
           style={styles.lembreteAssinatura}
         />
 
+        {/* CONTADOR DE ENVIOS DO GRÁTIS — só conta nova, só depois do 3º envio; sem contador não ocupa espaço. */}
+        {contadorEnviosHome.estado === 'pronto' && contadorEnviosHome.contador.mostrar ? (
+          <View style={styles.lembreteAssinatura}>
+            <ContadorEnvios estado={contadorEnviosHome} />
+          </View>
+        ) : null}
+
         {/* CRÉDITO DE TROCA — só o AVISO (em análise / decidido há pouco), só para o
             dono; sem pedido não ocupa espaço. O cartão fixo mora em Planos e Conta. */}
         {ativacaoDoDono ? <CreditoTrocaAtalho modo="aviso" style={styles.lembreteAssinatura} /> : null}
@@ -957,6 +972,7 @@ export default function HomeScreen() {
                 onRecarregarFollowUp={loadFollowUp}
                 onFollowUp={followUpNoWhatsApp}
                 temHistorico={temHistorico}
+                rascunhosParados={rascunhosParados}
                 onVerTodos={() => { vibrar('selecao'); nav.navigate('Orcamentos'); }}
               />
             </Aparecer>

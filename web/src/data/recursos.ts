@@ -28,7 +28,10 @@ import {
 } from "../../../src/services/entitlements";
 import type { PlanoId, Recurso } from "../../../src/services/entitlements";
 import {
+	CELULA_ORCAMENTOS_GRATIS,
 	FRASE_GRATIS,
+	FRASE_GRATIS_CURTA,
+	GRATIS_LINHA_ANUNCIO,
 	NOME_PLANO,
 	NOTA_SELO_GRATIS,
 	planoBase,
@@ -37,7 +40,7 @@ import {
 	TEXTO_SELO_OLLI,
 } from "../../../src/services/planosBase";
 
-export { FRASE_GRATIS, IA_USOS_GRATIS_MES, NOME_PLANO, NOTA_SELO_GRATIS, planoBase, TEXTO_SELO_OLLI };
+export { CELULA_ORCAMENTOS_GRATIS, FRASE_GRATIS, FRASE_GRATIS_CURTA, GRATIS_LINHA_ANUNCIO, IA_USOS_GRATIS_MES, NOME_PLANO, NOTA_SELO_GRATIS, planoBase, TEXTO_SELO_OLLI };
 export type { PlanoId, Recurso };
 
 /** Ordem em que os planos aparecem nas colunas — do menor para o maior. */

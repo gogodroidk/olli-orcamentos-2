@@ -9,6 +9,7 @@ import { formatCurrency } from '../utils/currency';
 import { textoValidadePix } from '../utils/pixValidade';
 import { textoArrependimentoCurto } from '../content/legal/arrependimento';
 import { checarPixPlano, type CobrancaPixPlano } from '../services/pixPlano';
+import { track, Eventos } from '../services/analytics';
 
 /**
  * PixPlanoModal — pagar o PLANO por Pix (AbacatePay). Mostra o QR e o copia-e-cola
@@ -49,6 +50,7 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
       if (!ativo || !s) return;
       if (s.pago) {
         setPago(true);
+        track(Eventos.pixPago); // funil: 1º pagamento (só o nome do evento)
         aoPago();
       }
     };
@@ -136,6 +138,8 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
                 <ActivityIndicator size="small" color={cores.accentLight} />
                 <Text style={styles.aguardandoTxt}>Aguardando o pagamento…</Text>
               </View>
+              {/* P0-08: sair sem pagar agora. Só fecha: a cobrança continua valendo até a validade acima. */}
+              <OlliButton label="Pagar depois" variant="ghost" fullWidth onPress={aoFechar} />
               <Text style={styles.nota}>Pode fechar o app e pagar depois: o plano libera sozinho quando o banco confirmar.</Text>
               <Text style={styles.nota}>{textoArrependimentoCurto()}</Text>
               <Text style={styles.nota}>
