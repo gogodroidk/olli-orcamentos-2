@@ -3,6 +3,7 @@ import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, Image, Sty
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, corStatusOS, type Cores } from '../../theme';
 import { OlliButton } from '../../components/OlliButton';
+import { FormularioDadosOS } from '../../components/os/FormularioDadosOS';
 import { PressableWebState } from '../../components/web/pressableWebState';
 // Contrato da ONDA 4 — mesmas funções de serviço usadas pela OrdemServicoScreen
 // mobile (DetalheOS). Nenhuma regra de negócio é reimplementada aqui.
@@ -11,6 +12,7 @@ import {
   atualizarStatusOS,
   atribuirTecnico,
   atualizarChecklist,
+  editarDadosOS,
 } from '../../services/ordemServico';
 import { saveOrdemServico } from '../../database/database';
 import { listarMembros, rotuloPapel, type MembroEquipe } from '../../services/equipe';
@@ -18,6 +20,7 @@ import { STATUS_OS_LABELS, STATUS_OS_CORES } from '../../types';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../../types';
 import { generateId } from '../../utils/id';
 import { formatDateTime } from '../../utils/date';
+import type { PatchDadosOS } from '../../utils/ordemServicoEdicao';
 import { avisar } from './dialogo';
 
 const STATUS_OS_ORDEM: StatusOS[] = ['aberta', 'agendada', 'em_execucao', 'pausada', 'concluida', 'cancelada'];
@@ -72,6 +75,8 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   const [editandoAgenda, setEditandoAgenda] = useState(false);
   const [dataAgendaForm, setDataAgendaForm] = useState('');
   const [salvandoAgenda, setSalvandoAgenda] = useState(false);
+  const [editandoDados, setEditandoDados] = useState(false);
+  const [salvandoDados, setSalvandoDados] = useState(false);
 
   const checklistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,11 +108,17 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
     if (checklistTimer.current) clearTimeout(checklistTimer.current);
   }, []);
 
+  // Trocar de OS fecha a edição: o formulário não pode nascer com os dados da anterior.
+  useEffect(() => {
+    if (ordemId) setEditandoDados(false);
+  }, [ordemId]);
+
   // Reseta os estados de edição locais ao fechar, para o próximo item abrir limpo.
   useEffect(() => {
     if (!visivel) {
       setShowAtribuir(false);
       setEditandoAgenda(false);
+      setEditandoDados(false);
       setOrdem(null);
     }
   }, [visivel]);
@@ -195,6 +206,33 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
     }
   }
 
+  async function salvarDados(patch: PatchDadosOS, limpar: () => void) {
+    if (!ordem) return;
+    setSalvandoDados(true);
+    try {
+      const atualizada = await editarDadosOS(ordem.id, patch);
+      limpar();
+      setOrdem((prev) => (prev ? {
+        ...prev,
+        clienteId: atualizada.clienteId,
+        clienteNome: atualizada.clienteNome,
+        titulo: atualizada.titulo,
+        descricao: atualizada.descricao,
+        observacoes: atualizada.observacoes,
+        dataAgendada: atualizada.dataAgendada,
+        valor: atualizada.valor,
+        atualizadoEm: atualizada.atualizadoEm,
+      } : atualizada));
+      setEditandoDados(false);
+      aoMudou();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Não consegui salvar a ordem agora.';
+      avisar('Não deu', msg);
+    } finally {
+      setSalvandoDados(false);
+    }
+  }
+
   const feitos = ordem?.checklist?.filter((c) => c.feito).length ?? 0;
   const total = ordem?.checklist?.length ?? 0;
   const concluida = ordem?.status === 'concluida';
@@ -227,6 +265,37 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
             </View>
           ) : (
             <ScrollView contentContainerStyle={styles.conteudo} keyboardShouldPersistTaps="handled">
+              {ehGestao && !editandoDados ? (
+                <Pressable
+                  onPress={() => { setEditandoAgenda(false); setEditandoDados(true); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Editar ordem"
+                  style={({ hovered, focused }: PressableWebState) => [styles.linkAcao, { alignSelf: 'flex-start' }, hovered && styles.linkAcaoHover, focused && styles.focoVisivel]}
+                >
+                  <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.accentLight} />
+                  <Text style={styles.linkAcaoTexto}>Editar ordem</Text>
+                </Pressable>
+              ) : null}
+
+              {editandoDados ? (
+                <FormularioDadosOS
+                  key={ordem.id}
+                  iniciais={{
+                    clienteId: ordem.clienteId,
+                    clienteNome: ordem.clienteNome,
+                    titulo: ordem.titulo,
+                    descricao: ordem.descricao,
+                    observacoes: ordem.observacoes,
+                    dataAgendada: ordem.dataAgendada,
+                    valor: ordem.valor,
+                  }}
+                  rotuloSalvar="Salvar alterações"
+                  salvando={salvandoDados}
+                  aoCancelar={() => setEditandoDados(false)}
+                  onSalvar={(patch, limpar) => { void salvarDados(patch, limpar); }}
+                />
+              ) : (
+              <>
               {/* Resumo */}
               <View style={styles.bloco}>
                 <LinhaInfo icon="account-outline" label="Cliente" valor={ordem.clienteNome || '—'} />
@@ -267,6 +336,8 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                   <Text style={styles.valorGrande}>{ordem.dataAgendada ? formatDateTime(ordem.dataAgendada) : 'Sem data agendada'}</Text>
                 )}
               </View>
+              </>
+              )}
 
               {/* Técnico */}
               <View style={styles.bloco}>
@@ -378,10 +449,12 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                 </View>
               )}
 
-              {ordem.observacoes ? (
+              {!editandoDados && (ordem.observacoes || ehGestao) ? (
                 <View style={styles.bloco}>
                   <Text style={styles.blocoTitulo}>Observações</Text>
-                  <Text style={styles.descricao}>{ordem.observacoes}</Text>
+                  <Text style={ordem.observacoes ? styles.descricao : styles.vazioTexto}>
+                    {ordem.observacoes || 'Nenhuma observação ainda.'}
+                  </Text>
                 </View>
               ) : null}
 
