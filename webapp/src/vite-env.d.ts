@@ -9,6 +9,8 @@ interface ImportMetaEnv {
 	readonly VITE_APP_API_BASE_URL: string;
 	/** Routing mode: frontend routing or backend routing */
 	readonly VITE_APP_ROUTER_MODE: "frontend" | "backend";
+	/** "on" mostra o rascunho de precificação com IA. Qualquer outro valor deixa desligado. */
+	readonly VITE_PRECIFICACAO_IA?: string;
 }
 
 interface ImportMeta {
