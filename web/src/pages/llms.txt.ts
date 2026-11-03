@@ -173,6 +173,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 - [Blog](${ORIGEM}/blog/)
 - [llms-full.txt (guias completos)](${ORIGEM}/llms-full.txt)
 - [Central de Ajuda](${ORIGEM}/ajuda/)
+- [Central de Ajuda para assistentes](${ORIGEM}/ajuda/llms.txt)
 - [Manifesto público para agentes](${ORIGEM}/agent-manifest.json)
 - [Termos de Uso](${ORIGEM}/legal/termos/)
 - [Política de Privacidade](${ORIGEM}/legal/privacidade/)
