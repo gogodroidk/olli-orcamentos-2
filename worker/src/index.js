@@ -99,6 +99,7 @@ import { planejarAudioSeguro } from './audioSeguro.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { processarWelcomeOutbox } from './welcomeOutboxConsumer.js';
 import { processarLembretesEmail } from './emailLembretesJob.js';
+import { renderAgendaIcal } from './icalFeed.js';
 import { rotearWhatsapp } from './whatsappCloud.js';
 import { processarResumoDinheiro } from './resumoDinheiroJob.js';
 import { modoMotorContratos, processarContratos } from './contratosJob.js';
@@ -1169,6 +1170,28 @@ const handler = {
       const tokenV = url.pathname.slice(3);
       if (request.method === 'POST') return responderConfirmacao(tokenV, env, request);
       return renderConfirmacao(tokenV, env);
+    }
+
+    // ── ASSINATURA iCal DA AGENDA (sem login, sem OAuth) ──
+    // GET /ical/<token>.ics → text/calendar. O token é a credencial. POST e o
+    // resto: 405 aqui mesmo (não cai na tabela de métodos). Ver icalFeed.js.
+    if (url.pathname.startsWith('/ical/')) {
+      if (request.method !== 'GET') {
+        return new Response('Método não suportado', {
+          status: 405,
+          headers: { Allow: 'GET', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+        });
+      }
+      if (env.LINK_RL) {
+        const ip = request.headers.get('CF-Connecting-IP') || 'sem-ip';
+        try {
+          const { success } = await env.LINK_RL.limit({ key: `ical:${ip}` });
+          if (!success) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+        } catch {
+          // binding ausente: não bloqueia
+        }
+      }
+      return renderAgendaIcal(url.pathname, env);
     }
 
     // ETA com trânsito (Routes API). Não é rota de IA — não exige o provedor, mas

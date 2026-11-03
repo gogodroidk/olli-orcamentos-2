@@ -99,6 +99,7 @@ import {
 	semHoraMarcada,
 } from "./dominio";
 import FormAgendamento from "./FormAgendamento";
+import { AssinaturaCalendario } from "./AssinaturaCalendario";
 import { baixarIcsAgendamento, criarUrlGoogleAgenda } from "./googleAgenda";
 
 /* ───────────────────────────────  As visões  ───────────────────────────────── */
@@ -471,17 +472,20 @@ export default function AgendaPage() {
 					</p>
 				</div>
 
-				<Button
-					onClick={() => {
-						setEditando(null);
-						setInicioSugerido(null);
-						setFormAberto(true);
-					}}
-					className="gap-2"
-				>
-					<CalendarPlus className="size-4" aria-hidden="true" />
-					Novo agendamento
-				</Button>
+				<div className="flex flex-wrap items-center gap-2">
+					<AssinaturaCalendario itens={itens} />
+					<Button
+						onClick={() => {
+							setEditando(null);
+							setInicioSugerido(null);
+							setFormAberto(true);
+						}}
+						className="gap-2"
+					>
+						<CalendarPlus className="size-4" aria-hidden="true" />
+						Novo agendamento
+					</Button>
+				</div>
 			</div>
 
 			{/* ───── Barra de controle (nossa, não a do FullCalendar) ───── */}
