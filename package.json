@@ -216,6 +216,7 @@
     "test:cliente-detalhe": "node scripts/teste-cliente-detalhe.ts",
     "test:orcar-rapido": "node scripts/teste-orcar-rapido.ts",
     "test:trial-automatico-sql": "node scripts/teste-trial-automatico-sql.ts",
+    "test:z105-anti-abuso": "node scripts/teste-z105-anti-abuso-leitura.ts",
     "test:landing-c4": "node scripts/teste-landing-c4.ts",
     "test:landing-honesta": "node scripts/teste-landing-honesta.ts",
     "test:indexnow": "node scripts/teste-indexnow.ts",
