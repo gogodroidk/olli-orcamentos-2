@@ -168,7 +168,13 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 ## Links
 
 - [Site](${ORIGEM}/)
+- [Produto](${ORIGEM}/produto/)
+- [Serviços e produtos no app](${ORIGEM}/servicos/)
 - [Planos e preços](${ORIGEM}/planos/)
+- [Como funciona](${ORIGEM}/como-funciona/)
+- [Sobre](${ORIGEM}/sobre/)
+- [Perguntas](${ORIGEM}/perguntas/)
+- [Contato](${ORIGEM}/contato/)
 - [OLLI por profissão](${ORIGEM}/para/)
 - [Blog](${ORIGEM}/blog/)
 - [llms-full.txt (guias completos)](${ORIGEM}/llms-full.txt)

@@ -60,13 +60,7 @@ const schemaLista = {
 ---
 
 <Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaLista]}>
-	<Header>
-		<a
-			href={APP_CADASTRO_URL}
-			class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
-			>Começar grátis</a
-		>
-	</Header>
+	<Header />
 
 	<main id="conteudo">
 		<section class="mx-auto max-w-4xl px-6 pb-10 pt-14">
@@ -91,7 +85,7 @@ const schemaLista = {
 					<li>
 						<a
 							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-							class="block h-full rounded-cartao border border-line bg-white p-6 transition hover:border-brand"
+							class="block h-full rounded-cartao border border-line bg-card p-6 transition hover:border-brand"
 						>
 							<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
 								<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-5 w-5" />
@@ -112,7 +106,7 @@ const schemaLista = {
 				>
 				<a
 					href="/blog/"
-					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
+					class="rounded-acao border border-line bg-card px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 					>Guias do blog</a
 				>
 			</div>

@@ -14,16 +14,10 @@ const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
   descricao="A página que você procura não existe ou foi movida."
   noindex={true}
 >
-  <Header>
-    <a
-      href={APP_URL}
-      class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong"
-      >Entrar</a
-    >
-  </Header>
+  <Header />
 
-  <main class="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center px-6 py-24 text-center">
-    <p class="bg-gradient-to-br from-cyan to-brand bg-clip-text text-8xl font-extrabold tracking-tight text-transparent">
+  <main id="conteudo" class="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center px-6 py-24 text-center">
+    <p class="bg-gradient-to-br from-brand-ink to-brand bg-clip-text text-8xl font-extrabold tracking-tight text-transparent">
       404
     </p>
     <h1 class="mt-4 text-3xl font-bold tracking-tight text-ink sm:text-4xl">Essa página não existe</h1>
@@ -32,20 +26,9 @@ const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
     </p>
 
     <div class="mt-9 flex flex-wrap items-center justify-center gap-3">
-      <a
-        href="/"
-        class="inline-flex min-h-11 items-center rounded-campo bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong"
-        >Voltar para o início</a
-      >
-      <a
-        href={APP_CADASTRO_URL}
-        class="inline-flex min-h-11 items-center rounded-campo border border-line px-5 py-2.5 text-sm font-semibold text-ink transition hover:bg-tint"
-        >Ir para o painel</a
-      >
-      <a
-        href="/ajuda/"
-        class="inline-flex min-h-11 items-center rounded-campo px-5 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Ajuda</a
-      >
+      <a href="/" class="btn btn-primario">Voltar para o início</a>
+      <a href={APP_CADASTRO_URL} class="btn btn-secundario">Ir para o painel</a>
+      <a href="/ajuda/" class="btn btn-fantasma">Ajuda</a>
     </div>
   </main>
 

@@ -806,6 +806,13 @@ summary:focus-visible {
 	color: var(--color-slate);
 }
 
+/* `.btn` fixa display fora de camada, então o `hidden` do Tailwind não esconde o Entrar no celular. */
+@media (max-width: 639px) {
+	.site-header .btn-fantasma {
+		display: none;
+	}
+}
+
 .btn-claro {
 	background: #fff;
 	color: var(--color-brand-fg);
