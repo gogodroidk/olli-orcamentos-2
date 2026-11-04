@@ -372,7 +372,8 @@ assert.match(scriptLanding, /mostrarBannerConsentimento/, 'landing mostra o avis
 const consentimento = ler('../web/src/lib/consentimento.ts');
 assert.match(consentimento, /paddingBottom/, 'o banner reserva espaço: o Criar conta não fica debaixo do cartão');
 assert.match(consentimento, /scrollPaddingBottom/, 'o scroll para acima do cartão');
-assert.match(consentimento, /button\[type='submit'\]/, 'sobe o botão de enviar quando ele está coberto');
+assert.doesNotMatch(consentimento, /scrollIntoView/, 'o aviso não rola a tela sozinho (no painel roda antes do React montar)');
+assert.match(consentimento, /removeEventListener\("resize", reservar\)/, 'fechar o aviso solta o listener de resize');
 assert.match(consentimento, /paddingAnterior/, 'fechar o banner devolve o espaço que a página já tinha');
 assert.match(registro, /identities\?\.length !== 0/, 'e-mail já cadastrado não vira conversão');
 assert.match(store, /registrarNovaContaSocial/, 'cadastro social grava a origem via updateUser');

@@ -220,30 +220,22 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 	banner.append(texto, acoes);
 	document.body.appendChild(banner);
 
-	// No celular o cartão cobre o "Criar conta". A reserva deixa a página rolar
-	// e, se o botão de enviar está por baixo, sobe ele uma vez — sem pular de novo
-	// quando o teclado abre.
+	// No celular o cartão cobria "Criar conta" e "Continuar com Google" e a página
+	// não rolava. A reserva com a altura do cartão deixa rolar até o último botão,
+	// e o scroll-padding impede que o foco por teclado pare debaixo dele (WCAG 2.4.11).
+	// Sem rolar a tela sozinho: no painel isto roda antes do React montar.
 	const paddingAnterior = document.body.style.paddingBottom;
 	const scrollAnterior = document.documentElement.style.scrollPaddingBottom;
-	const reservar = (subir: boolean) => {
+	const reservar = () => {
 		const altura = banner.offsetHeight + 24;
 		document.body.style.paddingBottom = `${altura}px`;
 		document.documentElement.style.scrollPaddingBottom = `${altura}px`;
-		if (!subir) return;
-		const alvo = document.querySelector("main button[type='submit']");
-		if (!(alvo instanceof HTMLElement)) return;
-		requestAnimationFrame(() => {
-			if (alvo.getBoundingClientRect().bottom > window.innerHeight - altura) {
-				alvo.scrollIntoView({ block: "end", inline: "nearest" });
-			}
-		});
 	};
-	reservar(true);
-	const aoRedimensionar = () => reservar(false);
-	window.addEventListener("resize", aoRedimensionar);
+	reservar();
+	window.addEventListener("resize", reservar);
 
 	const fechar = () => {
-		window.removeEventListener("resize", aoRedimensionar);
+		window.removeEventListener("resize", reservar);
 		document.body.style.paddingBottom = paddingAnterior;
 		document.documentElement.style.scrollPaddingBottom = scrollAnterior;
 		banner.remove();
