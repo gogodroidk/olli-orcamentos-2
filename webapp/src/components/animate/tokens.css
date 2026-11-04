@@ -14,7 +14,7 @@
 	--motion-duration-page: 400ms;
 	--motion-duration-celebration: 700ms;
 	--motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
-	--motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+	--motion-ease-enter: cubic-bezier(0.23, 1, 0.32, 1);
 	--motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
 	--motion-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
 	--motion-distance-xs: 2px;
@@ -22,7 +22,7 @@
 	--motion-distance-md: 12px;
 	--motion-distance-lg: 20px;
 	--motion-distance-xl: 32px;
-	--motion-scale-press: 0.98;
+	--motion-scale-press: 0.97;
 	--motion-scale-hover: 1.015;
 	--motion-scale-enter: 0.985;
 	/* Mola "drawer" (stiffness 360, damping 34, mass 0.9) amostrada a cada 16 ms. */
@@ -109,9 +109,9 @@
 	animation: motion-surgir var(--motion-duration-base) var(--motion-ease-enter) backwards;
 }
 
-/* TROCA DE TELA — só opacidade, `fast`. Sem transform DE PROPÓSITO: o bloco envolve a
- * página inteira, e transform num ancestral prende `position: fixed` a ele (a barra
- * de salvar do "Meu negócio" pularia junto durante a entrada). */
+/* TROCA DE TELA — só opacidade, 220ms na curva de entrada. Sem transform DE
+ * PROPÓSITO: o bloco envolve a página inteira, e transform num ancestral prende
+ * `position: fixed` a ele (a barra de salvar do "Meu negócio" pularia junto). */
 @keyframes motion-surgir-pagina {
 	from {
 		opacity: 0;
@@ -119,7 +119,7 @@
 }
 
 @utility surgir-pagina {
-	animation: motion-surgir-pagina var(--motion-duration-fast) var(--motion-ease-standard) backwards;
+	animation: motion-surgir-pagina var(--motion-duration-base) var(--motion-ease-enter) backwards;
 }
 
 /* LEVANTAR — o cartão pego no arraste (Kanban) sobe e assenta na mola do drawer. */
