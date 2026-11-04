@@ -109,7 +109,7 @@ textarea.inp{min-height:84px;resize:vertical}
 .main{min-width:0;padding:var(--s6) var(--s6) var(--s7)}
 .mtop{display:none;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);background:var(--surf);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20}
 .mtop b{font-size:15px}
-.scrim{position:fixed;inset:0;background:rgba(5,12,22,.5);z-index:25;opacity:0;pointer-events:none;transition:opacity var(--dur2)}
+.scrim{position:fixed;inset:0;background:rgba(42,36,28,.45);z-index:25;opacity:0;pointer-events:none;transition:opacity var(--dur2)}
 .scrim.on{opacity:1;pointer-events:auto}
 .cab{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s5)}
 .cab h1{font-size:24px;font-weight:800;letter-spacing:-.01em}
@@ -237,7 +237,7 @@ pre.stack{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:
 .notaItem .q{font-size:12px;color:var(--mut2);margin-bottom:2px}
 
 /* Diálogo */
-.dlgOv{position:fixed;inset:0;background:rgba(5,12,22,.55);z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:max(var(--s4),8vh) var(--s4) var(--s4);overflow-y:auto}
+.dlgOv{position:fixed;inset:0;background:rgba(42,36,28,.5);z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:max(var(--s4),8vh) var(--s4) var(--s4);overflow-y:auto}
 .dlg{width:100%;max-width:480px;background:var(--surf);border:1px solid var(--line);border-radius:var(--r3);padding:var(--s5);box-shadow:var(--sh2);animation:pop var(--dur2) var(--ease) both}
 .dlg.largo{max-width:640px}
 @keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
