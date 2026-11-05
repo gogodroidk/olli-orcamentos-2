@@ -62,7 +62,7 @@ const SEXUAL = /\b(sexo|sexual|pornô|porno|porn|pelada|pelado)\b/i;
 const RE_COLCHETE =
   /^\[(\d{1,2}\/\d{1,2}\/\d{2,4})(?:,)?\s+\d{1,2}:\d{2}(?::\d{2})?\]\s+([^:\n]{1,80}):\s*(.*)$/;
 const RE_TRACO =
-  /^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+\d{1,2}:\d{2}(?::\d{2})?\s+-\s+([^:\n]{1,80}):\s*(.*)$/;
+  /^(\d{1,2}\/\d{1,2}\/\d{2,4}),?\s+\d{1,2}:\d{2}(?::\d{2})?\s+-\s+([^:\n]{1,80}):\s*(.*)$/;
 
 const RE_PRECO =
   /\br\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{2}))?|\b(\d+)\s*mil\s*reais\b|\b(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{2}))?\s*reais\b/gi;
@@ -211,8 +211,14 @@ function limparNome(valor: string): string {
     .slice(0, 80);
 }
 
+/** O export traz BOM e marcas de direção no começo da linha. Não aparecem na tela e quebram o formato. */
+function semMarcaDeDirecao(linha: string): string {
+  return linha.replace(/^[\uFEFF\u200e\u200f\u202a-\u202e]+/, '');
+}
+
 function cabecalho(linha: string): { autor: string; corpo: string } | null {
-  const m = RE_COLCHETE.exec(linha) ?? RE_TRACO.exec(linha);
+  const limpa = semMarcaDeDirecao(linha);
+  const m = RE_COLCHETE.exec(limpa) ?? RE_TRACO.exec(limpa);
   if (!m) return null;
   return { autor: m[2] ?? '', corpo: m[3] ?? '' };
 }

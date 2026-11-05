@@ -61,7 +61,7 @@ Um arquivo de conversa que a própria pessoa exporta no WhatsApp dela, sem mídi
 
 A Cloud API oficial não devolve o histórico do WhatsApp pessoal. Por isso "conectar o número" não cumpre o pedido do Igor e ainda misturaria este item com o número de suporte. Fica para outro projeto, se o parecer e o Igor liberarem, no número comercial do prestador, com as regras da Meta e sem reutilizar o suporte.
 
-Linha sem a data no formato do export (`[27/10/2026, 14:32] Nome:` ou `27/10/2026 14:32 - Nome:`) não vira cliente. O módulo não inventa nome.
+Linha sem a data no formato do export (`[27/10/2026, 14:32] Nome:` ou `27/10/2026, 14:32 - Nome:`, a vírgula entre a data e a hora pode faltar) não vira cliente. Marca invisível que o WhatsApp põe no começo da linha é ignorada. O módulo não inventa nome.
 
 O nome da conta tem de ser informado. Sem ele, o módulo não cria cliente, para não cadastrar o próprio prestador como se fosse cliente. Preço citado ainda pode entrar no rascunho.
 

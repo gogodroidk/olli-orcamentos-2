@@ -179,6 +179,17 @@ const traco = rascunhoDe('27/10/2026 14:32 - João Lima: troca do capacitor por 
 checar('formato com traço', traco.clientes[0]?.nome, 'João Lima');
 checar('milhar brasileiro', traco.precos[0]?.valor, 1250.5);
 
+const android = rascunhoDe('27/10/2026, 14:32 - Ana Costa: a carga fica 90 reais');
+checar('android com vírgula', android.clientes[0]?.nome, 'Ana Costa');
+checar('android com vírgula tem preço', android.precos[0]?.valor, 90);
+
+const marca = rascunhoDe('\u200e[27/10/2026, 14:32:15] Ana Costa: a carga fica 90 reais');
+checar('marca invisível no começo', marca.clientes[0]?.nome, 'Ana Costa');
+
+const bom = rascunhoDe('\uFEFF27/10/2026, 14:32 - Ana Costa: a visita fica 70 reais');
+checar('BOM no começo do arquivo', bom.clientes[0]?.nome, 'Ana Costa');
+checar('BOM não perde o preço', bom.precos[0]?.valor, 70);
+
 const mil = rascunhoDe('27/10/2026 14:32 - Igor: o VRF ficou 2 mil reais');
 checar('mil reais', mil.precos[0]?.valor, 2000);
 checar('a conta não vira cliente', mil.clientes.length, 0);
