@@ -9,7 +9,7 @@ Não chama modelo nenhum. Não entra no app, no worker nem na pasta do site. Nã
 Na pasta `ops/predio-visual`, junto de `estado.json` (o mesmo contrato de `atualizado`, `agentes`, `conversas`) e, se quiser as fotos, a pasta `rostos/` com os `.webp` já existentes:
 
 ```bash
-python3 -m http.server 8766
+python3 -m http.server 8766 --bind 127.0.0.1
 ```
 
 Abra `http://127.0.0.1:8766/`. Sem `estado.json`, a página diz "sem sinal" e deixa a sala em montagem. Não inventa pessoas.

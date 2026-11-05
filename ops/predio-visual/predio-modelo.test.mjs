@@ -19,6 +19,7 @@ import {
 
 const mapa = JSON.parse(readFileSync(new URL('./andares.json', import.meta.url), 'utf8'));
 const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8');
+const leia = readFileSync(new URL('./LEIA.md', import.meta.url), 'utf8');
 const pacote = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 
 function contraste(hexA, hexB) {
@@ -136,6 +137,8 @@ test('a página não busca modelo, não usa dado fictício e declara o teste', (
   assert.match(html, /document\.hidden/);
   assert.match(html, /noindex/);
   assert.match(html, /Sala em montagem\./);
+  assert.match(html, /atualizarSala\('sem-mapa', grupos\.semMapa\)/);
+  assert.match(leia, /python3 -m http\.server 8766 --bind 127\.0\.0\.1/);
   for (const par of [
     ['#F4F7FB', '#16233F'],
     ['#FECACA', '#4A1D24'],

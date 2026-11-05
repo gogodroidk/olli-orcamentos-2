@@ -224,10 +224,14 @@ async function lerJson(caminho) {
   return resposta.json();
 }
 
+function classeMesa(status) {
+  return `desk ${status === 'sem estado' ? 'sem-estado' : status}`;
+}
+
 function criarMesa(ficha) {
   const botao = document.createElement('button');
   botao.type = 'button';
-  botao.className = `desk ${ficha.status}`;
+  botao.className = classeMesa(ficha.status);
   botao.dataset.id = ficha.id;
   botao.setAttribute('aria-label', ficha.aria);
   const balao = document.createElement('span');
@@ -291,7 +295,7 @@ function atualizarMesa(agente) {
   const ficha = fichaMesa(agente, rostos);
   const botao = predio.querySelector(`.desk[data-id="${CSS.escape(ficha.id)}"]`);
   if (!botao) return;
-  botao.className = `desk ${ficha.status}`;
+  botao.className = classeMesa(ficha.status);
   botao.setAttribute('aria-label', ficha.aria);
   botao.querySelector('.balao').textContent = ficha.balao;
   botao.querySelector('.mon').textContent = ficha.monitor;
@@ -358,6 +362,20 @@ function aplicarAba() {
   }
 }
 
+function atualizarSala(idAndar, pessoas) {
+  const ids = pessoas.map((pessoa) => pessoa.id);
+  const sala = predio.querySelector(`[data-andar="${idAndar}"] .sala`);
+  if (!sala) return;
+  if (!mesmaFila(filas.get(idAndar)?.map((id) => ({ id })) || [], ids.map((id) => ({ id })))) {
+    sala.replaceChildren(...(pessoas.length
+      ? pessoas.map((agente) => criarMesa(fichaMesa(agente, rostos)))
+      : [Object.assign(document.createElement('p'), { className: 'vazio', textContent: 'Sala em montagem.' })]));
+    filas.set(idAndar, ids);
+  } else {
+    for (const agente of pessoas) atualizarMesa(agente);
+  }
+}
+
 function pintar(estado) {
   const grupos = agrupar(estado.agentes, mapa);
   agentes.clear();
@@ -378,23 +396,14 @@ function pintar(estado) {
     }
     if (grupos.semMapa.length) {
       predio.append(desenharAndar({ id: 'sem-mapa', rotulo: 'Fora do mapa', nome: 'Área sem empresa', faixa: '#94A3B8' }, grupos.semMapa));
+      filas.set('sem-mapa', grupos.semMapa.map((pessoa) => pessoa.id));
     }
     const abas = [...grupos.andares];
     if (grupos.semMapa.length) abas.push({ id: 'sem-mapa', rotulo: 'Fora do mapa' });
     montarAbas(abas);
   } else {
-    for (const andar of grupos.andares) {
-      const ids = andar.pessoas.map((pessoa) => pessoa.id);
-      const sala = predio.querySelector(`[data-andar="${andar.id}"] .sala`);
-      if (!mesmaFila(filas.get(andar.id)?.map((id) => ({ id })) || [], ids.map((id) => ({ id })))) {
-        sala.replaceChildren(...(andar.pessoas.length
-          ? andar.pessoas.map((agente) => criarMesa(fichaMesa(agente, rostos)))
-          : [Object.assign(document.createElement('p'), { className: 'vazio', textContent: 'Sala em montagem.' })]));
-        filas.set(andar.id, ids);
-      } else {
-        for (const agente of andar.pessoas) atualizarMesa(agente);
-      }
-    }
+    for (const andar of grupos.andares) atualizarSala(andar.id, andar.pessoas);
+    if (querFora) atualizarSala('sem-mapa', grupos.semMapa);
   }
   aplicarAba();
 }
