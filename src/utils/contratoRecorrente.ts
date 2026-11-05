@@ -310,6 +310,176 @@ export function fraseReceitaMensal(resumo: ResumoContratos): string {
   return `${formatCurrency(resumo.receitaMensal)}/mês em contratos`;
 }
 
+// ─── Lista do prestador (busca, filtro, cópia, prorrogação do fim) ───────────
+//
+// Tudo aqui é regra de TELA, pura. Não manda mensagem, não grava e não reescreve
+// papel assinado: a data de fim é só o cabeçalho operacional (`service_contracts`),
+// que decide até quando a visita entra na agenda.
+
+/** Quanto a prorrogação empurra o fim, em meses. Um ano é o ciclo que o prestador reconhece. */
+export const MESES_PRORROGACAO_CONTRATO = 12;
+
+export type FiltroListaContrato = 'todos' | 'ativos' | 'pausados' | 'terminando' | 'encerrados';
+
+export const FILTROS_LISTA_CONTRATO: readonly { id: FiltroListaContrato; label: string }[] = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'ativos', label: 'Ativos' },
+  { id: 'pausados', label: 'Pausados' },
+  { id: 'terminando', label: 'Terminando' },
+  { id: 'encerrados', label: 'Encerrados' },
+];
+
+/** Em vigor e com fim nos próximos 30 dias (o mesmo recorte de `resumirContratos`). */
+export function contratoTerminaEm30Dias(c: ContratoRecorrente, hoje: string): boolean {
+  if (!contratoEmVigor(c, hoje)) return false;
+  if (!c.dataFim || !diaValido(c.dataFim)) return false;
+  return c.dataFim <= somarDias(hoje, 30);
+}
+
+function textoDaBusca(c: ContratoRecorrente): string {
+  return [c.titulo, c.clienteNome, c.endereco, c.numero, c.responsavelNome, c.observacoes, ...c.atividades]
+    .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+    .join(' ')
+    .toLocaleLowerCase('pt-BR');
+}
+
+/**
+ * Busca (todas as palavras) e filtro de situação. Contrato na lixeira não aparece.
+ * `terminando` é subconjunto dos ativos. Nunca lança.
+ */
+export function filtrarListaContratos(
+  contratos: readonly ContratoRecorrente[],
+  filtro: FiltroListaContrato,
+  busca: string,
+  agora: Date = new Date(),
+): ContratoRecorrente[] {
+  const hoje = hojeNoBrasil(agora);
+  const termos = busca.trim().toLocaleLowerCase('pt-BR').split(/\s+/).filter(Boolean);
+  return contratos.filter((c) => {
+    if (c.excluidoEm) return false;
+    if (termos.length > 0) {
+      const alvo = textoDaBusca(c);
+      if (!termos.every((t) => alvo.includes(t))) return false;
+    }
+    switch (filtro) {
+      case 'ativos':
+        return contratoEmVigor(c, hoje);
+      case 'pausados':
+        return c.situacao === 'suspenso';
+      case 'terminando':
+        return contratoTerminaEm30Dias(c, hoje);
+      case 'encerrados': {
+        const sit = situacaoEfetiva(c, hoje);
+        return sit === 'encerrado' || sit === 'cancelado';
+      }
+      default:
+        return true;
+    }
+  });
+}
+
+/**
+ * Terminando primeiro, depois ativos, pausados, rascunhos e o resto.
+ * Dentro do grupo, a próxima visita (ou o fim) mais cedo vem antes.
+ */
+export function ordenarListaContratos(
+  contratos: readonly ContratoRecorrente[],
+  agora: Date = new Date(),
+): ContratoRecorrente[] {
+  const hoje = hojeNoBrasil(agora);
+  const rank = (c: ContratoRecorrente): number => {
+    if (contratoTerminaEm30Dias(c, hoje)) return 0;
+    if (contratoEmVigor(c, hoje)) return 1;
+    if (c.situacao === 'suspenso') return 2;
+    if (c.situacao === 'rascunho') return 3;
+    return 4;
+  };
+  const chave = (c: ContratoRecorrente): string => {
+    const proxima = proximasVisitas(c, agora, 1)[0];
+    if (proxima) return proxima;
+    if (c.dataFim && diaValido(c.dataFim)) return c.dataFim;
+    return '9999-99-99';
+  };
+  return contratos
+    .map((c) => ({ c, r: rank(c), k: chave(c) }))
+    .sort((a, b) => a.r - b.r || (a.k < b.k ? -1 : a.k > b.k ? 1 : a.c.titulo.localeCompare(b.c.titulo, 'pt-BR')))
+    .map((x) => x.c);
+}
+
+/** Frase curta do fim, para o cartão. Sem data de fim → null (prazo indeterminado, não "vence hoje"). */
+export function rotuloFimContrato(c: ContratoRecorrente, agora: Date = new Date()): string | null {
+  if (!c.dataFim || !diaValido(c.dataFim)) return null;
+  const hoje = hojeNoBrasil(agora);
+  const fim = diaBR(c.dataFim);
+  if (c.dataFim < hoje) return `Terminou em ${fim}`;
+  if (c.dataFim === hoje) return `Termina hoje (${fim})`;
+  const dias = Math.round((Date.parse(`${c.dataFim}T00:00:00Z`) - Date.parse(`${hoje}T00:00:00Z`)) / 86_400_000);
+  if (dias > 0 && dias <= 30) return `Termina em ${dias} ${dias === 1 ? 'dia' : 'dias'} (${fim})`;
+  return `Até ${fim}`;
+}
+
+/**
+ * Novo contrato a partir de um existente. Nasce PAUSADO, com id novo e sem número:
+ * salvar não gera visita até o prestador marcar Ativo. O papel já assinado não é copiado.
+ * `novoId` vem de fora (uuid do app ou do painel) para este arquivo continuar puro.
+ */
+export function copiarContrato(
+  c: ContratoRecorrente,
+  agora: Date = new Date(),
+  novoId?: () => string,
+): ContratoRecorrente {
+  let seq = 0;
+  const idDe = novoId ?? (() => `copia-${agora.getTime()}-${++seq}`);
+  const iso = agora.toISOString();
+  return {
+    ...c,
+    id: idDe(),
+    userId: undefined,
+    numero: undefined,
+    titulo: tituloDaCopia(c.titulo),
+    situacao: 'suspenso',
+    ativos: c.ativos.map((a) => ({ ...a, id: idDe() })),
+    renovacao: 'manual',
+    criadoEm: iso,
+    atualizadoEm: iso,
+    excluidoEm: undefined,
+  };
+}
+
+const LIMITE_TITULO_COPIA = 160;
+
+function tituloDaCopia(titulo: string): string {
+  const base = titulo.trim() || 'Contrato';
+  if (base.endsWith('(cópia)')) return base.slice(0, LIMITE_TITULO_COPIA);
+  const sufixo = ' (cópia)';
+  return `${base.slice(0, Math.max(0, LIMITE_TITULO_COPIA - sufixo.length)).trimEnd()}${sufixo}`;
+}
+
+/**
+ * Empurra o fim 12 meses. Só contrato vigente com data de fim: pausado, cancelado
+ * ou sem fim não muda (sem fim não está acabando). Se o fim já passou, a base é
+ * hoje, para a data nova não nascer no passado. Não mexe em situação nem em papel.
+ */
+export function prorrogarFim(
+  c: ContratoRecorrente,
+  agora: Date = new Date(),
+  meses: number = MESES_PRORROGACAO_CONTRATO,
+): ContratoRecorrente | null {
+  if (!Number.isInteger(meses) || meses < 1 || meses > 60) return null;
+  if (c.excluidoEm || c.situacao !== 'vigente') return null;
+  if (!c.dataFim || !diaValido(c.dataFim)) return null;
+  const hoje = hojeNoBrasil(agora);
+  const base = c.dataFim > hoje ? c.dataFim : hoje;
+  const novoFim = dataAncorada(base, meses, 1);
+  if (!diaValido(novoFim) || novoFim <= c.dataFim) return null;
+  return { ...c, dataFim: novoFim };
+}
+
+/** Aviso da prorrogação. O papel assinado fica de fora de propósito: esta data é só a do OLLI. */
+export function fraseProrrogarContrato(fimAtual: string, fimNovo: string): string {
+  return `O fim no OLLI passa de ${diaBR(fimAtual)} para ${diaBR(fimNovo)}. As visitas entram na agenda até essa data. O papel que o cliente já assinou não muda.`;
+}
+
 // ─── Ids determinísticos (idempotência entre aparelhos) ───────────────────────
 //
 // Celular, painel e cron podem gerar a MESMA visita ao mesmo tempo. Se cada um

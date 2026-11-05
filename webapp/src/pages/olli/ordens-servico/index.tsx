@@ -17,12 +17,15 @@
 import type { OrdemServico, StatusOS } from "@dominio";
 import { STATUS_OS_LABELS } from "@dominio";
 import { AlertTriangle, Camera, ClipboardList, Inbox, MoreHorizontal, Plus, RotateCw, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import BotaoMover from "@/olli/components/BotaoMover";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { BotaoAbrirLinha, linhaClicavel, NameCell } from "@/olli/components/record-list-helpers";
 import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useOlliList } from "@/olli/data";
-import { useExcluir } from "@/olli/mutacoes";
+import { agoraIso } from "@/olli/datas";
+import { useExcluir, useSalvar } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -31,8 +34,10 @@ import { Input } from "@/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
+import { concluidoEmDaTransicao } from "../../../../../src/utils/ordemServicoStatus";
 import FormOs from "./FormOs";
 import { carregarOsFresca, type LinhaOs, linhaParaOs } from "./linha";
+import { aplicarStatusOs } from "./mover-os";
 
 /** Variantes de cor do Badge (shadcn). */
 type VarianteBadge = "default" | "secondary" | "info" | "warning" | "success" | "error";
@@ -127,6 +132,9 @@ export default function OrdensServicoPage() {
 		orderBy: "criado_em",
 	});
 	const excluir = useExcluir("ordens_servico");
+	const salvar = useSalvar("ordens_servico");
+	const emVoo = useRef(new Set<string>());
+	const [movendo, setMovendo] = useState<ReadonlySet<string>>(() => new Set());
 
 	const [busca, setBusca] = useState("");
 	const [filtroStatus, setFiltroStatus] = useState<string>(TODOS);
@@ -155,6 +163,30 @@ export default function OrdensServicoPage() {
 	function abrirEdicao(os: OrdemServico) {
 		setEmEdicao(os);
 		setFormAberto(true);
+	}
+
+	async function moverStatus(os: OrdemServico, status: StatusOS) {
+		if (os.status === status || emVoo.current.has(os.id)) return;
+		emVoo.current.add(os.id);
+		setMovendo(new Set(emVoo.current));
+		try {
+			// Fresca: fotos e checklist do celular não podem ser os da lista, que pode estar velha.
+			const fresca = await carregarOsFresca(os.id);
+			if (fresca.status === status) {
+				toast.info(`${os.numero || "Esta ordem"} já está em ${STATUS_OS_LABELS[status]}.`);
+				return;
+			}
+			const agora = agoraIso();
+			await salvar.mutateAsync(aplicarStatusOs(fresca, status, agora, concluidoEmDaTransicao(fresca, status, agora)));
+			toast.success(`${os.numero || "Ordem"} → ${STATUS_OS_LABELS[status]}`);
+		} catch (e) {
+			toast.error("Não consegui mover a ordem", {
+				description: (e as Error)?.message ?? "Tente de novo.",
+			});
+		} finally {
+			emVoo.current.delete(os.id);
+			setMovendo(new Set(emVoo.current));
+		}
 	}
 
 	async function confirmarExclusao() {
@@ -187,7 +219,9 @@ export default function OrdensServicoPage() {
 						)}
 					</div>
 					<p className="mt-1 text-sm text-text-secondary">
-						O trabalho em campo: quem executa, quando, e o que já foi feito.
+						O trabalho em campo: quem executa, quando, e o que já foi feito.{" "}
+						<span className="font-medium text-text-primary">Mover</span> troca o status na hora, no celular também, sem
+						abrir a ordem inteira.
 					</p>
 				</div>
 				<Button onClick={abrirNova} className="shrink-0 gap-2">
@@ -352,7 +386,10 @@ export default function OrdensServicoPage() {
 												{os.valor != null ? BRL.format(os.valor) : "—"}
 											</td>
 											<td className="px-2 py-3.5 text-right">
-												<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+												<div className="flex items-center justify-end gap-4">
+													<MoverDaOrdem os={os} salvando={movendo.has(os.id)} aoMover={moverStatus} />
+													<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+												</div>
 											</td>
 										</tr>
 									))}
@@ -383,7 +420,10 @@ export default function OrdensServicoPage() {
 										</BotaoAbrirLinha>
 										<p className="mt-0.5 line-clamp-1 text-sm text-text-secondary">{os.clienteNome || "—"}</p>
 									</div>
-									<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+									<div className="flex shrink-0 items-center gap-4">
+										<MoverDaOrdem os={os} salvando={movendo.has(os.id)} aoMover={moverStatus} />
+										<AcoesDaOrdem os={os} aoEditar={abrirEdicao} aoExcluir={setAExcluir} />
+									</div>
 								</div>
 
 								<dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5">
@@ -441,6 +481,29 @@ export default function OrdensServicoPage() {
 				erro={erroExcluir}
 			/>
 		</div>
+	);
+}
+
+/** Status novo sem abrir o formulário. A gravação relê a OS (fotos e checklist intactos). */
+function MoverDaOrdem({
+	os,
+	salvando,
+	aoMover,
+}: {
+	os: OrdemServico;
+	salvando: boolean;
+	aoMover: (os: OrdemServico, status: StatusOS) => void;
+}) {
+	return (
+		<BotaoMover
+			rotuloAcessivel={`Mover ordem ${os.numero || os.titulo || "sem número"} para outro status`}
+			titulo={`Mover ${os.numero || "a ordem"}`}
+			descricao="Escolha o status. Não precisa arrastar nem abrir a ordem inteira."
+			desabilitado={salvando}
+			rotuloVisivel={salvando ? "Salvando…" : "Mover"}
+			opcoes={STATUS.map(([id, rotulo]) => ({ id, rotulo, atual: id === os.status }))}
+			onEscolher={(id) => aoMover(os, id as StatusOS)}
+		/>
 	);
 }
 

@@ -1,5 +1,11 @@
 import { supabase, getCurrentUser } from './supabase';
 import { PAGAMENTOS_URL, LINK_BASE_URL } from '../config';
+import {
+  interpretarAceiteConvite,
+  lerResumoConvite,
+  mensagemAceiteConvite,
+  type ResumoConvite,
+} from './conviteGoogle';
 
 /**
  * Camada de dados da EQUIPE (multi-tenant — Onda 2).
@@ -380,8 +386,11 @@ export async function aceitarConvite(tokenBruto: string): Promise<Organizacao> {
   const token = extrairToken(tokenBruto);
   if (!token) throw new Error('Código de convite inválido. Confira o que você recebeu.');
 
-  const { error } = await supabase.rpc('aceitar_convite', { p_token: token });
+  const { data, error } = await supabase.rpc('aceitar_convite', { p_token: token });
   if (error) throw new Error(traduzirErroAceite(error.message));
+  // O banco responde com texto. `erro:convite_outro_email` não vem em `error`.
+  const lido = interpretarAceiteConvite(data);
+  if (!lido.ok) throw new Error(mensagemAceiteConvite(lido.codigo));
 
   const org = await getMinhaOrganizacao();
   if (!org) {
@@ -397,6 +406,24 @@ export async function aceitarConvite(tokenBruto: string): Promise<Organizacao> {
  * (https://link.olliorcamentos.online/equipe/convite/<token>). Retorna o token
  * limpo (validado pelo formato) ou '' se não parecer um token.
  */
+/**
+ * Lê o convite aberto para saber se há e-mail (e qual) antes do login Google.
+ * Falha de rede vira `indisponivel` — não bloqueia o convite sem e-mail.
+ */
+export async function buscarResumoConvite(tokenBruto: string): Promise<ResumoConvite> {
+  const token = extrairToken(tokenBruto);
+  if (!token) return { ok: false, erro: 'invalido' };
+  const base = workerBase();
+  if (!base) return { ok: false, erro: 'indisponivel' };
+  try {
+    const resp = await fetch(`${base}/equipe/convite/${encodeURIComponent(token)}/resumo`);
+    const dados = await resp.json().catch(() => null);
+    return lerResumoConvite(resp.status, dados);
+  } catch {
+    return { ok: false, erro: 'indisponivel' };
+  }
+}
+
 export function extrairToken(bruto: string): string {
   const s = (bruto || '').trim();
   if (!s) return '';

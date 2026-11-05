@@ -21,6 +21,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		// ─── Comercial ──────────────────────────────────────────
 		{ path: "orcamentos", element: Component("/pages/olli/orcamentos") },
 		{ path: "clientes", element: Component("/pages/olli/clientes") },
+		{ path: "prospeccao", element: Component("/pages/olli/prospeccao") },
 		{ path: "produtos", element: Component("/pages/olli/catalogo/produtos") },
 		{ path: "servicos", element: Component("/pages/olli/catalogo/servicos") },
 		{ path: "precificacao", element: Component("/pages/olli/precificacao") },
@@ -35,6 +36,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		{ path: "equipamentos", element: Component("/pages/olli/equipamentos") },
 
 		{ path: "equipe", element: Component("/pages/olli/equipe") },
+		{ path: "equipe/aceitar", element: Component("/pages/olli/equipe/aceitar") },
 
 		// ─── Ferramentas ────────────────────────────────────────
 		{ path: "ferramentas", element: Component("/pages/olli/ferramentas") },
@@ -45,6 +47,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		// ─── Conta ──────────────────────────────────────────────
 		{ path: "meu-negocio", element: Component("/pages/olli/meu-negocio") },
 		{ path: "planos", element: Component("/pages/olli/planos") },
+		{ path: "integracoes", element: Component("/pages/olli/integracoes") },
 		{ path: "configuracoes", element: Component("/pages/olli/configuracoes") },
 	];
 	return frontendDashboardRoutes;

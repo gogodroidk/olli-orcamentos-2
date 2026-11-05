@@ -37,6 +37,7 @@ const oauthRetornoFonte = fileURLToPath(new URL("../src/services/oauthRetorno.ts
 // Acesso por código/link de e-mail: contrato do /auth/confirm, anti-enumeração e reenvio,
 // as MESMAS regras do app (src/services/acessoCodigo.ts). Módulo puro, zero imports.
 const acessoCodigoFonte = fileURLToPath(new URL("../src/services/acessoCodigo.ts", import.meta.url));
+const conviteGoogleFonte = fileURLToPath(new URL("../src/services/conviteGoogle.ts", import.meta.url));
 const ajudaFonte = fileURLToPath(new URL("../src/content/ajuda/index.ts", import.meta.url));
 // Assinatura pela Google Play: o MESMO catálogo/URL de gerenciar que o app usa. Módulo puro.
 const playBillingRegrasFonte = fileURLToPath(new URL("../src/services/playBillingRegras.ts", import.meta.url));
@@ -47,6 +48,15 @@ const consentimentoFonte = fileURLToPath(new URL("../web/src/lib/consentimento.t
 const googleTagFonte = fileURLToPath(new URL("../web/src/lib/googleTag.ts", import.meta.url));
 // Filtro e ordem da lista de orçamentos: a MESMA regra do app. Módulo puro.
 const listaOrcamentosFonte = fileURLToPath(new URL("../src/utils/listaOrcamentos.ts", import.meta.url));
+// Identidade visual (site, link do Google, recorte e caixa da logo). Módulo puro, zero imports.
+const identidadeVisualFonte = fileURLToPath(new URL("../src/utils/identidadeVisual.ts", import.meta.url));
+// Estúdio de marca à parte: a MESMA regra do app (src/services/identidadeUpsell.ts). Módulo puro.
+const identidadeUpsellFonte = fileURLToPath(new URL("../src/services/identidadeUpsell.ts", import.meta.url));
+// UI do chat (markdown, histórico, revelação). Módulo puro, sem rede e sem provedor.
+const chatUiFonte = fileURLToPath(new URL("../src/utils/chatUi.ts", import.meta.url));
+// Prospecção (D-1438 G19): raio, rota e nicho sobre as coordenadas já salvas.
+// Módulo puro — não puxa React Native nem API paga de mapa.
+const prospeccaoFonte = fileURLToPath(new URL("../src/utils/prospeccaoMapa.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -109,6 +119,7 @@ export default defineConfig(({ mode }) => {
 				"@auth-policy": authPolicyFonte,
 				"@oauth-retorno": oauthRetornoFonte,
 				"@acesso-codigo": acessoCodigoFonte,
+				"@convite-google": conviteGoogleFonte,
 				"@ajuda": ajudaFonte,
 				"@play-billing-regras": playBillingRegrasFonte,
 				"@atribuicao": atribuicaoFonte,
@@ -116,6 +127,10 @@ export default defineConfig(({ mode }) => {
 				"@consentimento": consentimentoFonte,
 				"@google-tag": googleTagFonte,
 				"@lista-orcamentos": listaOrcamentosFonte,
+				"@identidade-visual": identidadeVisualFonte,
+				"@identidade-upsell": identidadeUpsellFonte,
+				"@chat-ui": chatUiFonte,
+				"@prospeccao": prospeccaoFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some
