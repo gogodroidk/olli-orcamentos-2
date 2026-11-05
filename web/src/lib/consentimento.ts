@@ -218,8 +218,28 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 	const aceitar = botao("Aceitar", true);
 	acoes.append(recusar, aceitar);
 	banner.append(texto, acoes);
+	document.body.appendChild(banner);
 
-	const fechar = () => banner.remove();
+	// No celular o cartão cobria "Criar conta" e "Continuar com Google" e a página
+	// não rolava. A reserva com a altura do cartão deixa rolar até o último botão,
+	// e o scroll-padding impede que o foco por teclado pare debaixo dele (WCAG 2.4.11).
+	// Sem rolar a tela sozinho: no painel isto roda antes do React montar.
+	const paddingAnterior = document.body.style.paddingBottom;
+	const scrollAnterior = document.documentElement.style.scrollPaddingBottom;
+	const reservar = () => {
+		const altura = banner.offsetHeight + 24;
+		document.body.style.paddingBottom = `${altura}px`;
+		document.documentElement.style.scrollPaddingBottom = `${altura}px`;
+	};
+	reservar();
+	window.addEventListener("resize", reservar);
+
+	const fechar = () => {
+		window.removeEventListener("resize", reservar);
+		document.body.style.paddingBottom = paddingAnterior;
+		document.documentElement.style.scrollPaddingBottom = scrollAnterior;
+		banner.remove();
+	};
 	recusar.addEventListener("click", () => {
 		gravarConsentimento("nao");
 		fechar();
@@ -233,6 +253,4 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 			// Medição nunca derruba a página.
 		}
 	});
-
-	document.body.appendChild(banner);
 }
