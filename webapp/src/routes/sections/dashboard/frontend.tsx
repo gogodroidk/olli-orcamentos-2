@@ -45,6 +45,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		// ─── Conta ──────────────────────────────────────────────
 		{ path: "meu-negocio", element: Component("/pages/olli/meu-negocio") },
 		{ path: "planos", element: Component("/pages/olli/planos") },
+		{ path: "integracoes", element: Component("/pages/olli/integracoes") },
 		{ path: "configuracoes", element: Component("/pages/olli/configuracoes") },
 	];
 	return frontendDashboardRoutes;

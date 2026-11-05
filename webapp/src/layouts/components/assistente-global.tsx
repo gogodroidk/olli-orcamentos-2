@@ -139,6 +139,7 @@ function nomeDaTela(pathname: string): string {
 		"/equipamentos": "Equipamentos",
 		"/equipe": "Equipe",
 		"/planos": "Planos",
+		"/integracoes": "Integrações",
 	};
 	return mapa[pathname] ?? "Painel";
 }
