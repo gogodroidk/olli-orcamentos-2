@@ -52,8 +52,11 @@ npm run test:ai
 npm run test:audio
 npm run test:body
 npx wrangler deploy --dry-run
-# Só então publique (precisa estar logado no Wrangler):
-npx wrangler deploy
+# Só então publique, na janela de terça/sexta 05:30–07:30 (D-0636) ou com hotfix:
+#   OLLI_CHANGELOG="linha 1|linha 2" npm run deploy
+# Fora da janela:
+#   OLLI_HOTFIX=1 OLLI_HOTFIX_MOTIVO="login: webhook caiu" npm run deploy
+# npx wrangler deploy direto não passa no portão.
 ```
 
 A URL sai no fim do deploy (ex.: `https://olli-diagnostico.SEU-SUBDOMINIO.workers.dev`).

@@ -123,7 +123,7 @@ export default function ConvidarDialog({ aberto, aoFechar }: Props) {
 								/>
 							</div>
 							<p className="text-xs text-text-secondary">
-								O link continua disponível para você compartilhar por WhatsApp.
+								Se você informar o e-mail, a pessoa só entra com o Google dessa conta. Sem e-mail, o link vale para quem você enviar, inclusive pelo WhatsApp.
 							</p>
 						</div>
 

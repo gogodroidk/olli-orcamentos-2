@@ -3,6 +3,7 @@ import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, Image, Sty
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, corStatusOS, type Cores } from '../../theme';
 import { OlliButton } from '../../components/OlliButton';
+import { FormularioDadosOS } from '../../components/os/FormularioDadosOS';
 import { PressableWebState } from '../../components/web/pressableWebState';
 // Contrato da ONDA 4 — mesmas funções de serviço usadas pela OrdemServicoScreen
 // mobile (DetalheOS). Nenhuma regra de negócio é reimplementada aqui.
@@ -11,13 +12,16 @@ import {
   atualizarStatusOS,
   atribuirTecnico,
   atualizarChecklist,
+  editarDadosOS,
 } from '../../services/ordemServico';
 import { saveOrdemServico } from '../../database/database';
 import { listarMembros, rotuloPapel, type MembroEquipe } from '../../services/equipe';
 import { STATUS_OS_LABELS, STATUS_OS_CORES } from '../../types';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../../types';
 import { generateId } from '../../utils/id';
-import { formatDateTime } from '../../utils/date';
+import { formatDate, formatDateTime } from '../../utils/date';
+import { ehDiaSemHora } from '../../utils/ordemServicoDoOrcamento';
+import type { PatchDadosOS } from '../../utils/ordemServicoEdicao';
 import { avisar } from './dialogo';
 
 const STATUS_OS_ORDEM: StatusOS[] = ['aberta', 'agendada', 'em_execucao', 'pausada', 'concluida', 'cancelada'];
@@ -28,9 +32,11 @@ function formatarValor(v?: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-/** ISO → valor aceito por um `<input type="datetime-local">` (sem segundos/Z). */
+/** ISO → valor aceito por um `<input type="datetime-local">` (sem segundos/Z).
+ * Dia-sentinela (12:00:01Z) volta vazio: em Brasília isso é 09:00:01, e o
+ * input corta o segundo — salvar de novo gravaria 09:00 de verdade. */
 function isoParaDatetimeLocal(iso?: string): string {
-  if (!iso) return '';
+  if (!iso || ehDiaSemHora(iso)) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const p = (n: number) => String(n).padStart(2, '0');
@@ -72,6 +78,8 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   const [editandoAgenda, setEditandoAgenda] = useState(false);
   const [dataAgendaForm, setDataAgendaForm] = useState('');
   const [salvandoAgenda, setSalvandoAgenda] = useState(false);
+  const [editandoDados, setEditandoDados] = useState(false);
+  const [salvandoDados, setSalvandoDados] = useState(false);
 
   const checklistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,11 +111,17 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
     if (checklistTimer.current) clearTimeout(checklistTimer.current);
   }, []);
 
+  // Trocar de OS fecha a edição: o formulário não pode nascer com os dados da anterior.
+  useEffect(() => {
+    if (ordemId) setEditandoDados(false);
+  }, [ordemId]);
+
   // Reseta os estados de edição locais ao fechar, para o próximo item abrir limpo.
   useEffect(() => {
     if (!visivel) {
       setShowAtribuir(false);
       setEditandoAgenda(false);
+      setEditandoDados(false);
       setOrdem(null);
     }
   }, [visivel]);
@@ -179,10 +193,14 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
     if (!ordem) return;
     setSalvandoAgenda(true);
     try {
-      const iso = dataAgendaForm ? new Date(dataAgendaForm).toISOString() : undefined;
       // Lê fresco antes de escrever (mesmo padrão do patchOrdem do serviço):
       // evita sobrescrever com estado React defasado se o checklist mudou.
       const base = (await getOrdem(ordem.id)) ?? ordem;
+      // Campo vazio apaga a hora. No dia-sentinela o campo nasce vazio de propósito:
+      // salvar sem escolher horário mantém "só o dia", não inventa 09:00.
+      const iso = dataAgendaForm
+        ? new Date(dataAgendaForm).toISOString()
+        : (ehDiaSemHora(base.dataAgendada) ? base.dataAgendada : undefined);
       const atualizada: OrdemServico = { ...base, dataAgendada: iso, atualizadoEm: new Date().toISOString() };
       await saveOrdemServico(atualizada);
       setOrdem(atualizada);
@@ -192,6 +210,33 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
       avisar('Não deu', e?.message ?? 'Não consegui salvar o agendamento agora.');
     } finally {
       setSalvandoAgenda(false);
+    }
+  }
+
+  async function salvarDados(patch: PatchDadosOS, limpar: () => void) {
+    if (!ordem) return;
+    setSalvandoDados(true);
+    try {
+      const atualizada = await editarDadosOS(ordem.id, patch);
+      limpar();
+      setOrdem((prev) => (prev ? {
+        ...prev,
+        clienteId: atualizada.clienteId,
+        clienteNome: atualizada.clienteNome,
+        titulo: atualizada.titulo,
+        descricao: atualizada.descricao,
+        observacoes: atualizada.observacoes,
+        dataAgendada: atualizada.dataAgendada,
+        valor: atualizada.valor,
+        atualizadoEm: atualizada.atualizadoEm,
+      } : atualizada));
+      setEditandoDados(false);
+      aoMudou();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Não consegui salvar a ordem agora.';
+      avisar('Não deu', msg);
+    } finally {
+      setSalvandoDados(false);
     }
   }
 
@@ -227,6 +272,37 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
             </View>
           ) : (
             <ScrollView contentContainerStyle={styles.conteudo} keyboardShouldPersistTaps="handled">
+              {ehGestao && !editandoDados ? (
+                <Pressable
+                  onPress={() => { setEditandoAgenda(false); setEditandoDados(true); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Editar ordem"
+                  style={({ hovered, focused }: PressableWebState) => [styles.linkAcao, { alignSelf: 'flex-start' }, hovered && styles.linkAcaoHover, focused && styles.focoVisivel]}
+                >
+                  <MaterialCommunityIcons name="pencil-outline" size={16} color={cores.accentLight} />
+                  <Text style={styles.linkAcaoTexto}>Editar ordem</Text>
+                </Pressable>
+              ) : null}
+
+              {editandoDados ? (
+                <FormularioDadosOS
+                  key={ordem.id}
+                  iniciais={{
+                    clienteId: ordem.clienteId,
+                    clienteNome: ordem.clienteNome,
+                    titulo: ordem.titulo,
+                    descricao: ordem.descricao,
+                    observacoes: ordem.observacoes,
+                    dataAgendada: ordem.dataAgendada,
+                    valor: ordem.valor,
+                  }}
+                  rotuloSalvar="Salvar alterações"
+                  salvando={salvandoDados}
+                  aoCancelar={() => setEditandoDados(false)}
+                  onSalvar={(patch, limpar) => { void salvarDados(patch, limpar); }}
+                />
+              ) : (
+              <>
               {/* Resumo */}
               <View style={styles.bloco}>
                 <LinhaInfo icon="account-outline" label="Cliente" valor={ordem.clienteNome || '—'} />
@@ -258,15 +334,24 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                 {editandoAgenda ? (
                   <View style={{ marginTop: 8, gap: 10 }}>
                     <CampoDataHora valor={dataAgendaForm} aoMudar={setDataAgendaForm} />
+                    {ehDiaSemHora(ordem.dataAgendada) && !dataAgendaForm ? (
+                      <Text style={styles.descricao}>Só o dia, sem hora. Escolha um horário para gravar um.</Text>
+                    ) : null}
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <OlliButton label="Cancelar" variant="ghost" size="sm" onPress={() => setEditandoAgenda(false)} disabled={salvandoAgenda} />
                       <OlliButton label="Salvar agendamento" variant="gradient" size="sm" loading={salvandoAgenda} onPress={salvarAgenda} />
                     </View>
                   </View>
                 ) : (
-                  <Text style={styles.valorGrande}>{ordem.dataAgendada ? formatDateTime(ordem.dataAgendada) : 'Sem data agendada'}</Text>
+                  <Text style={styles.valorGrande}>
+                    {ordem.dataAgendada
+                      ? (ehDiaSemHora(ordem.dataAgendada) ? formatDate(ordem.dataAgendada) : formatDateTime(ordem.dataAgendada))
+                      : 'Sem data agendada'}
+                  </Text>
                 )}
               </View>
+              </>
+              )}
 
               {/* Técnico */}
               <View style={styles.bloco}>
@@ -378,10 +463,12 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                 </View>
               )}
 
-              {ordem.observacoes ? (
+              {!editandoDados && (ordem.observacoes || ehGestao) ? (
                 <View style={styles.bloco}>
                   <Text style={styles.blocoTitulo}>Observações</Text>
-                  <Text style={styles.descricao}>{ordem.observacoes}</Text>
+                  <Text style={ordem.observacoes ? styles.descricao : styles.vazioTexto}>
+                    {ordem.observacoes || 'Nenhuma observação ainda.'}
+                  </Text>
                 </View>
               ) : null}
 

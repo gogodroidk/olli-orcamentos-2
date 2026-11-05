@@ -73,6 +73,20 @@ export function lerTiposPermitidos(sufixo) {
   return Object.freeze(new Set(lidos));
 }
 
+/**
+ * Checagem do sufixo `nao_aberto` (Z-52). `production` sozinho devolve false:
+ * a régua do orçamento não aberto não mora no conjunto padrão. Só devolve true
+ * quando o MODE é production e o sufixo lista a palavra exata `nao_aberto`.
+ * Quem for chamar `listar_nao_abertos_email` tem de passar por aqui.
+ */
+export function sufixoLigaNaoAberto(modo) {
+  if (typeof modo !== 'string') return false;
+  const [base, ...resto] = modo.trim().toLowerCase().split(':');
+  if (base !== 'production' || resto.length === 0) return false;
+  const tipos = resto.join(':').split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+  return tipos.includes('nao_aberto');
+}
+
 const PRIORIDADE = Object.freeze({
   assinatura: 0,
   trial_acabando: 1,

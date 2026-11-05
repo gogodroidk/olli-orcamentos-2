@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { ORCAMENTO_SCHEMA } from '../src/voz.js';
 import { IA_IMPORTACAO_SCHEMA } from '../src/iaImportacao.js';
 import { IA_AUTOPILOT_SCHEMA } from '../src/iaAutopilot.js';
+import { DIAG_CAMPOS_COMPLETOS, DIAG_CAMPOS_COMPLETOS_CHAVES } from '../src/diagnosticoEquipamento.js';
 import { aiConfigurada, gerarIA, provedorIA, reiniciarSaudeIA, saudeIA, WORKERSAI_MODELO_PADRAO } from '../src/ai.js';
 
 const schema = { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' } } };
@@ -76,7 +77,23 @@ assert.equal((wr.match(/"OPENROUTER_GLOBAL_DAILY_LIMIT": "30"/g) || []).length, 
 // CPO (D-1527): provedor fora (402/sem saldo, cota grátis, prazo) nos 6 schemas reais:
 // erro de sobrecarga (503 amigável), 1 reserva da cota diária por pedido (nunca 2) e nenhum texto.
 {
-  const lit = (nome) => { const i = idx.indexOf(`const ${nome} =`); const a = idx.indexOf('{', i); let d = 0, j = a; for (; j < idx.length; j++) { if (idx[j] === '{') d++; if (idx[j] === '}' && !--d) break; } return Function(`return (${idx.slice(a, j + 1)})`)(); };
+  const lit = (nome) => {
+    const i = idx.indexOf(`const ${nome} =`);
+    const a = idx.indexOf('{', i);
+    let d = 0;
+    let j = a;
+    for (; j < idx.length; j++) {
+      if (idx[j] === '{') d++;
+      if (idx[j] === '}' && !--d) break;
+    }
+    // DIAG_SCHEMA espalha estas constantes. O Function avalia o texto do
+    // index.js e, sem elas no escopo, estoura ReferenceError.
+    return Function(
+      'DIAG_CAMPOS_COMPLETOS',
+      'DIAG_CAMPOS_COMPLETOS_CHAVES',
+      `return (${idx.slice(a, j + 1)})`,
+    )(DIAG_CAMPOS_COMPLETOS, DIAG_CAMPOS_COMPLETOS_CHAVES);
+  };
   const seis = { minimo: schema, diagnostico: lit('DIAG_SCHEMA'), acao: lit('IA_ACTION_DRAFT_SCHEMA'), voz: ORCAMENTO_SCHEMA, importacao: IA_IMPORTACAO_SCHEMA, autopilot: IA_AUTOPILOT_SCHEMA };
   for (const falha of ['402 Payment Required: insufficient credits', '4006: daily free allocation of neurons exceeded']) {
     for (const [nome, sc] of Object.entries(seis)) {

@@ -6,9 +6,22 @@
  * snapshots grandes sem necessidade; a origem continua apontando para o fluxo
  * oficial de edição/geração.
  */
-import { Archive, ExternalLink, FileCheck2, FileText, Inbox, Loader2, Lock, Pencil, Plus, Printer, RotateCw, Save, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Archive, ExternalLink, Eye, FileCheck2, FileSignature, FileText, Inbox, Loader2, Lock, Pencil, Plus, Printer, RotateCw, Save, Search } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { Empresa, Orcamento } from "@dominio";
+import { lazyComRetry } from "@/components/lazy/carregar-chunk";
+import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
+import { usePortaDoCadastro } from "@/olli/exigirCadastro";
+import { resolverMarcaDoDocumento } from "@/olli/marcaDocumento";
+import { htmlDoContrato, termosDoOrcamento } from "@/olli/pdf/imprimirContrato";
+import { htmlDoOrcamento } from "@/olli/pdf/imprimirOrcamento";
+import { imprimirHtml } from "@/olli/pdf/imprimirHtml";
+import { acoesVisuaisDoDocumento } from "../../../../../src/services/acoesCentralDocumentos";
+import { PreviaDocumento } from "./PreviaDocumento";
+
+const DialogoContrato = lazyComRetry(() => import("../orcamentos/DialogoContrato"));
 import { useVerticaisPainel } from "@/olli/verticais";
 import {
 	AVISO_REVISAO_TECNICA,
@@ -42,6 +55,7 @@ interface LinhaDocumento {
 	titulo: string;
 	cliente_nome: string | null;
 	origem_tipo: string;
+	origem_id: string | null;
 	origem_numero: string | null;
 	versao_atual: number | null;
 	arquivo_uri: string | null;
@@ -102,7 +116,14 @@ function statusVariant(status: string): "default" | "secondary" | "success" | "w
 	return "secondary";
 }
 
+function blobDeOrcamento(dados: unknown): Orcamento | null {
+	if (!dados || typeof dados !== "object" || !Array.isArray((dados as Orcamento).itens)) return null;
+	return dados as Orcamento;
+}
+
 export default function DocumentosPage() {
+	const qc = useQueryClient();
+	const exigirCadastro = usePortaDoCadastro();
 	const { data, isLoading, isError, error, refetch, isFetching } = useOlliList<LinhaDocumento>("documentos", {
 		orderBy: "atualizado_em",
 		ascending: false,
@@ -132,6 +153,19 @@ export default function DocumentosPage() {
 	const empresaQ = useMinhaEmpresa();
 	const modelosOficio = useMemo(() => MODELOS_DOCUMENTO_OFICIO.filter((m) => mostraVertical(m.vertical)), [mostraVertical]);
 	const [modeloOficio, setModeloOficio] = useState<ModeloDocumentoOficio | "">("");
+	const [previa, setPrevia] = useState<{ titulo: string; html: string } | null>(null);
+	const [imprimindoPrevia, setImprimindoPrevia] = useState(false);
+	const [montandoVisual, setMontandoVisual] = useState<string | null>(null);
+	const [contratoDe, setContratoDe] = useState<Orcamento | null>(null);
+	const [empresaContrato, setEmpresaContrato] = useState<Empresa | null>(null);
+	const [escolhaAberta, setEscolhaAberta] = useState(false);
+	const orcamentosEscolha = useOlliList<{ id: string; numero: string | null; cliente_nome: string | null; dados: unknown }>("orcamentos", {
+		orderBy: "criado_em",
+		ascending: false,
+		limit: 40,
+		colunas: "id,numero,cliente_nome,dados",
+		enabled: escolhaAberta,
+	});
 
 	function aplicarModeloOficio(modelo: ModeloDocumentoOficio | "") {
 		setModeloOficio(modelo);
@@ -147,6 +181,115 @@ export default function DocumentosPage() {
 		if (editor) setBlocos(blocosDoEditor(editor));
 		else setBlocos([]);
 	}, [editor?.id]);
+
+	async function orcamentoDaLinha(doc: LinhaDocumento): Promise<Orcamento | null> {
+		if (doc.origem_tipo !== "orcamento" || !doc.origem_id) return null;
+		const { data: linha, error: erroLinha } = await supabase.from("orcamentos").select("dados").eq("id", doc.origem_id).is("excluido_em", null).maybeSingle();
+		if (erroLinha) throw erroLinha;
+		return blobDeOrcamento((linha as { dados?: unknown } | null)?.dados);
+	}
+
+	async function mostrarVisual(orc: Orcamento, empresa: Empresa, qual: "orcamento" | "contrato") {
+		const marca = await resolverMarcaDoDocumento(qc);
+		if (qual === "orcamento") {
+			setPrevia({
+				titulo: `Orçamento nº ${orc.numero}`,
+				html: htmlDoOrcamento(orc, empresa, [], { removerMarca: marca.removerMarca }),
+			});
+			return;
+		}
+		const html = await htmlDoContrato(orc, empresa, termosDoOrcamento(orc, empresa), { removerMarca: marca.removerMarca });
+		setPrevia({ titulo: `Contrato · orçamento nº ${orc.numero}`, html });
+	}
+
+	async function verDocumento(doc: LinhaDocumento, qual: "orcamento" | "contrato") {
+		if (montandoVisual) return;
+		setMontandoVisual(`${doc.id}:${qual}`);
+		try {
+			const empresa = await exigirCadastro(qual === "orcamento" ? "orcamento" : "contrato");
+			if (!empresa) return;
+			const orc = await orcamentoDaLinha(doc);
+			if (!orc) {
+				toast.error("Este documento está sem o orçamento de origem. Abra o orçamento no celular para ver o papel.");
+				return;
+			}
+			await mostrarVisual(orc, empresa, qual);
+		} catch (erro) {
+			toast.error((erro as Error).message || "Não consegui montar o documento.");
+		} finally {
+			setMontandoVisual(null);
+		}
+	}
+
+	async function editarClausulas(doc: LinhaDocumento) {
+		if (montandoVisual) return;
+		setMontandoVisual(`${doc.id}:clausulas`);
+		try {
+			const empresa = await exigirCadastro("contrato");
+			if (!empresa) return;
+			const orc = await orcamentoDaLinha(doc);
+			if (!orc) {
+				toast.error("Sem o orçamento de origem não dá para editar as cláusulas.");
+				return;
+			}
+			setEmpresaContrato(empresa);
+			setContratoDe(orc);
+		} catch (erro) {
+			toast.error((erro as Error).message || "Não consegui abrir as cláusulas.");
+		} finally {
+			setMontandoVisual(null);
+		}
+	}
+
+	async function verPeloBlob(dados: unknown, qual: "orcamento" | "contrato" | "clausulas") {
+		const orc = blobDeOrcamento(dados);
+		if (!orc) {
+			toast.error("Este orçamento está sem os dados completos — abra-o no celular para ver o documento.");
+			return;
+		}
+		try {
+			if (qual === "clausulas") {
+				const empresa = await exigirCadastro("contrato");
+				if (!empresa) return;
+				setEmpresaContrato(empresa);
+				setContratoDe(orc);
+				setEscolhaAberta(false);
+				return;
+			}
+			const empresa = await exigirCadastro(qual === "orcamento" ? "orcamento" : "contrato");
+			if (!empresa) return;
+			setEscolhaAberta(false);
+			await mostrarVisual(orc, empresa, qual);
+		} catch (erro) {
+			toast.error((erro as Error).message || "Não consegui montar o documento.");
+		}
+	}
+
+	async function imprimirPrevia() {
+		if (!previa || imprimindoPrevia) return;
+		setImprimindoPrevia(true);
+		try {
+			await imprimirHtml(previa.html);
+			toast.success("Abri a janela de impressão — escolha “Salvar como PDF”.");
+		} catch (erro) {
+			toast.error((erro as Error).message || "Não consegui imprimir. Tente de novo.");
+		} finally {
+			setImprimindoPrevia(false);
+		}
+	}
+
+	function botoesVisuais(doc: LinhaDocumento) {
+		const acoes = acoesVisuaisDoDocumento({ tipo: doc.tipo, origemTipo: doc.origem_tipo, origemId: doc.origem_id });
+		if (!acoes.includes("ver_orcamento")) return null;
+		const ocupado = montandoVisual?.startsWith(`${doc.id}:`) ?? false;
+		return (
+			<div className="mt-2 flex flex-wrap justify-end gap-1">
+				<Button type="button" variant="outline" size="sm" className="h-8 gap-1 rounded-full px-2" disabled={ocupado} onClick={() => { void verDocumento(doc, "orcamento"); }}><Eye className="size-3.5" />Ver orçamento</Button>
+				<Button type="button" variant="outline" size="sm" className="h-8 gap-1 rounded-full px-2" disabled={ocupado} onClick={() => { void verDocumento(doc, "contrato"); }}><FileSignature className="size-3.5" />Ver contrato</Button>
+				<Button type="button" variant="outline" size="sm" className="h-8 gap-1 rounded-full px-2" disabled={ocupado} onClick={() => { void editarClausulas(doc); }}><Pencil className="size-3.5" />Editar cláusulas</Button>
+			</div>
+		);
+	}
 
 	function abrirCatalogo(tipo: TipoDocumentoWeb) {
 		if (tipo === "orcamento") {
@@ -295,6 +438,7 @@ export default function DocumentosPage() {
 				</div>
 				<div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
 					<Button type="button" className="h-10 shrink-0 rounded-full gap-2" onClick={() => setNovoAberto(true)}><Plus className="size-4" />Novo documento</Button>
+					<Button type="button" variant="outline" className="h-10 shrink-0 gap-2 rounded-full" onClick={() => setEscolhaAberta(true)}><Eye className="size-4" />Ver orçamento ou contrato</Button>
 					<Button asChild type="button" variant="outline" className="h-10 shrink-0 rounded-full"><NavLink to="/orcamentos">A partir de orçamento</NavLink></Button>
 					<div className="relative min-w-0 sm:w-64">
 						<Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-disabled" />
@@ -351,13 +495,14 @@ export default function DocumentosPage() {
 								<td className="px-4 py-3.5 text-text-secondary">{doc.origem_numero ? `${doc.origem_tipo} · ${doc.origem_numero}` : doc.origem_tipo}</td>
 								<td className="px-4 py-3.5"><Badge variant={statusVariant(doc.status)}>{STATUS_LABEL[doc.status] ?? doc.status}</Badge></td>
 								<td className="px-4 py-3.5 tabular-nums text-text-secondary">{dataLegivel(doc.atualizado_em)}</td>
-								<td className="px-4 py-3.5 text-right"><div className="flex items-center justify-end gap-3">{["rascunho", "pronto"].includes(doc.status) && <Button type="button" variant="ghost" size="sm" className="gap-1.5 rounded-full" onClick={() => { void abrirEditor(doc); }} disabled={abrindoEditor}><Pencil className="size-3.5" />Editar</Button>}{doc.arquivo_uri ? <a href={doc.arquivo_uri} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline"><ExternalLink className="size-3.5" />Abrir</a> : doc.arquivo_chave ? <Button type="button" variant="ghost" size="sm" className="gap-1.5 rounded-full text-text-secondary" onClick={() => { void abrirArquivoProtegido(doc); }} disabled={abrindoArquivoId === doc.id}>{abrindoArquivoId === doc.id ? <Loader2 className="size-3.5 animate-spin" /> : <Lock className="size-3.5" />}{abrindoArquivoId === doc.id ? "Abrindo…" : "Abrir protegido"}</Button> : <span className="text-text-disabled">Não exportado</span>}</div></td>
+								<td className="px-4 py-3.5 text-right"><div className="flex items-center justify-end gap-3">{["rascunho", "pronto"].includes(doc.status) && <Button type="button" variant="ghost" size="sm" className="gap-1.5 rounded-full" onClick={() => { void abrirEditor(doc); }} disabled={abrindoEditor}><Pencil className="size-3.5" />Editar</Button>}{doc.arquivo_uri ? <a href={doc.arquivo_uri} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-primary hover:underline"><ExternalLink className="size-3.5" />Abrir</a> : doc.arquivo_chave ? <Button type="button" variant="ghost" size="sm" className="gap-1.5 rounded-full text-text-secondary" onClick={() => { void abrirArquivoProtegido(doc); }} disabled={abrindoArquivoId === doc.id}>{abrindoArquivoId === doc.id ? <Loader2 className="size-3.5 animate-spin" /> : <Lock className="size-3.5" />}{abrindoArquivoId === doc.id ? "Abrindo…" : "Abrir protegido"}</Button> : <span className="text-text-disabled">Não exportado</span>}</div>{botoesVisuais(doc)}</td>
 							</tr>)}</tbody>
 						</table>
 					</div>
 					<div className="divide-y divide-border/60 md:hidden">{documentos.map((doc) => <div key={doc.id} className="space-y-2 p-4">
 						<div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-2.5"><FileText className="mt-0.5 size-4 shrink-0 text-primary" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-text-primary">{doc.titulo}</p><p className="mt-0.5 text-xs text-text-secondary">{doc.cliente_nome || "Documento técnico"}</p></div></div><Badge variant={statusVariant(doc.status)}>{STATUS_LABEL[doc.status] ?? doc.status}</Badge></div>
 						<div className="flex items-center justify-between gap-2 pl-6 text-xs text-text-disabled"><span>{TIPOS[doc.tipo] ?? doc.tipo} · v{doc.versao_atual ?? 1} · {dataLegivel(doc.atualizado_em)}</span><div className="flex items-center gap-3">{["rascunho", "pronto"].includes(doc.status) && <Button type="button" variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-2" onClick={() => { void abrirEditor(doc); }} disabled={abrindoEditor}><Pencil className="size-3" />Editar</Button>}{doc.arquivo_uri ? <a href={doc.arquivo_uri} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary"><ExternalLink className="size-3" />Abrir PDF</a> : doc.arquivo_chave ? <Button type="button" variant="ghost" size="sm" className="h-8 gap-1 rounded-full px-2 text-text-secondary" onClick={() => { void abrirArquivoProtegido(doc); }} disabled={abrindoArquivoId === doc.id}>{abrindoArquivoId === doc.id ? <Loader2 className="size-3 animate-spin" /> : <Lock className="size-3" />}{abrindoArquivoId === doc.id ? "Abrindo…" : "Abrir arquivo"}</Button> : null}</div></div>
+						<div className="pl-6">{botoesVisuais(doc)}</div>
 					</div>)}</div>
 				</Card>
 			)}
@@ -409,6 +554,41 @@ export default function DocumentosPage() {
 					<DialogFooter><Button type="button" variant="outline" onClick={() => setNovoAberto(false)} disabled={criandoNovo}>Cancelar</Button><Button type="button" onClick={() => { void criarNovoDocumento(); }} disabled={!novo.titulo.trim() || criandoNovo}>{criandoNovo ? "Criando…" : "Criar rascunho"}</Button></DialogFooter>
 				</DialogContent>
 			</Dialog>
+			<PreviaDocumento
+				aberto={!!previa}
+				titulo={previa?.titulo ?? "Documento"}
+				html={previa?.html ?? ""}
+				imprimindo={imprimindoPrevia}
+				aoFechar={() => setPrevia(null)}
+				aoImprimir={() => { void imprimirPrevia(); }}
+			/>
+			<Dialog open={escolhaAberta} onOpenChange={(aberto) => setEscolhaAberta(aberto)}>
+				<DialogContent className="max-w-lg">
+					<DialogHeader>
+						<DialogTitle>Ver orçamento ou contrato</DialogTitle>
+						<DialogDescription>Escolha o orçamento. O contrato e as cláusulas saem dos dados que já estão nele.</DialogDescription>
+					</DialogHeader>
+					<div className="grid max-h-96 gap-2 overflow-y-auto py-1">
+						{orcamentosEscolha.isLoading ? <p className="text-sm text-text-secondary">Carregando orçamentos…</p> : orcamentosEscolha.isError ? <p className="text-sm text-error">Não consegui ler os orçamentos. Tente de novo.</p> : (orcamentosEscolha.data ?? []).length === 0 ? <p className="text-sm text-text-secondary">Ainda não há orçamento para mostrar.</p> : (orcamentosEscolha.data ?? []).map((linha) => (
+							<div key={linha.id} className="rounded-lg border border-border p-3">
+								<p className="text-sm font-semibold text-text-primary">{linha.cliente_nome || "Cliente"} · nº {linha.numero || "—"}</p>
+								<div className="mt-2 flex flex-wrap gap-1">
+									<Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => { void verPeloBlob(linha.dados, "orcamento"); }}>Ver orçamento</Button>
+									<Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => { void verPeloBlob(linha.dados, "contrato"); }}>Ver contrato</Button>
+									<Button type="button" variant="outline" size="sm" className="h-8 rounded-full" onClick={() => { void verPeloBlob(linha.dados, "clausulas"); }}>Editar cláusulas</Button>
+								</div>
+							</div>
+						))}
+					</div>
+				</DialogContent>
+			</Dialog>
+			{contratoDe && empresaContrato && (
+				<ChunkBoundary oQue="o contrato">
+					<Suspense fallback={null}>
+						<DialogoContrato key={contratoDe.id} orcamento={contratoDe} empresa={empresaContrato} aoFechar={() => setContratoDe(null)} />
+					</Suspense>
+				</ChunkBoundary>
+			)}
 		</div>
 	);
 }

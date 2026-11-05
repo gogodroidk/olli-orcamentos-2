@@ -215,16 +215,25 @@ export function tetosDoContrato(o: Orcamento, empresa: Empresa): {
  *
  * `removerMarca` vem resolvido de fora (ver o cabeçalho). Ausente = selo impresso.
  */
+/** HTML do contrato no painel — a mesma montagem que `imprimirContrato` imprime. */
+export async function htmlDoContrato(
+	o: Orcamento,
+	empresa: Empresa,
+	termos: TermosContrato,
+	opcoes?: { removerMarca?: boolean },
+): Promise<string> {
+	return montarHtmlContratoCompleto(o, empresa, termos, {
+		assinaturaClienteUri: o.assinaturaContratoUri,
+		dataAssinaturaCliente: o.dataAssinaturaContrato,
+		removerMarca: opcoes?.removerMarca === true,
+	});
+}
+
 export async function imprimirContrato(
 	o: Orcamento,
 	empresa: Empresa,
 	termos: TermosContrato,
 	opcoes?: { removerMarca?: boolean },
 ): Promise<void> {
-	const html = await montarHtmlContratoCompleto(o, empresa, termos, {
-		assinaturaClienteUri: o.assinaturaContratoUri,
-		dataAssinaturaCliente: o.dataAssinaturaContrato,
-		removerMarca: opcoes?.removerMarca === true,
-	});
-	await imprimirHtml(html);
+	await imprimirHtml(await htmlDoContrato(o, empresa, termos, opcoes));
 }
