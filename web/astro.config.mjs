@@ -65,6 +65,8 @@ const LASTMOD_PARA = '2026-10-01';
  * canonical para a página de SEO, então NÃO entram no sitemap — duas URLs do mesmo ofício disputavam a mesma busca.
  */
 const VARIANTES_DE_ANUNCIO = ['/eletricista/', '/refrigeracao/'];
+/** Aliases por palavra de /para/ (D-1013): página no ar, canonical na de SEO, fora do sitemap. Slugs de `ALIASES_PARA` em `src/data/oficios.ts`. */
+const ALIASES_PARA_FORA = ['/para/ar-condicionado/', '/para/refrigeracao/', '/para/hidraulica/', '/para/marido-de-aluguel/', '/para/manutencao/'];
 
 // Site de marketing da OLLI — separado do app (react-native-web). Aqui mora o
 // design extraordinário: SSG p/ SEO + Lighthouse alto, ilhas React só onde há
@@ -112,6 +114,7 @@ export default defineConfig({
         // elas ficam fora do sitemap desde a origem.
         if (['/admin/', '/404/', '/excluir-conta/'].includes(caminho)) return false;
         if (VARIANTES_DE_ANUNCIO.includes(caminho)) return false;
+        if (ALIASES_PARA_FORA.includes(caminho)) return false;
         if (!caminho.startsWith('/blog/')) return true;
         const numero = caminho.match(/\/(\d+)\/$/);
         return !numero || Number(numero[1]) <= 2;

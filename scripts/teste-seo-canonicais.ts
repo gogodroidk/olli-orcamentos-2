@@ -68,4 +68,15 @@ caso('lastmod das páginas fixas: datas válidas (AAAA-MM-DD), nenhuma no futuro
   assert.match(config, /startsWith\('\/para\/'\) \? LASTMOD_PARA/);
 });
 
+caso('aliases de /para/ (D-1013): cada um aponta para vertical existente, fica fora do sitemap e a página manda canonicalPath', () => {
+  const pagina = ler('web/src/pages/para/[oficio].astro');
+  assert.match(pagina, /canonicalPath=\{canonicalPath\}/);
+  const aliases = [...oficios.matchAll(/\{ slug: '([a-z0-9-]+)', id: '([a-z_]+)'/g)];
+  assert.equal(aliases.length, 5, 'esperava 5 aliases');
+  for (const [, slug, id] of aliases) {
+    assert.ok(config.includes(`'/para/${slug}/'`), `alias ${slug} fora de ALIASES_PARA_FORA (entraria no sitemap)`);
+    assert.match(oficios, new RegExp(`\\b${id}: '[a-z0-9-]+'`), `vertical ${id} sem slug`);
+  }
+});
+
 console.log(`\nteste-seo-canonicais: ${ok} casos OK`);
