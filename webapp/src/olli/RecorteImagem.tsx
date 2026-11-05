@@ -152,7 +152,7 @@ export function RecorteImagem({
 				)}
 
 				{uso === "logo" && (
-					<div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Formato do recorte">
+					<fieldset className="m-0 mt-4 flex min-w-0 flex-wrap gap-2 border-0 p-0" aria-label="Formato do recorte">
 						{MODOS.map((item) => (
 							<Button
 								key={item.id}
@@ -166,7 +166,7 @@ export function RecorteImagem({
 								{item.rotulo}
 							</Button>
 						))}
-					</div>
+					</fieldset>
 				)}
 
 				<label className="mt-4 block text-sm font-medium text-text-primary">
