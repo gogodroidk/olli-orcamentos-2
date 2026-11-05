@@ -16,6 +16,7 @@ import {
 } from "@/ui/command";
 import { Text } from "@/ui/typography";
 import { useFilteredNavData } from "../dashboard/nav";
+import { atalhoAbreBusca } from "./atalho-busca";
 
 interface SearchItem {
 	key: string;
@@ -88,10 +89,9 @@ const SearchBar = () => {
 
 	useEffect(() => {
 		const down = (e: KeyboardEvent) => {
-			if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
-				e.preventDefault();
-				setOpen((open: boolean) => !open);
-			}
+			if (!atalhoAbreBusca(e)) return;
+			e.preventDefault();
+			setOpen((aberto: boolean) => !aberto);
 		};
 
 		document.addEventListener("keydown", down);
@@ -107,29 +107,28 @@ const SearchBar = () => {
 	);
 
 	const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+	const atalhoVisivel = isMac ? "Cmd+K" : "Ctrl+K";
 
 	return (
 		<>
-			{/* O ic-search.svg é currentColor e o variant ghost não define cor de texto:
-			    a lupa herdava o preto padrão do navegador e ficava em 1,27:1 sobre o
-			    fundo `bg-action-selected` do escuro. Com o token vai a 16,57:1. */}
+			{/* Campo, não um selo azul. A lupa é currentColor: a cor vem do
+			    text-text-secondary, nos dois temas, em vez do preto padrão do navegador. */}
 			<Button
-				variant="ghost"
-				className="bg-action-selected px-2 rounded-lg min-h-[44px] text-text-primary"
+				variant="outline"
+				className="h-11 min-h-[44px] w-11 min-w-11 justify-center rounded-full border-input bg-background px-0 text-text-secondary shadow-none hover:bg-accent hover:text-text-primary md:w-60 md:justify-start md:gap-2 md:px-3"
 				size="sm"
 				onClick={() => setOpen(true)}
-				aria-label={`Buscar (${isMac ? "Cmd" : "Ctrl"}+K)`}
+				aria-label={`Buscar (${atalhoVisivel} ou Ctrl+Q)`}
+				aria-keyshortcuts="Control+K Control+Q"
+				aria-haspopup="dialog"
 			>
-				<div className="flex items-center justify-center gap-4">
-					<Icon icon="local:ic-search" size="20" />
-					{/* Azul CHEIO, não `bg-primary/80`: medido no navegador, o branco sobre o azul
-					    a 80% (composto sobre o botão cinza da busca) dava 3,64:1 — reprova nos
-					    4,5:1 da WCAG para texto pequeno. Sem a transparência vai a 5,02:1. */}
-					<kbd className="flex items-center justify-center rounded-md bg-primary text-primary-foreground px-1.5 py-0.5 text-sm font-semibold">
-						{isMac ? <Icon icon="qlementine-icons:key-cmd-16" /> : <span>Ctrl</span>}
-						<span>K</span>
-					</kbd>
-				</div>
+				<Icon icon="local:ic-search" size="20" />
+				<span className="hidden min-w-0 flex-1 truncate text-left text-sm font-normal md:inline">Buscar</span>
+				<kbd className="hidden items-center gap-0.5 rounded-md border border-border bg-muted px-1.5 py-0.5 text-[11px] font-semibold leading-none text-text-secondary md:inline-flex">
+					{isMac ? <Icon icon="qlementine-icons:key-cmd-16" size="14" /> : <span>Ctrl</span>}
+					<span aria-hidden="true">+</span>
+					<span>K</span>
+				</kbd>
 			</Button>
 
 			<CommandDialog

@@ -207,6 +207,33 @@
 	--sidebar-ring: var(--colors-palette-primary-default);
 }
 
+/*
+ * Esquema de cor do documento = tema escolhido no painel (D-1438, busca do topo).
+ *
+ * Sem `color-scheme`, o Chrome no Windows pinta a trilha da rolagem nativa de
+ * branco mesmo com o painel escuro — na lista da busca e em qualquer overflow.
+ * O valor é o tema do painel, não o do sistema operacional: quem põe o painel
+ * no escuro com o Windows no claro continua com rolagem escura.
+ *
+ * `scrollbar-color` usa o cinza do design system (canal RGB do token). A trilha
+ * é transparente, então aparece a superfície do tema, não um branco fixo.
+ * O fallback numérico é o próprio gray-500 (#919EAB) se o token ainda não
+ * chegou (primeiro frame, antes do atributo do tema).
+ */
+:root {
+	color-scheme: light;
+	--scrollbar-thumb: rgba(var(--colors-palette-gray-500Channel, 145 158 171) / 0.72);
+}
+:root[data-theme-mode="dark"] {
+	color-scheme: dark;
+	--scrollbar-thumb: rgba(var(--colors-palette-gray-400Channel, 196 205 213) / 0.8);
+}
+html,
+[data-slot="command-list"] {
+	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
 /* slash layout */
 :root {
 	--layout-nav-width: 260px;

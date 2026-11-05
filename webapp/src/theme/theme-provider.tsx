@@ -10,10 +10,13 @@ interface ThemeProviderProps {
 export function ThemeProvider({ children, adapters = [] }: ThemeProviderProps) {
 	const { themeMode, themeColorPresets, fontFamily, fontSize } = useSettings();
 
-	// Update HTML class to support Tailwind dark mode
+	// Tema no <html> (Tailwind escuro) e esquema de cor nativo.
+	// O CSS repete o color-scheme; aqui a troca vale no mesmo instante,
+	// senão a rolagem e o campo de busca nascem no esquema claro.
 	useEffect(() => {
 		const root = window.document.documentElement;
 		root.setAttribute(HtmlDataAttribute.ThemeMode, themeMode);
+		root.style.colorScheme = themeMode === "dark" ? "dark" : "light";
 	}, [themeMode]);
 
 	// Dynamically update theme color related CSS variables
