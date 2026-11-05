@@ -20,13 +20,14 @@ import { ScrollArea } from "@/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/ui/sheet";
 import { Slider } from "@/ui/slider";
 import { Switch } from "@/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { Text } from "@/ui/typography";
 import { cn } from "@/utils";
 
 type RadioOption<T extends string> = {
 	value: T;
 	label: string;
+	/** Frase lida pelo leitor de tela junto com o nome. O texto visível fica no content. */
+	description?: string;
 	content: ReactNode;
 	className?: string;
 };
@@ -95,7 +96,7 @@ function SettingRadioGroup<T extends string>({
 						type="button"
 						role="radio"
 						aria-checked={checked}
-						aria-label={option.label}
+						aria-label={option.description ? `${option.label}. ${option.description}` : option.label}
 						tabIndex={checked ? 0 : -1}
 						onClick={() => onChange(option.value)}
 						onKeyDown={(event) => handleKeyDown(event, index)}
@@ -240,154 +241,157 @@ export default function SettingButton() {
 						{/* theme layout */}
 						<div className="flex flex-col gap-2">
 							<Text variant="subTitle1">{t("sys.settings.layout")}</Text>
+							<Text variant="caption" color="secondary">
+								{t("sys.settings.layoutHelp")}
+							</Text>
 
 							<SettingRadioGroup
 								ariaLabel={t("sys.settings.layout")}
 								value={themeLayout}
 								onChange={(next) => updateSettings({ themeLayout: next })}
-								containerClassName="grid grid-cols-3 gap-4"
-								itemClassName="h-16 p-0"
+								containerClassName="flex flex-col gap-3"
+								itemClassName="h-auto w-full p-2"
 								options={[
 									{
 										value: ThemeLayout.Vertical,
-										label: "Layout vertical",
-										className: "flex flex-row gap-1",
+										label: t("sys.settings.layoutVertical"),
+										description: t("sys.settings.layoutVerticalDesc"),
+										className: "flex flex-row items-center gap-3",
 										content: (
 											<>
-												<div className="flex h-full w-5 flex-col gap-1 p-1">
-													<div
-														className="h-2 w-2 shrink-0 rounded"
-														style={{
-															background: layoutBackground(ThemeLayout.Vertical),
-														}}
-													/>
-													<div
-														className="h-1 w-full shrink-0 rounded opacity-50"
-														style={{
-															background: layoutBackground(ThemeLayout.Vertical),
-														}}
-													/>
-													<div
-														className="h-1 max-w-[12px] shrink-0 rounded opacity-20"
-														style={{
-															background: layoutBackground(ThemeLayout.Vertical),
-														}}
-													/>
+												<div className="flex h-14 w-24 shrink-0 flex-row gap-1 rounded-md border border-border p-1">
+													<div className="flex h-full w-5 flex-col gap-1 p-0.5">
+														<div
+															className="h-2 w-2 shrink-0 rounded"
+															style={{ background: layoutBackground(ThemeLayout.Vertical) }}
+														/>
+														<div
+															className="h-1 w-full shrink-0 rounded opacity-50"
+															style={{ background: layoutBackground(ThemeLayout.Vertical) }}
+														/>
+														<div
+															className="h-1 max-w-[12px] shrink-0 rounded opacity-20"
+															style={{ background: layoutBackground(ThemeLayout.Vertical) }}
+														/>
+													</div>
+													<div className="flex h-full w-full flex-1 flex-col gap-1 p-0.5">
+														<div
+															className="h-1.5 w-full rounded opacity-20"
+															style={{ background: layoutBackground(ThemeLayout.Vertical) }}
+														/>
+														<div
+															className={cn("mx-auto w-full flex-1 rounded opacity-20", !themeStretch && "w-10")}
+															style={{ background: layoutBackground(ThemeLayout.Vertical) }}
+														/>
+													</div>
 												</div>
-												<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
-													<div
-														className="w-full h-1.5 rounded opacity-20"
-														style={{ background: layoutBackground(ThemeLayout.Vertical) }}
-													/>
-													<div
-														className={cn(
-															"flex-1 w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
-															!themeStretch && "w-10",
-														)}
-														style={{
-															background: layoutBackground(ThemeLayout.Vertical),
-														}}
-													/>
-												</div>
+												<span className="flex min-w-0 flex-col gap-0.5 text-left">
+													<Text variant="subTitle2" align="left">
+														{t("sys.settings.layoutVertical")}
+													</Text>
+													<Text variant="caption" color="secondary" align="left">
+														{t("sys.settings.layoutVerticalDesc")}
+													</Text>
+												</span>
 											</>
 										),
 									},
 									{
 										value: ThemeLayout.Mini,
-										label: "Layout mini",
-										className: "flex flex-row gap-0",
+										label: t("sys.settings.layoutMini"),
+										description: t("sys.settings.layoutMiniDesc"),
+										className: "flex flex-row items-center gap-3",
 										content: (
 											<>
-												<div className="flex h-full w-3 gap-1 p-1 items-center flex-0 flex-col">
-													<div
-														className="h-2 w-2 shrink-0 rounded"
-														style={{ background: layoutBackground(ThemeLayout.Mini) }}
-													/>
-													<div
-														className="h-1 w-full shrink-0 rounded opacity-50"
-														style={{ background: layoutBackground(ThemeLayout.Mini) }}
-													/>
-													<div
-														className="h-1 w-full shrink-0 rounde opacity-20"
-														style={{ background: layoutBackground(ThemeLayout.Mini) }}
-													/>
+												<div className="flex h-14 w-24 shrink-0 flex-row gap-1 rounded-md border border-border p-1">
+													<div className="flex h-full w-3 flex-col items-center gap-1 p-0.5">
+														<div
+															className="h-2 w-2 shrink-0 rounded"
+															style={{ background: layoutBackground(ThemeLayout.Mini) }}
+														/>
+														<div
+															className="h-1 w-full shrink-0 rounded opacity-50"
+															style={{ background: layoutBackground(ThemeLayout.Mini) }}
+														/>
+														<div
+															className="h-1 w-full shrink-0 rounded opacity-20"
+															style={{ background: layoutBackground(ThemeLayout.Mini) }}
+														/>
+													</div>
+													<div className="flex h-full w-full flex-1 flex-col gap-1 p-0.5">
+														<div
+															className="h-1.5 w-full rounded opacity-20"
+															style={{ background: layoutBackground(ThemeLayout.Mini) }}
+														/>
+														<div
+															className={cn("mx-auto w-full flex-1 rounded opacity-20", !themeStretch && "w-10")}
+															style={{ background: layoutBackground(ThemeLayout.Mini) }}
+														/>
+													</div>
 												</div>
-												<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
-													<div
-														className="w-full h-1.5 rounded opacity-20"
-														style={{ background: layoutBackground(ThemeLayout.Mini) }}
-													/>
-													<div
-														className={cn(
-															"flex-1 w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
-															!themeStretch && "w-10",
-														)}
-														style={{
-															background: layoutBackground(ThemeLayout.Mini),
-														}}
-													/>
-												</div>
+												<span className="flex min-w-0 flex-col gap-0.5 text-left">
+													<Text variant="subTitle2" align="left">
+														{t("sys.settings.layoutMini")}
+													</Text>
+													<Text variant="caption" color="secondary" align="left">
+														{t("sys.settings.layoutMiniDesc")}
+													</Text>
+												</span>
 											</>
 										),
 									},
 									{
 										value: ThemeLayout.Horizontal,
-										label: "Layout horizontal",
-										className: "flex flex-row gap-0",
+										label: t("sys.settings.layoutHorizontal"),
+										description: t("sys.settings.layoutHorizontalDesc"),
+										className: "flex flex-row items-center gap-3",
 										content: (
 											<>
-												<div className="flex h-full w-full gap-1 p-1 items-center flex-0">
+												<div className="flex h-14 w-24 shrink-0 flex-col gap-1 rounded-md border border-border p-1">
+													<div className="flex h-3 w-full items-center gap-1">
+														<div
+															className="h-2 w-2 shrink-0 rounded"
+															style={{ background: layoutBackground(ThemeLayout.Horizontal) }}
+														/>
+														<div
+															className="h-1 w-4 shrink-0 rounded opacity-50"
+															style={{ background: layoutBackground(ThemeLayout.Horizontal) }}
+														/>
+														<div
+															className="h-1 w-3 shrink-0 rounded opacity-20"
+															style={{ background: layoutBackground(ThemeLayout.Horizontal) }}
+														/>
+													</div>
 													<div
-														className="h-2 w-2 shrink-0 rounded"
-														style={{
-															background: layoutBackground(ThemeLayout.Horizontal),
-														}}
-													/>
-													<div
-														className="h-1 w-4 shrink-0 rounded opacity-50"
-														style={{
-															background: layoutBackground(ThemeLayout.Horizontal),
-														}}
-													/>
-													<div
-														className="h-1 w-3 shrink-0 rounded opacity-20"
-														style={{
-															background: layoutBackground(ThemeLayout.Horizontal),
-														}}
-													/>
-												</div>
-												<div
-													className="h-1.5 rounded opacity-20 mx-1"
-													style={{ background: layoutBackground(ThemeLayout.Horizontal) }}
-												/>
-												<div className="h-full w-full flex-1 grow p-1 flex flex-col gap-1">
-													<div
-														className={cn(
-															"h-full w-full rounded opacity-20 mx-auto transition-all duration-300 ease-in-out",
-															!themeStretch && "w-10",
-														)}
-														style={{
-															background: layoutBackground(ThemeLayout.Horizontal),
-														}}
+														className={cn("mx-auto h-full w-full flex-1 rounded opacity-20", !themeStretch && "w-10")}
+														style={{ background: layoutBackground(ThemeLayout.Horizontal) }}
 													/>
 												</div>
+												<span className="flex min-w-0 flex-col gap-0.5 text-left">
+													<Text variant="subTitle2" align="left">
+														{t("sys.settings.layoutHorizontal")}
+													</Text>
+													<Text variant="caption" color="secondary" align="left">
+														{t("sys.settings.layoutHorizontalDesc")}
+													</Text>
+												</span>
 											</>
 										),
 									},
 								]}
 							/>
-							<div className="flex flex-row items-center justify-between">
-								<Tooltip delayDuration={700} defaultOpen={false} disableHoverableContent>
-									<TooltipTrigger>
-										<Text variant="subTitle2">{t("sys.settings.stretch")}</Text>
-										<Icon icon="solar:question-circle-linear" className="ml-1" />
-									</TooltipTrigger>
-									<TooltipContent>{t("sys.settings.stretchTip")}</TooltipContent>
-								</Tooltip>
-								<Switch
-									checked={themeStretch}
-									onCheckedChange={(checked) => updateSettings({ themeStretch: checked })}
-								/>
+							<div className="flex flex-col gap-1">
+								<div className="flex flex-row items-center justify-between gap-3">
+									<Text variant="subTitle2">{t("sys.settings.stretch")}</Text>
+									<Switch
+										checked={themeStretch}
+										onCheckedChange={(checked) => updateSettings({ themeStretch: checked })}
+										aria-label={`${t("sys.settings.stretch")}. ${t("sys.settings.stretchDesc")}`}
+									/>
+								</div>
+								<Text variant="caption" color="secondary">
+									{t("sys.settings.stretchDesc")}
+								</Text>
 							</div>
 						</div>
 

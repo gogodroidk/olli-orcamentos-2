@@ -13,6 +13,13 @@ import {
 } from '../../services/entitlements.ts';
 import { FRASE_GRATIS, FRASE_GRATIS_CURTA, planoBase } from '../../services/planosBase.ts';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos.ts';
+import {
+  MODELOS_ORCAMENTO,
+  MODELOS_RECIBO,
+  TEXTO_LAYOUT_SO_VISUAL,
+  TEXTO_PREVIA_EXEMPLO,
+  TEXTO_RECIBO_SO_VISUAL,
+} from '../modelosLayout.ts';
 
 /** Os recursos que um plano pago acrescenta, lidos da tabela única (com "em breve"). */
 function recursosDoPlano(id: 'pro' | 'empresa'): string {
@@ -147,6 +154,44 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         tipo: 'aviso',
         conteudo:
           'Um orçamento pode nascer de um Diagnóstico de código de erro (a IA já sugere o item de reparo) — economiza digitação em visitas técnicas.',
+      },
+    ],
+  },
+  {
+    id: 'modelos-layout-documento',
+    categoriaId: 'orcamentos',
+    titulo: 'Modelos de documento: o que cada layout muda',
+    resumo: 'Cada modelo muda só o visual do PDF. Cliente, itens e preço ficam iguais. A prévia não envia nada.',
+    tags: ['layout', 'modelo', 'pdf', 'previa', 'prévia', 'recibo', 'faixa lateral', 'editorial', 'configuracao de layout', 'configurações de layout'],
+    corpo: [
+      { tipo: 'paragrafo', conteudo: TEXTO_LAYOUT_SO_VISUAL },
+      { tipo: 'paragrafo', conteudo: TEXTO_PREVIA_EXEMPLO },
+      {
+        tipo: 'passos',
+        conteudo: [
+          'Abra Conta → Modelos de documento.',
+          'Leia o resumo e o "quando usar" de cada modelo. A miniatura ao lado é um esquema, não o PDF.',
+          'Toque em "Ver como fica" para abrir a prévia com dados de exemplo. Nada é enviado ao cliente.',
+          'Toque no modelo para torná-lo o padrão dos orçamentos novos. O que já foi enviado não muda.',
+        ],
+      },
+      {
+        tipo: 'paragrafo',
+        conteudo: `Orçamento — ${MODELOS_ORCAMENTO.map((m) => `${m.nome}: ${m.resumo} ${m.quandoUsar}`).join(' ')}`,
+      },
+      {
+        tipo: 'paragrafo',
+        conteudo: `${TEXTO_RECIBO_SO_VISUAL} ${MODELOS_RECIBO.map((m) => `${m.nome}: ${m.resumo} ${m.quandoUsar}`).join(' ')}`,
+      },
+      {
+        tipo: 'aviso',
+        conteudo:
+          'Se o seu ofício estiver cadastrado, um modelo de orçamento pode aparecer como sugestão. É uma dica de visual. Você pode escolher outro. O preço não muda.',
+      },
+      {
+        tipo: 'paragrafo',
+        conteudo:
+          'No painel aberto no navegador, a engrenagem Configurações tem a seção Layout. Menu completo deixa a lista de telas à esquerda, com nome. Menu de ícones deixa essa coluna estreita. Menu no topo tira a coluna da esquerda e põe as telas numa faixa em cima. Esticar, ligado, usa a largura livre; desligado, em telas maiores que 1280px o conteúdo fica centralizado e sobra espaço dos dois lados. Abaixo de 1280px os dois ficam iguais. A miniatura no botão é a prévia do menu, e a página muda na hora, só neste navegador. Orçamento, cliente, preço e PDF não mudam.',
       },
     ],
   },

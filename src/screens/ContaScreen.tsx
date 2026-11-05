@@ -251,7 +251,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'creditos', icon: 'lightning-bolt', label: 'Créditos', desc: TEXTOS_LOJA.creditosMenu, color: '#F7B23B', route: 'Creditos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
-    { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual dos seus orçamentos', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
+    { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual do PDF, com explicação e prévia de cada modelo', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
   ];
 }
 

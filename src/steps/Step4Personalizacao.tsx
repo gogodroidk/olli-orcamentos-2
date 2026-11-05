@@ -13,6 +13,7 @@ import {
   useEstilos,
   type Cores,
 } from '../theme';
+import { MODELOS_ORCAMENTO, TEXTO_LAYOUT_SO_VISUAL } from '../content/modelosLayout';
 import { Depoimento, Empresa, ModeloPdfId, Orcamento } from '../types';
 import { formatCurrency } from '../utils/currency';
 import { OlliButton } from '../components/OlliButton';
@@ -40,21 +41,22 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
  * O snapshot no orçamento é intencional: mudar a marca amanhã não altera o
  * documento que um cliente recebeu hoje.
  */
+/** Mesmo catálogo de Conta → Modelos de documento. `desc` é o resumo de uma linha. */
 export const PDF_MODELS: Array<{
   id: ModeloPdfId;
   nome: string;
   desc: string;
+  quandoUsar: string;
   color: string;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
-}> = [
-  { id: 'editorial', nome: 'Editorial', desc: 'premium com marca d\'água', color: '#0B6FCE', icon: 'file-document-edit-outline' },
-  { id: 'premium_capa', nome: 'Premium com capa', desc: 'capa e página de detalhes', color: '#0A2547', icon: 'book-open-page-variant-outline' },
-  { id: 'minimalista', nome: 'Minimalista', desc: 'limpo e direto', color: '#64748B', icon: 'file-document-outline' },
-  { id: 'bold', nome: 'Bold', desc: 'cabeçalho forte', color: '#19D3E6', icon: 'view-dashboard-outline' },
-  { id: 'classico', nome: 'Clássico', desc: 'formal e serifado', color: '#8B5E34', icon: 'script-text-outline' },
-  { id: 'faixa_lateral', nome: 'Faixa lateral', desc: 'visual técnico', color: '#0E7C66', icon: 'page-layout-sidebar-left' },
-  { id: 'recibo_compacto', nome: 'Recibo compacto', desc: 'serviço pequeno', color: '#B4451F', icon: 'receipt-text-outline' },
-];
+}> = MODELOS_ORCAMENTO.map((m) => ({
+  id: m.id,
+  nome: m.nome,
+  desc: m.resumo,
+  quandoUsar: m.quandoUsar,
+  color: m.color,
+  icon: m.icon as keyof typeof MaterialCommunityIcons.glyphMap,
+}));
 
 function SwitchRow({ label, hint, value, onValueChange }: {
   label: string;
@@ -160,7 +162,7 @@ export default function Step4Personalizacao({ orc, onChange, empresa, onAjustarD
 
       <Text style={styles.sectionTitle}>Aparência do documento</Text>
       <Text style={styles.sectionHint}>
-        Modelo, cor, logo e identidade ficam centralizados em Conta › Modelos de documento. Este orçamento guarda uma cópia do padrão usado para não mudar depois de enviado.
+        {TEXTO_LAYOUT_SO_VISUAL} Modelo, cor, logo e identidade ficam em Conta › Modelos de documento.
       </Text>
       <View style={styles.brandCard}>
         <View style={[styles.modelIcon, { backgroundColor: comAlfa(corDocumento, 0.12), borderColor: comAlfa(corDocumento, 0.32) }]}>
@@ -169,7 +171,8 @@ export default function Step4Personalizacao({ orc, onChange, empresa, onAjustarD
         <View style={{ flex: 1 }}>
           <Text style={styles.brandEyebrow}>Padrão aplicado</Text>
           <Text style={styles.brandName}>{orc.modeloNome || modelo.nome}</Text>
-          <Text style={styles.brandDetail}>{empresa?.nome || 'Sua empresa'} · identidade salva</Text>
+          <Text style={styles.brandDetail}>{modelo.quandoUsar}</Text>
+          <Text style={styles.brandDetail}>{empresa?.nome || 'Sua empresa'} · os dados deste orçamento não mudam com o modelo</Text>
         </View>
         <View style={[styles.colorDot, { backgroundColor: corDocumento }]} accessibilityLabel="Cor da marca aplicada" />
       </View>
