@@ -11,25 +11,11 @@ import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { cn } from "@/utils";
+import { PRECIFICACAO_IA_LIGADA, type CamposPrecificacaoForm } from "@/olli/precificacaoIa";
+import { PrecificacaoIaPainel } from "./PrecificacaoIaPainel";
 
 type Modo = "servico" | "produto";
-
-type Campos = {
-	nome: string;
-	custoMateriais: number;
-	horas: number;
-	valorHora: number;
-	deslocamento: number;
-	custoCompra: number;
-	frete: number;
-	embalagem: number;
-	outrosCustos: number;
-	despesasFixasRateadas: number;
-	impostoPct: number;
-	taxaPagamentoPct: number;
-	reservaPct: number;
-	margemPct: number;
-};
+type Campos = CamposPrecificacaoForm;
 
 const INICIAL: Campos = {
 	nome: "",
@@ -141,6 +127,16 @@ export default function PrecificacaoPage() {
 							<button type="button" role="tab" aria-selected={modo === "produto"} onClick={() => setModo("produto")} className={cn("flex min-h-14 items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition-colors", modo === "produto" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background text-text-secondary hover:text-text-primary")}><Package className="size-4" />Produto, peça ou material</button>
 						</div>
 					</Card>
+
+					{PRECIFICACAO_IA_LIGADA ? (
+						<PrecificacaoIaPainel
+							campos={campos}
+							onAplicar={(proximos, modoLido) => {
+								setCampos(proximos);
+								if (modoLido) setModo(modoLido);
+							}}
+						/>
+					) : null}
 
 					<Card className="p-5">
 						<h2 className="font-semibold text-text-primary">1. Seus custos</h2>

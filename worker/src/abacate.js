@@ -542,6 +542,13 @@ async function processarWebhook(env, evt) {
     return { http: 400, corpo: { erro: 'payload_invalido' }, resultado: 'erro', motivo: 'payload_invalido' };
   }
 
+  // Estorno/contestação de um Pix: NÃO revoga sozinho (tirar plano ou crédito de cliente é
+  // decisão do FIN), mas também não some mais calado: vira pendência em webhook_events e erro
+  // na trilha/Sentry. Antes caía no "não interessa" abaixo e quem estornava ficava com o plano.
+  if (evt.event === 'transparent.refunded' || evt.event === 'transparent.disputed') {
+    return registrarEstorno(env, evt);
+  }
+
   // Só o Pix direto pago interessa. Qualquer outro evento: 200 sem ação.
   if (evt.event !== 'transparent.completed') {
     return { http: 200, corpo: { ok: true }, resultado: 'ignorado', motivo: 'evento_nao_tratado' };
@@ -567,6 +574,39 @@ async function processarWebhook(env, evt) {
   // Paga com valor/vínculo/modo que não fecham: não libera, e na trilha é ERRO —
   // é exatamente o "Pix falho" que alguém precisa enxergar.
   return { http: 200, corpo, resultado: 'erro', motivo: `invalida_${r.motivo || 'cobranca'}` };
+}
+
+/** Origem da pendência de estorno/contestação em `webhook_events` (status 'recebido' = a revisar). */
+export const ORIGEM_ESTORNO = 'abacate_estorno';
+
+/**
+ * Pendência de estorno/contestação: uma linha por cobrança e tipo (reenvio não duplica), com
+ * quem pagou e o que comprou, lidos NA AbacatePay (o corpo do webhook não é confiado). Se a
+ * cobrança não puder ser lida, grava assim mesmo, sem vínculo: melhor pendência incompleta que
+ * nenhuma. Só falha de banco pede reenvio (503 — a AbacatePay reenvia 5xx, não 4xx).
+ */
+async function registrarEstorno(env, evt) {
+  const contestacao = evt.event === 'transparent.disputed';
+  const motivo = contestacao ? 'contestacao_pendente' : 'estorno_pendente';
+  const id = idDaCobranca(evt);
+  if (!id) return { http: 200, corpo: { ok: true, sem_vinculo: true }, resultado: 'erro', motivo: `${motivo}_sem_cobranca` };
+  const cobranca = await abacateFetch(env, `/transparents/get?id=${encodeURIComponent(id)}`);
+  const ext = cobranca && cobranca.metadata && typeof cobranca.metadata.externalId === 'string' ? cobranca.metadata.externalId.split(':') : [];
+  const reiv = await reivindicarEvento(env, {
+    origem: ORIGEM_ESTORNO,
+    eventId: `${contestacao ? 'contestacao' : 'estorno'}:${id}`,
+    tipo: evt.event,
+    payload: {
+      cobranca: id,
+      user_id: ext[0] === 'olli' ? ext[2] || null : null,
+      item: ext[0] === 'olli' ? ext[4] || null : null,
+      valor_centavos: cobranca ? Number(cobranca.amount) || null : null,
+      lida_na_abacatepay: !!cobranca,
+    },
+  });
+  if (!reiv.ok) return { http: 503, corpo: { erro: 'indisponivel' }, resultado: 'erro', motivo: `${motivo}_nao_gravado` };
+  console.error('[olli-abacate] Pix', contestacao ? 'CONTESTADO' : 'ESTORNADO', '— pendência para o FIN em webhook_events', ORIGEM_ESTORNO);
+  return { http: 200, corpo: { ok: true, pendencia: motivo }, resultado: 'erro', motivo };
 }
 
 /** id da cobrança no corpo do evento (`data.transparent.id`, ou `data.id`). */

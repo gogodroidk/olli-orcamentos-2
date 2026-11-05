@@ -21,7 +21,7 @@ assert.match(comparador, /Orçamento no campo, mesmo sem sinal/, 'comparador dev
 assert.match(comparador, /Cliente aprova e assina pelo link/, 'comparador deve explicar a aprovação real');
 assert.match(comparador, /IA ajuda a montar o orçamento por voz/, 'comparador deve descrever a IA sem prometer diagnóstico');
 assert.doesNotMatch(comparador, /PMOC pronto pra fiscalização|IA que diagnostica o defeito|Equipe no mapa em tempo real/, 'comparador não pode prometer PMOC, diagnóstico ou mapa em tempo real');
-assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'\]/, 'rotas utilitárias não devem entrar no sitemap');
+assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'(, '\/servicos\/')?\]/, 'rotas utilitárias não devem entrar no sitemap');
 assert.match(robots, /Disallow: \/admin\//, 'robots deve evitar rastreio da área administrativa');
 assert.match(home, /https:\/\/play\.google\.com\/apps\/testing\/online\.olliorcamentos\.app/, 'CTA Android deve usar o link oficial de adesão exibido pelo Play Console');
 assert.match(home, /target="_blank"[\s\S]*?rel="noopener noreferrer"/, 'link externo da Play deve abrir com isolamento da aba');

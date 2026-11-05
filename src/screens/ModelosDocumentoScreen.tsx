@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Pressable, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +11,16 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { PdfPreviewModal } from '../components/PdfPreviewModal';
 import { GerarDocumentoModal, TITULOS_DOCUMENTO, type TipoDocumento } from '../components/documentos/GerarDocumentoModal';
 import { EditorClausulasContrato } from '../components/documentos/EditorClausulasContrato';
-import { PDF_MODELS } from '../steps/Step4Personalizacao';
+import { PreviaEsquemaLayout } from '../components/documentos/PreviaEsquemaLayout';
+import {
+  MODELOS_ORCAMENTO,
+  MODELOS_RECIBO,
+  TEXTO_LAYOUT_SO_VISUAL,
+  TEXTO_PREVIA_EXEMPLO,
+  TEXTO_RECIBO_SO_VISUAL,
+  sugestaoParaOficio,
+  type ModeloLayout,
+} from '../content/modelosLayout';
 import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { AVISO_APP } from '../utils/documentoBase';
 import { montarHtmlContratoCompleto, termosPadraoContrato } from '../utils/contratoPdf';
@@ -27,8 +36,89 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { todayISO, nowISO } from '../utils/date';
+import { corMarcaSobre } from '../utils/coresMarca';
+import { safeHexColor } from '../utils/html';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+function CartaoModelo({
+  modelo,
+  ativo,
+  salvando,
+  sugestao,
+  onEscolher,
+  onPreview,
+}: {
+  modelo: ModeloLayout<string>;
+  ativo: boolean;
+  salvando: boolean;
+  /** Nome do ofício, só no modelo sugerido. Dica visual, não obrigação. */
+  sugestao: string | null;
+  onEscolher: () => void;
+  onPreview: () => void;
+}) {
+  const cores = useCores();
+  const styles = useEstilos(criarEstilos);
+  const rotulo = [
+    modelo.nome,
+    modelo.resumo,
+    modelo.quandoUsar,
+    ativo ? 'É o padrão atual.' : 'Toque para usar nos documentos novos.',
+    sugestao ? `Sugestão para ${sugestao}. Você pode escolher outro.` : '',
+  ].filter(Boolean).join(' ');
+
+  return (
+    <View style={[styles.card, styles.cardModelo, ativo && { borderColor: cores.primary, borderWidth: 2 }]}>
+      <Pressable
+        onPress={onEscolher}
+        accessibilityRole="radio"
+        accessibilityState={{ selected: ativo, busy: salvando }}
+        accessibilityLabel={rotulo}
+        style={({ pressed }) => [styles.cardMiolo, pressed && { opacity: 0.92 }]}
+      >
+        <PreviaEsquemaLayout esquema={modelo.esquema} cor={modelo.color} />
+        <View style={{ flex: 1 }}>
+          <View style={styles.nomeRow}>
+            <Text style={styles.nome}>{modelo.nome}</Text>
+            {ativo ? (
+              <View style={styles.badgePadrao}>
+                <MaterialCommunityIcons name="check" size={12} color={cores.onPrimary} />
+                <Text style={styles.badgePadraoText}>Padrão</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.desc}>{modelo.resumo}</Text>
+          <Text style={styles.quando}>{modelo.quandoUsar}</Text>
+          {sugestao ? (
+            <View style={styles.badgeSugestao}>
+              <Text style={styles.badgeSugestaoText}>Sugestão para {sugestao}</Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.radio}>
+          {salvando ? (
+            <MaterialCommunityIcons name="loading" size={22} color={cores.primary} />
+          ) : (
+            <MaterialCommunityIcons
+              name={ativo ? 'radiobox-marked' : 'radiobox-blank'}
+              size={22}
+              color={ativo ? cores.primary : cores.onSurfaceMuted}
+            />
+          )}
+        </View>
+      </Pressable>
+      <Pressable
+        onPress={() => { vibrar('selecao'); onPreview(); }}
+        accessibilityRole="button"
+        accessibilityLabel={`Ver como fica: ${modelo.nome}. Prévia com dados de exemplo. Nada é enviado ao cliente.`}
+        style={styles.verBtn}
+      >
+        <MaterialCommunityIcons name="eye-outline" size={15} color={cores.accentLight} />
+        <Text style={styles.verBtnText}>Ver como fica</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 /**
  * Orçamento fictício só para a PRÉVIA de cada modelo — dados plausíveis de HVAC,
@@ -74,14 +164,6 @@ function orcamentoDeExemplo(modelo: ModeloPdfId, corMarca?: string): Orcamento {
     atualizadoEm: nowISO(),
   };
 }
-
-// Modelos de RECIBO — identidade visual de cada um (cores NÃO seguem o tema do
-// app, igual às do orçamento; são o rosto do documento impresso).
-const RECIBO_MODELS: Array<{ id: ModeloReciboId; nome: string; desc: string; color: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }> = [
-  { id: 'classico', nome: 'Clássico', desc: 'limpo e centrado', color: '#0B6FCE', icon: 'receipt-text-outline' },
-  { id: 'compacto', nome: 'Compacto', desc: 'folha menor, direto', color: '#64748B', icon: 'receipt-text-check-outline' },
-  { id: 'faixa', nome: 'Faixa de marca', desc: 'banner colorido no topo', color: '#0E7C66', icon: 'card-text-outline' },
-];
 
 /** Empresa mínima para a prévia do recibo funcionar sem "Meu Negócio" preenchido. */
 const EMPRESA_EXEMPLO: Empresa = {
@@ -147,6 +229,9 @@ export default function ModelosDocumentoScreen() {
   const [exemploDoc, setExemploDoc] = useState<TipoDocumento | null>(null);
   const [gerarDoc, setGerarDoc] = useState<TipoDocumento | null>(null);
   const [editorAberto, setEditorAberto] = useState(false);
+  const sugestaoOficio = sugestaoParaOficio(empresa?.verticais);
+  const corAmostra = safeHexColor(empresa?.corMarca ?? cores.primary, cores.primary);
+  const corIcone = corMarcaSobre(corAmostra, cores.surface);
 
   useFocusEffect(useCallback(() => {
     (async () => {
@@ -247,8 +332,9 @@ export default function ModelosDocumentoScreen() {
           <View style={styles.intro}>
             <MaterialCommunityIcons name="palette-swatch-outline" size={18} color={cores.accentLight} />
             <Text style={styles.introText}>
-              Este é o centro de personalização. Escolha uma vez o modelo <Text style={styles.introForte}>padrão</Text>;
-              sua cor, logo e assinatura passam a valer nos documentos novos sem repetir a configuração em cada orçamento.
+              {TEXTO_LAYOUT_SO_VISUAL}{' '}
+              Escolha uma vez o modelo <Text style={styles.introForte}>padrão</Text>.
+              Cor, logo e assinatura passam a valer nos documentos novos.
             </Text>
           </View>
         </AnimatedEntrance>
@@ -261,8 +347,8 @@ export default function ModelosDocumentoScreen() {
             accessibilityRole="button"
             accessibilityLabel="Editar logo, cor e assinatura da empresa"
           >
-            <View style={[styles.iconChip, { backgroundColor: comAlfa(empresa?.corMarca ?? cores.primary, 0.16) }]}>
-              <MaterialCommunityIcons name="image-edit-outline" size={24} color={empresa?.corMarca ?? cores.primary} />
+            <View style={[styles.iconChip, { backgroundColor: comAlfa(corAmostra, 0.16) }]}>
+              <MaterialCommunityIcons name="image-edit-outline" size={24} color={corIcone} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.nome}>Logo, cor e assinatura</Text>
@@ -274,58 +360,21 @@ export default function ModelosDocumentoScreen() {
 
         <View style={styles.divisor}>
           <Text style={styles.divisorTitulo}>Orçamento</Text>
-          <Text style={styles.divisorSub}>O documento que fecha o serviço — 7 modelos.</Text>
+          <Text style={styles.divisorSub}>{TEXTO_PREVIA_EXEMPLO}</Text>
         </View>
 
-        {PDF_MODELS.map((m, i) => {
+        {MODELOS_ORCAMENTO.map((m, i) => {
           const ativo = m.id === padrao;
           return (
             <AnimatedEntrance key={m.id} index={Math.min(i, 8)}>
-              <TouchableOpacity
-                style={[styles.card, ativo && { borderColor: cores.primary, borderWidth: 2 }]}
-                onPress={() => escolher(m.id)}
-                activeOpacity={0.9}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: ativo }}
-              >
-                <View style={[styles.iconChip, { backgroundColor: comAlfa(m.color, 0.16) }]}>
-                  <MaterialCommunityIcons name={m.icon} size={24} color={m.color} />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <View style={styles.nomeRow}>
-                    <Text style={styles.nome}>{m.nome}</Text>
-                    {ativo && (
-                      <View style={styles.badgePadrao}>
-                        <MaterialCommunityIcons name="check" size={12} color={cores.onPrimary} />
-                        <Text style={styles.badgePadraoText}>Padrão</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.desc}>{m.desc}</Text>
-
-                  <TouchableOpacity
-                    style={styles.verBtn}
-                    onPress={() => { vibrar('selecao'); setPreviewModelo(m.id); }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <MaterialCommunityIcons name="eye-outline" size={15} color={cores.accentLight} />
-                    <Text style={styles.verBtnText}>Ver exemplo</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.radio}>
-                  {salvando === m.id ? (
-                    <MaterialCommunityIcons name="loading" size={22} color={cores.primary} />
-                  ) : (
-                    <MaterialCommunityIcons
-                      name={ativo ? 'radiobox-marked' : 'radiobox-blank'}
-                      size={22}
-                      color={ativo ? cores.primary : cores.onSurfaceMuted}
-                    />
-                  )}
-                </View>
-              </TouchableOpacity>
+              <CartaoModelo
+                modelo={m}
+                ativo={ativo}
+                salvando={salvando === m.id}
+                sugestao={sugestaoOficio?.modeloId === m.id ? sugestaoOficio.oficio : null}
+                onEscolher={() => escolher(m.id)}
+                onPreview={() => setPreviewModelo(m.id)}
+              />
             </AnimatedEntrance>
           );
         })}
@@ -333,58 +382,21 @@ export default function ModelosDocumentoScreen() {
         {/* ─── RECIBO ─── */}
         <View style={styles.divisor}>
           <Text style={styles.divisorTitulo}>Recibo</Text>
-          <Text style={styles.divisorSub}>O comprovante de pagamento também segue a sua marca.</Text>
+          <Text style={styles.divisorSub}>{TEXTO_RECIBO_SO_VISUAL} {TEXTO_PREVIA_EXEMPLO}</Text>
         </View>
 
-        {RECIBO_MODELS.map((m, i) => {
+        {MODELOS_RECIBO.map((m, i) => {
           const ativo = m.id === padraoRecibo;
           return (
             <AnimatedEntrance key={m.id} index={Math.min(i, 8)}>
-              <TouchableOpacity
-                style={[styles.card, ativo && { borderColor: cores.primary, borderWidth: 2 }]}
-                onPress={() => escolherRecibo(m.id)}
-                activeOpacity={0.9}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: ativo }}
-              >
-                <View style={[styles.iconChip, { backgroundColor: comAlfa(m.color, 0.16) }]}>
-                  <MaterialCommunityIcons name={m.icon} size={24} color={m.color} />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <View style={styles.nomeRow}>
-                    <Text style={styles.nome}>{m.nome}</Text>
-                    {ativo && (
-                      <View style={styles.badgePadrao}>
-                        <MaterialCommunityIcons name="check" size={12} color={cores.onPrimary} />
-                        <Text style={styles.badgePadraoText}>Padrão</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.desc}>{m.desc}</Text>
-
-                  <TouchableOpacity
-                    style={styles.verBtn}
-                    onPress={() => { vibrar('selecao'); setPreviewRecibo(m.id); }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <MaterialCommunityIcons name="eye-outline" size={15} color={cores.accentLight} />
-                    <Text style={styles.verBtnText}>Ver exemplo</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.radio}>
-                  {salvandoRecibo === m.id ? (
-                    <MaterialCommunityIcons name="loading" size={22} color={cores.primary} />
-                  ) : (
-                    <MaterialCommunityIcons
-                      name={ativo ? 'radiobox-marked' : 'radiobox-blank'}
-                      size={22}
-                      color={ativo ? cores.primary : cores.onSurfaceMuted}
-                    />
-                  )}
-                </View>
-              </TouchableOpacity>
+              <CartaoModelo
+                modelo={m}
+                ativo={ativo}
+                salvando={salvandoRecibo === m.id}
+                sugestao={null}
+                onEscolher={() => escolherRecibo(m.id)}
+                onPreview={() => setPreviewRecibo(m.id)}
+              />
             </AnimatedEntrance>
           );
         })}
@@ -513,13 +525,25 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   identityCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
   card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline, padding: Spacing.md, ...sombrasDe(c).sm },
+  cardModelo: { flexDirection: 'column', alignItems: 'stretch' },
+  cardMiolo: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   iconChip: { width: 48, height: 48, borderRadius: BorderRadius.chip, alignItems: 'center', justifyContent: 'center' },
-  nomeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nomeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   nome: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
   badgePadrao: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: c.primary, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
   badgePadraoText: { fontSize: 10.5, fontWeight: '800', color: c.onPrimary },
   desc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
-  verBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, alignSelf: 'flex-start' },
+  quando: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginTop: 4 },
+  badgeSugestao: {
+    alignSelf: 'flex-start', marginTop: 6,
+    borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full,
+    paddingHorizontal: 8, paddingVertical: 2,
+  },
+  badgeSugestaoText: { fontSize: 11, fontWeight: '700', color: c.onSurface },
+  verBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: 4, marginLeft: 64, alignSelf: 'flex-start', minHeight: 44,
+  },
   verBtnText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
   // Duas ações por card (ver exemplo / gerar). minHeight 44 = alvo de dedo.

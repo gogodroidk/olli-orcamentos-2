@@ -37,6 +37,7 @@ import { toast } from '../components/feedback';
 import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { linkAvaliacaoUsavel } from '../utils/identidadeVisual';
 import { formatDateTime, nowISO } from '../utils/date';
 import { formatarDataBR } from '../utils/formatarData';
 import { generateId } from '../utils/id';
@@ -951,7 +952,7 @@ export default function VisualizarOrcamentoScreen() {
 
   // Qual card de ação o topo mostra (ver STATUS_PRE_APROVACAO).
   const servicoPago = statusFin === 'pago' || statusFin === 'recibo_emitido';
-  const linkAvaliacao = empresa?.linkGoogleAvaliacoes?.trim() || '';
+  const linkAvaliacao = linkAvaliacaoUsavel(empresa?.linkGoogleAvaliacoes);
   const cardAcao: 'fechar' | 'cobrar' | 'pos_venda' | null = STATUS_PRE_APROVACAO.includes(orc.status)
     ? 'fechar'
     : cobrancaPronta
@@ -1087,7 +1088,7 @@ export default function VisualizarOrcamentoScreen() {
   /** Pós-venda: pede a avaliação no Google com o link do cadastro (Meu Negócio). */
   async function handlePedirAvaliacao() {
     if (!orc) return;
-    const link = empresa?.linkGoogleAvaliacoes?.trim();
+    const link = linkAvaliacaoUsavel(empresa?.linkGoogleAvaliacoes);
     const telefone = (orc.clienteTelefone || '').trim();
     if (!link) {
       nav.navigate('MeuNegocio');

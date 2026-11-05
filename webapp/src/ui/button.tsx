@@ -10,10 +10,10 @@ const buttonVariants = cva(
   // sol, 1px na cor primária some. O afastamento é o que garante o contorno visível
   // mesmo quando o botão tem fundo da mesma família de cor do anel.
   //
-  // Aperto: o botão cede 2% (`--motion-scale-press`) no `active`, em 100ms, e volta.
-  // É a confirmação tátil de "peguei o clique" antes da resposta chegar — só
-  // `scale` (compositor), e em "Reduzir movimento" o token vale 1 (tokens.css).
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-duration-micro) ease-(--motion-ease-standard) active:scale-(--motion-scale-press) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  // Aperto: o botão cede 3% (`--motion-scale-press`) no `active`, em 100ms, e volta.
+  // No ponteiro fino, o hover cresce 1,5% (`--motion-scale-hover`). Só `scale`
+  // (compositor). Em "Reduzir movimento" os dois tokens valem 1 (tokens.css).
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,box-shadow,scale] duration-(--motion-duration-micro) ease-(--motion-ease-standard) pointer-fine:hover:scale-(--motion-scale-hover) active:scale-(--motion-scale-press) focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -59,6 +59,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? SlotPrimitive.Slot : "button"
     return (
       <Comp
+        data-slot="button"
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         {...props}

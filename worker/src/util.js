@@ -41,11 +41,16 @@ const METODOS_POR_ROTA = new Map([
   ['/transcrever', 'POST'],
   ['/ia/importacao/preview', 'POST'],
   ['/ia/autopilot/preview', 'POST'],
+  // Existe na tabela para quando a flag ligar. Com a flag desligada o
+  // index.js responde 404 antes desta tabela (a rota não existe).
+  ['/ia/precificacao/rascunho', 'POST'],
   ['/eta', 'POST'],
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
   ['/clima', 'GET'],
   ['/alertas', 'GET'],
+  // Versão mínima do app Android (D-1326): pública, só leitura.
+  ['/app/versao-minima', 'GET'],
   ['/geo', 'POST'],
   ['/resend/webhook', 'POST'],
   ['/auth/email-hook', 'POST'],

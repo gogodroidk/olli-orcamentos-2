@@ -3,11 +3,11 @@ import { registrarAtividadeUsuario } from '../services/equipe';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform,
-  Keyboard, Alert, ActivityIndicator, TextInput,
+  Keyboard, Alert, TextInput,
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
-import { useNavigation, useRoute, RouteProp, usePreventRemove, type NavigationAction } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute, type RouteProp, usePreventRemove, type NavigationAction } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../utils/haptico';
@@ -19,17 +19,18 @@ import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { Celebracao } from '../components/Celebracao';
 import {
   getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa, edicaoBloqueada,
   getUltimoOrcamentoDoCliente,
 } from '../database/database';
-import { Orcamento, ItemOrcamento, Empresa } from '../types';
+import type { Orcamento, ItemOrcamento, Empresa } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { emptyOrcamento, clienteParaOrc, calcTotais, round2 } from '../utils/orcamentoBase';
 import { formatCurrency } from '../utils/currency';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { track, Eventos } from '../services/analytics';
 import { AVISO_EXEMPLO } from '../services/ativacao';
@@ -618,9 +619,22 @@ export default function NovoOrcamentoScreen() {
             />
           </View>
         ) : (
-          <View style={styles.estadoBox} accessibilityLabel="Carregando o orçamento">
-            <ActivityIndicator size="large" color={cores.primary} />
-            <Text style={styles.estadoTexto}>Preparando o orçamento…</Text>
+          <View style={styles.esqueletoEditor} accessibilityRole="progressbar" accessibilityLabel="Carregando o orçamento">
+            <OlliSkeleton width="40%" height={12} />
+            <OlliSkeleton width="100%" height={48} radius={BorderRadius.md} />
+            <OlliSkeleton width="30%" height={12} />
+            <View style={styles.esqueletoLinha}>
+              <OlliSkeleton width="70%" height={16} />
+              <OlliSkeleton width="24%" height={16} />
+            </View>
+            <View style={styles.esqueletoLinha}>
+              <OlliSkeleton width="70%" height={16} />
+              <OlliSkeleton width="24%" height={16} />
+            </View>
+            <View style={styles.esqueletoRodape}>
+              <OlliSkeleton width="40%" height={16} />
+              <OlliSkeleton width="100%" height={50} radius={BorderRadius.lg} />
+            </View>
           </View>
         )}
       </View>
@@ -825,6 +839,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   content: { flex: 1 },
   estadoBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: 10 },
+  esqueletoEditor: { flex: 1, padding: Spacing.base, gap: Spacing.sm },
+  esqueletoLinha: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  esqueletoRodape: { marginTop: 'auto', gap: Spacing.sm },
   estadoTitulo: { fontSize: 18, fontWeight: '800', color: c.onSurface, textAlign: 'center' },
   estadoTexto: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
   paraQuem: { marginHorizontal: Spacing.md, marginTop: Spacing.sm, gap: 6 },

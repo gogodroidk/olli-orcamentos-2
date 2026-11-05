@@ -203,7 +203,10 @@ assert.match(meuNegocioGuarda, /<GuardaPapel acao="ver_valores_agregados"/, 'a p
 // ─── Meu Negócio pré-preenche o deduzido ───────────────────────────────────────
 const meuNegocio = semComentarios(readFileSync(new URL('../src/screens/MeuNegocioScreen.tsx', import.meta.url), 'utf8'));
 assert.match(meuNegocio, /completarPerfilDeduzido\(emp \?\? empresaEmBranco\(\)\)/, 'ao abrir, o deduzido já aparece preenchido');
-assert.match(meuNegocio, /saveEmpresa\(completarPerfilDeduzido\(empresa\)\)/, 'e é gravado junto');
+assert.match(meuNegocio, /const pronto = completarPerfilDeduzido\(\{/, 'o deduzido entra no objeto gravado');
+assert.match(meuNegocio, /site: site\.url/, 'o site normalizado entra no que é gravado');
+assert.match(meuNegocio, /linkGoogleAvaliacoes: google\.url/, 'o link do Google normalizado entra no que é gravado');
+assert.match(meuNegocio, /saveEmpresa\(pronto\)/, 'e é gravado junto');
 
 const onboardingMobile = readFileSync(new URL('../src/screens/OnboardingScreen.tsx', import.meta.url), 'utf8');
 assert.doesNotMatch(onboardingMobile, /accessibilityLabel="Pular configuração"/, 'onboarding móvel não pode mais ser pulado');

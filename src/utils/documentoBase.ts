@@ -1,7 +1,8 @@
 import type { Empresa } from '../types';
-import { escapeHtml, safeHexColor } from './html';
+import { escapeHtml } from './html';
+import { corMarcaNoPapel } from './coresMarca';
 import { footerSeloOlliHtml, DEFAULT_ACCENT } from './marcaOlli';
-import { ajustarParaContraste } from '../theme/cores';
+import { CAIXA_LOGO_DOCUMENTO, siteParaDocumento, tagImgLogo } from './identidadeVisual';
 
 /**
  * documentoBase.ts — CHASSI dos documentos jurídicos do prestador (contrato,
@@ -9,10 +10,10 @@ import { ajustarParaContraste } from '../theme/cores';
  *
  * NÃO é um segundo motor de PDF. É a camada fina que esses três documentos
  * compartilham, e ela se apoia no que o orçamento e o recibo já resolveram:
- *   - `escapeHtml` / `safeHexColor` (utils/html) — o conserto de XSS armazenado;
+ *   - `escapeHtml` (utils/html) — o conserto de XSS armazenado;
  *   - `imagemParaDataUri` — logo/assinatura que renderizam no expo-print;
  *   - `footerSeloOlliHtml` / `DEFAULT_ACCENT` (marcaOlli) — a mesma marca;
- *   - `ajustarParaContraste` (theme/cores) — marca clara não some no papel;
+ *   - `corMarcaNoPapel` (coresMarca) — marca clara não some no papel;
  *   - `exportarHtmlComoPdf` (exportarDocumento) — a mesma saída multiplataforma.
  *
  * Documento é PAPEL: sempre claro, nunca segue o tema do app (mesmo contrato do
@@ -53,21 +54,13 @@ export const AVISO_APP = 'Modelo pronto para ajustar. Não é parecer de advogad
 
 /* ─── Cor da marca no papel ────────────────────────────────────────── */
 
-/** `#RGB` → `#RRGGBB`. Um `${cor}0F` (tint) só é CSS válido com 6 dígitos. */
-function hex6(cor: string): string {
-  return /^#[0-9a-fA-F]{3}$/.test(cor)
-    ? '#' + cor.slice(1).split('').map(c => c + c).join('')
-    : cor;
-}
-
 /**
  * Cor de marca validada e escurecida até TEXTO BRANCO passar 4.5:1 sobre ela —
  * mesma decisão do recibo: uma marca clara (ciano, amarelo) deixava título e
- * faixa ilegíveis. Valida como hex ANTES de interpolar em `<style>`.
+ * faixa ilegíveis. A função valida o hex ANTES de interpolar em `<style>`.
  */
 export function corDoDocumento(corMarca: string | undefined, empresa: Empresa): string {
-  const bruta = safeHexColor(corMarca ?? empresa.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT);
-  return ajustarParaContraste(hex6(bruta), '#FFFFFF', 4.5);
+  return corMarcaNoPapel(corMarca ?? empresa.corMarca, DEFAULT_ACCENT);
 }
 
 /* ─── Imagens ──────────────────────────────────────────────────────── */
@@ -261,16 +254,18 @@ export function cabecalhoDocumento(
   subtitulo: string,
 ): string {
   const logo = imgSrc(logoDataUri);
+  const site = siteParaDocumento(empresa.site);
   const tituloHtml = (Array.isArray(titulo) ? titulo : [titulo as string])
     .map(linha => escapeHtml(linha))
     .join('<br/>');
   return `
   <div class="topo">
     <div class="marca">
-      ${logo ? `<img src="${logo}" class="marca-logo"/>` : ''}
+      ${tagImgLogo(logo, 'marca-logo', CAIXA_LOGO_DOCUMENTO)}
       <div>
         <div class="marca-nome">${escapeHtml(empresa.nome)}</div>
         ${empresa.especialidade ? `<div class="marca-esp">${escapeHtml(empresa.especialidade)}</div>` : ''}
+        ${site ? `<div class="marca-esp">${escapeHtml(site)}</div>` : ''}
       </div>
     </div>
     <div class="doc-tit">

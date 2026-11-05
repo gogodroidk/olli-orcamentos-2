@@ -22,7 +22,9 @@ Ele reproduz `.github/workflows/ci.yml` job por job, com os mesmos comandos:
 | `painel` | `npm ci` na raiz e em `web/`, `pnpm i --frozen-lockfile` em `webapp/`, `pnpm run build`, `pnpm run test:importacao`, `pnpm run test:bundle` |
 | `landing` | `npm ci` na raiz e em `web/`, `npx astro check`, `npm run build` |
 | `worker` | `npm ci` em `worker/`, `npm run types`, `npm run types:check`, `npm test`, `npm run check` (bundle sem publicar) |
-| `lint` | `npm ci` na raiz + `npm run lint` (Biome com catraca) |
+| `lint` | `npm ci` na raiz + `bash scripts/gate-codigo-limpo.sh`. Biome com catraca (`npm run lint`), ruff 0.15.20, pyright 1.1.411, semgrep 1.168.0 (regras em `.semgrep.yml`) e `pre-commit validate-config`. Ferramenta que não roda reprova. |
+
+O gate de código limpo (MF-07) mora no job `lint`. No commit, `.githooks/pre-commit` roda o mesmo script em `--staged` (só o que está no índice). Markdown sozinho não chama ruff/pyright/semgrep/biome. Ferramenta ausente reprova; não vale como verde.
 
 A saída mostra cada job com cabeçalho próprio, grava um log por job em `.ci-local/<job>.log`
 (ignorado pelo git) e termina com um **resumo** (VERDE/VERMELHO por job). O exit code é
@@ -80,6 +82,19 @@ Consequências:
   limit). Nada no repositório precisa mudar; o `ci.yml` já cobre os mesmos jobs.
 - Aviso do próprio GitHub: o label `ubuntu-latest` migra para Ubuntu 26 em 19/10/2026.
   Quando o Actions voltar, reconferir `ci.yml` nesse runner.
+
+## Janela de produção (D-0636)
+
+Produção sobe terça e sexta, 05:30 até 07:30 America/Sao_Paulo, com changelog
+de 1 a 5 linhas em `OLLI_CHANGELOG`. O portão está em `worker/reparar.mjs`
+(sem `--dry-run`), em `npm run deploy` da raiz e do `worker/`, e no job
+`production` de `.github/workflows/promotion.yml`. Fora da janela só segue
+hotfix: `OLLI_HOTFIX=1` e `OLLI_HOTFIX_MOTIVO` com uma destas palavras: pix,
+login, dados, seguranca. Staging fica livre qualquer dia. O relógio não entra
+no `ci.yml` nem neste script: um PR pode ficar verde na quarta. App de loja
+(build de produção, não o preview): quinta, a cada 14 dias, desde 2026-10-29,
+`node scripts/janela-release.mjs --alvo loja`. Conferir sem publicar:
+`node scripts/janela-release.mjs --alvo producao`.
 
 ### Armadilhas do gate local (aprendidas em 05/10/2026)
 
