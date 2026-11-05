@@ -92,15 +92,18 @@ export const paletteColors = {
 		darker: "#003768",
 	},
 	gray: {
-		"100": "#F9FAFB",
-		"200": "#F4F6F8",
-		"300": "#DFE3E8",
-		"400": "#C4CDD5",
-		"500": "#919EAB",
-		"600": "#637381",
-		"700": "#454F5B",
-		"800": "#1C252E",
-		"900": "#141A21",
+		// Neutros quentes (areia no claro, grafite no escuro). A marca continua
+		// no azul primary. Cada passo foi medido: texto em 600/800 no claro e
+		// 400/500 no escuro fica em AA (>= 4.5:1) nas superfícies daqui.
+		"100": "#FBF7F1",
+		"200": "#F8F4EC",
+		"300": "#E6D8C6",
+		"400": "#CDBBA6",
+		"500": "#A89884",
+		"600": "#5C5146",
+		"700": "#3F362E",
+		"800": "#2A241C",
+		"900": "#161310",
 	},
 };
 
@@ -127,20 +130,19 @@ export const lightColorTokens = {
 		disabled: paletteColors.gray[500],
 	},
 	background: {
-		default: commonColors.white,
-		paper: commonColors.white,
+		default: "#FBF7F1",
+		paper: "#FFFCF8",
 		neutral: paletteColors.gray[200],
 	},
 };
 
-// Navy do DARK — mesma família do app (ver src/theme/cores.ts SUPERFICIES.escuro),
-// não o preto/zinza neutro que o painel usava. Escada de elevação por LUMINOSIDADE
-// (sem sombra preta, ver darkShadowTokens): fundo mais escuro → card/popover →
-// secondary/muted/accent/sidebar mais claro ainda.
-const navyDarkSurfaces = {
-	background: "#07111F", // fundo base — cores.ts SUPERFICIES.escuro.background
-	surface: "#102238", // card/popover — cores.ts SUPERFICIES.escuro.surface
-	surfaceElevated: "#16304D", // secondary/muted/accent/sidebar — cores.ts SUPERFICIES.escuro.surfaceElevated
+// Grafite quente no escuro. A luminosidade segue a escada antiga (fundo mais
+// escuro → cartão → faixa elevada) para o contraste dos status não cair.
+// Azul de marca no texto escuro continua no tom light (#63A6EC), não no default.
+const warmDarkSurfaces = {
+	background: "#161310",
+	surface: "#241F1A",
+	surfaceElevated: "#312B25",
 };
 
 export const darkColorTokens = {
@@ -148,13 +150,13 @@ export const darkColorTokens = {
 	common: commonColors,
 	action: actionColors,
 	text: {
-		primary: commonColors.white,
+		primary: "#F7F2EA",
 		secondary: paletteColors.gray[500],
 		disabled: paletteColors.gray[600],
 	},
 	background: {
-		default: navyDarkSurfaces.background,
-		paper: navyDarkSurfaces.surface,
-		neutral: navyDarkSurfaces.surfaceElevated,
+		default: warmDarkSurfaces.background,
+		paper: warmDarkSurfaces.surface,
+		neutral: warmDarkSurfaces.surfaceElevated,
 	},
 };

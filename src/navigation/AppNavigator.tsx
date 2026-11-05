@@ -27,6 +27,7 @@ import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
 import DiagnosticoScreen from '../screens/DiagnosticoScreen';
 import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
+import IdentidadeUpsellScreen from '../screens/IdentidadeUpsellScreen';
 import ModelosDocumentoScreen from '../screens/ModelosDocumentoScreen';
 import CentralDocumentosScreen from '../screens/CentralDocumentosScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
@@ -47,6 +48,7 @@ import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import PrepararNotaScreen from '../screens/PrepararNotaScreen';
 import CertificadoCaixaDaguaScreen from '../screens/CertificadoCaixaDaguaScreen';
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
+import ContadorScreen from '../screens/ContadorScreen';
 import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
 import VimDeOutroAppScreen from '../screens/VimDeOutroAppScreen';
@@ -58,6 +60,7 @@ import GarantiasScreen from '../screens/GarantiasScreen';
 import EquipeScreen from '../screens/EquipeScreen';
 import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import MapaDiaScreen from '../screens/MapaDiaScreen';
+import ProspeccaoScreen from '../screens/ProspeccaoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
@@ -153,12 +156,13 @@ export type RootStackParamList = {
   PrepararNota: { reciboId: string };
   Conta: undefined;
   MeuNegocio: undefined;
+  IdentidadeUpsell: undefined;
   ModelosDocumento: undefined;
   CentralDocumentos: undefined;
   // `equipamentoId` (ficha do QR → "Código de erro deste equipamento"): o
   // diagnóstico já sabe a marca, o cliente e o equipamento para o orçamento do defeito.
   Diagnostico: { equipamentoId?: string } | undefined;
-  DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
+  DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string; tipoEquipamento?: string };
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;
   OlliChat: undefined;
@@ -173,6 +177,8 @@ export type RootStackParamList = {
   CertificadoCaixaDagua: undefined;
   // Hub de calculadoras por ofício (adapta-se à vertical; some sem calculadora).
   FerramentasOficio: undefined;
+  // Guia de contador: tipos de empresa e NFS-e. A OLLI não emite a nota.
+  Contador: undefined;
   // Saldo de créditos + recarga por Pix (Mercado Pago — o único gateway de Pix
   // do OLLI; ver src/services/pixCreditos.ts → /mp/*).
   Creditos: undefined;
@@ -194,6 +200,8 @@ export type RootStackParamList = {
   EquipeAoVivo: undefined;
   // Onda I2 — Mapa do dia (MapLibre + OpenFreeMap, grátis): pins, rota e "Saia às".
   MapaDia: { dia?: 'hoje' | 'amanha' } | undefined;
+  // D-1438 G19 — prospecção: clientes da própria conta, por raio, rota e nicho.
+  Prospeccao: undefined;
   // Aceite de convite de equipe (deep link olliorcamentos://convite/<token>).
   Convite: { token?: string };
   // Onda 4 — Ordens de serviço (OS mínima + app do técnico). Role-aware:
@@ -209,8 +217,9 @@ export type RootStackParamList = {
   Pmoc: undefined;
   PmocPlano: { id: string };
   // Contratos recorrentes por ativo (lista + criar/editar). Sem id = contrato novo.
+  // `copiarDe` abre um contrato novo, pausado, copiado daquele id — não edita o original.
   Contratos: undefined;
-  Contrato: { id?: string } | undefined;
+  Contrato: { id?: string; copiarDe?: string } | undefined;
   // ─── Frentes novas ────────────────────────────────────────────────────────
   // Landing pública (web deslogado) — full-bleed, sem wrap desktop nem path.
   Landing: undefined;
@@ -286,6 +295,7 @@ const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
+const IdentidadeUpsellCentro = comCentroDesktop(IdentidadeUpsellScreen);
 const AutopilotCentro = comCentroDesktop(AutopilotScreen);
 const ImportarCentro = comCentroDesktop(ImportarScreen);
 
@@ -380,6 +390,7 @@ const CertificadoAnvisaCentro = comCentroDesktop(CertificadoAnvisaScreen);
 const PrepararNotaCentro = comCentroDesktop(PrepararNotaScreen);
 const CertificadoCaixaDaguaCentro = comCentroDesktop(CertificadoCaixaDaguaScreen);
 const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
+const ContadorCentro = comCentroDesktop(ContadorScreen);
 const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const VimDeOutroAppCentro = comCentroDesktop(VimDeOutroAppScreen);
@@ -387,6 +398,7 @@ const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const ConfirmarVisitasCentro = comCentroDesktop(ConfirmarVisitasScreen);
 const GarantiasCentro = comCentroDesktop(GarantiasScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
+const ProspeccaoCentro = comCentroDesktop(ProspeccaoScreen);
 const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
 const OrdemServicoCentro = comCentroDesktop(OrdemServicoScreen);
@@ -747,6 +759,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="PrepararNota" component={PrepararNotaCentro} />
       <Stack.Screen name="Conta" component={ContaCentro} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioCentro} />
+      <Stack.Screen name="IdentidadeUpsell" component={IdentidadeUpsellCentro} />
       <Stack.Screen name="ModelosDocumento" component={ModelosDocumentoCentro} />
       <Stack.Screen name="CentralDocumentos" component={CentralDocumentosCentro} />
       <Stack.Screen name="DiagnosticoIA" component={DiagnosticoIACentro} />
@@ -759,6 +772,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />
+      <Stack.Screen name="Contador" component={ContadorCentro} />
       <Stack.Screen name="Creditos" component={CreditosCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />
       <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
@@ -772,6 +786,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="EquipeAoVivo" component={EquipeAoVivoCentro} />
       {/* Onda I2 — Mapa do dia em tela cheia (sem o centro do desktop: o mapa ocupa tudo). */}
       <Stack.Screen name="MapaDia" component={MapaDiaScreen} />
+      <Stack.Screen name="Prospeccao" component={ProspeccaoCentro} />
       <Stack.Screen name="Convite" component={ConviteCentro} />
       {/* Onda 4 — Ordens de serviço (gestão + app do técnico). */}
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />

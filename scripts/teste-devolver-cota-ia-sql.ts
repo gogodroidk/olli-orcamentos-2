@@ -1,5 +1,5 @@
 /**
- * DEVOLVER COTA DIÁRIA DE IA (migration 20261030060000) rodando o SQL de verdade no PGlite.
+ * DEVOLVER COTA DIÁRIA DE IA (migration 20261106054000) rodando o SQL de verdade no PGlite.
  *     node scripts/teste-devolver-cota-ia-sql.ts
  */
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ const db = new PGlite();
 await db.exec(`create role anon; create role authenticated; create role service_role;
   create schema auth; create table auth.users (id uuid primary key);`);
 await db.exec(ler('../supabase/migrations/20260817_openrouter_quota_diaria.sql'));
-const sqlNova = ler('../supabase/migrations/20261030060000_devolver_cota_ia.sql');
+const sqlNova = ler('../supabase/migrations/20261106054000_devolver_cota_ia.sql');
 await db.exec(sqlNova);
 await db.exec(sqlNova); // idempotente
 

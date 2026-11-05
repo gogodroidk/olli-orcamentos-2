@@ -54,6 +54,7 @@ registerHooks({
 const {
   gerarHtmlContrato,
   termosPadraoContrato,
+  linhasDeClausulas,
   MULTA_ATRASO_PADRAO,
   JUROS_MES_PADRAO,
   AVISO_PREVIO_PADRAO,
@@ -452,7 +453,11 @@ for (const [nome, src] of [['o chassi', chassi], ['o contrato', contratoSrc], ['
 // Um segundo motor de PDF era o risco explícito desta frente.
 checar('o chassi reusa o selo OLLI existente', chassi.includes("from './marcaOlli'"), true);
 checar('o chassi reusa o escape de HTML existente', chassi.includes("from './html'"), true);
-checar('o chassi reusa o ajuste de contraste do tema', chassi.includes("from '../theme/cores'"), true);
+checar(
+  'o chassi reusa o ajuste de contraste do tema',
+  chassi.includes("from './coresMarca'") && semComentarios(ler('../src/utils/coresMarca.ts')).includes("from '../theme/cores.ts'"),
+  true,
+);
 checar('a saída em PDF é a mesma do orçamento', contratoSrc.includes("await import('./exportarDocumento')"), true);
 checar('os termos usam a mesma saída', termosSrc.includes("await import('./exportarDocumento')"), true);
 // pdfGenerator continua exportando o que reciboPdf/certificadoAnvisa importam.
@@ -461,7 +466,7 @@ checar('pdfGenerator ainda exporta o selo e o accent', pdfOrc.includes("export {
 checar('img() do orçamento continua escapando', pdfOrc.includes("return escapeHtml(IMG_CACHE[uri] || (uri.startsWith('data:') ? uri : ''));"), true);
 // O certificado ANVISA tinha o MESMO buraco aberto; foi fechado aqui.
 const anvisa = semComentarios(ler('../src/utils/certificadoAnvisaPdf.ts'));
-checar('o certificado ANVISA escapa a logo', anvisa.includes('<img src="${escapeHtml(logoData)}"/>'), true);
+checar('o certificado ANVISA escapa a logo', anvisa.includes('escapeHtml(logoData)') && anvisa.includes('tagImgLogo'), true);
 checar('e escapa a assinatura', anvisa.includes('<img src="${escapeHtml(assinaturaData)}"/>'), true);
 
 // A tela: sem entrada visível, o documento nasce escondido — que era o problema.
@@ -699,6 +704,12 @@ checar('sem cor no orçamento, cai na cor da empresa', corDoHtml(gerarHtmlTermoG
 // A cor segue validada antes de entrar no <style> — A-4 não pode afrouxar XSS.
 const corVenenosa: any = { ...ORCAMENTO, corMarca: 'red;}body{display:none' };
 checar('cor de orçamento inválida não entra no <style> do termo', gerarHtmlTermoGarantia(dadosGarantiaDeOrcamento(corVenenosa, EMPRESA), EMPRESA, SEM_IMAGENS).includes('display:none'), false);
+
+const vista = linhasDeClausulas(termosPadraoContrato(ORCAMENTO, EMPRESA, { clausulasExtras: 'Acesso das 8h às 18h.', multaAtrasoPercent: 50 }));
+checar('a vista mostra a garantia combinada neste orçamento', vista.find((l: { titulo: string; texto: string }) => l.titulo === 'Da garantia')?.texto, '1 (um) ano sobre a instalação.');
+checar('a vista da multa respeita o teto do CDC', vista.find((l: { titulo: string; texto: string }) => l.titulo === 'Do atraso no pagamento')?.texto.includes('2%') === true, true);
+checar('a vista inclui a cláusula complementar', vista.some((l: { texto: string }) => l.texto.includes('Acesso das 8h às 18h.')), true);
+checar('sem texto complementar, a vista não inventa a cláusula', linhasDeClausulas(termosPadraoContrato(ORCAMENTO, EMPRESA)).some((l: { titulo: string }) => l.titulo === 'Das disposições complementares'), false);
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);
 process.exit(falhas === 0 ? 0 : 1);

@@ -1,4 +1,5 @@
 import type { Agendamento } from "@dominio";
+import { criarIcsAgenda } from "../../../../../src/utils/icsAgenda.ts";
 
 const FUSO_OLLI = "America/Sao_Paulo";
 const DURACAO_PADRAO_MS = 60 * 60 * 1000;
@@ -71,59 +72,36 @@ export function criarUrlGoogleAgenda(agendamento: Agendamento, semHora = false):
 	return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-function escaparIcs(valor: string): string {
-	return valor.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
-}
-
-function dobrarLinhaIcs(linha: string): string {
-	const pedacos: string[] = [];
-	let restante = linha;
-	while (new TextEncoder().encode(restante).length > 73) {
-		let corte = Math.min(70, restante.length);
-		while (corte > 1 && new TextEncoder().encode(restante.slice(0, corte)).length > 73) corte--;
-		pedacos.push(restante.slice(0, corte));
-		restante = restante.slice(corte);
-	}
-	pedacos.push(restante);
-	return pedacos.join("\r\n ");
-}
-
+/** Um compromisso. O dia inteiro só quando a tela diz que é "sem hora". */
 export function criarIcsAgendamento(agendamento: Agendamento, semHora = false): string | null {
-	const inicio = dataValida(agendamento.inicio);
-	if (!inicio) return null;
-	const fim = dataValida(agendamento.fim) ?? new Date(inicio.getTime() + DURACAO_PADRAO_MS);
-	const linhas = [
-		"BEGIN:VCALENDAR",
-		"VERSION:2.0",
-		"PRODID:-//OLLI Orcamentos//Agenda//PT-BR",
-		"CALSCALE:GREGORIAN",
-		"METHOD:PUBLISH",
-		"BEGIN:VEVENT",
-		`UID:${escaparIcs(agendamento.id)}@olliorcamentos.online`,
-		`DTSTAMP:${utcCompacto(new Date())}`,
-		semHora ? `DTSTART;VALUE=DATE:${dataLocalCompacta(inicio)}` : `DTSTART:${utcCompacto(inicio)}`,
-		semHora ? `DTEND;VALUE=DATE:${proximoDiaCompacto(inicio)}` : `DTEND:${utcCompacto(fim)}`,
-		`SUMMARY:${escaparIcs(limparTexto(agendamento.titulo) || "Compromisso OLLI")}`,
-		`DESCRIPTION:${escaparIcs(descricao(agendamento))}`,
-		...(agendamento.endereco ? [`LOCATION:${escaparIcs(limparTexto(agendamento.endereco))}`] : []),
-		"END:VEVENT",
-		"END:VCALENDAR",
-	];
-	return `${linhas.map(dobrarLinhaIcs).join("\r\n")}\r\n`;
+	return criarIcsAgenda([agendamento], { modo: "evento", forcarSemHora: semHora });
 }
 
-export function baixarIcsAgendamento(agendamento: Agendamento, semHora = false): boolean {
-	const conteudo = criarIcsAgendamento(agendamento, semHora);
-	if (!conteudo || typeof document === "undefined") return false;
+function baixarTextoIcs(conteudo: string, nome: string): boolean {
+	if (typeof document === "undefined") return false;
 	const blob = new Blob([conteudo], { type: "text/calendar;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const link = document.createElement("a");
 	link.href = url;
-	link.download = `olli-${agendamento.id}.ics`;
+	link.download = nome;
 	link.rel = "noopener";
 	document.body.appendChild(link);
 	link.click();
 	link.remove();
 	window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 	return true;
+}
+
+export function baixarIcsAgendamento(agendamento: Agendamento, semHora = false): boolean {
+	const conteudo = criarIcsAgendamento(agendamento, semHora);
+	if (!conteudo) return false;
+	const nome = `olli-${agendamento.id.replace(/[^\w.-]+/g, "_").slice(0, 80) || "evento"}.ics`;
+	return baixarTextoIcs(conteudo, nome);
+}
+
+/** A agenda inteira (de 30 dias atrás para a frente, mais as séries). */
+export function baixarIcsAgenda(agendamentos: readonly Agendamento[]): boolean {
+	const conteudo = criarIcsAgenda(agendamentos, { modo: "agenda" });
+	if (!conteudo || !conteudo.includes("BEGIN:VEVENT")) return false;
+	return baixarTextoIcs(conteudo, "agenda-olli.ics");
 }

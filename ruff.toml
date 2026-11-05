@@ -1,0 +1,4 @@
+# Gate Python (MF-07). O produto é JS/TS; isto cobre o Python do repo
+# e o que entrar depois. Versão do ruff cravada em scripts/gate-codigo-limpo.sh.
+target-version = "py311"
+line-length = 100

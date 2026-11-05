@@ -21,6 +21,7 @@
  *    e o filtro por técnico.
  */
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import {
   HORIZONTE_DIAS,
   JANELA_ATRASO_DIAS,
@@ -37,9 +38,15 @@ import {
   instanteNoBrasil,
   linhaParaContrato,
   linhasDaVisita,
+  copiarContrato,
+  filtrarListaContratos,
+  fraseProrrogarContrato,
+  ordenarListaContratos,
   prepararCobrancaContrato,
+  prorrogarFim,
   proximasVisitas,
   resumirContratos,
+  rotuloFimContrato,
   situacaoEfetiva,
   somarDias,
   validarContrato,
@@ -494,6 +501,110 @@ await caso('filtro por técnico: todos, sem responsável, e um técnico', () => 
   assert.equal(filtrarPorResponsavel(itens, 'todos').length, 3);
   assert.deepEqual(filtrarPorResponsavel(itens, 'sem').map((i) => i.id), ['3']);
   assert.deepEqual(filtrarPorResponsavel(itens, 'T2').map((i) => i.id), ['2']);
+});
+
+console.log('\nLista do prestador: busca, cópia e prorrogação do fim');
+
+await caso('filtro: busca por palavras, ativos, pausados, terminando e encerrados', () => {
+  const agora = emBrasilia('2026-11-03');
+  const lista = [
+    contrato({ id: 'a', clienteNome: 'Condomínio Solar', dataFim: '2026-11-20' }),
+    contrato({ id: 'b', titulo: 'Jardim do bloco B', clienteNome: 'Ana', situacao: 'suspenso', observacoes: 'chave com o zelador' }),
+    contrato({ id: 'c', situacao: 'vigente', dataFim: '2026-10-01' }),
+    contrato({ id: 'd', situacao: 'cancelado' }),
+    contrato({ id: 'e', situacao: 'rascunho', titulo: 'Rascunho da caixa' }),
+    contrato({ id: 'f', excluidoEm: '2026-11-01T00:00:00.000Z' }),
+  ];
+  assert.deepEqual(filtrarListaContratos(lista, 'todos', '', agora).map((c) => c.id), ['a', 'b', 'c', 'd', 'e']);
+  assert.deepEqual(filtrarListaContratos(lista, 'ativos', '', agora).map((c) => c.id), ['a']);
+  assert.deepEqual(filtrarListaContratos(lista, 'pausados', '', agora).map((c) => c.id), ['b']);
+  assert.deepEqual(filtrarListaContratos(lista, 'terminando', '', agora).map((c) => c.id), ['a']);
+  assert.deepEqual(filtrarListaContratos(lista, 'encerrados', '', agora).map((c) => c.id), ['c', 'd']);
+  assert.deepEqual(filtrarListaContratos(lista, 'todos', 'zelador jardim', agora).map((c) => c.id), ['b']);
+  assert.deepEqual(filtrarListaContratos(lista, 'ativos', 'solar', agora).map((c) => c.id), ['a']);
+  assert.deepEqual(filtrarListaContratos(lista, 'ativos', 'joana', agora).map((c) => c.id), ['a']);
+  assert.deepEqual(filtrarListaContratos(lista, 'ativos', 'zelador', agora).map((c) => c.id), []);
+});
+
+await caso('ordem: quem está terminando vem antes do ativo sem pressa', () => {
+  const agora = emBrasilia('2026-11-03');
+  const lista = [
+    contrato({ id: 'longe', dataFim: '2027-06-01' }),
+    contrato({ id: 'pausa', situacao: 'suspenso' }),
+    contrato({ id: 'perto', dataFim: '2026-11-10' }),
+  ];
+  assert.deepEqual(ordenarListaContratos(lista, agora).map((c) => c.id), ['perto', 'longe', 'pausa']);
+});
+
+await caso('rótulo do fim: passou, hoje, em 30 dias, e sem data', () => {
+  const agora = emBrasilia('2026-11-03');
+  assert.equal(rotuloFimContrato(contrato({ dataFim: '2026-10-01' }), agora), 'Terminou em 01/10/2026');
+  assert.equal(rotuloFimContrato(contrato({ dataFim: '2026-11-03' }), agora), 'Termina hoje (03/11/2026)');
+  assert.equal(rotuloFimContrato(contrato({ dataFim: '2026-11-04' }), agora), 'Termina em 1 dia (04/11/2026)');
+  assert.equal(rotuloFimContrato(contrato({ dataFim: '2026-12-03' }), agora), 'Termina em 30 dias (03/12/2026)');
+  assert.equal(rotuloFimContrato(contrato({ dataFim: '2027-01-01' }), agora), 'Até 01/01/2027');
+  assert.equal(rotuloFimContrato(contrato({ dataFim: undefined }), agora), null);
+});
+
+await caso('prorrogar empurra 12 meses e não mexe em pausado, sem fim ou papel', () => {
+  const agora = emBrasilia('2026-11-03');
+  const futuro = prorrogarFim(contrato({ dataFim: '2026-11-20', situacao: 'vigente' }), agora);
+  assert.equal(futuro?.dataFim, '2027-11-20');
+  assert.equal(futuro?.situacao, 'vigente');
+  assert.equal(futuro?.id, 'ct1');
+  const passado = prorrogarFim(contrato({ dataFim: '2024-01-31' }), agora);
+  assert.equal(passado?.dataFim, '2027-11-03');
+  const hoje = prorrogarFim(contrato({ dataFim: '2026-01-31' }), emBrasilia('2026-01-15'));
+  assert.equal(hoje?.dataFim, '2027-01-31');
+  assert.equal(prorrogarFim(contrato({ situacao: 'suspenso', dataFim: '2026-12-01' }), agora), null);
+  assert.equal(prorrogarFim(contrato({ dataFim: undefined }), agora), null);
+  assert.equal(prorrogarFim(contrato({ situacao: 'cancelado', dataFim: '2026-12-01' }), agora), null);
+  assert.match(fraseProrrogarContrato('2026-11-20', '2027-11-20'), /20\/11\/2026 para 20\/11\/2027/);
+  assert.match(fraseProrrogarContrato('2026-11-20', '2027-11-20'), /papel que o cliente já assinou não muda/);
+});
+
+await caso('cópia nasce pausada, com ids novos, sem número e sem empilhar o sufixo', () => {
+  const agora = emBrasilia('2026-11-03', '15:00');
+  let n = 0;
+  const origem = contrato({ titulo: 'Piscina do bloco', numero: '7', excluidoEm: '2026-01-01T00:00:00.000Z', renovacao: 'automatica' });
+  const copia = copiarContrato(origem, agora, () => `id-${++n}`);
+  assert.equal(copia.id, 'id-1');
+  assert.deepEqual(copia.ativos.map((a) => a.id), ['id-2', 'id-3']);
+  assert.equal(copia.numero, undefined);
+  assert.equal(copia.userId, undefined);
+  assert.equal(copia.excluidoEm, undefined);
+  assert.equal(copia.situacao, 'suspenso');
+  assert.equal(copia.renovacao, 'manual');
+  assert.equal(copia.titulo, 'Piscina do bloco (cópia)');
+  assert.equal(copia.criadoEm, agora.toISOString());
+  assert.notEqual(copia.id, origem.id);
+  assert.equal(copiarContrato(copia, agora, () => 'x').titulo, 'Piscina do bloco (cópia)');
+  assert.equal(validarContrato(copia).length, 0);
+  assert.equal(visitasParaGerar(copia, agora).length, 0);
+  const longa = 'A'.repeat(200);
+  assert.ok(copiarContrato(contrato({ titulo: longa }), agora, () => 'z').titulo.endsWith('(cópia)'));
+  assert.ok(copiarContrato(contrato({ titulo: longa }), agora, () => 'z').titulo.length <= 160);
+});
+
+await caso('as duas telas usam a mesma regra e não prometem renovação automática', () => {
+  const ler = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
+  const app = ler('../src/screens/ContratosScreen.tsx');
+  const formApp = ler('../src/screens/ContratoScreen.tsx');
+  const web = ler('../webapp/src/pages/olli/contratos/index.tsx');
+  const formWeb = ler('../webapp/src/pages/olli/contratos/FormContrato.tsx');
+  for (const src of [app, web]) {
+    assert.match(src, /filtrarListaContratos/);
+    assert.match(src, /prorrogarFim/);
+    assert.match(src, /fraseProrrogarContrato/);
+    assert.match(src, /copiarContrato|copiarDe/);
+  }
+  assert.match(app, /copiarDe/);
+  assert.match(formApp, /copiarContrato/);
+  assert.match(web, /copiarContrato/);
+  assert.match(formWeb, /criando/);
+  assert.match(formApp, /nasce pausada/);
+  assert.match(formWeb, /nasce pausada/);
+  assert.doesNotMatch(app + web + formApp + formWeb, /renova automaticamente|renovação automática/i);
 });
 
 if (falhas) {

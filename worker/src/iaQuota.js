@@ -289,7 +289,7 @@ export async function reservarCotaConfigurada(
  * somente o resultado saneado da cota, sem prompt, modelo, usuario ou segredo.
  */
 /**
- * Desfaz UMA reserva (`devolver_cota_ia_diaria`, migration 20261030060000) quando o provedor falhou
+ * Desfaz UMA reserva (`devolver_cota_ia_diaria`, migration 20261106054000) quando o provedor falhou
  * depois de reservado. Nunca lança: sem a RPC (antes da migration), rede ou erro, devolve false e a
  * reserva fica como estava (o comportamento anterior). Não toca no uso do Grátis.
  */

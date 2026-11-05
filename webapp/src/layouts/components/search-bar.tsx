@@ -125,7 +125,7 @@ const SearchBar = () => {
 					{/* Azul CHEIO, não `bg-primary/80`: medido no navegador, o branco sobre o azul
 					    a 80% (composto sobre o botão cinza da busca) dava 3,64:1 — reprova nos
 					    4,5:1 da WCAG para texto pequeno. Sem a transparência vai a 5,02:1. */}
-					<kbd className="flex items-center justify-center rounded-md bg-primary text-common-white px-1.5 py-0.5 text-sm font-semibold">
+					<kbd className="flex items-center justify-center rounded-md bg-primary text-primary-foreground px-1.5 py-0.5 text-sm font-semibold">
 						{isMac ? <Icon icon="qlementine-icons:key-cmd-16" /> : <span>Ctrl</span>}
 						<span>K</span>
 					</kbd>

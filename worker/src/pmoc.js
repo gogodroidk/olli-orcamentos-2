@@ -48,6 +48,7 @@
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
 import { FONTES_CSS } from './fontesProprias.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
+import { corMarcaNoPapel } from '../../src/utils/coresMarca.ts';
 
 const ACCENT = '#0B6FCE';
 const SUPORTE_WHATSAPP_FALLBACK = ''; // sem contato do prestador → não inventa número
@@ -660,7 +661,8 @@ export function urlEtiqueta(token) {
 
 // ─── páginas HTML ────────────────────────────────────────────
 function shell(inner, accentRaw = ACCENT) {
-  const accent = safeHexColor(accentRaw, ACCENT);
+  // Mesma regra do orçamento: marca clara não pode ser o fundo do cabeçalho branco.
+  const accent = corMarcaNoPapel(accentRaw, ACCENT);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
