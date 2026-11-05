@@ -1,4 +1,5 @@
 import { ARTIGO_ARREPENDIMENTO, DIAS_ARREPENDIMENTO } from './arrependimento';
+import { CORTE_GRATIS_PUBLICADO_EM, PARAGRAFO_LIMITE_TERMOS, diaExtenso } from '../../services/planosBase';
 /**
  * Termos de Uso do OLLI — conteúdo tipado, renderizado pela LegalScreen no app
  * (tema escuro) e na web (mesma tela).
@@ -12,11 +13,17 @@ import { ARTIGO_ARREPENDIMENTO, DIAS_ARREPENDIMENTO } from './arrependimento';
 
 import type { LegalDoc } from './privacidade';
 
+/** Data publicada: 2 de novembro de 2026 até o texto do limite entrar no ar (CORTE_GRATIS_PUBLICADO_EM). */
+const ATUALIZADO_EM =
+  PARAGRAFO_LIMITE_TERMOS !== null && CORTE_GRATIS_PUBLICADO_EM !== null
+    ? diaExtenso(CORTE_GRATIS_PUBLICADO_EM)
+    : '2 de novembro de 2026';
+
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
-  atualizadoEm: '2 de novembro de 2026',
+  atualizadoEm: ATUALIZADO_EM,
   aviso:
-    'Documento atualizado em 2 de novembro de 2026. Ao criar uma conta ou usar o OLLI, ' +
+    `Documento atualizado em ${ATUALIZADO_EM}. Ao criar uma conta ou usar o OLLI, ` +
     'você concorda com estes Termos e com a Política de Privacidade.',
   intro: [
     'Estes Termos regulam o uso do aplicativo OLLI, uma ferramenta de gestão para ' +
@@ -64,6 +71,7 @@ export const TERMOS: LegalDoc = {
         'O OLLI oferece um plano gratuito e planos pagos (Pro e Empresa) com recursos adicionais. ' +
           'Nos canais em que o checkout estiver explicitamente disponível, os planos pagos podem ser ' +
           'contratados nas modalidades mensal, anual ou em até 12 vezes, com pagamento processado pela Stripe.',
+        ...(PARAGRAFO_LIMITE_TERMOS === null ? [] : [PARAGRAFO_LIMITE_TERMOS]),
         'Quando o Pix estiver disponível no canal de contratação, os planos pagos também podem ser pagos ' +
           'por Pix, processado pela AbacatePay, por um período fechado de 1 mês ou de 12 meses. O pagamento ' +
           'por Pix não é assinatura e não se renova automaticamente: ao fim do período pago, a conta volta ' +
