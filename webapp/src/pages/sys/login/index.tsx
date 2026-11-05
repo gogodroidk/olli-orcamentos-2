@@ -56,7 +56,7 @@ function LoginPage() {
 				{/* Landmark `<main>`: o formulário é o conteúdo principal da página (leitor
 				    de tela pula direto para cá; Lighthouse cobra a ausência). */}
 				<main className="flex flex-1 items-center justify-center">
-					<div className="w-full max-w-xs">
+					<div className="w-full max-w-xs rounded-2xl bg-card p-6 shadow-card">
 						<LoginProvider>
 							<LoginForm />
 							<RegisterForm />
