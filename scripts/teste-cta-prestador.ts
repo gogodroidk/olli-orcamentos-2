@@ -61,7 +61,7 @@ console.log('\n4) liga/desliga (parecer do Dr. Paulo: aviso de 7 dias antes de l
 const termos = readFileSync(new URL('../src/content/legal/termos.ts', import.meta.url), 'utf8');
 checar('Termos: parágrafo só entra com a constante', termos.includes('...(PARAGRAFO_CTA_TERMOS === null ? [] : [PARAGRAFO_CTA_TERMOS])'), true);
 checar('Termos: parágrafo nulo quando desligado', /PARAGRAFO_CTA_TERMOS: string \| null =\s*CTA_PRESTADOR_NO_AR_EM === null\s*\? null/.test(termos), true);
-checar('Termos: data derivada da constante', /ATUALIZADO_EM = CTA_PRESTADOR_NO_AR_EM === null \? '2 de outubro de 2026' : diaExtenso\(CTA_PRESTADOR_NO_AR_EM\)/.test(termos), true);
+checar('Termos: data derivada da constante', /ATUALIZADO_EM = CTA_PRESTADOR_NO_AR_EM === null \? '2 de novembro de 2026' : diaExtenso\(CTA_PRESTADOR_NO_AR_EM\)/.test(termos), true);
 checar('Termos: atualizadoEm e aviso usam a data derivada', termos.includes('atualizadoEm: ATUALIZADO_EM') && termos.includes('Documento atualizado em ${ATUALIZADO_EM}'), true);
 if (CTA_PRESTADOR_NO_AR_EM === null) {
   checar('desligado: página sem convite', ctaPrestadorHtml('link_orcamento'), '');
