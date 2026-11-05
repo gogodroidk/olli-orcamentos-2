@@ -693,13 +693,13 @@ function SeletorPeriodo({ periodo, aoMudar }: { periodo: PeriodoCobranca; aoMuda
 		>
 			<ToggleGroupItem
 				value="mensal"
-				className="h-11 flex-1 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-common-white data-[state=on]:shadow-sm sm:flex-none"
+				className="h-11 flex-1 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm sm:flex-none"
 			>
 				Mensal
 			</ToggleGroupItem>
 			<ToggleGroupItem
 				value="anual"
-				className="h-11 flex-1 gap-2 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-common-white data-[state=on]:shadow-sm sm:flex-none"
+				className="h-11 flex-1 gap-2 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm sm:flex-none"
 			>
 				Anual
 				<span className="rounded-full bg-success/20 px-1.5 py-0.5 text-[11px] font-bold text-success-darker dark:text-success-light">

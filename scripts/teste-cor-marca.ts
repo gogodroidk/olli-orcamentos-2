@@ -178,6 +178,27 @@ ok('painel usa a rampa por modo e não promete cor testada', () => {
   assert.ok(app.includes('escurece só o necessário'));
   exige('webapp/src/pages/olli/meu-negocio/constantes.ts', 'from "../../../../../src/utils/coresMarca"');
 });
+ok('botão do painel usa a tinta da marca, não branco cravado', () => {
+  const arquivos = [
+    'webapp/src/components/lazy/chunk-boundary.tsx',
+    'webapp/src/layouts/components/search-bar.tsx',
+    'webapp/src/pages/olli/equipamentos/index.tsx',
+    'webapp/src/pages/olli/equipe/index.tsx',
+    'webapp/src/pages/olli/ferramentas/index.tsx',
+    'webapp/src/pages/olli/inicio/WelcomeHeader.tsx',
+    'webapp/src/pages/olli/meu-negocio/index.tsx',
+    'webapp/src/pages/olli/orcamentos/FormOrcamento.tsx',
+    'webapp/src/pages/olli/planos/index.tsx',
+  ];
+  for (const arquivo of arquivos) {
+    for (const linha of semComentario(readFileSync(arquivo, 'utf8')).split('\n')) {
+      const pintaMarca = linha.includes('bg-primary') || linha.includes('from-primary');
+      assert.ok(!(pintaMarca && /text-(?:common-)?white/.test(linha)), `${arquivo}: ${linha.trim()}`);
+    }
+  }
+  const chips = semComentario(readFileSync('webapp/src/pages/olli/equipamentos/index.tsx', 'utf8'));
+  assert.ok(!chips.includes('text-white/90'));
+});
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${falhas} falha(s)\n`);
 process.exitCode = falhas === 0 ? 0 : 1;

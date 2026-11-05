@@ -50,7 +50,7 @@ export default function FerramentasPage() {
 		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
 			{/* Cabeçalho */}
 			<div className="flex items-center gap-4">
-				<div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[#3FD8EA] text-white shadow-md shadow-primary/25">
+				<div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[#3FD8EA] text-primary-foreground shadow-md shadow-primary/25">
 					<Wrench className="size-6" strokeWidth={2.2} />
 				</div>
 				<div className="min-w-0">

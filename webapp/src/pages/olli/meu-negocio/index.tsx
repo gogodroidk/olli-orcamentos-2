@@ -588,7 +588,7 @@ export default function MeuNegocio() {
 				{modoOnboarding && (
 					<div className="rounded-2xl border border-primary/25 bg-primary/5 p-5" aria-live="polite">
 						<div className="flex items-start gap-3">
-							<div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white">
+							<div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
 								{pendentesAtuais.length ? <Sparkles className="size-5" /> : <CheckCircle2 className="size-5" />}
 							</div>
 							<div className="min-w-0">
