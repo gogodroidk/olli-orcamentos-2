@@ -83,6 +83,19 @@ Consequências:
 - Aviso do próprio GitHub: o label `ubuntu-latest` migra para Ubuntu 26 em 19/10/2026.
   Quando o Actions voltar, reconferir `ci.yml` nesse runner.
 
+## Janela de produção (D-0636)
+
+Produção sobe terça e sexta, 05:30 até 07:30 America/Sao_Paulo, com changelog
+de 1 a 5 linhas em `OLLI_CHANGELOG`. O portão está em `worker/reparar.mjs`
+(sem `--dry-run`), em `npm run deploy` da raiz e do `worker/`, e no job
+`production` de `.github/workflows/promotion.yml`. Fora da janela só segue
+hotfix: `OLLI_HOTFIX=1` e `OLLI_HOTFIX_MOTIVO` com uma destas palavras: pix,
+login, dados, seguranca. Staging fica livre qualquer dia. O relógio não entra
+no `ci.yml` nem neste script: um PR pode ficar verde na quarta. App de loja
+(build de produção, não o preview): quinta, a cada 14 dias, desde 2026-10-29,
+`node scripts/janela-release.mjs --alvo loja`. Conferir sem publicar:
+`node scripts/janela-release.mjs --alvo producao`.
+
 ### Armadilhas do gate local (aprendidas em 05/10/2026)
 
 1. **Rode o job `painel` quando mexer em `src/` compartilhado com o `webapp/`.** O `app-gate`

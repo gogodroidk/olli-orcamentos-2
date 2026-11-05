@@ -48,6 +48,8 @@ não prova que o commit é reproduzível.
 
 ```bash
 npx eas whoami
+# Janela da loja (D-0636): quinta, a cada 14 dias, desde 2026-10-29.
+node scripts/janela-release.mjs --alvo loja
 npx eas build -p android --profile production
 # depois do canário interno validado:
 npx eas submit -p android --profile production --latest
@@ -72,6 +74,8 @@ Notas de Windows (aprendidas na prática):
 Projeto pronto para EAS Build (ícone sem canal alpha, `buildNumber`, permissões PT-BR, sem permissão de microfone desnecessária). Requer conta Apple Developer:
 
 ```bash
+# Mesma quinta quinzenal do Android (D-0636). O preview de QA não usa esta janela.
+node scripts/janela-release.mjs --alvo loja
 npx eas build -p ios --profile production
 ```
 
