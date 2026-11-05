@@ -71,10 +71,23 @@ else
   falha "marca olli-sql-lint ausente (o ci-local deixa de reconhecer o hook)"
 fi
 
-if bash scripts/instalar-hooks.sh --ver; then
-  ok "instalar-hooks --ver"
+# --ver olha o hook ativo do clone, não o arquivo versionado.
+# No Actions o hooksPath não é .githooks: .git/hooks/pre-commit não existe
+# e --ver sai 1. A marca no arquivo versionado já foi conferida acima.
+# Exigir --ver aqui deixava o job lint vermelho em todo PR.
+hook_ativo="$(git rev-parse --git-path hooks/pre-commit)"
+if [ "$(basename "$(dirname "$hook_ativo")")" = ".githooks" ]; then
+  if bash scripts/instalar-hooks.sh --ver; then
+    ok "instalar-hooks --ver"
+  else
+    falha "instalar-hooks --ver não reconhece o hook"
+  fi
 else
-  falha "instalar-hooks --ver não reconhece o hook"
+  if bash scripts/instalar-hooks.sh --ver; then
+    ok "instalar-hooks --ver (hook legado)"
+  else
+    ok "clone sem hook ativo: --ver recusa e o CI não reprova"
+  fi
 fi
 
 tmp="$(mktemp -d)"
