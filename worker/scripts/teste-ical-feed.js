@@ -101,7 +101,10 @@ async function corpo(res) {
   assert.equal(res.headers.get('cache-control'), 'private, max-age=900');
   assert.match(res.headers.get('x-robots-tag'), /noindex/);
   assert.ok(urls.some((u) => u.includes('revogado_em=is.null') && u.includes(`token=eq.${TOKEN}`)));
-  assert.ok(urls.some((u) => u.includes('/agendamentos?') && !u.includes('responsavel_id=')));
+  const urlAgenda = urls.find((u) => u.includes('/agendamentos?'));
+  assert.equal(urlAgenda.includes('responsavel_id='), false);
+  assert.match(urlAgenda, /or=\(inicio\.gte\.\d{4}-\d{2}-\d{2},recorrencia\.not\.is\.null\)/);
+  assert.match(urlAgenda, /order=inicio\.desc&limit=2000/);
 }
 
 {

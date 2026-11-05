@@ -67,6 +67,7 @@ export function FolhaCalendarioExterno({
     setOcupado(true);
     setAviso(null);
     try {
+      let antigoCancelado = false;
       if (substituir && link) {
         const morto = await revogarLinkIcal(link.escopo);
         if (morto === 'indisponivel') {
@@ -77,11 +78,17 @@ export function FolhaCalendarioExterno({
           setAviso('Não consegui cancelar o link antigo. Ele continua valendo.');
           return;
         }
+        antigoCancelado = true;
+        setLink(null);
       }
       const r = await ativarLinkIcal(pedido);
       if (r.estado === 'pronto') {
         setLink({ https: r.https, webcal: r.webcal, escopo: r.escopo });
         setTrocar(false);
+        return;
+      }
+      if (antigoCancelado && r.estado !== 'pronto') {
+        setAviso('O link antigo já foi cancelado e o novo não saiu. Crie de novo. O arquivo .ics continua funcionando.');
         return;
       }
       if (r.estado === 'indisponivel') {

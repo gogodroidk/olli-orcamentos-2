@@ -156,12 +156,19 @@ export async function renderAgendaIcal(pathname, env, fetchImpl = globalThis.fet
     const filtroResponsavel = feed.escopo === 'propria'
       ? `&responsavel_id=eq.${feed.titular_id}`
       : '';
+    // O PostgREST corta a página (~1000). Pedir os mais antigos e deixar o
+    // iCal jogar fora o que passou de 30 dias publicava calendário vazio — e
+    // calendário vazio apaga a agenda já assinada. A janela é a mesma do arquivo:
+    // de 31 dias atrás para a frente, mais as séries (o início delas é antigo).
+    const diaCorte = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const linhas = await sbGet(
       env,
       'agendamentos?user_id=eq.' + feed.dono_id +
-        '&excluido_em=is.null&select=id,user_id,cliente_nome,titulo,inicio,fim,endereco,status,observacao,atualizado_em,responsavel_id,recorrencia,recorrencia_ate,excecoes' +
+        '&excluido_em=is.null' +
+        '&or=(inicio.gte.' + diaCorte + ',recorrencia.not.is.null)' +
+        '&select=id,user_id,cliente_nome,titulo,inicio,fim,endereco,status,observacao,atualizado_em,responsavel_id,recorrencia,recorrencia_ate,excecoes' +
         filtroResponsavel +
-        '&order=inicio.asc&limit=2000',
+        '&order=inicio.desc&limit=2000',
       fetchImpl,
     );
     const seguros = linhasDoFeed(linhas, feed);

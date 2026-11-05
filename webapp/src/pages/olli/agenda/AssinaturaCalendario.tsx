@@ -40,6 +40,7 @@ export function AssinaturaCalendario({ itens }: { itens: readonly Agendamento[] 
 		setAviso(null);
 		setCopiado(false);
 		try {
+			let antigoCancelado = false;
 			if (substituir && link) {
 				const morto = await revogarAssinaturaIcal(clienteWeb(), link.escopo);
 				if (morto === "indisponivel") {
@@ -50,11 +51,17 @@ export function AssinaturaCalendario({ itens }: { itens: readonly Agendamento[] 
 					setAviso("Não consegui cancelar o link antigo. Ele continua valendo.");
 					return;
 				}
+				antigoCancelado = true;
+				setLink(null);
 			}
 			const r = await ativarAssinaturaIcal(clienteWeb(), BASE_LINK);
 			if (r.estado === "pronto") {
 				setLink({ https: r.https, webcal: r.webcal, escopo: r.escopo });
 				setTrocar(false);
+				return;
+			}
+			if (antigoCancelado && r.estado !== "pronto") {
+				setAviso("O link antigo já foi cancelado e o novo não saiu. Crie de novo. O arquivo .ics continua funcionando.");
 				return;
 			}
 			if (r.estado === "indisponivel") {
