@@ -175,13 +175,13 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Hash do IP e navegador nos scans da etiqueta QR',
-          finalidade: 'Registrar acessos à etiqueta pública para segurança e prevenção de abuso, sem identificar quem escaneou.',
+          finalidade: 'Registrar acessos à etiqueta pública para segurança e prevenção de abuso, sem o nome nem a conta de quem escaneou.',
           base: 'Legítimo interesse em segurança (art. 7º, IX). Guardamos apenas um código derivado do IP (hash), nunca o IP original. Esse código é um dado pseudonimizado, não anônimo, e segue as mesmas proteções dos demais dados.',
         },
         {
           dado: 'Interação com o link do orçamento enviado ao cliente',
-          finalidade: 'Mostrar ao prestador se o link foi aberto, quantas vezes, por quanto tempo a página ficou visível, se o valor total foi visto e se tocaram em Aprovar ou em pagar (o "termômetro do orçamento"). Não guardamos IP, navegador nem nada que identifique quem abriu: a página usa só um código aleatório que some quando a aba é fechada. Os registros são apagados em até 180 dias, ou antes, junto com o link.',
-          base: 'Legítimo interesse do prestador em acompanhar a proposta que enviou (art. 7º, IX), com dados mínimos e não identificáveis.',
+          finalidade: 'Mostrar ao prestador se o link foi aberto, quantas vezes, por quanto tempo a página ficou visível, se o valor total foi visto e se tocaram em Aprovar ou em pagar (o termômetro). O termômetro não guarda IP nem navegador: usa um código aleatório que fica só na aba e some quando ela fecha. Esses registros são apagados em até 180 dias, ou antes, junto com o link. Na trilha do mesmo link (abriu no dia, aprovou, recusou ou avisou que pagou) guardamos um código derivado do IP (hash do token do link com o IP, sem o IP original) e uma versão curta do navegador. Esse código é dado pseudonimizado, não anônimo, e some quando o link é apagado.',
+          base: 'Legítimo interesse do prestador em acompanhar a proposta que enviou (art. 7º, IX). O hash do IP segue as mesmas proteções dos demais dados.',
         },
         {
           dado: 'Uso do app (telas visitadas e ações dentro do app)',
