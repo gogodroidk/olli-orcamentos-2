@@ -142,7 +142,8 @@ export function PorSintoma({
 					<Sparkles className="size-3.5" />
 					Contexto do aparelho <span className="font-normal normal-case">(opcional, mas ajuda)</span>
 				</p>
-				<div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Tipo de equipamento">
+				<fieldset className="m-0 mb-3 flex flex-wrap gap-2 border-0 p-0">
+					<legend className="sr-only">Tipo de equipamento</legend>
 					{TIPOS_EQUIPAMENTO_DIAGNOSTICO.map((item) => {
 						const ativo = item.id === tipo.id;
 						return (
@@ -162,7 +163,7 @@ export function PorSintoma({
 							</button>
 						);
 					})}
-				</div>
+				</fieldset>
 				<p className="mb-3 text-xs text-text-secondary">
 					{tipo.usaBaseHvac
 						? "A base de códigos é desta família."
