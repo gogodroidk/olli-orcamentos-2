@@ -414,7 +414,7 @@ export function montarHtmlEtiquetasLote(
 /**
  * Arquivo para a gráfica: uma etiqueta por página A4, no tamanho acabado, com
  * marcas de corte e o pedido (vinil fosco, laminação, 99,1 × 38,1 mm).
- * `copias` vale para cada equipamento. No máximo 40 páginas.
+ * `copias` vale para cada equipamento (teto de 40 cópias de cada um).
  */
 export function montarHtmlGrafica(
   equipamentos: EtiquetaEquip[],
@@ -423,7 +423,7 @@ export function montarHtmlGrafica(
   const validos = equipamentos.filter((e) => e.qrToken);
   const o: OpcoesEtiqueta = { ...opcoes, tamanho: 'padrao' };
   const n = limitarCopias(opcoes.copias, 40);
-  const lista = validos.flatMap((e) => Array.from({ length: n }, () => e)).slice(0, 40);
+  const lista = validos.flatMap((e) => Array.from({ length: n }, () => e));
   const corpo = lista.length
     ? lista.map((e) => paginaGrafica(e, o)).join('')
     : '<p class="ficha">Nenhuma etiqueta com QR para imprimir. Sincronize o equipamento primeiro.</p>';

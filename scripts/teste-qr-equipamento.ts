@@ -429,6 +429,9 @@ ok('app e painel imprimem a folha de casa e o arquivo da gráfica', () => {
   assert.match(painel, /montarHtmlEtiqueta/);
   assert.match(painel, /montarHtmlGrafica/);
   assert.match(painel, /useMarcaDoDocumento/);
+  assert.match(painel, /imprimirHtml/);
+  assert.match(painel, /from "\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/src\/utils\/etiquetaQrPdf"/);
+  assert.ok(!painel.includes('function abrirImpressao'), 'painel usa o helper único de impressão');
   assert.match(ler('src/content/ajuda/index.ts'), /Pimaco A4363/);
 });
 ok('migration com timestamp único e sem aplicar dados', () => {

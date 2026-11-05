@@ -24,11 +24,12 @@ import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { useMinhaEmpresa } from "@/olli/data";
 import { avisoDaMarca, useMarcaDoDocumento } from "@/olli/marcaDocumento";
+import { imprimirHtml } from "@/olli/pdf/imprimirHtml";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/ui/dialog";
-import { montarHtmlEtiqueta, montarHtmlGrafica, TEXTO_ETIQUETA_IDEAL } from "../../../src/utils/etiquetaQrPdf";
-import { telefoneLegivel } from "../../../src/utils/qrEtiqueta";
-import { numeroWhatsAppBR } from "../../../src/utils/telefoneWhatsapp";
+import { montarHtmlEtiqueta, montarHtmlGrafica, TEXTO_ETIQUETA_IDEAL } from "../../../../../src/utils/etiquetaQrPdf";
+import { telefoneLegivel } from "../../../../../src/utils/qrEtiqueta";
+import { numeroWhatsAppBR } from "../../../../../src/utils/telefoneWhatsapp";
 import { nomeEquipamento, rotuloCategoria, subEquipamento } from "./equipamento";
 
 /** Espelho de `urlEtiqueta` (src/services/equipamentos.ts) — mesma base de link
@@ -37,28 +38,6 @@ const BASE_ETIQUETA = "https://link.olliorcamentos.online/q/";
 
 export function urlEtiqueta(qrToken: string): string {
 	return qrToken ? `${BASE_ETIQUETA}${encodeURIComponent(qrToken)}` : "";
-}
-
-/** Abre o diálogo de impressão do navegador com o HTML da etiqueta (100% na folha). */
-function abrirImpressao(html: string) {
-	const iframe = document.createElement("iframe");
-	iframe.title = "Etiqueta do equipamento";
-	iframe.style.cssText = "position:fixed;width:0;height:0;border:0;right:0;bottom:0";
-	document.body.appendChild(iframe);
-	const doc = iframe.contentDocument;
-	const win = iframe.contentWindow;
-	if (!doc || !win) {
-		iframe.remove();
-		return;
-	}
-	doc.open();
-	doc.write(html);
-	doc.close();
-	window.setTimeout(() => {
-		win.focus();
-		win.print();
-		window.setTimeout(() => iframe.remove(), 1500);
-	}, 50);
 }
 
 interface Props {
@@ -103,7 +82,8 @@ export default function EtiquetaQrDialog({ aberto, aoFechar, equipamento }: Prop
 			destino === "grafica"
 				? montarHtmlGrafica([item], { ...opcoes, copias }).html
 				: montarHtmlEtiqueta(item, { ...opcoes, copias });
-		abrirImpressao(html);
+		// O helper único do painel imprime uma vez (o iframe dispara load duas vezes).
+		void imprimirHtml(html).catch(() => undefined);
 	};
 
 	const copiarLink = async () => {
