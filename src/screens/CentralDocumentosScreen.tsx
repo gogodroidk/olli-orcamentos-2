@@ -10,7 +10,7 @@ import { OlliCard } from '../components/OlliCard';
 import { OlliPressable } from '../components/OlliPressable';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
-import { getOrcamentosPagina, getRecibosPagina, getRecibo, getOrdensServicoPagina, getPmocPlanosPagina, getDocumentosBiblioteca, getDocumentoBiblioteca, getDocumentoBibliotecaVersoes } from '../database/database';
+import { getOrcamentosPagina, getRecibosPagina, getRecibo, getOrdensServicoPagina, getPmocPlanosPagina, getDocumentosBiblioteca, getDocumentoBiblioteca, getDocumentoBibliotecaVersoes, getOrcamento, getEmpresa } from '../database/database';
 import {
   buscarBibliotecaDocumentos,
   construirBibliotecaDocumentos,
@@ -21,9 +21,12 @@ import {
 } from '../services/bibliotecaDocumentos';
 import { atualizarStatusDocumentoBiblioteca } from '../services/documentosBiblioteca';
 import { supabaseStorageProvider } from '../services/adapters/SupabaseStorageProvider';
-import type { DocumentoBibliotecaRegistro, DocumentoBibliotecaVersao } from '../types';
+import type { DocumentoBibliotecaRegistro, DocumentoBibliotecaVersao, Empresa, Orcamento } from '../types';
 import { CATALOGO_DOCUMENTOS } from '../services/catalogoDocumentos';
+import { abrePainelVisual } from '../services/acoesCentralDocumentos';
 import { useVerticais } from '../hooks/useVerticais';
+import { EditorClausulasContrato } from '../components/documentos/EditorClausulasContrato';
+import { PainelDocumentoCentral, type TipoPainelDocumento } from '../components/documentos/PainelDocumentoCentral';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -54,14 +57,22 @@ export default function CentralDocumentosScreen() {
   const [versoesSelecionadas, setVersoesSelecionadas] = useState<DocumentoBibliotecaVersao[]>([]);
   const [arquivando, setArquivando] = useState(false);
   const [abrindoArtefato, setAbrindoArtefato] = useState(false);
+  const [orcamentosRecentes, setOrcamentosRecentes] = useState<Orcamento[]>([]);
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
+  const [painel, setPainel] = useState<{ tipo: TipoPainelDocumento; orcamento: Orcamento; focarClausulas?: boolean } | null>(null);
+  const [escolhendo, setEscolhendo] = useState<'orcamento' | 'contrato' | 'clausulas' | null>(null);
+  const [editorSolto, setEditorSolto] = useState(false);
 
   const carregarDocumentos = useCallback(async () => {
     setCarregandoDocumentos(true);
     setErroDocumentos(false);
     try {
-      const [orcamentos, recibos, ordensServico, pmocPlanos] = await Promise.all([
+      const [orcamentos, recibos, ordensServico, pmocPlanos, empresaLida] = await Promise.all([
         getOrcamentosPagina({}, 40, 0), getRecibosPagina(40, 0), getOrdensServicoPagina(40, 0), getPmocPlanosPagina(40, 0),
+        getEmpresa().catch(() => null),
       ]);
+      setOrcamentosRecentes(orcamentos);
+      setEmpresa(empresaLida);
       const derivados = construirBibliotecaDocumentos({ orcamentos, recibos, ordensServico, pmocPlanos });
       const persistidos = await getDocumentosBiblioteca(100, 0);
       const mesclados = new Map<string, DocumentoBiblioteca>();
@@ -88,7 +99,35 @@ export default function CentralDocumentosScreen() {
     [documentos, busca, statusFiltro],
   );
 
+  function pedirEscolha(qual: 'orcamento' | 'contrato' | 'clausulas') {
+    if (orcamentosRecentes.length === 0) {
+      if (qual === 'clausulas') {
+        setEditorSolto(true);
+        return;
+      }
+      Alert.alert(
+        'Ainda não há orçamento',
+        'Crie um orçamento para ver o documento e imprimir.',
+        [{ text: 'Agora não', style: 'cancel' }, { text: 'Ir para orçamentos', onPress: () => nav.navigate('Orcamentos') }],
+      );
+      return;
+    }
+    setEscolhendo(qual);
+  }
+
+  function abrirPainel(orcamento: Orcamento, tipo: TipoPainelDocumento, focarClausulas = false) {
+    setEscolhendo(null);
+    setPainel({ tipo, orcamento, focarClausulas });
+  }
+
   async function abrirDocumento(doc: DocumentoBiblioteca) {
+    if (abrePainelVisual(doc)) {
+      const orc = await getOrcamento(doc.origemId).catch(() => null);
+      if (orc) {
+        abrirPainel(orc, doc.tipo as TipoPainelDocumento, doc.tipo === 'contrato');
+        return;
+      }
+    }
     const persistido = await getDocumentoBiblioteca(doc.id).catch(() => null);
     if (persistido) {
       setDocumentoSelecionado(persistido);
@@ -99,7 +138,13 @@ export default function CentralDocumentosScreen() {
   }
 
   async function abrirOrigem(doc: Pick<DocumentoBiblioteca, 'tipo' | 'origemTipo' | 'origemId'>) {
-    if (doc.tipo === 'orcamento' || doc.origemTipo === 'orcamento') {
+    if (doc.tipo === 'orcamento' && doc.origemId) {
+      nav.navigate('VisualizarOrcamento', { orcamentoId: doc.origemId });
+    } else if ((doc.tipo === 'contrato' || doc.tipo === 'garantia' || doc.tipo === 'conclusao') && doc.origemTipo === 'orcamento') {
+      const orc = doc.origemId ? await getOrcamento(doc.origemId).catch(() => null) : null;
+      if (orc) abrirPainel(orc, doc.tipo, doc.tipo === 'contrato');
+      else nav.navigate('ModelosDocumento');
+    } else if (doc.origemTipo === 'orcamento' && doc.origemId) {
       nav.navigate('VisualizarOrcamento', { orcamentoId: doc.origemId });
     } else if (doc.tipo === 'recibo') {
       const recibo = doc.origemId ? await getRecibo(doc.origemId).catch(() => null) : null;
@@ -167,6 +212,14 @@ export default function CentralDocumentosScreen() {
             </View>
           </View>
         </AnimatedEntrance>
+
+        <Text style={styles.secao}>Ver, cláusulas e impressão</Text>
+        <Text style={styles.catalogoDica}>O mesmo papel que o cliente recebe: orçamento, contrato, cláusulas e impressão.</Text>
+        <View style={styles.atalhos}>
+          <OlliButton label="Ver orçamento" variant="outline" onPress={() => pedirEscolha('orcamento')} icon={<MaterialCommunityIcons name="eye-outline" size={18} color={cores.primary} />} />
+          <OlliButton label="Ver contrato" variant="outline" onPress={() => pedirEscolha('contrato')} icon={<MaterialCommunityIcons name="file-sign" size={18} color={cores.primary} />} />
+          <OlliButton label="Ver e editar cláusulas" variant="outline" onPress={() => pedirEscolha('clausulas')} icon={<MaterialCommunityIcons name="text-box-edit-outline" size={18} color={cores.primary} />} />
+        </View>
 
         <Text style={styles.secao}>Biblioteca atual ({documentosFiltrados.length})</Text>
         <View style={styles.buscaWrap}>
@@ -277,6 +330,60 @@ export default function CentralDocumentosScreen() {
           </View>
         ) : null}
       </Modal>
+      <Modal visible={escolhendo !== null} transparent animationType="fade" onRequestClose={() => setEscolhendo(null)}>
+        <View style={styles.modalFundo}>
+          <View style={styles.modalCaixa}>
+            <View style={styles.modalCabecalho}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitulo}>Escolha o orçamento</Text>
+                <Text style={styles.modalSub}>O documento sai dos dados que já estão nele.</Text>
+              </View>
+              <TouchableOpacity onPress={() => setEscolhendo(null)} accessibilityRole="button" accessibilityLabel="Fechar escolha de orçamento">
+                <MaterialCommunityIcons name="close" size={23} color={cores.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={styles.modalCorpo}>
+              {orcamentosRecentes.length === 0 ? (
+                <Text style={styles.modalVazio}>Nenhum orçamento por aqui ainda.</Text>
+              ) : orcamentosRecentes.map((orc) => (
+                <TouchableOpacity
+                  key={orc.id}
+                  style={styles.documentoLinha}
+                  onPress={() => abrirPainel(orc, escolhendo === 'contrato' ? 'contrato' : 'orcamento', escolhendo === 'clausulas' || escolhendo === 'contrato')}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Abrir orçamento de ${orc.clienteNome || 'cliente'}`}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.documentoTitulo} numberOfLines={1}>{orc.clienteNome || 'Cliente'}</Text>
+                    <Text style={styles.documentoMeta} numberOfLines={1}>Orçamento nº {orc.numero}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="chevron-right" size={18} color={cores.onSurfaceMuted} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <PainelDocumentoCentral
+        visivel={painel !== null}
+        tipo={painel?.tipo ?? 'orcamento'}
+        orcamento={painel?.orcamento ?? null}
+        empresa={empresa}
+        focarClausulas={painel?.focarClausulas}
+        aoFechar={() => setPainel(null)}
+        aoEmpresaSalva={setEmpresa}
+        aoAbrirFicha={() => {
+          const id = painel?.orcamento.id;
+          setPainel(null);
+          if (id) nav.navigate('VisualizarOrcamento', { orcamentoId: id });
+        }}
+      />
+      <EditorClausulasContrato
+        visivel={editorSolto}
+        empresa={empresa}
+        aoFechar={() => setEditorSolto(false)}
+        aoSalvar={(atualizada) => { setEmpresa(atualizada); setEditorSolto(false); }}
+      />
     </View>
   );
 }
@@ -320,6 +427,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   versaoNumero: { color: c.primaryLight, fontWeight: '800', width: 30 },
   versaoData: { flex: 1, color: c.onSurfaceVariant, fontSize: 12 },
   card: { padding: Spacing.base, marginBottom: Spacing.sm },
+  atalhos: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md },
   catalogoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: Spacing.sm },
   catalogoCard: { width: '48.5%', minHeight: 132, padding: Spacing.md, marginBottom: Spacing.sm },
   catalogoDica: { color: c.onSurfaceVariant, fontSize: 13, lineHeight: 19, marginTop: -Spacing.sm, marginBottom: Spacing.sm },
