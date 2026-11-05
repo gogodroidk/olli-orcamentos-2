@@ -39,6 +39,7 @@ import {
 import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
 import { FRASE_GRATIS_CURTA, GRATIS_CONDICAO, TEXTO_SELO_OLLI } from "../../data/recursos";
 import { postsPublicados } from "../blog/_dados";
+import { TRIAL_PRO_DIAS } from "../../../../src/services/limitesComerciais";
 
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
@@ -186,7 +187,7 @@ if (palavrasResposta < 40 || palavrasResposta > 75) {
 const faqs = [
 	{
 		q: `Existe app de orçamento grátis para ${profissao}?`,
-		a: `Sim. A OLLI tem um plano grátis, permanente e sem cartão, com orçamento, ordem de serviço, recibo, clientes e histórico. O que ele inclui hoje está na página de planos. Depois do primeiro envio, há 14 dias opcionais de Pro sem cartão e sem cobrança automática.`,
+		a: `Sim. A OLLI tem um plano Grátis, ${GRATIS_CONDICAO}, com orçamento, ordem de serviço, recibo, clientes e histórico. O que ele inclui hoje está na página de planos. Depois do primeiro envio, há ${TRIAL_PRO_DIAS} dias opcionais de Pro sem cartão e sem cobrança automática.`,
 	},
 	...(calculos.length > 0
 		? [
