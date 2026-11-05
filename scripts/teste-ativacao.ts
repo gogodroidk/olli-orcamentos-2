@@ -273,6 +273,8 @@ assert.match(cardPainel, /fraseDoPrimeiroCliente\(/, 'painel usa a frase única 
 assert.doesNotMatch(cardPainel, /Troque o cliente e os valores/, 'painel não guarda a frase velha');
 assert.match(cardPainel, /ehDonoDaConta/, 'só o dono vê a ativação no painel');
 assert.match(cardPainel, /isSuccess/, 'painel respeita os 3 estados');
+assert.match(cardPainel, /isLoading: boolean/, 'o contrato da leitura do painel inclui carregando');
+assert.match(cardPainel, /isError: boolean/, 'o contrato da leitura do painel inclui erro');
 assert.match(cardPainel, /isLoading/, 'painel reserva o lugar enquanto a leitura carrega');
 assert.match(cardPainel, /isError/, 'erro no painel não vira esqueleto eterno');
 assert.match(cardPainel, /mostrarEsqueletoAtivacao\(/, 'painel usa a regra única do esqueleto');

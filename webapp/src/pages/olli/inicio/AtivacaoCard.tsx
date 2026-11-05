@@ -46,6 +46,8 @@ const DESTINO: Record<Exclude<PassoAtivacaoId, "primeiro_envio">, string> = {
 interface Leitura<T> {
 	data: T | undefined;
 	isSuccess: boolean;
+	isLoading: boolean;
+	isError: boolean;
 }
 
 interface Props {
