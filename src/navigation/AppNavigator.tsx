@@ -27,6 +27,7 @@ import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
 import DiagnosticoScreen from '../screens/DiagnosticoScreen';
 import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
+import IdentidadeUpsellScreen from '../screens/IdentidadeUpsellScreen';
 import ModelosDocumentoScreen from '../screens/ModelosDocumentoScreen';
 import CentralDocumentosScreen from '../screens/CentralDocumentosScreen';
 import VisualizarOrcamentoScreen from '../screens/VisualizarOrcamentoScreen';
@@ -153,6 +154,7 @@ export type RootStackParamList = {
   PrepararNota: { reciboId: string };
   Conta: undefined;
   MeuNegocio: undefined;
+  IdentidadeUpsell: undefined;
   ModelosDocumento: undefined;
   CentralDocumentos: undefined;
   // `equipamentoId` (ficha do QR → "Código de erro deste equipamento"): o
@@ -286,6 +288,7 @@ const ProdutosCentro = comCentroDesktop(ProdutosScreen);
 const EmitirReciboCentro = comCentroDesktop(EmitirReciboScreen);
 const ContaCentro = comCentroDesktop(ContaScreen);
 const MeuNegocioCentro = comCentroDesktop(MeuNegocioScreen);
+const IdentidadeUpsellCentro = comCentroDesktop(IdentidadeUpsellScreen);
 const AutopilotCentro = comCentroDesktop(AutopilotScreen);
 const ImportarCentro = comCentroDesktop(ImportarScreen);
 
@@ -747,6 +750,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="PrepararNota" component={PrepararNotaCentro} />
       <Stack.Screen name="Conta" component={ContaCentro} />
       <Stack.Screen name="MeuNegocio" component={MeuNegocioCentro} />
+      <Stack.Screen name="IdentidadeUpsell" component={IdentidadeUpsellCentro} />
       <Stack.Screen name="ModelosDocumento" component={ModelosDocumentoCentro} />
       <Stack.Screen name="CentralDocumentos" component={CentralDocumentosCentro} />
       <Stack.Screen name="DiagnosticoIA" component={DiagnosticoIACentro} />

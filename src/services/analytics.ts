@@ -60,6 +60,9 @@ export const Eventos = {
   planosAberto: 'planos_aberto',
   pixGerado: 'pix_gerado',
   pixPago: 'pix_pago',
+  // Estúdio de marca à parte (D-1438 G25). Sem briefing: o texto fica no pedido, não no funil.
+  identidadeUpsellAberto: 'identidade_upsell_aberto',
+  identidadeUpsellAnotado: 'identidade_upsell_anotado',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;

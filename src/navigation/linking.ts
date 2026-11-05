@@ -83,6 +83,7 @@ export function criarLinkingConfig(
         EmitirRecibo: 'recibo',
         PrepararNota: 'nota-fiscal/:reciboId',
         MeuNegocio: 'meu-negocio',
+        IdentidadeUpsell: 'estudio-marca',
         Diagnostico: 'diagnostico',
         DiagnosticoIA: 'diagnostico-ia',
         OlliVoz: 'olli-voz',

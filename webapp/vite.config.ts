@@ -47,6 +47,8 @@ const consentimentoFonte = fileURLToPath(new URL("../web/src/lib/consentimento.t
 const googleTagFonte = fileURLToPath(new URL("../web/src/lib/googleTag.ts", import.meta.url));
 // Identidade visual (site, link do Google, recorte e caixa da logo). Módulo puro, zero imports.
 const identidadeVisualFonte = fileURLToPath(new URL("../src/utils/identidadeVisual.ts", import.meta.url));
+// Estúdio de marca à parte: a MESMA regra do app (src/services/identidadeUpsell.ts). Módulo puro.
+const identidadeUpsellFonte = fileURLToPath(new URL("../src/services/identidadeUpsell.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -116,6 +118,7 @@ export default defineConfig(({ mode }) => {
 				"@consentimento": consentimentoFonte,
 				"@google-tag": googleTagFonte,
 				"@identidade-visual": identidadeVisualFonte,
+				"@identidade-upsell": identidadeUpsellFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some
