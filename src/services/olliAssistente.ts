@@ -418,7 +418,7 @@ const CHAT_FALHOU =
 const CHAT_TIMEOUT =
   'A OLLI demorou demais para responder (conexão lenta). Tenta de novo?';
 const CHAT_CANCELADO =
-  'Envio cancelado. Você pode perguntar de novo quando quiser.';
+  'Interrompi a espera neste aparelho. Se a resposta já tinha sido gerada, este uso pode contar. Tentar de novo repete a mesma pergunta.';
 
 /**
  * Envia o histórico da conversa para a OLLI e devolve a resposta dela.

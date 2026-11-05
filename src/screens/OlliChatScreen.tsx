@@ -127,6 +127,8 @@ export default function OlliChatScreen() {
   conversasRef.current = conversas;
   // Reutilizada no retry de rede: o mesmo trabalho nunca pode cobrar duas vezes.
   const creditoRefRef = useRef<string | null>(null);
+  // Trocar ou apagar a conversa invalida a resposta que ainda está no ar.
+  const geracaoChatRef = useRef(0);
 
   // aborta requisição pendente e limpa timers ao desmontar a tela
   useEffect(() => {
@@ -188,6 +190,7 @@ export default function OlliChatScreen() {
     opcoesCredito?: { confirmarCredito: true; creditoRef: string },
     modo: ModoChat = 'consulta',
   ) => {
+    const geracao = geracaoChatRef.current;
     revelacaoRef.current += 1;
     if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
     setBolhas(prev => prev.map(b => (b.visivelAte != null ? { ...b, visivelAte: undefined } : b)));
@@ -210,6 +213,7 @@ export default function OlliChatScreen() {
         modo,
         contextoDiagnostico: modo === 'consulta' ? casoDiag : null,
       });
+      if (geracao !== geracaoChatRef.current) return;
       if (res.semCreditos) {
         // O servidor — não o contador local — decidiu que a cota acabou ou que
         // não há saldo. Não poluímos o histórico com uma falsa "falha de IA":
@@ -305,7 +309,7 @@ export default function OlliChatScreen() {
 
   const enviar = useCallback(async (mensagem?: string) => {
     const conteudo = (mensagem ?? texto).trim();
-    if (!conteudo || digitando) return;
+    if (!conteudo || digitando || !carregado) return;
     revelacaoRef.current += 1;
     if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
     vibrar('selecao');
@@ -321,7 +325,7 @@ export default function OlliChatScreen() {
     setBolhas(proximas);
     setTexto('');
     await chamarIA(proximas, undefined, modoChat);
-  }, [texto, bolhas, digitando, chamarIA, modoChat]);
+  }, [texto, bolhas, digitando, carregado, chamarIA, modoChat]);
 
   const cancelarEnvio = useCallback(() => {
     vibrar('selecao');
@@ -347,6 +351,7 @@ export default function OlliChatScreen() {
 
   const limpar = useCallback(() => {
     vibrar('selecao');
+    geracaoChatRef.current += 1;
     completarRevelacao();
     abortRef.current?.abort();
     const id = generateId();
@@ -364,8 +369,10 @@ export default function OlliChatScreen() {
     const alvo = conversasRef.current.find((c) => c.id === id);
     if (!alvo) return;
     vibrar('selecao');
+    geracaoChatRef.current += 1;
     completarRevelacao();
     abortRef.current?.abort();
+    creditoRefRef.current = null;
     setAtivaId(id);
     setBolhas(alvo.mensagens);
     setPendenciaCredito(null);
@@ -381,7 +388,11 @@ export default function OlliChatScreen() {
     setConversas(proximo.conversas);
     AsyncStorage.setItem(CHAT_KEY, JSON.stringify({ ...proximo, ativaId: id === ativaId ? '' : proximo.ativaId })).catch(() => {});
     if (id === ativaId) {
+      geracaoChatRef.current += 1;
       completarRevelacao();
+      abortRef.current?.abort();
+      creditoRefRef.current = null;
+      setPendenciaCredito(null);
       setAtivaId(generateId());
       setBolhas([SAUDACAO]);
       setCasoDiag(null);
@@ -424,7 +435,10 @@ export default function OlliChatScreen() {
     });
   }, [nav]);
 
-  const mostrarSugestoes = bolhas.length <= 1 && !digitando;
+  const mostrarSugestoes = carregado && bolhas.length <= 1 && !digitando;
+  const revelandoAgora = bolhas.some((b) => b.visivelAte != null);
+  const envioBloqueado = !carregado || (!digitando && !texto.trim() && !revelandoAgora);
+  const iconeEnviarAtivo = !envioBloqueado && (digitando || Boolean(texto.trim()) || revelandoAgora);
 
   return (
     <KeyboardAvoidingView
@@ -601,20 +615,20 @@ export default function OlliChatScreen() {
             blurOnSubmit={false}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, !digitando && !texto.trim() && !bolhas.some(b => b.visivelAte != null) && styles.sendBtnDisabled]}
+            style={[styles.sendBtn, envioBloqueado && styles.sendBtnDisabled]}
             onPress={() => {
               if (digitando) cancelarEnvio();
-              else if (bolhas.some(b => b.visivelAte != null)) completarRevelacao();
+              else if (revelandoAgora) completarRevelacao();
               else enviar();
             }}
-            disabled={!digitando && !texto.trim() && !bolhas.some(b => b.visivelAte != null)}
+            disabled={envioBloqueado}
             activeOpacity={0.85}
-            accessibilityLabel={digitando || bolhas.some(b => b.visivelAte != null) ? 'Parar resposta' : 'Enviar mensagem'}
+            accessibilityLabel={digitando || revelandoAgora ? 'Parar resposta' : 'Enviar mensagem'}
           >
             <MaterialCommunityIcons
-              name={digitando || bolhas.some(b => b.visivelAte != null) ? 'stop' : 'send'}
+              name={digitando || revelandoAgora ? 'stop' : 'send'}
               size={18}
-              color={digitando || texto.trim() || bolhas.some(b => b.visivelAte != null) ? textoSobre(cores.primary) : cores.onSurfaceMuted}
+              color={iconeEnviarAtivo ? textoSobre(cores.primary) : cores.onSurfaceMuted}
             />
           </TouchableOpacity>
         </View>

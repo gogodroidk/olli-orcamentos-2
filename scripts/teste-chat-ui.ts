@@ -68,6 +68,9 @@ const web = readFileSync(new URL('../webapp/src/layouts/components/assistente-gl
 ok('app desenha markdown e histórico', tela.includes('MarkdownChat') && tela.includes('Histórico de conversas') && tela.includes('planoDeRevelacao'));
 ok('app mantém o gate de crédito', tela.includes('if (res.semCreditos)') && tela.includes('Nada é cobrado sem seu toque'));
 ok('painel desenha markdown, histórico e parar', web.includes('MarkdownMensagem') && web.includes('Histórico de conversas') && web.includes('Parar resposta'));
+ok('painel repete o cancelamento com a mesma referência', web.includes('setReenvio') && web.includes('alvo.ref'));
+ok('app espera o histórico carregar antes de enviar', tela.includes('digitando || !carregado'));
+ok('app ignora resposta atrasada ao trocar de conversa', tela.includes('geracaoChatRef'));
 ok('painel mantém a voz sob demanda', web.includes('SpeechRecognition') && web.includes('Falar com a OLLI') && web.includes('Parar voz ao vivo') && web.includes('continuous = false'));
 
 console.log(`\nPASSOU: teste-chat-ui (${n} verificações)`);

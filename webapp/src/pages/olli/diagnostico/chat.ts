@@ -128,7 +128,8 @@ export function mapearFalhaIA(tipo: TipoErroIA): FalhaIA {
 			return {
 				tipo,
 				titulo: "Envio cancelado",
-				mensagem: "Você interrompeu a espera. Pode perguntar de novo quando quiser.",
+				mensagem:
+					"Interrompi a espera neste navegador. Se a resposta já tinha sido gerada, este uso pode contar. Tentar de novo repete a mesma pergunta.",
 				acao: "Tentar de novo",
 			};
 		default:

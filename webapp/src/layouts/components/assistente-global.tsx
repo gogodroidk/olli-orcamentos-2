@@ -77,6 +77,12 @@ function reduzirMovimento(): boolean {
 	return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 type PendenteCredito = { historico: MensagemChat[]; ref: string };
+type ReenvioCancelado = {
+	historico: MensagemChat[];
+	ref: string;
+	confirmarCredito: boolean;
+	modo: Exclude<ModoPedidoIa, "bloqueado">;
+};
 
 type ReconhecimentoNavegador = {
 	lang: string;
@@ -216,6 +222,7 @@ export function AssistenteConversa({
 	const [enviando, setEnviando] = useState(false);
 	const [falha, setFalha] = useState<FalhaIA | null>(null);
 	const [pendenteCredito, setPendenteCredito] = useState<PendenteCredito | null>(null);
+	const [reenvio, setReenvio] = useState<ReenvioCancelado | null>(null);
 	const [confirmacaoAberta, setConfirmacaoAberta] = useState(false);
 	const [creditoSemSaldo, setCreditoSemSaldo] = useState(false);
 	const [rascunhoAcao, setRascunhoAcao] = useState<RascunhoAcaoIaRemota | null>(null);
@@ -292,6 +299,7 @@ export function AssistenteConversa({
 		modo: Exclude<ModoPedidoIa, "bloqueado"> = "consulta",
 	) {
 		setFalha(null);
+		setReenvio(null);
 		setEnviando(true);
 		revelacaoRef.current += 1;
 		if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
@@ -309,12 +317,8 @@ export function AssistenteConversa({
 		setEnviando(false);
 		if (geracao !== geracaoRef.current) return;
 		if (!resposta.ok && resposta.erro.tipo === "cancelado") {
-			const cancelada: MensagemLocal = {
-				id: idMensagem(),
-				role: "assistant",
-				texto: "Envio cancelado. Você pode perguntar de novo quando quiser.",
-			};
-			setMensagens((atuais) => [...atuais, cancelada].slice(-LIMITE_MENSAGENS));
+			setReenvio({ historico, ref: creditoRef, confirmarCredito, modo });
+			setFalha(resposta.erro);
 			return;
 		}
 		if (!resposta.ok) {
@@ -349,6 +353,16 @@ export function AssistenteConversa({
 	async function enviar(valor = texto) {
 		const limpo = valor.trim().slice(0, MAX_TEXTO);
 		if (!limpo || enviando) return;
+		const ultima = reenvio?.historico.at(-1);
+		if (reenvio && ultima?.role === "user" && ultima.texto === limpo) {
+			const alvo = reenvio;
+			setReenvio(null);
+			setTexto("");
+			setFalha(null);
+			await executar(alvo.historico, alvo.ref, alvo.confirmarCredito, alvo.modo);
+			return;
+		}
+		setReenvio(null);
 		const avaliacao = avaliarPedidoIa(limpo);
 		if (avaliacao.modo === "bloqueado") {
 			setMensagens((atuais) =>
@@ -506,6 +520,7 @@ export function AssistenteConversa({
 		setMensagemAcao(null);
 		setHistoricoAberto(false);
 		setTexto("");
+		setReenvio(null);
 	}
 
 	function abrirConversa(id: string) {
@@ -522,6 +537,7 @@ export function AssistenteConversa({
 		setRascunhoAcao(null);
 		setMensagemAcao(null);
 		setHistoricoAberto(false);
+		setReenvio(null);
 	}
 
 	function apagarUmaConversa(id: string) {
