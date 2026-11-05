@@ -60,6 +60,7 @@ import GarantiasScreen from '../screens/GarantiasScreen';
 import EquipeScreen from '../screens/EquipeScreen';
 import EquipeAoVivoScreen from '../screens/EquipeAoVivoScreen';
 import MapaDiaScreen from '../screens/MapaDiaScreen';
+import ProspeccaoScreen from '../screens/ProspeccaoScreen';
 import ConviteScreen from '../screens/ConviteScreen';
 import OrdemServicoScreen from '../screens/OrdemServicoScreen';
 import EquipamentoScreen from '../screens/EquipamentoScreen';
@@ -199,6 +200,8 @@ export type RootStackParamList = {
   EquipeAoVivo: undefined;
   // Onda I2 — Mapa do dia (MapLibre + OpenFreeMap, grátis): pins, rota e "Saia às".
   MapaDia: { dia?: 'hoje' | 'amanha' } | undefined;
+  // D-1438 G19 — prospecção: clientes da própria conta, por raio, rota e nicho.
+  Prospeccao: undefined;
   // Aceite de convite de equipe (deep link olliorcamentos://convite/<token>).
   Convite: { token?: string };
   // Onda 4 — Ordens de serviço (OS mínima + app do técnico). Role-aware:
@@ -395,6 +398,7 @@ const RelatorioDiaCentro = comCentroDesktop(RelatorioDiaScreen);
 const ConfirmarVisitasCentro = comCentroDesktop(ConfirmarVisitasScreen);
 const GarantiasCentro = comCentroDesktop(GarantiasScreen);
 const EquipeCentro = comCentroDesktop(EquipeScreen);
+const ProspeccaoCentro = comCentroDesktop(ProspeccaoScreen);
 const EquipeAoVivoCentro = comCentroDesktop(EquipeAoVivoScreen);
 const ConviteCentro = comCentroDesktop(ConviteScreen);
 const OrdemServicoCentro = comCentroDesktop(OrdemServicoScreen);
@@ -782,6 +786,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="EquipeAoVivo" component={EquipeAoVivoCentro} />
       {/* Onda I2 — Mapa do dia em tela cheia (sem o centro do desktop: o mapa ocupa tudo). */}
       <Stack.Screen name="MapaDia" component={MapaDiaScreen} />
+      <Stack.Screen name="Prospeccao" component={ProspeccaoCentro} />
       <Stack.Screen name="Convite" component={ConviteCentro} />
       {/* Onda 4 — Ordens de serviço (gestão + app do técnico). */}
       <Stack.Screen name="OrdemServico" component={OrdemServicoCentro} />

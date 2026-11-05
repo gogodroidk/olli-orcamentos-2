@@ -51,6 +51,9 @@ const identidadeVisualFonte = fileURLToPath(new URL("../src/utils/identidadeVisu
 const identidadeUpsellFonte = fileURLToPath(new URL("../src/services/identidadeUpsell.ts", import.meta.url));
 // UI do chat (markdown, histórico, revelação). Módulo puro, sem rede e sem provedor.
 const chatUiFonte = fileURLToPath(new URL("../src/utils/chatUi.ts", import.meta.url));
+// Prospecção (D-1438 G19): raio, rota e nicho sobre as coordenadas já salvas.
+// Módulo puro — não puxa React Native nem API paga de mapa.
+const prospeccaoFonte = fileURLToPath(new URL("../src/utils/prospeccaoMapa.ts", import.meta.url));
 
 /**
  * Substitui os módulos-fronteira do app (exportarDocumento, imagemDataUri, clienteLink) por
@@ -122,6 +125,7 @@ export default defineConfig(({ mode }) => {
 				"@identidade-visual": identidadeVisualFonte,
 				"@identidade-upsell": identidadeUpsellFonte,
 				"@chat-ui": chatUiFonte,
+				"@prospeccao": prospeccaoFonte,
 				// A ORDEM IMPORTA: o /auto e o base do url-polyfill vêm ANTES de "react-native"
 				// pra o Vite casar o prefixo mais específico primeiro. O polyfill de URL é
 				// para React Native (que não tem URL completo); o navegador tem — então some

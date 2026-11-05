@@ -103,6 +103,8 @@ export function criarLinkingConfig(
         EquipeAoVivo: 'equipe/ao-vivo',
         // Onda I2 — Mapa do dia (grátis: MapLibre + OpenFreeMap).
         MapaDia: 'mapa',
+        // D-1438 G19 — prospecção dos clientes da conta (sem API paga).
+        Prospeccao: 'prospeccao',
         Convite: 'convite/:token',
         // Onda 4 — Ordens de serviço (gestão + técnico). URL real /ordens.
         OrdemServico: 'ordens',
