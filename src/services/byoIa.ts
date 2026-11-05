@@ -105,12 +105,16 @@ export function classificarChave(bruto: string): ResultadoChave {
 }
 
 const CORPOS_DE_CHAVE = [
-  'sk-or-v1-[A-Za-z0-9]{8,}',
+  'sk-or-v1-[A-Za-z0-9_-]{8,}',
   'sk-ant-[A-Za-z0-9_-]{8,}',
   'sk-proj-[A-Za-z0-9_-]{8,}',
   'sk-[A-Za-z0-9_-]{8,}',
   'AIza[A-Za-z0-9_-]{8,}',
   'sb_secret_[A-Za-z0-9_-]{8,}',
+  'sk_live_[A-Za-z0-9_-]{8,}',
+  'sk_test_[A-Za-z0-9_-]{8,}',
+  'rk_live_[A-Za-z0-9_-]{8,}',
+  'rk_test_[A-Za-z0-9_-]{8,}',
 ] as const;
 
 /** Tira chave de um texto antes de log, erro ou analytics. O miolo some; fica o marcador. */

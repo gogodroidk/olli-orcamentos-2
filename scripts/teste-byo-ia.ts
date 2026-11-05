@@ -118,6 +118,16 @@ const frase = `cole ${chaves[0][0]} e também ${chaves[3][0]} no log`;
 const limpo = redigirTexto(frase);
 ok('redação tira o miolo', !limpo.includes(miolo) && limpo.includes('[chave]'));
 ok('redação não devolve a chave do Claude', !limpo.includes('sk-ant-'));
+const casaComSufixo = `sk-or-v1-${'abcd1234'}_sufixo`;
+const limpoCasa = redigirTexto(`log ${casaComSufixo}`);
+ok(
+  'redação tira a chave da casa inteira',
+  !limpoCasa.includes('abcd1234') && !limpoCasa.includes('_sufixo') && limpoCasa.includes('[chave]'),
+);
+for (const prefixo of ['sk_live_', 'sk_test_', 'rk_live_', 'rk_test_'] as const) {
+  const segredo = `${prefixo}${'c'.repeat(24)}`;
+  ok(`redação tira ${prefixo}`, !redigirTexto(`log ${segredo}`).includes(prefixo));
+}
 
 console.log('\n4) o módulo não fala com a rede e ninguém no app importa');
 const fonte = ler('../src/services/byoIa.ts');
@@ -137,7 +147,7 @@ function arquivos(dir: string, acc: string[] = []): string[] {
 }
 
 const importa = /from\s+['"][^'"]*byoIa(?:\.ts)?['"]/;
-const alvos = ['src', 'worker/src', 'webapp/src'].flatMap((dir) => arquivos(join(RAIZ, dir)));
+const alvos = ['src', 'worker/src', 'webapp/src', 'web/src'].flatMap((dir) => arquivos(join(RAIZ, dir)));
 const app = join(RAIZ, 'App.tsx');
 alvos.push(app);
 const quemImporta = alvos.filter((arquivo) => importa.test(readFileSync(arquivo, 'utf8')));

@@ -58,7 +58,7 @@ Regras da chave, já no código:
 - `sk-or-v1-` é chave da casa (OpenRouter). Recusa com `chave_da_casa`. O prestador não cola a nossa chave, e a nossa chave não vira "chave dele".
 - `sb_secret_`, `sk_live_`, `sk_test_`, `rk_live_`, `rk_test_` recusam com `nao_e_chave_de_ia`.
 - `classificarChave` devolve provedor e os 4 últimos caracteres. Não devolve a chave.
-- `redigirTexto` troca o miolo por `[chave]` antes de log, erro ou analytics.
+- `redigirTexto` troca o miolo por `[chave]` antes de log, erro ou analytics. Vale para a chave da casa mesmo com `_` ou `-` no corpo, e também para `sk_live_`, `sk_test_`, `rk_live_` e `rk_test_`, que o classificador recusa.
 - Este item não chama o provedor para "ver se a chave vale". Essa chamada gasta o crédito dele ou o nosso. Fica para a construção, no worker, com timeout, sem gravar o corpo da resposta.
 
 Onde a chave mora, quando for construída (não agora):
