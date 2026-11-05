@@ -77,7 +77,7 @@ export function FaixaHoje() {
 							>
 								<div className="flex items-baseline gap-2">
 									<span className="text-base font-bold text-text-primary tabular-nums">{horaLocal(a.inicio)}</span>
-									<span className="truncate text-xs font-medium uppercase tracking-wide text-text-disabled">
+									<span className="truncate text-xs font-medium text-text-secondary">
 										{(a.tipo ?? "").replace(/_/g, " ") || "compromisso"}
 									</span>
 								</div>

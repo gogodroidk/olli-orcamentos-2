@@ -20,7 +20,7 @@ import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 import { chamarRpcServico } from './emailRpc.js';
 import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
-import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
+import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos, sufixoLigaNaoAberto } from './emailLembretesPolicy.js';
 import { selecionarPixVence } from './pixVencePolicy.js';
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
@@ -101,6 +101,14 @@ async function executarRodada(env, dependencias = {}) {
       tiposPermitidos,
     });
     const motivos = { ...motivosBase };
+
+    // Orçamento não aberto (Z-52): `production` sozinho não liga. Neste build o
+    // sufixo também não chama `listar_nao_abertos_email` — a lista está no PR #247,
+    // fora da main. Marca a decisão e segue. Quando a lista entrar, a chamada
+    // substitui este bloco e continua obrigada a usar `sufixoLigaNaoAberto`.
+    if (sufixoLigaNaoAberto(texto(env?.EMAIL_LEMBRETES_MODE, 80))) {
+      motivos.nao_aberto_bloqueado = 1;
+    }
 
     const banco = {};
     let enfileirados = 0;

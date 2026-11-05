@@ -19,11 +19,11 @@
  * As cores de STATUS (sucesso/erro/aviso) não seguem a marca: verde é verde. Elas
  * só são clareadas/escurecidas o bastante para serem legíveis no modo em uso.
  *
- * O PDF e a página pública do cliente NÃO leem esta paleta — `pdfGenerator.ts`
- * embute as próprias cores e o worker gera o HTML dele. Isso é proposital: um
- * tema escuro vazando para o documento que vai ao cliente do cliente seria um
- * desastre silencioso. As chaves `pdf*` abaixo existem só por compatibilidade e
- * são constantes.
+ * O PDF e a página pública do cliente NÃO leem o objeto `Cores` desta paleta.
+ * Um tema escuro vazando para o documento do cliente do cliente seria um
+ * desastre silencioso. Eles chamam `corMarcaNoPapel` (utils/coresMarca), que
+ * usa `ajustarParaContraste` daqui contra o branco. As chaves `pdf*` abaixo
+ * existem só por compatibilidade e são constantes.
  */
 
 export type ModoTema = 'claro' | 'escuro';

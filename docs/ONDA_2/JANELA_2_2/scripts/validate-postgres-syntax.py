@@ -22,11 +22,7 @@ FILES = (
 
 
 def without_psql_meta_commands(value: str) -> str:
-    return "\n".join(
-        line
-        for line in value.splitlines()
-        if not line.lstrip().startswith("\\")
-    )
+    return "\n".join(line for line in value.splitlines() if not line.lstrip().startswith("\\"))
 
 
 def main() -> int:
@@ -34,9 +30,7 @@ def main() -> int:
         sql = sql_path.read_text(encoding="utf-8")
         statements = parse_sql(without_psql_meta_commands(sql))
         relative_path = sql_path.relative_to(ROOT).as_posix()
-        print(
-            f"{relative_path}\tPARSE_OK\tstatements={len(statements)}"
-        )
+        print(f"{relative_path}\tPARSE_OK\tstatements={len(statements)}")
 
     print("PGLAST_PARSE=PASS")
     return 0

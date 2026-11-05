@@ -29,6 +29,7 @@ import { montarHtmlRecibo } from '../utils/reciboPdf';
 import { usePlano } from '../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../services/planos';
 import { montarMensagemPedidoAvaliacao, montarMensagemAgradecimento, montarMensagemPedidoIndicacao } from '../utils/mensagensOrcamento';
+import { linkAvaliacaoUsavel } from '../utils/identidadeVisual';
 import { garantirDocumentoRecibo, registrarArtefatoDocumentoBiblioteca } from '../services/documentosBiblioteca';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -363,7 +364,7 @@ function EmitirReciboConteudo() {
   // Pedir avaliação no Google pós-serviço (mestre 1.4): reusa o abrirWhatsApp
   // já usado no envio de orçamento, com uma mensagem que inclui o link
   // cadastrado em Meu Negócio. Sem link cadastrado o botão nem aparece.
-  const linkAvaliacao = empresa?.linkGoogleAvaliacoes?.trim();
+  const linkAvaliacao = linkAvaliacaoUsavel(empresa?.linkGoogleAvaliacoes);
   async function handlePedirAvaliacao(nome: string, telefone: string) {
     if (!linkAvaliacao) return;
     if (!telefone?.trim()) {

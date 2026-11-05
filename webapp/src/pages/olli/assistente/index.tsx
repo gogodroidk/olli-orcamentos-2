@@ -17,7 +17,7 @@ export default function AssistentePage() {
 				</div>
 			</header>
 			<Card className="flex min-h-0 flex-1 overflow-hidden p-0">
-				<AssistenteConversa />
+				<AssistenteConversa historicoLateral />
 			</Card>
 		</div>
 	);

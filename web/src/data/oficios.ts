@@ -192,3 +192,25 @@ export const DOR_POR_OFICIO: Record<VerticalId, string> = {
   // (o llms.txt diz isso com todas as letras), e a frase dava a entender o contrário.
   geral: 'Do pedido do cliente ao recibo pago, sem planilha e sem depender de escritório.',
 };
+
+/**
+ * VARIANTES DE ANÚNCIO POR PALAVRA (P1-11, Bruno/SALES, D-1013): o técnico busca "ar-condicionado", "refrigeração",
+ * "hidráulica", "marido de aluguel", "manutenção" — não o nome da nossa vertical. Cada alias é uma página no ar (o anúncio
+ * aponta para ela) com o MESMO conteúdo da vertical real: nada de calculadora ou documento que o app não tenha.
+ * `canonical` aponta para a página de SEO do ofício e o alias fica fora do sitemap (ver `astro.config.mjs`), igual a
+ * /eletricista/ e /refrigeracao/. Ofício sem vertical dedicada (marido de aluguel, manutenção) usa a `geral`, que diz a verdade:
+ * atendido, só sem ferramenta especializada.
+ */
+export interface AliasPara {
+  slug: string;
+  id: VerticalId;
+  /** Como o visitante se chama (H1, title, FAQ). */
+  profissao: string;
+}
+export const ALIASES_PARA: readonly AliasPara[] = [
+  { slug: 'ar-condicionado', id: 'refrigeracao', profissao: 'ar-condicionado' },
+  { slug: 'refrigeracao', id: 'refrigeracao', profissao: 'refrigeração' },
+  { slug: 'hidraulica', id: 'hidraulica', profissao: 'hidráulica' },
+  { slug: 'marido-de-aluguel', id: 'geral', profissao: 'marido de aluguel' },
+  { slug: 'manutencao', id: 'geral', profissao: 'manutenção' },
+];
