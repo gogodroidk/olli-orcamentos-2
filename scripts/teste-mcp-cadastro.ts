@@ -266,6 +266,8 @@ assert.equal(spec.includes('não foi aplicada') || spec.includes('Não aplicar')
 assert.match(sql, /NÃO\s+foi aplicado/i);
 assert.equal(/grant\s+[^;]*update/i.test(sql), false);
 assert.match(sql, /revoke all on table public\.mcp_cadastro_auditoria from public, anon, authenticated/i);
+assert.match(sql, /not exists \(select 1 from auth\.users u where u\.id = old\.tenant_user_id\)/);
+assert.match(sql, /not exists \(select 1 from auth\.users u where u\.id = old\.actor_user_id\)/);
 assert.equal(worker.includes('mcpCadastro'), false);
 assert.equal(mcpJson.includes('olli-mcp-cadastro'), false);
 const contrato = readFileSync(new URL('../src/utils/contratoPdf.ts', import.meta.url), 'utf8');

@@ -48,7 +48,7 @@ grant select, insert, delete on table public.mcp_cadastro_auditoria to service_r
 grant usage, select on sequence public.mcp_cadastro_auditoria_id_seq to service_role;
 
 comment on table public.mcp_cadastro_auditoria is
-  'Trilha do MCP de cadastro. Sem prompt, sem telefone e sem texto de documento. Append-only, salvo o purge de 90 dias.';
+  'Trilha do MCP de cadastro. Sem prompt, sem telefone e sem texto de documento. Append-only, salvo o purge de 90 dias e a exclusão de conta.';
 
 create or replace function public.mcp_cadastro_auditoria_campos_ok()
 returns trigger
@@ -84,11 +84,20 @@ $$;
 create or replace function public.mcp_cadastro_auditoria_imutavel()
 returns trigger
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $$
 begin
   if tg_op = 'DELETE' and pg_catalog.current_setting('olli.mcp_purge', true) = 'on' then
+    return old;
+  end if;
+  -- Exclusão de conta (LGPD). No cascade, auth.users já não tem o pai
+  -- (mesmo critério de credit_ledger_append_only). DELETE manual, com os
+  -- dois usuários ainda vivos, continua proibido.
+  if tg_op = 'DELETE' and (
+    not exists (select 1 from auth.users u where u.id = old.tenant_user_id)
+    or not exists (select 1 from auth.users u where u.id = old.actor_user_id)
+  ) then
     return old;
   end if;
   raise exception 'mcp_auditoria_imutavel';

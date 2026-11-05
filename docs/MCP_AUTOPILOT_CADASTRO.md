@@ -56,7 +56,7 @@ O e-mail do cliente não entra nesta allowlist. O campo ainda não existe no tip
 
 Cada chamada útil gera um evento com nomes de campo e hash. Telefone e texto não vão para o evento. A sessão de teste guarda isso em memória.
 
-`supabase/migrations/20261103180000_mcp_cadastro_auditoria.sql` descreve a mesma trilha no Postgres: RLS forçado, sem grant para `authenticated`, sem `UPDATE`, `DELETE` só passa pelo purge de 90 dias com trava. **Não aplicar nesta entrega.** O adaptador que escreveria nessa tabela ainda não existe, de propósito: ligar o Worker seria publicar superfície nova.
+`supabase/migrations/20261103180000_mcp_cadastro_auditoria.sql` descreve a mesma trilha no Postgres: RLS forçado, sem grant para `authenticated`, sem `UPDATE`. `DELETE` manual fica travado. Passam o purge de 90 dias e a exclusão de conta (cascade de `auth.users`, como no ledger). **Não aplicar nesta entrega.** O adaptador que escreveria nessa tabela ainda não existe, de propósito: ligar o Worker seria publicar superfície nova.
 
 ## O que fica para depois
 
