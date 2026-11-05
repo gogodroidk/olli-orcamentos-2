@@ -1,0 +1,26 @@
+{
+  "nota": "Mapa provisório de área para empresa. Ainda não confirmado.",
+  "empresas": {
+    "grtech": {
+      "ordem": 3,
+      "rotulo": "3º andar",
+      "nome": "GR Tech",
+      "faixa": "#A5F3FC",
+      "areas": ["marketing", "criacao", "pesquisa"]
+    },
+    "servicos": {
+      "ordem": 2,
+      "rotulo": "2º andar",
+      "nome": "OLLI Serviços",
+      "faixa": "#2DD4BF",
+      "areas": ["vendas", "operacoes"]
+    },
+    "orcamentos": {
+      "ordem": 1,
+      "rotulo": "1º andar",
+      "nome": "OLLI Orçamentos",
+      "faixa": "#1F6DA7",
+      "areas": ["produto", "tech", "legal", "diretoria"]
+    }
+  }
+}
