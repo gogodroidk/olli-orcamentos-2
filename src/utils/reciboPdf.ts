@@ -2,19 +2,11 @@ import { Recibo, Empresa, ModeloReciboId } from '../types';
 import { formatCurrency } from './currency';
 import { formatDateTime } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
-import { escapeHtml, safeHexColor } from './html';
+import { escapeHtml } from './html';
 import { footerSeloOlliHtml, DEFAULT_ACCENT } from './pdfGenerator';
-import { ajustarParaContraste } from '../theme/cores';
+import { corMarcaNoPapel } from './coresMarca';
 import { normalizarChavePix } from './pixBrCode';
 import { formatarNumeroExibicao } from './numeroDocumento';
-
-/** Normaliza para #RRGGBB — `safeHexColor` aceita 3 dígitos, e `${cor}0F` (o tint
- *  do PIX) só é CSS válido com 6 dígitos (#RRGGBBAA). Sem isso o fundo do PIX some. */
-function hex6(cor: string): string {
-  return /^#[0-9a-fA-F]{3}$/.test(cor)
-    ? '#' + cor.slice(1).split('').map(c => c + c).join('')
-    : cor;
-}
 
 /** Só os ids conhecidos podem virar classe no body — um `modeloReciboPadrao`
  *  adulterado (escrito direto na API, fora da UI) não pode injetar atributos no
@@ -58,7 +50,7 @@ export async function montarHtmlRecibo(
   // usos de uma vez: (a) a cor como texto sobre o papel branco fica legível, e
   // (b) o branco sobre a ponta CLARA do gradiente do valor-box/faixa também — antes
   // uma marca clara (ex. Ciano) deixava o "Valor recebido" ilegível (~1.8:1).
-  const cor = ajustarParaContraste(hex6(safeHexColor(opts?.corMarca ?? empresa.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT)), '#FFFFFF', 4.5);
+  const cor = corMarcaNoPapel(opts?.corMarca ?? empresa.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT);
 
   // Converte as imagens em data URI ANTES de montar o HTML. Em qualquer falha a
   // conversão devolve null e a imagem é omitida — nunca quebra o documento.

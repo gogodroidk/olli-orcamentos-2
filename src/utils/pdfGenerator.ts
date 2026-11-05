@@ -3,7 +3,8 @@ import { formatCurrency, formatNumber } from './currency';
 import { formatDate, formatDateBR, formatDateTime } from './date';
 import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
-import { escapeHtml, safeHexColor } from './html';
+import { escapeHtml } from './html';
+import { corMarcaNoPapel } from './coresMarca';
 import { DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
 import { formatarNumeroExibicao } from './numeroDocumento';
 
@@ -519,8 +520,10 @@ export function gerarHtmlOrcamento(
   accentRaw?: string,
   opts?: OpcoesPdf,
 ): string {
-  // Cor de marca configurável: valida como hex antes de interpolar em <style>/SVG.
-  const accent = safeHexColor(accentRaw ?? o.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT);
+  // Cor de marca no papel: hex validado e, se for clara demais para texto
+  // branco (Ciano, amarelo da logo), escurecida só até 4,5:1. Quem já passa
+  // volta idêntica. `corMarcaNoPapel` nunca interpola a string crua no CSS.
+  const accent = corMarcaNoPapel(accentRaw ?? o.corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT);
   // Sanitiza contra XSS armazenado: `modeloPdf` é campo SINCRONIZADO — um registro
   // adulterado (escrito direto na API) injetaria atributos via a classe do <body>.
   // Mesmo vetor já corrigido no recibo (reciboPdf.modeloSeguro): whitelist estrita.

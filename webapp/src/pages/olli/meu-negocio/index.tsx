@@ -588,7 +588,7 @@ export default function MeuNegocio() {
 				{modoOnboarding && (
 					<div className="rounded-2xl border border-primary/25 bg-primary/5 p-5" aria-live="polite">
 						<div className="flex items-start gap-3">
-							<div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white">
+							<div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
 								{pendentesAtuais.length ? <Sparkles className="size-5" /> : <CheckCircle2 className="size-5" />}
 							</div>
 							<div className="min-w-0">
@@ -953,7 +953,7 @@ export default function MeuNegocio() {
 						<div>
 							<p className="mb-1 text-sm font-medium text-text-primary">Cor da marca</p>
 							<p className="mb-3 text-xs text-text-secondary">
-								Cores testadas para o texto branco do cabeçalho ficar legível no PDF impresso.
+								A amostra mostra a cor escolhida. Se ela for clara demais para texto branco, o PDF escurece só o necessário para o cabeçalho ficar legível.
 							</p>
 							<div className="flex flex-wrap gap-2.5">
 								{CORES_MARCA.map((c) => {

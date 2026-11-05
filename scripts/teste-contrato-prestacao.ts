@@ -452,7 +452,11 @@ for (const [nome, src] of [['o chassi', chassi], ['o contrato', contratoSrc], ['
 // Um segundo motor de PDF era o risco explícito desta frente.
 checar('o chassi reusa o selo OLLI existente', chassi.includes("from './marcaOlli'"), true);
 checar('o chassi reusa o escape de HTML existente', chassi.includes("from './html'"), true);
-checar('o chassi reusa o ajuste de contraste do tema', chassi.includes("from '../theme/cores'"), true);
+checar(
+  'o chassi reusa o ajuste de contraste do tema',
+  chassi.includes("from './coresMarca'") && semComentarios(ler('../src/utils/coresMarca.ts')).includes("from '../theme/cores.ts'"),
+  true,
+);
 checar('a saída em PDF é a mesma do orçamento', contratoSrc.includes("await import('./exportarDocumento')"), true);
 checar('os termos usam a mesma saída', termosSrc.includes("await import('./exportarDocumento')"), true);
 // pdfGenerator continua exportando o que reciboPdf/certificadoAnvisa importam.
