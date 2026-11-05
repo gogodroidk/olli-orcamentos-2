@@ -60,7 +60,7 @@ export function AssinaturaCalendario({ itens }: { itens: readonly Agendamento[] 
 				setTrocar(false);
 				return;
 			}
-			if (antigoCancelado && r.estado !== "pronto") {
+			if (antigoCancelado) {
 				setAviso("O link antigo já foi cancelado e o novo não saiu. Crie de novo. O arquivo .ics continua funcionando.");
 				return;
 			}
