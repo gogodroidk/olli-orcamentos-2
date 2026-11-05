@@ -2,7 +2,8 @@
  * Contas INTERNAS × CLIENTES no painel ADM (07/10/2026). Puro, sem rede — testável.
  *
  * "Interna" = a MESMA regra do funil de receita (assinaturasPagantes.js → motivoContaInterna): e-mail do dono
- * (ADMIN_EMAIL), `funil_exclusoes` (por id ou e-mail) e administrador. No banco a pergunta é `public.conta_interna`.
+ * (ADMIN_EMAIL), `funil_exclusoes` (por id ou e-mail), administrador e etiqueta/domínio de teste.
+ * No banco a pergunta é `public.conta_interna`. O placar não a chama: repete a regra aqui.
  *
  * ERRO NUNCA VIRA "CLIENTE": se a lista de internas não pôde ser lida (`leituraOk = false`), o escopo é
  * 'indeterminado' — nenhum número é apresentado como "só clientes" (o painel avisa), em vez de contar a conta do

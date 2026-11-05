@@ -59,21 +59,29 @@ export function assinaturaPagante(row, agoraMs = Date.now()) {
 
 /**
  * Conta interna, mesma lista do funil de receita (funil_contas_marcos):
- *   'dono'          — e-mail do dono (ADMIN_EMAIL), passado pelo chamador;
- *   'lista_interna' — public.funil_exclusoes, por user_id ou e-mail
- *                     ("Marcar como conta interna" no painel);
- *   'admin'         — administrador do SaaS (public.admin_memberships).
+ *   'dono'           — e-mail do dono (ADMIN_EMAIL), passado pelo chamador;
+ *   'lista_interna'  — public.funil_exclusoes, por user_id ou e-mail
+ *                      ("Marcar como conta interna" no painel);
+ *   'admin'          — administrador do SaaS (public.admin_memberships);
+ *   'etiqueta_teste' — e-mail com etiqueta ou caixa de teste. O placar não chama
+ *                      public.conta_interna; sem isto, +teste segue em "clientes".
+ *                      A expressão é a mesma de 20261105180000_conta_interna_teste.sql.
  * Devolve `null` quando a conta é de cliente. Pagamento real de conta interna
  * (ex.: Pix de teste do dono) não é receita — e o funil também não o conta.
  *
  * `contexto` = { emailsDono, exclusaoIds, exclusaoEmails, adminIds }, todos Set
  * com e-mail já em minúsculo e sem espaço.
  */
+// +z99 com sufixo livre; as outras etiquetas só com dígitos. Domínio exato.
+const EMAIL_ETIQUETA_TESTE = /\+(z99[a-z0-9._-]*|(teste|test|qa|e2e|smoke|probe|agente)[0-9]*)@/;
+const EMAIL_DOMINIO_TESTE = /@(example\.(com|net|org)|mailinator\.com|yopmail\.com)$/;
+
 export function motivoContaInterna(userId, email, contexto) {
   const e = typeof email === 'string' ? email.trim().toLowerCase() : '';
   if (e && contexto.emailsDono.has(e)) return 'dono';
   if (contexto.exclusaoIds.has(userId) || (e && contexto.exclusaoEmails.has(e))) return 'lista_interna';
   if (contexto.adminIds.has(userId)) return 'admin';
+  if (e && (EMAIL_ETIQUETA_TESTE.test(e) || EMAIL_DOMINIO_TESTE.test(e))) return 'etiqueta_teste';
   return null;
 }
 

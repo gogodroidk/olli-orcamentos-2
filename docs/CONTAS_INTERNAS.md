@@ -6,8 +6,9 @@ Testes: `scripts/teste-contas-internas.ts` (Postgres real, como `service_role`) 
 
 ## Fonte única
 Uma conta é **interna** se: está em `funil_exclusoes` (por id ou por e-mail — o "Marcar como conta interna" do painel), é
-**administrador ativo** (`admin_memberships`) ou tem o e-mail do dono (`ADMIN_EMAIL`, só no worker). No banco a pergunta é uma só:
-`public.conta_interna(user_id)`; para telefone, `public.conta_interna_por_telefone(telefone)`.
+**administrador ativo** (`admin_memberships`), tem o e-mail do dono (`ADMIN_EMAIL`, só no worker) ou o e-mail traz a
+etiqueta/domínio de teste. No banco a pergunta é uma só: `public.conta_interna(user_id)`; para telefone,
+`public.conta_interna_por_telefone(telefone)`. O placar do painel não chama essa função: repete a regra em `motivoContaInterna`.
 
 ## O dono já nasce interno NO BANCO (semente)
 `ADMIN_EMAIL` é uma env que só o worker enxerga; o banco não pode depender dela. A migration semeia `funil_exclusoes` (idempotente, por **id** e por
@@ -15,17 +16,21 @@ Uma conta é **interna** se: está em `funil_exclusoes` (por id ou por e-mail �
 (motivo `dono/interna (semente)`; `criado_por` fica NULL — a coluna é uuid e não há usuário-autor). Os demais internos entram pelo painel.
 
 ## Conta de teste nasce interna (D-0914, 26/10/2026)
-Ordem do Igor: contas de teste não contam como possível cliente. `20261026130500_conta_interna_teste.sql` acrescenta à `conta_interna`
-o e-mail com etiqueta de teste (`+teste`, `+test`, `+qa`, `+e2e`, `+z99`, `+smoke`, `+probe`, `+agente` antes do `@`) e as caixas
-`example.*`, `mailinator.com`, `yopmail.com`. **Regra para agentes:** não criar conta de teste em produção (use o Supabase de staging);
-se for inevitável, o e-mail leva `+teste` e a conta já sai do placar, das métricas, da régua, do WhatsApp e dos anúncios.
-Teste: `scripts/teste-contas-internas.ts` (caso positivo e caso de cliente comum com `+alias`). Apagar conta descartável é passo à parte
+Ordem do Igor: contas de teste não contam como possível cliente. `20261105180000_conta_interna_teste.sql` acrescenta à `conta_interna`
+o e-mail com etiqueta antes do `@`: `+teste`, `+test`, `+qa`, `+e2e`, `+smoke`, `+probe` e `+agente` só com dígitos depois
+(`+QA2` entra; `+testemunho` e `+agendamento` continuam cliente); `+z99` com sufixo livre (`+z99chromium`). Caixas:
+`example.com`, `example.net`, `example.org`, `mailinator.com` e `yopmail.com`. `example.com.br` continua cliente.
+**Regra para agentes:** não criar conta de teste em produção (use o Supabase de staging); se for inevitável, o e-mail leva `+teste`.
+Com a migration aplicada, a conta sai da régua, do WhatsApp e da medição do 1º orçamento. O placar do painel usa a mesma regra
+em `motivoContaInterna` e só deixa de contar no deploy do worker. Anúncio continua em `funil_exclusoes`, até o #182 trocar a cláusula.
+Teste: `scripts/teste-contas-internas.ts` (caso positivo e caso de cliente comum com `+alias`) e
+`worker/scripts/teste-contas-internas-admin.js` (placar). Apagar conta descartável é passo à parte
 (há chaves `restrict` em `trials_comerciais` e `orcamento_envios_gratis`): usar o fluxo de exclusão de conta, com backup antes.
 
 ## Onde já vale
 | O quê | Como |
 |---|---|
-| Painel ADM — contas, orçamentos, clientes, atividade, agenda, ativação | `metrics()` só de clientes; `users()` marca `interna`; abas **Clientes \| Internas** (padrão Clientes) com contagem |
+| Painel ADM — contas, orçamentos, clientes, atividade, agenda, ativação | `metrics()` só de clientes; `users()` marca `interna`; etiqueta de teste entra por `motivoContaInterna` (não chama `conta_interna`). Abas **Clientes \| Internas** (padrão Clientes) com contagem |
 | Receita (pagantes, MRR) | já excluía; o plano da interna aparece em "manuais", nunca como pagante |
 | Medição do 1º orçamento (T1) | `primeiro_orcamento_por_conta()` pergunta `conta_interna` |
 | Régua de e-mail | `listar_candidatos_lembrete_email` e `enqueue_lembrete_email` recusam (motivo `conta_interna`) |
