@@ -2,8 +2,9 @@
  * Página do painel admin (HTML + CSS + JS sem framework), servida por /admin.
  *
  * Desenho:
- *  - Navegação lateral por seções (Visão geral, Usuários, Funil, Crédito de
- *    troca, Suporte, Auditoria, Administradores, Segurança), com rota por #hash.
+ *  - Navegação lateral por seções (Visão geral, Usuários, Orçamentos, Funil,
+ *    Crédito de troca, Suporte, Auditoria, Administradores, Segurança), com rota por #hash.
+ *  - Busca global (Ctrl+K) de contas e orçamentos, no mesmo diálogo do painel.
  *  - Ficha do usuário em gaveta lateral, com abas e uma aba "Ferramentas" que
  *    explica cada ação antes do botão.
  *  - Toda ação pede motivo num formulário (nada de prompt()/confirm()).
@@ -245,6 +246,21 @@ pre.stack{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:
 .dlg .acoes{display:flex;justify-content:flex-end;gap:var(--s2);margin-top:var(--s5);flex-wrap:wrap}
 .qr{display:block;width:200px;height:200px;margin:var(--s3) auto;background:#fff;padding:var(--s2);border-radius:var(--r2)}
 .codigo{font-size:22px;letter-spacing:.3em;text-align:center;font-variant-numeric:tabular-nums}
+.dlg.paleta{max-width:640px;padding:0;overflow:hidden}
+.buscaPal{position:relative}
+.buscaPal .ico{position:absolute;left:14px;top:16px;color:var(--mut2)}
+.buscaPal input{border:none;border-bottom:1px solid var(--line);border-radius:0;min-height:52px;padding-left:42px;background:transparent}
+.buscaPal input:focus{box-shadow:none}
+.palHit{display:flex;flex-direction:column;gap:2px;width:100%;padding:10px 16px;border:none;background:transparent;text-align:left;cursor:pointer}
+.palHit[aria-selected="true"],.palHit:hover{background:var(--surf2)}
+.palHit b{font-weight:700}
+.palHit span{font-size:12.5px;color:var(--mut2)}
+.palGrp{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mut2);padding:12px 16px 4px}
+.palRod{padding:8px 16px 12px;font-size:12px;color:var(--mut2);border-top:1px solid var(--line)}
+.loteBar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);background:var(--surf2)}
+td.sel,th.sel{width:36px;padding-right:0}
+td.sel input,th.sel input{width:16px;height:16px;accent-color:var(--brand)}
+.faixaPrevia{margin:0 0 16px;padding:10px 16px;border:1px dashed var(--line2);border-radius:var(--r2);font-weight:800;color:var(--mut)}
 
 /* Toast */
 .toast{position:fixed;left:50%;bottom:var(--s5);transform:translate(-50%,12px);opacity:0;background:var(--ink);color:var(--bg);padding:var(--s3) var(--s4);border-radius:var(--r2);font-weight:600;font-size:13.5px;z-index:80;max-width:min(560px,calc(100vw - 32px));transition:opacity var(--dur2),transform var(--dur2) var(--ease);pointer-events:none}
@@ -306,6 +322,7 @@ const BODY = String.raw`
    <div id="gateMfa" class="hidden"></div>
    <section class="view" id="v-geral" data-view="geral"></section>
    <section class="view hidden" id="v-usuarios" data-view="usuarios"></section>
+   <section class="view hidden" id="v-orcamentos" data-view="orcamentos"></section>
    <section class="view hidden" id="v-organizacoes" data-view="organizacoes"></section>
    <section class="view hidden" id="v-funil" data-view="funil"></section>
    <section class="view hidden" id="v-troca" data-view="troca"></section>
@@ -327,6 +344,7 @@ let TOKEN='',ME=null,RENOVA=null,MET=null,USERS=null,USERS_ERRO='',FB=null,FB_ER
 let SEG='todos',BUSCA='',ORDEM='cadastro',PAG=0,ESCOPO='clientes',INTERNAS_OK=true,FONTES={},ORGS=null,ORGS_ERRO='';const POR_PAG=50;
 let FBFILTER='abertos',TROCA_FILTRO='pendente',TROCA_MAX=CFG.trocaMax;
 let USER_ABERTO=null,DET=null,ABA='resumo';
+let SEL=new Set(),ORC_STATUS='',ORC_BUSCA='',ORC_LISTA=null,ORC_T=null,PAL_T=null,PAL_IDX=0;
 const DIA=86400000;
 const $=id=>document.getElementById(id);
 
@@ -397,6 +415,14 @@ const ERROS={
  owner_bootstrap_protegido:'O e-mail raiz não pode ser alterado por aqui.',
  auditoria_indisponivel:'A trilha de auditoria não respondeu. Nada foi registrado.',
  origem_invalida:'Pedido recusado por segurança (origem diferente do painel).',
+ busca_curta:'Digite ao menos 2 letras.',
+ lote_grande:'No máximo 25 contas por vez.',
+ acao_invalida:'Essa ação em lote não existe.',
+ sem_ids:'Marque ao menos uma conta.',
+ id_invalido:'Uma das contas marcadas é inválida.',
+ nota_invalida:'A nota precisa ter entre 3 e 500 caracteres.',
+ orcamentos_indisponiveis:'Não consegui ler os orçamentos. Nada foi zerado.',
+ autoacao_proibida:'Você não pode bloquear a sua própria conta por aqui.',
  cnpj_invalido:'CNPJ precisa ter 14 números.',
  cnpj_nao_encontrado:'CNPJ não encontrado na Receita.',
  consulta_indisponivel:'A consulta da Receita não respondeu agora. Tente mais tarde.'
@@ -420,6 +446,7 @@ async function guardarSessao(refresh){const {r,j}=await sessaoPost('sessao',{ref
 async function renovar(){try{const {r,j}=await sessaoPost('sessao/renovar');if(r.ok&&j.access_token){aplicarToken(j);return 'ok';}return r.status===503?'indisponivel':'sem_sessao';}catch{return 'indisponivel';}}
 
 async function api(path,opts,tentou){
+ if(CFG.previa)return previaApi(path,opts);
  opts=opts||{};
  const r=await fetch('/admin/api/'+path,{...opts,credentials:'same-origin',headers:{Authorization:'Bearer '+TOKEN,'Content-Type':'application/json',...(opts.headers||{})}});
  if(r.status===401&&!tentou){const st=await renovar();if(st==='ok')return api(path,opts,true);telaLogin(st==='indisponivel'?'O servidor de login não respondeu. Tente de novo em instantes.':'Sua sessão terminou. Entre de novo.');const e=new Error('401');e.codigo='nao_autorizado';e.status=401;throw e;}
@@ -599,6 +626,7 @@ function dialogo(o){
 const NAV=[
  {id:'geral',rot:'Visão geral',ico:'home',sub:'O que está acontecendo no OLLI agora.',cap:'admin'},
  {id:'usuarios',rot:'Usuários',ico:'users',sub:'Todas as contas. Clique numa linha para abrir a ficha completa e as ferramentas.',cap:'admin'},
+ {id:'orcamentos',rot:'Orçamentos',ico:'doc',sub:'Orçamentos dos prestadores, com filtro e CSV. O valor é o deles, não a receita da OLLI.',cap:'admin'},
  {id:'organizacoes',rot:'Organizações',ico:'users',sub:'Marque uma organização inteira como interna (equipe, teste) — com prévia, confirmação e desfazer. Internas ficam fora de todos os números.',cap:'admin'},
  {id:'funil',rot:'Funil',ico:'funnel',sub:'Do cadastro ao pagamento, por semana de cadastro.',cap:'admin'},
  {id:'troca',rot:'Crédito de troca',ico:'gift',sub:'Quem veio de outro app e pediu meses de Pro grátis.',cap:'financeiro'},
@@ -621,11 +649,12 @@ function irPara(id){
  $('titulo').textContent=n.rot;$('subtitulo').textContent=n.sub;$('mtopTit').textContent=n.rot;
  const ca=limpar($('cabAcoes'));
  ca.append(el('button',{className:'btn sec',onclick:()=>recarregar()},ico('refresh'),'Atualizar'));
+ if(pode('admin'))ca.append(el('button',{className:'btn sec',title:'Contas e orçamentos (Ctrl+K)',onclick:abrirBusca},ico('search'),'Buscar'));
  fecharMenu();
  renderView();
  window.scrollTo(0,0);
 }
-function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
+function renderView(){({geral:renderGeral,usuarios:renderUsuarios,orcamentos:renderOrcamentos,organizacoes:carregarOrgs,funil:carregarFunil,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
 function abrirMenu(){$('side').classList.add('on');$('scrim').classList.add('on');}
 function fecharMenu(){$('side').classList.remove('on');$('scrim').classList.remove('on');}
 
@@ -668,7 +697,12 @@ function kpi(o){
  return c;
 }
 function secTit(t,extra){return el('div',{className:'secTit'},el('h2',{},t),extra?el('span',{className:'extra'},extra):null);}
-function irSegmento(seg){SEG=seg;PAG=0;BUSCA='';location.hash='usuarios';if(VIEW==='usuarios')renderUsuarios();}
+function linhaAtivacao(cv){
+ if(!cv||cv.ativacao!=='ok')return fmtNum(cv&&cv.pagos||0)+' pagantes · ativação por plano indisponível';
+ const rot={gratis:'Grátis',pro:'Pro',empresa:'Empresa'};
+ return (cv.planos||[]).map(p=>(rot[p.plano]||p.plano)+' '+(p.taxaAtivacao==null?'—':p.taxaAtivacao+'%')).join(' · ');
+}
+function irSegmento(seg){SEG=seg;PAG=0;BUSCA='';SEL.clear();location.hash='usuarios';if(VIEW==='usuarios')renderUsuarios();}
 function renderGeral(){
  const box=limpar($('v-geral'));
  if(!MET){box.append(el('div',{className:'card'},carregando(5)));return;}
@@ -685,11 +719,28 @@ function renderGeral(){
  if(r.estado==='ok'&&r.emRisco)att.push(['warn',r.emRisco+(r.emRisco===1?' conta pagante está':' contas pagantes estão')+' sem usar o app há 14 dias','Ver contas',()=>irSegmento('risco')]);
  if(m.novosHoje)att.push(['ok',m.novosHoje+(m.novosHoje===1?' cadastro novo':' cadastros novos')+' nas últimas 24 h','Ver',()=>irSegmento('novos')]);
  if(m.orcamentosEstado!=='indisponivel'&&m.nuncaOrcaram)att.push(['info',m.nuncaOrcaram+' de '+m.usuarios+' contas nunca criaram um orçamento — são as que mais precisam de um empurrão','Ver contas',()=>irSegmento('nunca')]);
+ const op=m.operacao||{};
+ const ch=op.churn||{estado:'indisponivel'};
+ const vc=op.vencendo||{estado:'indisponivel'};
+ if(ch.estado==='ok'&&ch.contas)att.push(['warn',ch.contas+(ch.contas===1?' conta encerrou a assinatura':' contas encerraram a assinatura')+' nos últimos 30 dias','Ver pagantes',()=>irSegmento('pagantes')]);
+ if(vc.estado==='ok'&&vc.contas)att.push(['info',vc.contas+(vc.contas===1?' assinatura vence':' assinaturas vencem')+' nos próximos 7 dias','Ver pagantes',()=>irSegmento('pagantes')]);
  box.append(secTit('Precisa de você'));
  const lista=el('div',{className:'card atencao'});
  if(!att.length)lista.append(estado('ok','Tudo em dia.','Nada esperando por você agora.'));
  att.forEach(a=>lista.append(el('button',{type:'button',onclick:a[3]},el('span',{className:'dot '+a[0]}),el('span',{},a[1]),el('span',{className:'vai'},a[2]+' →'))));
  box.append(lista);
+
+ const cv=op.conversaoPorPlano||{estado:'indisponivel'};
+ const titSaida=secTit('Saída e conversão');titSaida.id='sec-saida';
+ box.append(titSaida);
+ box.append(el('div',{className:'kpis'},
+  ch.estado!=='ok'
+   ?kpi({ico:'alert',l:'Saíram em 30 dias',v:'indisponível',h:'não consegui ler as assinaturas',tom:'warn',dica:'Sem a leitura das assinaturas e das contas internas este número fica escondido. Não é zero.'})
+   :kpi({ico:'alert',l:'Saíram em 30 dias',v:fmtNum(ch.contas),h:(ch.porPlano.pro||0)+' Pro · '+(ch.porPlano.empresa||0)+' Empresa',tom:ch.contas?'warn':'',dica:'Contas de clientes com assinatura real (Pix, cartão ou loja) cancelada ou sem pagamento, cujo período acabou nos últimos 30 dias. Cortesia e conta interna não entram.'}),
+  cv.estado!=='ok'
+   ?kpi({ico:'trend',l:'Viraram pagantes',v:'indisponível',h:'não consegui ler as assinaturas',tom:'warn'})
+   :kpi({ico:'trend',l:'Viraram pagantes',v:cv.taxaPago+'%',h:linhaAtivacao(cv),onclick:()=>irSegmento('pagantes'),dica:'Porcentagem das contas de clientes com pagamento ativo agora. A linha de baixo é quem já fez o 1º orçamento em cada plano.'})
+ ));
 
  // Crescimento
  box.append(secTit('Crescimento'));
@@ -753,7 +804,9 @@ function renderGeral(){
   ['Pagantes','Contas com pagamento ativo num gateway (Pix, cartão ou Google Play). Plano liberado à mão, cortesia (comp_…), conta demo (sub_demo_…) e conta interna (dono, administradores, marcadas como internas) não contam.'],
   ['Receita mensal estimada','Pagantes × preço mensal de tabela'+(r.precoMensal?' (Pro '+fmtBRL(r.precoMensal.pro)+', Empresa '+fmtBRL(r.precoMensal.empresa)+')':'')+'. É estimativa: anuais e descontos não entram exatos.'],
   ['Assinantes sumidos','Contas pagantes que não usam o app há 14 dias ou mais. Bom momento para mandar uma mensagem. Cortesias e contas internas não entram.'],
-  ['Valor aprovado','Soma dos orçamentos que os clientes dos prestadores aprovaram. Mostra o valor que o OLLI ajuda a movimentar, não o que a OLLI recebe.']
+  ['Valor aprovado','Soma dos orçamentos que os clientes dos prestadores aprovaram. Mostra o valor que o OLLI ajuda a movimentar, não o que a OLLI recebe.'],
+  ['Saíram em 30 dias','Assinatura real que encerrou nos últimos 30 dias (cancelada, não paga ou incompleta). Plano liberado à mão e conta da equipe não entram.'],
+  ['Viraram pagantes','Das contas de clientes, quantas pagam agora. Ao lado, a ativação (1º orçamento) separada em Grátis, Pro e Empresa.']
  ].forEach(x=>dl.append(el('dt',{},x[0]),el('dd',{},x[1])));
  g.append(dl);box.append(g);
 }
@@ -791,33 +844,50 @@ function renderUsuarios(){
  if(USERS===null){box.append(el('div',{className:'card'},estado('erro','Não consegui carregar os usuários.',USERS_ERRO)));return;}
  const nCli=USERS.filter(u=>!u.interna).length,nInt=USERS.filter(u=>!!u.interna).length;
  const abas=el('div',{className:'chips',role:'group',ariaLabel:'Tipo de conta'});
- [['clientes','Clientes',nCli],['internas','Internas',nInt]].forEach(a=>abas.append(el('button',{type:'button',className:'chip',ariaPressed:String(ESCOPO===a[0]),onclick:()=>{ESCOPO=a[0];SEG='todos';PAG=0;renderUsuarios();}},a[1],el('span',{className:'n'},String(a[2])))));
+ [['clientes','Clientes',nCli],['internas','Internas',nInt]].forEach(a=>abas.append(el('button',{type:'button',className:'chip',ariaPressed:String(ESCOPO===a[0]),onclick:()=>{ESCOPO=a[0];SEG='todos';PAG=0;SEL.clear();renderUsuarios();}},a[1],el('span',{className:'n'},String(a[2])))));
  if(!INTERNAS_OK)box.append(el('div',{className:'card atencao'},estado('erro','Não consegui ler a lista de contas internas.','Por isso as abas Clientes e Internas não são confiáveis agora: todas as contas aparecem como clientes. Atualize; se persistir, não use estes números.')));
  const indisp=[['assinaturas','planos e pagantes'],['orcamentos','orçamentos e faturamento'],['empresa','dados da empresa']].filter(f=>FONTES[f[0]]==='indisponivel').map(f=>f[1]);
  if(indisp.length)box.append(el('div',{className:'card atencao'},estado('erro','Não consegui ler: '+indisp.join(', ')+'.','Esses campos aparecem como indisponíveis — não como Grátis nem como zero — e os segmentos que dependem deles não são contados. Atualize; se persistir, veja o status do Supabase.')));
  const chips=el('div',{className:'chips',role:'group',ariaLabel:'Segmentos'});
- SEGS.forEach(s=>{const n=fonteIndisp(s[0])?'—':String(USERS.filter(noEscopo).filter(s[2]).length);chips.append(el('button',{type:'button',className:'chip',ariaPressed:String(SEG===s[0]),title:fonteIndisp(s[0])?'Fonte indisponível agora: não dá para contar.':'',onclick:()=>{SEG=s[0];PAG=0;renderUsuarios();}},s[1],el('span',{className:'n'},n)));});
- const busca=el('input',{className:'inp',id:'busca',type:'search',placeholder:'Buscar por e-mail, nome, empresa, cidade ou ID  (Ctrl+K)',value:BUSCA,ariaLabel:'Buscar usuários'});
- busca.oninput=()=>{BUSCA=busca.value;PAG=0;desenharTabela();};
+ SEGS.forEach(s=>{const n=fonteIndisp(s[0])?'—':String(USERS.filter(noEscopo).filter(s[2]).length);chips.append(el('button',{type:'button',className:'chip',ariaPressed:String(SEG===s[0]),title:fonteIndisp(s[0])?'Fonte indisponível agora: não dá para contar.':'',onclick:()=>{SEG=s[0];PAG=0;SEL.clear();renderUsuarios();}},s[1],el('span',{className:'n'},n)));});
+ const salvos=el('div',{className:'chips',ariaLabel:'Filtros salvos neste navegador'});
+ lerFiltros().forEach(f=>{
+  const ativo=f.seg===SEG&&f.ordem===ORDEM&&f.escopo===ESCOPO&&(f.busca||'')===BUSCA;
+  salvos.append(el('span',{style:'display:inline-flex;align-items:center;gap:2px'},
+   el('button',{type:'button',className:'chip',ariaPressed:String(ativo),onclick:()=>aplicarFiltro(f)},f.nome),
+   el('button',{type:'button',className:'btn ghost',ariaLabel:'Apagar filtro '+f.nome,onclick:()=>apagarFiltro(f.id)},'×')));
+ });
+ salvos.append(el('button',{type:'button',className:'btn ghost',onclick:salvarFiltroAtual},'Salvar este filtro'));
+ const busca=el('input',{className:'inp',id:'busca',type:'search',placeholder:'Filtrar esta lista por e-mail, nome, empresa ou ID',value:BUSCA,ariaLabel:'Filtrar usuários'});
+ busca.oninput=()=>{BUSCA=busca.value;PAG=0;SEL.clear();desenharTabela();};
  const ordem=el('select',{className:'inp',style:'width:auto',ariaLabel:'Ordenar'});[['cadastro','Mais recentes'],['uso','Usou por último'],['orc','Mais orçamentos'],['nome','E-mail (A–Z)']].forEach(o=>ordem.append(el('option',{value:o[0],selected:ORDEM===o[0]},o[1])));
  ordem.onchange=()=>{ORDEM=ordem.value;desenharTabela();};
  const exp=el('button',{className:'btn sec',onclick:exportarCsv},ico('download'),'Exportar CSV');
- box.append(abas,chips,el('div',{className:'barra'},el('div',{className:'busca'},ico('search'),busca),ordem,exp));
+ box.append(abas,chips,salvos,el('div',{className:'barra'},el('div',{className:'busca'},ico('search'),busca),ordem,exp));
  const card=el('div',{className:'card',id:'tabelaUsuarios'});box.append(card);
- desenharTabela();
+ const lote=el('div',{className:'card loteBar hidden',id:'loteBar'});box.append(lote);
+ desenharTabela();atualizarLote();
 }
 function desenharTabela(){
  const card=$('tabelaUsuarios');if(!card)return;limpar(card);
  const l=usuariosFiltrados();
- if(!l.length){card.append(estado('','Nenhuma conta neste filtro.','Troque o segmento ou limpe a busca.'));return;}
+ if(!l.length){card.append(estado('','Nenhuma conta neste filtro.','Troque o segmento ou limpe a busca.'));atualizarLote();return;}
  const ini=PAG*POR_PAG,pg=l.slice(ini,ini+POR_PAG);
  const t=el('table'),tb=el('tbody');
- t.append(el('thead',{},el('tr',{},el('th',{},'Conta'),el('th',{className:'hideSm'},'Empresa'),el('th',{},'Plano'),el('th',{},'Uso'),el('th',{className:'num'},'Orçamentos'),el('th',{className:'hideSm'},'Cadastro'),el('th',{className:'hideSm'},'Situação'))));
+ const todosPg=pg.length>0&&pg.every(u=>SEL.has(u.id));
+ const ckAll=el('input',{type:'checkbox',ariaLabel:'Selecionar esta página',checked:todosPg});
+ ckAll.onclick=e=>e.stopPropagation();
+ ckAll.onchange=()=>{pg.forEach(u=>{if(ckAll.checked){if(SEL.size<25)SEL.add(u.id);}else SEL.delete(u.id);});if(ckAll.checked&&pg.length>25)toast('Marquei as 25 primeiras desta página.','err');desenharTabela();};
+ t.append(el('thead',{},el('tr',{},el('th',{className:'sel'},ckAll),el('th',{},'Conta'),el('th',{className:'hideSm'},'Empresa'),el('th',{},'Plano'),el('th',{},'Uso'),el('th',{className:'num'},'Orçamentos'),el('th',{className:'hideSm'},'Cadastro'),el('th',{className:'hideSm'},'Situação'))));
  pg.forEach(u=>{const tr=el('tr',{className:'clic',tabIndex:0,onclick:()=>abrirUsuario(u),onkeydown:e=>{if(e.key==='Enter')abrirUsuario(u);}});
-  tr.append(el('td',{},celConta(u)),el('td',{className:'hideSm'},el('div',{},u.empresa||el('span',{className:'mut'},'sem empresa')),u.cidade?el('div',{className:'mut',style:'font-size:12.5px'},u.cidade):null),el('td',{},pillPlano(u)),el('td',{},pillUso(u),el('div',{className:'mut',style:'font-size:12px;margin-top:2px'},rel(u.ultimoUso))),el('td',{className:'num'},u.orcamentos===null?'—':String(u.orcamentos),u.aprovados?el('div',{className:'mut',style:'font-size:12px'},u.aprovados+' aprov.'):null),el('td',{className:'hideSm mut'},fmtDate(u.criadoEm)),el('td',{className:'hideSm'},pillSituacao(u)));tb.append(tr);});
+  const ck=el('input',{type:'checkbox',ariaLabel:'Selecionar '+(u.email||'conta'),checked:SEL.has(u.id)});
+  ck.onclick=e=>e.stopPropagation();
+  ck.onchange=()=>{if(ck.checked){if(SEL.size>=25){ck.checked=false;toast('No máximo 25 contas por vez.','err');return;}SEL.add(u.id);}else SEL.delete(u.id);atualizarLote();};
+  tr.append(el('td',{className:'sel'},ck),el('td',{},celConta(u)),el('td',{className:'hideSm'},el('div',{},u.empresa||el('span',{className:'mut'},'sem empresa')),u.cidade?el('div',{className:'mut',style:'font-size:12.5px'},u.cidade):null),el('td',{},pillPlano(u)),el('td',{},pillUso(u),el('div',{className:'mut',style:'font-size:12px;margin-top:2px'},rel(u.ultimoUso))),el('td',{className:'num'},u.orcamentos===null?'—':String(u.orcamentos),u.aprovados?el('div',{className:'mut',style:'font-size:12px'},u.aprovados+' aprov.'):null),el('td',{className:'hideSm mut'},fmtDate(u.criadoEm)),el('td',{className:'hideSm'},pillSituacao(u)));tb.append(tr);});
  t.append(tb);card.append(el('div',{className:'tblWrap'},t));
  const tot=l.length,pags=Math.ceil(tot/POR_PAG);
  card.append(el('div',{className:'pag'},el('span',{},'Mostrando '+(ini+1)+'–'+Math.min(ini+POR_PAG,tot)+' de '+tot),el('div',{style:'display:flex;gap:8px'},el('button',{className:'btn sec',disabled:PAG===0,onclick:()=>{PAG--;desenharTabela();}},'Anterior'),el('button',{className:'btn sec',disabled:PAG>=pags-1,onclick:()=>{PAG++;desenharTabela();}},'Próxima'))));
+ atualizarLote();
 }
 /* ── organizações internas ── */
 async function carregarOrgs(){
@@ -942,7 +1012,7 @@ function abaResumo(c,u,d){
  c.append(secTit('Orçamentos recentes'),listaCard((d.orcamentos||[]).slice(0,10).map(o=>['Nº '+o.numero+(o.cliente_nome?' · '+o.cliente_nome:''),(o.valor_total!=null?fmtBRL(o.valor_total)+' · ':'')+o.status+' · '+fmtDate(o.criado_em)]),'Nenhum orçamento criado ainda.'));
  c.append(secTit('Próximos e últimos agendamentos'),listaCard((d.agenda||[]).slice(0,8).map(a=>[a.titulo||'—',fmtDH(a.inicio)+' · '+(a.status||'')]),'Nenhum agendamento.'));
 }
-const ROT_ACAO={usuario_bloqueado:'Bloqueou a conta',usuario_desbloqueado:'Desbloqueou a conta',usuario_excluido:'Excluiu a conta',reset_senha_enviado:'Enviou redefinição de senha',plano_override_definido:'Liberou plano manual',plano_override_revogado:'Revogou plano manual',creditos_adicionados:'Adicionou créditos',creditos_removidos:'Removeu créditos',sessoes_usuario_revogadas:'Desconectou de todos os aparelhos',email_confirmado_manual:'Confirmou o e-mail',acesso_sem_senha_enviado:'Enviou código de acesso',nota_interna:'Nota interna',usuario_relatorio_txt:'Baixou relatório TXT',usuarios_exportados_csv:'Exportou lista em CSV',funil_conta_interna_marcada:'Tirou do funil',funil_conta_interna_desmarcada:'Devolveu ao funil',aparelho_confiavel_adicionado:'Lembrou um aparelho',aparelho_confiavel_revogado:'Esqueceu um aparelho',aparelhos_confiaveis_revogados:'Esqueceu todos os aparelhos',senha_admin_alterada:'Trocou a própria senha'};
+const ROT_ACAO={usuario_bloqueado:'Bloqueou a conta',usuario_desbloqueado:'Desbloqueou a conta',usuario_excluido:'Excluiu a conta',reset_senha_enviado:'Enviou redefinição de senha',plano_override_definido:'Liberou plano manual',plano_override_revogado:'Revogou plano manual',creditos_adicionados:'Adicionou créditos',creditos_removidos:'Removeu créditos',sessoes_usuario_revogadas:'Desconectou de todos os aparelhos',email_confirmado_manual:'Confirmou o e-mail',acesso_sem_senha_enviado:'Enviou código de acesso',nota_interna:'Nota interna',usuario_relatorio_txt:'Baixou relatório TXT',usuarios_exportados_csv:'Exportou lista em CSV',usuarios_acao_lote:'Ação em lote',funil_conta_interna_marcada:'Tirou do funil',funil_conta_interna_desmarcada:'Devolveu ao funil',aparelho_confiavel_adicionado:'Lembrou um aparelho',aparelho_confiavel_revogado:'Esqueceu um aparelho',aparelhos_confiaveis_revogados:'Esqueceu todos os aparelhos',senha_admin_alterada:'Trocou a própria senha'};
 function rotAcao(a){return ROT_ACAO[a]||String(a||'').replace(/_/g,' ');}
 const ROT_EVENTO={login:'Entrou no app',orcamento_criado:'Criou orçamento',orcamento_enviado:'Enviou orçamento',cliente_criado:'Cadastrou cliente'};
 function abaAtividade(c,u,d){
@@ -1080,6 +1150,173 @@ async function acaoExcluir(u){
  try{await api('user/delete?id='+encodeURIComponent(u.id),{method:'POST',body:JSON.stringify({motivo:v.motivo,confirmacao:'EXCLUIR',requestId:crypto.randomUUID()})});toast('Conta excluída.');fecharGaveta();await recarregar(true);}
  catch(e){if(e.codigo==='mfa_recente_necessario'){toast('Confirme o código e tente de novo.','err');abrirSeguranca();return;}toast(mensagemErro(e),'err');}
 }
+
+/* ── filtros salvos, lote, orçamentos, busca ── */
+function lerFiltros(){
+ try{
+  const a=JSON.parse(localStorage.getItem('olli_admin_filtros_v1')||'[]');
+  if(!Array.isArray(a))return [];
+  const segs=['todos','pagantes','manual','ativos','nunca','novos','risco','inativos','bloqueados'];
+  const ords=['cadastro','uso','orc','nome'];
+  return a.filter(f=>f&&typeof f.nome==='string'&&f.nome.length>=2&&f.nome.length<=40&&segs.includes(f.seg)&&ords.includes(f.ordem)&&(f.escopo==='clientes'||f.escopo==='internas')).slice(0,8);
+ }catch{return [];}
+}
+function gravarFiltros(lista){try{localStorage.setItem('olli_admin_filtros_v1',JSON.stringify(lista));return true;}catch{return false;}}
+function aplicarFiltro(f){SEG=f.seg;ORDEM=f.ordem;ESCOPO=f.escopo;BUSCA=String(f.busca||'');PAG=0;SEL.clear();renderUsuarios();}
+function apagarFiltro(id){if(!gravarFiltros(lerFiltros().filter(f=>f.id!==id))){toast('Não consegui apagar o filtro neste navegador.','err');return;}toast('Filtro apagado deste navegador.');renderUsuarios();}
+async function salvarFiltroAtual(){
+ const v=await dialogo({titulo:'Salvar filtro neste navegador',texto:'Fica só neste aparelho. Não vai para o servidor nem para a auditoria.',campos:[{nome:'nome',rotulo:'Nome do filtro',min:2,max:40}],confirmar:'Salvar'});
+ if(!v)return;
+ const lista=lerFiltros();
+ if(lista.length>=8){toast('Você já tem 8 filtros salvos. Apague um.','err');return;}
+ lista.push({id:crypto.randomUUID(),nome:v.nome.trim().slice(0,40),seg:SEG,ordem:ORDEM,escopo:ESCOPO,busca:BUSCA.slice(0,80)});
+ if(!gravarFiltros(lista)){toast('Não consegui salvar no navegador.','err');return;}
+ toast('Filtro salvo neste navegador.');renderUsuarios();
+}
+function atualizarLote(){
+ const bar=$('loteBar');if(!bar)return;limpar(bar);
+ if(!SEL.size){bar.classList.add('hidden');return;}
+ bar.classList.remove('hidden');
+ bar.append(el('b',{},SEL.size+(SEL.size===1?' conta selecionada':' contas selecionadas')),
+  el('button',{type:'button',className:'btn sec',onclick:()=>acaoLote('bloquear')},'Bloquear'),
+  el('button',{type:'button',className:'btn sec',onclick:()=>acaoLote('desbloquear')},'Desbloquear'),
+  el('button',{type:'button',className:'btn sec',onclick:()=>acaoLote('nota')},'Nota'),
+  el('button',{type:'button',className:'btn ghost',onclick:()=>{SEL.clear();desenharTabela();}},'Limpar'));
+}
+async function acaoLote(acao){
+ const ids=[...SEL];
+ if(!ids.length)return;
+ if(ids.length>25){toast('No máximo 25 contas por vez.','err');return;}
+ const tit={bloquear:'Bloquear '+ids.length+' contas',desbloquear:'Desbloquear '+ids.length+' contas',nota:'Nota em '+ids.length+' contas'}[acao];
+ const campos=[];
+ if(acao==='bloquear')campos.push({nome:'dias',rotulo:'Por quanto tempo?',tipo:'select',valor:'7',opcoes:[['1','1 dia'],['7','7 dias'],['30','30 dias'],['90','90 dias'],['','Até desbloquear']]});
+ campos.push(Object.assign({},MOTIVO,{rotulo:acao==='nota'?'Nota':'Motivo',ajuda:acao==='nota'?'A mesma nota entra em cada conta e fica na auditoria.':'Fica na auditoria de cada conta.'}));
+ const v=await dialogo({titulo:tit,texto:'Vale para todas as contas marcadas. Nada é feito sem este texto.',campos,confirmar:'Aplicar',perigo:acao==='bloquear'});
+ if(!v)return;
+ const corpo={acao,ids,motivo:v.motivo,requestId:crypto.randomUUID()};
+ if(acao==='bloquear'&&v.dias)corpo.dias=Number(v.dias);
+ if(acao==='nota')corpo.texto=v.motivo;
+ try{
+  const j=await api('users/lote',{method:'POST',body:JSON.stringify(corpo)});
+  SEL.clear();
+  if(j.falhas&&j.falhas.length)toast((j.feitos||[]).length+' feita(s), '+j.falhas.length+' não deu.','err');
+  else toast('Feito em '+(j.feitos||[]).length+' conta(s).');
+  await recarregar(true);
+ }catch(e){toast(mensagemErro(e),'err');}
+}
+const ROT_ORC={rascunho:'Rascunho',enviado:'Enviado',visualizado:'Visto',em_negociacao:'Em negociação',aguardando_assinatura:'Aguardando assinatura',aprovado:'Aprovado',recusado:'Recusado',expirado:'Expirado',cancelado:'Cancelado',convertido:'Convertido'};
+function renderOrcamentos(){
+ const box=limpar($('v-orcamentos'));
+ const chips=el('div',{className:'chips',role:'group',ariaLabel:'Situação do orçamento'});
+ [['','Todos'],['rascunho','Rascunho'],['enviado','Enviado'],['aprovado','Aprovado'],['recusado','Recusado'],['expirado','Expirado']].forEach(s=>chips.append(el('button',{type:'button',className:'chip',ariaPressed:String(ORC_STATUS===s[0]),onclick:()=>{ORC_STATUS=s[0];renderOrcamentos();}},s[1])));
+ const busca=el('input',{className:'inp',type:'search',placeholder:'Número, cliente ou ID',value:ORC_BUSCA,ariaLabel:'Filtrar orçamentos'});
+ busca.oninput=()=>{ORC_BUSCA=busca.value;clearTimeout(ORC_T);ORC_T=setTimeout(carregarOrcamentos,250);};
+ box.append(chips,el('div',{className:'barra'},el('div',{className:'busca'},ico('search'),busca),el('button',{className:'btn sec',onclick:exportarOrcamentosCsv},ico('download'),'Exportar CSV')));
+ const card=el('div',{className:'card',id:'tabelaOrc'});card.append(carregando(6));box.append(card);
+ carregarOrcamentos();
+}
+async function carregarOrcamentos(){
+ const card=$('tabelaOrc');if(!card)return;
+ try{
+  const j=await api('orcamentos?status='+encodeURIComponent(ORC_STATUS)+'&q='+encodeURIComponent(ORC_BUSCA));
+  ORC_LISTA=j.orcamentos||[];
+  desenharOrcamentos();
+ }catch(e){if(e.status===401)return;ORC_LISTA=null;if($('tabelaOrc'))limpar($('tabelaOrc')).append(estado('erro','Não consegui ler os orçamentos.',mensagemErro(e)+' Nada foi zerado.'));}
+}
+function desenharOrcamentos(){
+ const card=$('tabelaOrc');if(!card||!ORC_LISTA)return;limpar(card);
+ if(!ORC_LISTA.length){card.append(estado('','Nenhum orçamento neste filtro.','Troque a situação ou limpe a busca.'));return;}
+ const t=el('table'),tb=el('tbody');
+ t.append(el('thead',{},el('tr',{},el('th',{},'Orçamento'),el('th',{},'Situação'),el('th',{className:'num'},'Valor'),el('th',{className:'hideSm'},'Prestador'),el('th',{},'Data'))));
+ ORC_LISTA.forEach(o=>{
+  const u=(USERS||[]).find(x=>x.id===o.user_id);
+  const tr=el('tr',{className:'clic',tabIndex:0,onclick:()=>abrirOrcamento(o),onkeydown:e=>{if(e.key==='Enter')abrirOrcamento(o);}});
+  tr.append(el('td',{},el('b',{},'Nº '+(o.numero||'—')),o.cliente_nome?el('div',{className:'mut',style:'font-size:12.5px'},o.cliente_nome):null),el('td',{},el('span',{className:'pill '+(o.status==='aprovado'?'ok':o.status==='recusado'?'dng':'')},ROT_ORC[o.status]||o.status||'—')),el('td',{className:'num'},o.valor_total==null?'—':fmtBRL(o.valor_total)),el('td',{className:'hideSm'},u?(u.email||'—'):'—'),el('td',{className:'mut'},fmtDate(o.criado_em)));
+  tb.append(tr);
+ });
+ t.append(tb);card.append(el('div',{className:'tblWrap'},t));
+ card.append(el('div',{className:'pag'},el('span',{},ORC_LISTA.length+' nesta lista · até 100 mais recentes')));
+}
+function abrirOrcamento(o){
+ const u=(USERS||[]).find(x=>x.id===o.user_id);
+ if(!u){toast('A conta deste orçamento não está na lista. Atualize os usuários.','err');return;}
+ abrirUsuario(u,'resumo');
+}
+async function exportarOrcamentosCsv(){
+ const l=ORC_LISTA||[];
+ if(!l.length){toast('Não há linhas para exportar.','err');return;}
+ const v=await dialogo({titulo:'Exportar '+l.length+' orçamentos em CSV',texto:'O arquivo sai do filtro atual. A exportação fica na auditoria antes do download.',campos:[MOTIVO],confirmar:'Exportar'});
+ if(!v)return;
+ try{await api('export/registrar',{method:'POST',body:JSON.stringify({motivo:v.motivo,linhas:l.length,filtro:('orcamentos:'+(ORC_STATUS||'todos')+(ORC_BUSCA?' + busca':'')).slice(0,120),requestId:crypto.randomUUID()})});}
+ catch(e){toast(mensagemErro(e),'err');return;}
+ const cab=['id','user_id','numero','cliente_nome','valor_total','status','criado_em'];
+ const linhas=[cab.join(';')].concat(l.map(o=>cab.map(k=>celCsv(o[k])).join(';')));
+ const blob=new Blob(['﻿'+linhas.join('\r\n')],{type:'text/csv;charset=utf-8'});
+ const a=document.createElement('a'),href=URL.createObjectURL(blob);a.href=href;a.download='olli-orcamentos-'+new Date().toISOString().slice(0,10)+'.csv';document.body.append(a);a.click();a.remove();URL.revokeObjectURL(href);
+ toast('CSV baixado ('+l.length+' orçamentos).');
+}
+function fecharBusca(){const o=$('paletaOv');if(o)o.remove();PAL_IDX=0;}
+function abrirBusca(){
+ if(!ME||ME.aal!=='aal2'||!pode('admin'))return;
+ fecharBusca();
+ const ov=el('div',{className:'dlgOv',id:'paletaOv'});
+ const d=el('div',{className:'dlg paleta',role:'dialog','ariaModal':'true',ariaLabel:'Buscar contas e orçamentos'});
+ const inp=el('input',{className:'inp',id:'palInp',type:'search',placeholder:'Buscar contas e orçamentos',ariaLabel:'Buscar contas e orçamentos',autocomplete:'off'});
+ const lista=el('div',{id:'palLista'});
+ lista.append(estado('','Digite ao menos 2 letras.','A busca olha e-mail, nome, número e cliente do orçamento.'));
+ d.append(el('div',{className:'buscaPal'},ico('search'),inp),lista,el('div',{className:'palRod'},'Enter abre · Esc fecha · Ctrl+K'));
+ ov.append(d);
+ ov.addEventListener('mousedown',e=>{if(e.target===ov)fecharBusca();});
+ document.body.append(ov);
+ inp.focus();
+ inp.addEventListener('input',()=>{clearTimeout(PAL_T);PAL_T=setTimeout(()=>carregarPal(inp.value),180);});
+ inp.addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'){e.preventDefault();moverPal(1);}
+  else if(e.key==='ArrowUp'){e.preventDefault();moverPal(-1);}
+  else if(e.key==='Enter'){e.preventDefault();const b=document.querySelectorAll('#palLista button')[PAL_IDX];if(b)b.click();}
+  else if(e.key==='Escape'){e.preventDefault();fecharBusca();}
+ });
+}
+function moverPal(d){
+ const bs=[...document.querySelectorAll('#palLista button')];
+ if(!bs.length)return;
+ PAL_IDX=(PAL_IDX+d+bs.length)%bs.length;
+ bs.forEach((b,i)=>b.setAttribute('aria-selected',i===PAL_IDX?'true':'false'));
+ bs[PAL_IDX].scrollIntoView({block:'nearest'});
+}
+async function carregarPal(q){
+ const lista=$('palLista');if(!lista)return;
+ const t=String(q||'').trim();
+ PAL_IDX=0;
+ if(t.length<2){limpar(lista).append(estado('','Digite ao menos 2 letras.','A busca olha e-mail, nome, número e cliente do orçamento.'));return;}
+ limpar(lista).append(el('div',{className:'pad mut'},'Buscando…'));
+ try{
+  const j=await api('busca?q='+encodeURIComponent(t));
+  if(!$('palInp')||$('palInp').value.trim()!==t)return;
+  pintarPal(j);
+ }catch(e){if(e.status===401)return;if($('palLista'))limpar($('palLista')).append(estado('erro','A busca falhou.',mensagemErro(e)));}
+}
+function pintarPal(j){
+ const lista=$('palLista');if(!lista)return;limpar(lista);
+ const users=j.usuarios||[],orcs=j.orcamentos||[];
+ if(j.orcamentosEstado==='indisponivel')lista.append(estado('erro','Orçamentos indisponíveis agora.','As contas abaixo continuam valendo. Nada foi zerado.'));
+ if(!users.length&&!orcs.length){lista.append(estado('','Nada com esse texto.'));return;}
+ if(users.length){
+  lista.append(el('div',{className:'palGrp'},'Contas'));
+  users.forEach(h=>lista.append(el('button',{type:'button',className:'palHit',onclick:()=>irUsuario(h)},el('b',{},h.email||h.nome||'Conta'),el('span',{},[h.nome,h.empresa].filter(Boolean).join(' · ')||'sem nome'))));
+ }
+ if(orcs.length){
+  lista.append(el('div',{className:'palGrp'},'Orçamentos'));
+  orcs.forEach(o=>lista.append(el('button',{type:'button',className:'palHit',onclick:()=>irOrcamento(o)},el('b',{},'Nº '+(o.numero||'—')+(o.cliente_nome?' · '+o.cliente_nome:'')),el('span',{},(ROT_ORC[o.status]||o.status||'')+(o.valor_total!=null?' · '+fmtBRL(o.valor_total):'')))));
+ }
+ const primeiro=lista.querySelector('button');if(primeiro)primeiro.setAttribute('aria-selected','true');
+}
+function irUsuario(h){
+ fecharBusca();
+ const u=(USERS||[]).find(x=>x.id===h.id)||Object.assign({plano:null,planoOrigem:null,frequencia:'nunca',emailConfirmado:true,bloqueado:false,provedor:'email',criadoEm:'',ultimoUso:null,orcamentos:null,aprovados:null},h);
+ abrirUsuario(u);
+}
+function irOrcamento(o){fecharBusca();abrirOrcamento(o);}
 
 /* ── FUNIL ── */
 const ERRO_FUNIL={funil_sem_migration:'a migration do funil ainda não foi aplicada no banco.',funil_indisponivel:'o banco não respondeu.',funil_invalido:'o banco respondeu num formato inesperado.'};
@@ -1259,11 +1496,82 @@ $('scrim').onclick=fecharMenu;
 $('gavScrim').onclick=fecharGaveta;
 window.addEventListener('hashchange',()=>irPara((location.hash||'').slice(1)));
 document.addEventListener('keydown',e=>{
- if(e.key==='Escape'&&USER_ABERTO&&!document.querySelector('.dlgOv'))fecharGaveta();
- if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&ME&&ME.aal==='aal2'&&pode('admin')){e.preventDefault();location.hash='usuarios';setTimeout(()=>{const b=$('busca');if(b)b.focus();},40);}
+ if(e.key==='Escape'){
+  if($('paletaOv')){fecharBusca();return;}
+  if(USER_ABERTO&&!document.querySelector('.dlgOv'))fecharGaveta();
+ }
+ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&ME&&ME.aal==='aal2'&&pode('admin')){e.preventDefault();if($('paletaOv'))fecharBusca();else abrirBusca();}
 });
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ME&&TOKEN){renovar().then(st=>{if(st==='sem_sessao')telaLogin('Sua sessão terminou. Entre de novo.');});}});
+document.addEventListener('visibilitychange',()=>{if(CFG.previa)return;if(document.visibilityState==='visible'&&ME&&TOKEN){renovar().then(st=>{if(st==='sem_sessao')telaLogin('Sua sessão terminou. Entre de novo.');});}});
+const PREVIA_USERS=[
+ {id:'11111111-1111-4111-8111-111111111111',email:'fulano.ficticio@exemplo.invalid',nome:'FULANO FICTICIO',empresa:'OFICINA FICTICIA LTDA',cidade:'Cidade Exemplo/EX',segmento:'refrigeracao',whatsapp:'',provedor:'email',emailConfirmado:true,criadoEm:'2026-10-02T12:00:00Z',ultimoAcesso:'2026-11-04T12:00:00Z',bloqueado:false,interna:false,orcamentos:2,aprovados:1,faturamento:1111.11,plano:'pro',planoOrigem:'pagamento',frequencia:'ativo',ultimoUso:'2026-11-04T12:00:00Z',atividades30:4,diasAtivos30:3,logins:2,atividades:4},
+ {id:'22222222-2222-4222-8222-222222222222',email:'ciclana.ficticia@exemplo.invalid',nome:'CICLANA FICTICIA',empresa:'',cidade:'',segmento:'',whatsapp:'',provedor:'email',emailConfirmado:true,criadoEm:'2026-11-04T08:00:00Z',ultimoAcesso:'2026-11-04T08:00:00Z',bloqueado:false,interna:false,orcamentos:0,aprovados:0,faturamento:0,plano:'gratis',planoOrigem:'gratis',frequencia:'ativo',ultimoUso:'2026-11-04T08:00:00Z',atividades30:1,diasAtivos30:1,logins:1,atividades:1},
+ {id:'33333333-3333-4333-8333-333333333333',email:'beltrano.ficticio@exemplo.invalid',nome:'BELTRANO FICTICIO',empresa:'EMPRESA EXEMPLO',cidade:'Outra Cidade/EX',segmento:'eletrica',whatsapp:'',provedor:'google',emailConfirmado:true,criadoEm:'2026-09-01T12:00:00Z',ultimoAcesso:'2026-11-01T12:00:00Z',bloqueado:false,interna:false,orcamentos:1,aprovados:0,faturamento:0,plano:'empresa',planoOrigem:'pagamento',frequencia:'ativo',ultimoUso:'2026-11-01T12:00:00Z',atividades30:2,diasAtivos30:2,logins:1,atividades:2},
+ {id:'44444444-4444-4444-8444-444444444444',email:'interna.ficticia@exemplo.invalid',nome:'CONTA INTERNA FICTICIA',empresa:'EQUIPE FICTICIA',cidade:'',segmento:'',whatsapp:'',provedor:'email',emailConfirmado:true,criadoEm:'2026-01-01T12:00:00Z',ultimoAcesso:'2026-11-04T12:00:00Z',bloqueado:false,interna:true,orcamentos:9,aprovados:9,faturamento:9999,plano:'empresa',planoOrigem:'admin',frequencia:'frequente',ultimoUso:'2026-11-04T12:00:00Z',atividades30:20,diasAtivos30:10,logins:10,atividades:20}
+];
+const PREVIA_ORC=[
+ {id:'orc-ficticio-111',user_id:'11111111-1111-4111-8111-111111111111',numero:'111',cliente_nome:'CLIENTE FICTICIO SILVA',valor_total:1111.11,status:'aprovado',criado_em:'2026-11-02T12:00:00Z'},
+ {id:'orc-ficticio-222',user_id:'11111111-1111-4111-8111-111111111111',numero:'222',cliente_nome:'CLIENTE FICTICIO SOUZA',valor_total:222.22,status:'enviado',criado_em:'2026-11-03T12:00:00Z'},
+ {id:'orc-ficticio-333',user_id:'33333333-3333-4333-8333-333333333333',numero:'333',cliente_nome:'CLIENTE FICTICIO COSTA',valor_total:333.33,status:'rascunho',criado_em:'2026-10-20T12:00:00Z'}
+];
+const PREVIA_MET={
+ ok:true,escopo:'confirmado',contasInternas:1,internasLegiveis:true,
+ usuarios:3,ativos:3,novosHoje:1,novos7:1,novos30:2,
+ orcamentosEstado:'ok',orcamentos:3,aprovados:1,conversao:33,
+ clientes:4,agendamentos:2,faturamento:1111.11,ticket:1111.11,
+ spark:[0,1,0,0,1,0,2,0,1,0,0,1,2,1],
+ usando30:3,frequentes:0,nuncaUsaram:0,logins30:4,atividade30:7,atividadeLimitada:false,
+ dau:2,wau:3,mau:3,ativados:2,nuncaOrcaram:1,taxaAtivacao:67,
+ receita:{estado:'ok',pagantes:2,manuais:0,porPlano:{pro:1,empresa:1},mrrEstimado:138,emRisco:0,precoMensal:{pro:39,empresa:99}},
+ operacao:{
+  churn:{estado:'ok',contas:1,porPlano:{pro:1,empresa:0},janelaDias:30},
+  vencendo:{estado:'ok',contas:1,dias:7},
+  conversaoPorPlano:{estado:'ok',ativacao:'ok',pagos:2,taxaPago:67,planos:[
+   {plano:'gratis',contas:1,comOrcamento:0,taxaAtivacao:0},
+   {plano:'pro',contas:1,comOrcamento:1,taxaAtivacao:100},
+   {plano:'empresa',contas:1,comOrcamento:1,taxaAtivacao:100}
+  ]}
+ }
+};
+function previaApi(path){
+ const bruto=String(path||'');
+ const p=bruto.split('?')[0];
+ const qs=bruto.includes('?')?bruto.slice(bruto.indexOf('?')+1):'';
+ const q=(new URLSearchParams(qs).get('q')||'').trim().toLowerCase();
+ if(p==='me')return Promise.resolve({ok:true,user:ME});
+ if(p==='metrics')return Promise.resolve(PREVIA_MET);
+ if(p==='users')return Promise.resolve({ok:true,users:PREVIA_USERS,contasInternasLegiveis:true,fontes:{empresa:'ok',orcamentos:'ok',assinaturas:'ok'}});
+ if(p==='orcamentos'){const st=new URLSearchParams(qs).get('status')||'';return Promise.resolve({ok:true,estado:'ok',orcamentos:PREVIA_ORC.filter(o=>(!st||o.status===st)&&(!q||(String(o.numero)+' '+(o.cliente_nome||'')+' '+o.id).toLowerCase().includes(q)))});}
+ if(p==='busca'){
+  if(q.length<2)return Promise.resolve({ok:false,erro:'busca_curta'});
+  return Promise.resolve({ok:true,orcamentosEstado:'ok',usuarios:PREVIA_USERS.filter(u=>(u.email+' '+u.nome+' '+u.empresa).toLowerCase().includes(q)).slice(0,8),orcamentos:PREVIA_ORC.filter(o=>(String(o.numero)+' '+(o.cliente_nome||'')).toLowerCase().includes(q)).slice(0,8)});
+ }
+ if(p==='audit')return Promise.resolve({ok:true,auditoria:[{criado_em:'2026-11-04T15:00:00Z',acao:'usuarios_acao_lote',motivo:'FICTICIO: conferência de exemplo',actor_role:'owner',target_user_id:null}]});
+ if(p==='feedback')return Promise.resolve({ok:true,feedback:[]});
+ if(p==='creditos-troca')return Promise.resolve({ok:true,pedidos:[],mesesMax:3});
+ if(p==='export/registrar'||p==='users/lote')return Promise.resolve({ok:true,feitos:[],falhas:[]});
+ if(p==='user')return Promise.resolve({ok:true,entitlement:{plano:'pro',origem:'pagamento'},orcamentos:PREVIA_ORC.slice(0,2),clientes:[],agenda:[],recibos:[],assinatura:{plano:'pro',status:'active',current_period_end:'2026-12-01T00:00:00Z',mercadoPagoVinculado:true,stripeVinculado:false,playVinculado:false},creditos:[],saldoCreditos:111,podeCreditos:true,notas:[],usosIa:[],faturas:[],auditoria:[],atividade:[{evento:'orcamento_criado',plataforma:'web',criado_em:'2026-11-03T12:00:00Z'}],funil:{estado:'no_funil'}});
+ if(p==='aparelhos')return Promise.resolve({ok:true,aparelhos:[]});
+ if(p==='admins')return Promise.resolve({ok:true,admins:[],bootstrapEmail:'admin.ficticio@exemplo.invalid'});
+ if(p==='orgs')return Promise.resolve({ok:true,orgs:[]});
+ if(p==='funil')return Promise.resolve({ok:true,vazio:true,semanas:12,contasExcluidas:0,exclusoes:[]});
+ return Promise.resolve({ok:true});
+}
+async function entrarPrevia(){
+ TOKEN='previa-ficticia';
+ ME={id:'00000000-0000-4000-8000-00000000f1c7',email:'admin.ficticio@exemplo.invalid',papel:'owner',aal:'aal2',aalVia:'mfa'};
+ limpar($('quem')).append(el('b',{},ME.email),'owner · prévia fictícia');
+ $('telaLogin').classList.add('hidden');$('telaApp').classList.remove('hidden');
+ montarNav();
+ if(!$('faixaPrevia')){
+  const f=el('div',{className:'faixaPrevia',id:'faixaPrevia'},'PRÉVIA · DADOS FICTÍCIOS · Fulano, Ciclana e valores de exemplo. Isto não é o banco.');
+  $('main').insertBefore(f,$('gateMfa'));
+ }
+ await liberarDados();
+ if((location.hash||'')==='#busca'){abrirBusca();const i=$('palInp');if(i){i.value='fict';carregarPal('fict');}}
+}
 (async()=>{
+ if(CFG.previa){try{await entrarPrevia();}catch(e){telaLogin('A prévia fictícia não abriu.');}return;}
  const st=await renovar();
  if(st==='ok'){try{await entrar();}catch(e){telaLogin('Não consegui abrir o painel. Entre de novo.');}}
  else telaLogin(st==='indisponivel'?'O servidor de login não respondeu. Tente de novo em instantes.':'');
@@ -1276,6 +1584,7 @@ export function adminHtml(env, nonce, opts = {}) {
     anon: env.SUPABASE_ANON_KEY || '',
     trocaMax: Number(opts.trocaMesesMax) || 3,
     creditosMax: Number(opts.creditosAjusteMax) || 5000,
+    previa: opts.previa === true,
   }).replace(/</g, '\\u003c');
   return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>' +
     '<meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="robots" content="noindex,nofollow"/>' +
