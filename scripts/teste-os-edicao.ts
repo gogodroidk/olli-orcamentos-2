@@ -205,6 +205,14 @@ ok('celular e painel têm o botão Editar ordem ligado ao serviço', () => {
   }
 });
 
+ok('painel desktop não mostra o dia-sentinela como 09:00', () => {
+  const src = ler('../src/screens/desktop/PainelOS.tsx');
+  assert.ok(src.includes('ehDiaSemHora'), 'PainelOS');
+  assert.match(src, /ehDiaSemHora\(ordem\.dataAgendada\) \? formatDate\(ordem\.dataAgendada\) : formatDateTime/);
+  assert.match(src, /if \(!iso \|\| ehDiaSemHora\(iso\)\) return ''/);
+  assert.match(src, /ehDiaSemHora\(base\.dataAgendada\) \? base\.dataAgendada : undefined/);
+});
+
 ok('criar OS manual usa o formulário com rascunho os-nova', () => {
   for (const arq of ['../src/screens/OrdemServicoScreen.tsx', '../src/screens/desktop/PainelNovaOS.tsx']) {
     const src = ler(arq);

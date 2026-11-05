@@ -19,7 +19,8 @@ import { listarMembros, rotuloPapel, type MembroEquipe } from '../../services/eq
 import { STATUS_OS_LABELS, STATUS_OS_CORES } from '../../types';
 import type { OrdemServico, StatusOS, ItemChecklist } from '../../types';
 import { generateId } from '../../utils/id';
-import { formatDateTime } from '../../utils/date';
+import { formatDate, formatDateTime } from '../../utils/date';
+import { ehDiaSemHora } from '../../utils/ordemServicoDoOrcamento';
 import type { PatchDadosOS } from '../../utils/ordemServicoEdicao';
 import { avisar } from './dialogo';
 
@@ -31,9 +32,11 @@ function formatarValor(v?: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-/** ISO → valor aceito por um `<input type="datetime-local">` (sem segundos/Z). */
+/** ISO → valor aceito por um `<input type="datetime-local">` (sem segundos/Z).
+ * Dia-sentinela (12:00:01Z) volta vazio: em Brasília isso é 09:00:01, e o
+ * input corta o segundo — salvar de novo gravaria 09:00 de verdade. */
 function isoParaDatetimeLocal(iso?: string): string {
-  if (!iso) return '';
+  if (!iso || ehDiaSemHora(iso)) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const p = (n: number) => String(n).padStart(2, '0');
@@ -190,10 +193,14 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
     if (!ordem) return;
     setSalvandoAgenda(true);
     try {
-      const iso = dataAgendaForm ? new Date(dataAgendaForm).toISOString() : undefined;
       // Lê fresco antes de escrever (mesmo padrão do patchOrdem do serviço):
       // evita sobrescrever com estado React defasado se o checklist mudou.
       const base = (await getOrdem(ordem.id)) ?? ordem;
+      // Campo vazio apaga a hora. No dia-sentinela o campo nasce vazio de propósito:
+      // salvar sem escolher horário mantém "só o dia", não inventa 09:00.
+      const iso = dataAgendaForm
+        ? new Date(dataAgendaForm).toISOString()
+        : (ehDiaSemHora(base.dataAgendada) ? base.dataAgendada : undefined);
       const atualizada: OrdemServico = { ...base, dataAgendada: iso, atualizadoEm: new Date().toISOString() };
       await saveOrdemServico(atualizada);
       setOrdem(atualizada);
@@ -327,13 +334,20 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                 {editandoAgenda ? (
                   <View style={{ marginTop: 8, gap: 10 }}>
                     <CampoDataHora valor={dataAgendaForm} aoMudar={setDataAgendaForm} />
+                    {ehDiaSemHora(ordem.dataAgendada) && !dataAgendaForm ? (
+                      <Text style={styles.descricao}>Só o dia, sem hora. Escolha um horário para gravar um.</Text>
+                    ) : null}
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                       <OlliButton label="Cancelar" variant="ghost" size="sm" onPress={() => setEditandoAgenda(false)} disabled={salvandoAgenda} />
                       <OlliButton label="Salvar agendamento" variant="gradient" size="sm" loading={salvandoAgenda} onPress={salvarAgenda} />
                     </View>
                   </View>
                 ) : (
-                  <Text style={styles.valorGrande}>{ordem.dataAgendada ? formatDateTime(ordem.dataAgendada) : 'Sem data agendada'}</Text>
+                  <Text style={styles.valorGrande}>
+                    {ordem.dataAgendada
+                      ? (ehDiaSemHora(ordem.dataAgendada) ? formatDate(ordem.dataAgendada) : formatDateTime(ordem.dataAgendada))
+                      : 'Sem data agendada'}
+                  </Text>
                 )}
               </View>
               </>
