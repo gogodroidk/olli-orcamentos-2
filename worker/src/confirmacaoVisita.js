@@ -29,6 +29,7 @@
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
 import { FONTES_CSS } from './fontesProprias.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
+import { corMarcaNoPapel } from '../../src/utils/coresMarca.ts';
 
 const ACCENT = '#0B6FCE';
 const RESPOSTA_MAX_BYTES = 1024;
@@ -55,10 +56,6 @@ function esc(v) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function corSegura(v) {
-  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : ACCENT;
 }
 
 function logoSegura(prestador) {
@@ -242,7 +239,8 @@ export async function responderConfirmacao(token, env, request) {
 
 // ─── páginas ─────────────────────────────────────────────────────────────────
 function shell(inner, accentRaw) {
-  const accent = corSegura(accentRaw);
+  // Cabeçalho com texto branco. Marca clara escurece só até 4,5:1; #123ABC fica.
+  const accent = corMarcaNoPapel(accentRaw, ACCENT);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>

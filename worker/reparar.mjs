@@ -10,18 +10,35 @@
  * Ordem que importa: `wrangler deploy` PRIMEIRO (ele apaga os secrets), secrets
  * DEPOIS. Rode a partir de worker/:  node reparar.mjs  [--dry-run] [--forcar]
  *
+ * D-0636: sem --dry-run, o deploy só segue na janela (terça e sexta, 05:30–07:30
+ * America/Sao_Paulo, changelog em OLLI_CHANGELOG) ou com hotfix (OLLI_HOTFIX=1
+ * e motivo com pix, login, dados ou seguranca). --forcar não fura a janela.
+ * --dry-run não publica e não consulta a janela. O portão roda antes do cofre.
+ *
  * Nada de segredo é impresso. Lê o cofre e a Management API do Supabase.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { avaliarJanela } from '../scripts/janela-release.mjs';
 
 // Cofre local (ARSENAL). OLLI_COFRE sobrepõe; o padrão segue a pasta do usuário, então vale no
 // Linux (/home/igor/...) e no Windows antigo (C:\\Users\\ADMIN\\...) sem caminho fixo.
 // --dry-run: só confere o cofre e lista os secrets que seriam restaurados (sem deploy, sem PUT).
 const COFRE = process.env.OLLI_COFRE || join(homedir(), 'Desktop', 'CONFIG CLAUDE', 'credenciais-locais.env');
 const DRY_RUN = process.argv.includes('--dry-run');
+if (!DRY_RUN) {
+  const decisao = avaliarJanela({
+    agora: new Date(),
+    alvo: 'producao',
+    hotfix: process.env.OLLI_HOTFIX,
+    motivo: process.env.OLLI_HOTFIX_MOTIVO || '',
+    changelog: process.env.OLLI_CHANGELOG || '',
+  });
+  console.log(decisao.mensagem);
+  if (!decisao.permitido) process.exit(2);
+}
 if (!existsSync(COFRE)) {
   console.error(`Cofre não encontrado: ${COFRE} (defina OLLI_COFRE). Nada foi feito.`);
   process.exit(1);

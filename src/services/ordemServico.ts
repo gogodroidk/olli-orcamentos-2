@@ -5,7 +5,7 @@
  * Local-first: toda leitura/escrita passa pelo SQLite (database.ts), que já espelha
  * na nuvem (public.ordens_servico) em background. Aqui vive só a REGRA de negócio:
  * numeração sequencial (OS-0001), geração de OS a partir de um orçamento aprovado,
- * criação manual e as mutações pontuais (status/técnico/checklist/foto).
+ * criação manual e as mutações pontuais (dados da OS, status, técnico, checklist, foto).
  *
  * Nenhuma coluna fora do CONTRATO é inventada. Ids via generateId() (UUID estável
  * entre aparelhos). Todas as escritas atualizam `atualizadoEm`.
@@ -25,6 +25,13 @@ import { verticaisEfetivos } from './verticalSegmento';
 import { generateId } from '../utils/id';
 import { concluidoEmDaTransicao } from '../utils/ordemServicoStatus';
 import { montarOSDoOrcamento, proximoNumeroOSDasFontes } from '../utils/ordemServicoDoOrcamento';
+import {
+  LIMITE_CLIENTE,
+  LIMITE_DESCRICAO,
+  LIMITE_OBSERVACOES,
+  LIMITE_TITULO,
+  type PatchDadosOS,
+} from '../utils/ordemServicoEdicao';
 import type { OrdemServico, StatusOS, ItemChecklist, MaterialUsado } from '../types';
 import type { EncerramentoOS } from '../utils/encerramentoOS';
 import { lerMateriais } from '../utils/materiaisOS';
@@ -207,6 +214,40 @@ async function patchOrdem(id: string, patch: Partial<OrdemServico>): Promise<Ord
   };
   await saveOrdemServico(atualizada);
   return atualizada;
+}
+
+/**
+ * Edita os dados da OS depois de criada: cliente, título, descrição, observações,
+ * dia/hora e valor. Não mexe no número, no orçamento de origem, no checklist,
+ * nas fotos, no técnico, na garantia, no encerramento nem nos materiais.
+ * Campo omitido ou vazio apaga o que estava gravado.
+ */
+export async function editarDadosOS(id: string, dados: PatchDadosOS): Promise<OrdemServico> {
+  const clienteNome = (dados.clienteNome ?? '').trim();
+  const titulo = (dados.titulo ?? '').trim();
+  if (!clienteNome) throw new Error('Informe o nome do cliente.');
+  if (!titulo) throw new Error('Informe o título.');
+  if (clienteNome.length > LIMITE_CLIENTE) throw new Error('Nome do cliente longo demais.');
+  if (titulo.length > LIMITE_TITULO) throw new Error('Título longo demais.');
+  const descricao = dados.descricao?.trim() || undefined;
+  const observacoes = dados.observacoes?.trim() || undefined;
+  if ((descricao?.length ?? 0) > LIMITE_DESCRICAO) throw new Error('Descrição longa demais.');
+  if ((observacoes?.length ?? 0) > LIMITE_OBSERVACOES) throw new Error('Observações longas demais.');
+  if (dados.dataAgendada !== undefined && !Number.isFinite(Date.parse(dados.dataAgendada))) {
+    throw new Error('Data da visita inválida.');
+  }
+  if (dados.valor !== undefined && !(typeof dados.valor === 'number' && Number.isFinite(dados.valor) && dados.valor > 0)) {
+    throw new Error('Valor inválido.');
+  }
+  return patchOrdem(id, {
+    clienteId: dados.clienteId?.trim() || undefined,
+    clienteNome,
+    titulo,
+    descricao,
+    observacoes,
+    dataAgendada: dados.dataAgendada,
+    valor: dados.valor,
+  });
 }
 
 /**

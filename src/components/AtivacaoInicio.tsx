@@ -17,9 +17,9 @@ import { recarregarVerticais } from '../hooks/useVerticais';
 import { usePermissao } from '../hooks/usePermissao';
 import { useSyncInicial } from '../hooks/useSyncInicial';
 import {
-  AVISO_EXEMPLO, STATUS_JA_ENVIADO, TITULO_PRIMEIRO_ORCAMENTO,
-  calcularChecklistAtivacao, contaMadura, exemploOrcamentoPara, fatosDaEmpresa, itensPrefillDoExemplo,
-  mostrarCartaoPrimeiroOrcamento, totalDoExemplo, verticalDoExemplo,
+  ATRASO_ESQUELETO_MS, AVISO_EXEMPLO, STATUS_JA_ENVIADO, TITULO_PRIMEIRO_ORCAMENTO,
+  calcularChecklistAtivacao, contaMadura, exemploOrcamentoPara, fatosDaEmpresa, fraseDoPrimeiroCliente, itensPrefillDoExemplo,
+  mostrarCartaoPrimeiroOrcamento, mostrarEsqueletoAtivacao, totalDoExemplo, verticalDoExemplo,
   type ChecklistAtivacao, type PassoAtivacaoId,
 } from '../services/ativacao';
 import { VERTICAIS, VERTICAL_GERAL, ferramentasSugeridas, type VerticalId } from '../services/verticais';
@@ -59,12 +59,13 @@ type Leitura =
  *     ofício definido, a pergunta é de 1 toque e a escolha fica salva.
  *  2. Checklist de 4 passos com progresso — visível até concluir; some depois.
  *
- * Regra de ouro (3 estados): enquanto lê ou se a leitura falhar, NÃO desenha nada.
- * E o SQLite vazio antes do primeiro download da nuvem (`useSyncInicial` ainda
- * 'baixando') não é "conta nova": mostra um esqueleto "Baixando seus dados da
- * nuvem…" no lugar do convite. Download que falhou também não desenha nada (o
- * Início oferece "tentar de novo"). Conta que já trabalha (3+ orçamentos e 1
- * recibo) não vê o checklist (`contaMadura`).
+ * Regra de ouro: erro de leitura ou download que falhou NÃO desenha nada (o
+ * Início oferece "tentar de novo"). Enquanto a leitura local ou o download
+ * ainda não fecharam, e a conta ainda não é madura, o convite não aparece:
+ * depois de ATRASO_ESQUELETO_MS a tela reserva o lugar com o esqueleto no
+ * formato do cartão, sem spinner. O checklist não entra nesse esqueleto.
+ * Conta que já trabalha (3+ orçamentos e 1 recibo) não vê o checklist
+ * (`contaMadura`).
  * Este bloco é um empurrão, não um dado — escondê-lo num erro não custa nada;
  * mostrar "crie o primeiro orçamento" para quem já tem 40 (erro virando vazio)
  * custaria a confiança do dono. A regra mora em services/ativacao.ts (testada).
@@ -79,6 +80,7 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
   const styles = useEstilos(criarEstilos);
   const [leitura, setLeitura] = useState<Leitura>({ estado: 'carregando' });
   const [salvandoOficio, setSalvandoOficio] = useState(false);
+  const [passouDoAtraso, setPassouDoAtraso] = useState(false);
   const { pode, carregando: papelCarregando } = usePermissao();
   const ehDono = !papelCarregando && pode('gerenciar_faturamento');
   const { estado: download } = useSyncInicial();
@@ -172,25 +174,43 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
   // Telemetria do funil: o cartão "Seu primeiro orçamento" foi de fato desenhado.
   const cartaoVisivel = ehDono && leitura.estado === 'pronto' && download === 'pronto'
     && mostrarCartaoPrimeiroOrcamento(leitura.totalOrcamentos, true);
+  const madura = leitura.estado === 'pronto' && contaMadura(leitura.totalOrcamentos, leitura.temRecibo);
+  const erro = leitura.estado === 'erro' || download === 'falhou';
+  const aguardando = leitura.estado === 'carregando' || download !== 'pronto';
+  const reservaEsqueleto = mostrarEsqueletoAtivacao({ ehDono, erro, madura, aguardando });
+  useEffect(() => {
+    if (!reservaEsqueleto) {
+      setPassouDoAtraso(false);
+      return;
+    }
+    const timer = setTimeout(() => setPassouDoAtraso(true), ATRASO_ESQUELETO_MS);
+    return () => clearTimeout(timer);
+  }, [reservaEsqueleto]);
   useEffect(() => {
     if (cartaoVisivel) void registrarAtividadeUsuario('ativacao_card_visto');
   }, [cartaoVisivel]);
 
-  if (!ehDono || leitura.estado !== 'pronto') return null;
-  const { totalOrcamentos, temRecibo, vertical, checklist } = leitura;
-  if (download !== 'pronto') {
-    // O local só pode CRESCER com o download: quem já é conta madura aqui
-    // continua madura depois — não há o que esperar. O resto espera o download.
-    if (contaMadura(totalOrcamentos, temRecibo) || download === 'falhou') return null;
+  if (!ehDono || erro) return null;
+  if (reservaEsqueleto) {
+    if (!passouDoAtraso) return null;
     return (
-      <View style={[styles.card, style]} accessibilityRole="progressbar" accessibilityLabel="Baixando seus dados da nuvem">
-        <Text style={styles.texto}>Baixando seus dados da nuvem…</Text>
-        <OlliSkeleton width="70%" height={15} />
-        <OlliSkeleton width="100%" height={6} radius={3} />
-        <OlliSkeleton width="55%" height={12} />
+      <View style={[styles.card, style]} accessibilityRole="progressbar" accessibilityLabel="Carregando o início">
+        <View style={styles.head}>
+          <OlliSkeleton width={32} height={32} radius={16} />
+          <View style={styles.textos}>
+            <OlliSkeleton width="68%" height={15} />
+            <OlliSkeleton width="100%" height={13} />
+            <OlliSkeleton width="92%" height={13} />
+          </View>
+        </View>
+        <OlliSkeleton width="100%" height={50} radius={BorderRadius.lg} />
+        <OlliSkeleton width="100%" height={12} />
+        <OlliSkeleton width="70%" height={12} />
       </View>
     );
   }
+  if (leitura.estado !== 'pronto' || download !== 'pronto') return null;
+  const { totalOrcamentos, vertical, checklist } = leitura;
   const mostrarPrimeiro = mostrarCartaoPrimeiroOrcamento(totalOrcamentos, true);
   if (!mostrarPrimeiro && checklist.estado !== 'pendente') return null;
   const exemplo = exemploOrcamentoPara(vertical);
@@ -208,7 +228,7 @@ export function AtivacaoInicio({ style }: { style?: ViewStyle }) {
                 <Text style={styles.titulo} accessibilityRole="header">{TITULO_PRIMEIRO_ORCAMENTO}</Text>
                 <Text style={styles.texto}>
                   {exemplo
-                    ? `Preparamos um exemplo de ${exemplo.titulo.toLowerCase()} (${formatCurrency(totalDoExemplo(exemplo))}). Troque o cliente e os valores pelos seus e envie.`
+                    ? fraseDoPrimeiroCliente(exemplo.titulo.toLowerCase(), formatCurrency(totalDoExemplo(exemplo)))
                     : 'Qual é o seu ofício? Com um toque, preparamos um orçamento de exemplo do seu serviço.'}
                 </Text>
               </View>

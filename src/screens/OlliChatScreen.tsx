@@ -30,8 +30,18 @@ import { SinalizarIA } from '../components/SinalizarIA';
 import { generateId } from '../utils/id';
 import { goBackOrHome } from '../navigation/safeBack';
 import { RootStackParamList } from '../navigation/AppNavigator';
+import { ChatHistoricoPainel } from '../components/ChatHistoricoPainel';
+import { MarkdownChat } from '../components/MarkdownChat';
 import { CHAT_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
+import {
+  apagarConversa,
+  atualizarConversa,
+  lerEstadoChat,
+  planoDeRevelacao,
+  type ConversaGuardada,
+  type MensagemGuardada,
+} from '../utils/chatUi';
 import { track, Eventos } from '../services/analytics';
 import { IA_USOS_GRATIS_MES } from '../services/planos';
 import {
@@ -53,6 +63,8 @@ interface Bolha {
   falhou?: boolean;
   /** Fala montada no aparelho (abertura do caso do Diagnóstico) — não é IA. */
   local?: boolean;
+  /** Enquanto a resposta já recebida ainda está sendo revelada na tela. */
+  visivelAte?: number;
 }
 
 /** Depois de quantos segundos de "digitando" o botão "Cancelar" aparece. */
@@ -70,6 +82,13 @@ const SAUDACAO: Bolha = {
   role: 'assistant',
   texto: 'Oi! Eu sou a OLLI. Posso te ajudar com diagnóstico, preços, dúvidas técnicas e dicas pro seu dia. O que você precisa?',
 };
+
+function paraGuardar(b: Bolha): MensagemGuardada {
+  const mensagem: MensagemGuardada = { id: b.id, role: b.role, texto: b.texto };
+  if (b.falhou) mensagem.falhou = true;
+  if (b.local) mensagem.local = true;
+  return mensagem;
+}
 
 export default function OlliChatScreen() {
   const nav = useNavigation<Nav>();
@@ -93,34 +112,52 @@ export default function OlliChatScreen() {
   // Caso aberto pela tela Diagnóstico: vai em cada pergunta (modo consulta)
   // até o técnico encerrar o caso ou limpar a conversa. Só em memória.
   const [casoDiag, setCasoDiag] = useState<ContextoDiagnostico | null>(null);
+  const [ativaId, setAtivaId] = useState('');
+  const [conversas, setConversas] = useState<ConversaGuardada[]>([]);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
+  const reduzirMovimento = useReducedMotion();
   const scrollRef = useRef<ScrollView>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelarTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revelacaoRef = useRef(0);
+  const revelacaoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const conversasRef = useRef<ConversaGuardada[]>([]);
+  const reduzirRef = useRef(reduzirMovimento);
+  reduzirRef.current = reduzirMovimento;
+  conversasRef.current = conversas;
   // Reutilizada no retry de rede: o mesmo trabalho nunca pode cobrar duas vezes.
   const creditoRefRef = useRef<string | null>(null);
+  // Trocar ou apagar a conversa invalida a resposta que ainda está no ar.
+  const geracaoChatRef = useRef(0);
 
   // aborta requisição pendente e limpa timers ao desmontar a tela
   useEffect(() => {
     return () => {
       if (cancelarTimerRef.current) clearTimeout(cancelarTimerRef.current);
+      if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
       abortRef.current?.abort();
     };
   }, []);
 
-  // carrega histórico persistido
+  // carrega histórico persistido (array antigo vira uma conversa; formato novo traz a lista)
   useEffect(() => {
     let vivo = true;
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(CHAT_KEY);
-        if (vivo && raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setBolhas(parsed.filter((b: any) => b && (b.role === 'user' || b.role === 'assistant') && typeof b.texto === 'string'));
-          }
+        if (!vivo) return;
+        const estado = lerEstadoChat(raw);
+        const id = estado.ativaId || generateId();
+        setAtivaId(id);
+        setConversas(estado.conversas);
+        conversasRef.current = estado.conversas;
+        if (estado.ativaId) {
+          const ativa = estado.conversas.find((c) => c.id === estado.ativaId);
+          if (ativa && ativa.mensagens.length > 0) setBolhas(ativa.mensagens);
         }
       } catch {
         // histórico inválido: começa do zero, sem quebrar
+        if (vivo) setAtivaId(generateId());
       } finally {
         if (vivo) setCarregado(true);
       }
@@ -128,14 +165,21 @@ export default function OlliChatScreen() {
     return () => { vivo = false; };
   }, []);
 
-  // persiste a cada mudança (depois do 1º load, para não sobrescrever com o default)
+  // persiste a conversa ativa e a lista neste aparelho (depois do 1º load)
   useEffect(() => {
-    if (!carregado) return;
-    AsyncStorage.setItem(CHAT_KEY, JSON.stringify(bolhas.slice(-60))).catch(() => {});
-  }, [bolhas, carregado]);
+    if (!carregado || !ativaId) return;
+    const mensagens = bolhas.slice(-60).map(paraGuardar);
+    const proximo = atualizarConversa(
+      { ativaId, conversas: conversasRef.current },
+      { id: ativaId, titulo: '', atualizadoEm: Date.now(), mensagens },
+    );
+    conversasRef.current = proximo.conversas;
+    setConversas(proximo.conversas);
+    AsyncStorage.setItem(CHAT_KEY, JSON.stringify(proximo)).catch(() => {});
+  }, [bolhas, carregado, ativaId]);
 
   const scrollToEnd = useCallback(() => {
-    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: !reduzirRef.current }));
   }, []);
 
   useEffect(() => { scrollToEnd(); }, [bolhas, digitando, scrollToEnd]);
@@ -146,6 +190,10 @@ export default function OlliChatScreen() {
     opcoesCredito?: { confirmarCredito: true; creditoRef: string },
     modo: ModoChat = 'consulta',
   ) => {
+    const geracao = geracaoChatRef.current;
+    revelacaoRef.current += 1;
+    if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
+    setBolhas(prev => prev.map(b => (b.visivelAte != null ? { ...b, visivelAte: undefined } : b)));
     setDigitando(true);
     setPodeCancelar(false);
 
@@ -165,6 +213,7 @@ export default function OlliChatScreen() {
         modo,
         contextoDiagnostico: modo === 'consulta' ? casoDiag : null,
       });
+      if (geracao !== geracaoChatRef.current) return;
       if (res.semCreditos) {
         // O servidor — não o contador local — decidiu que a cota acabou ou que
         // não há saldo. Não poluímos o histórico com uma falsa "falha de IA":
@@ -179,7 +228,29 @@ export default function OlliChatScreen() {
         return;
       }
 
-      setBolhas(prev => [...prev, { id: generateId(), role: 'assistant', texto: res.resposta, falhou: !res.ok }]);
+      const idResposta = generateId();
+      const plano = res.ok ? planoDeRevelacao(res.resposta, reduzirRef.current) : { cortes: [res.resposta.length], intervaloMs: 0 };
+      if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
+      const tokenRevelacao = ++revelacaoRef.current;
+      setBolhas(prev => [...prev, {
+        id: idResposta,
+        role: 'assistant',
+        texto: res.resposta,
+        falhou: !res.ok,
+        visivelAte: plano.cortes.length > 1 ? plano.cortes[0] : undefined,
+      }]);
+      if (plano.cortes.length > 1) {
+        let passo = 1;
+        const revelar = () => {
+          if (revelacaoRef.current !== tokenRevelacao) return;
+          const corte = plano.cortes[passo] ?? res.resposta.length;
+          const ultimo = passo >= plano.cortes.length - 1;
+          setBolhas(prev => prev.map(b => b.id === idResposta ? { ...b, visivelAte: ultimo ? undefined : corte } : b));
+          passo += 1;
+          if (!ultimo) revelacaoTimerRef.current = setTimeout(revelar, plano.intervaloMs);
+        };
+        revelacaoTimerRef.current = setTimeout(revelar, plano.intervaloMs);
+      }
       if (res.rascunho) setRascunhoAcao(res.rascunho);
       if (res.ok) {
         setPendenciaCredito(null);
@@ -230,9 +301,17 @@ export default function OlliChatScreen() {
     await chamarIA(pendenciaCredito, { confirmarCredito: true, creditoRef }, modoChat);
   }, [pendenciaCredito, digitando, saldoCreditos, irParaPlanos, chamarIA, modoChat]);
 
+  const completarRevelacao = useCallback(() => {
+    revelacaoRef.current += 1;
+    if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
+    setBolhas(prev => prev.map(b => (b.visivelAte != null ? { ...b, visivelAte: undefined } : b)));
+  }, []);
+
   const enviar = useCallback(async (mensagem?: string) => {
     const conteudo = (mensagem ?? texto).trim();
-    if (!conteudo || digitando) return;
+    if (!conteudo || digitando || !carregado) return;
+    revelacaoRef.current += 1;
+    if (revelacaoTimerRef.current) clearTimeout(revelacaoTimerRef.current);
     vibrar('selecao');
 
     // Nova pergunta = novo trabalho. Qualquer consentimento/referência anterior
@@ -242,11 +321,11 @@ export default function OlliChatScreen() {
     creditoRefRef.current = null;
 
     const userBolha: Bolha = { id: generateId(), role: 'user', texto: conteudo };
-    const proximas = [...bolhas, userBolha];
+    const proximas = [...bolhas.map(b => (b.visivelAte != null ? { ...b, visivelAte: undefined } : b)), userBolha];
     setBolhas(proximas);
     setTexto('');
     await chamarIA(proximas, undefined, modoChat);
-  }, [texto, bolhas, digitando, chamarIA, modoChat]);
+  }, [texto, bolhas, digitando, carregado, chamarIA, modoChat]);
 
   const cancelarEnvio = useCallback(() => {
     vibrar('selecao');
@@ -272,14 +351,54 @@ export default function OlliChatScreen() {
 
   const limpar = useCallback(() => {
     vibrar('selecao');
+    geracaoChatRef.current += 1;
+    completarRevelacao();
+    abortRef.current?.abort();
+    const id = generateId();
+    setAtivaId(id);
     setBolhas([SAUDACAO]);
     setPendenciaCredito(null);
     setSaldoCreditos(undefined);
     creditoRefRef.current = null;
     setRascunhoAcao(null);
     setCasoDiag(null);
-    AsyncStorage.removeItem(CHAT_KEY).catch(() => {});
-  }, []);
+    setHistoricoAberto(false);
+  }, [completarRevelacao]);
+
+  const abrirConversa = useCallback((id: string) => {
+    const alvo = conversasRef.current.find((c) => c.id === id);
+    if (!alvo) return;
+    vibrar('selecao');
+    geracaoChatRef.current += 1;
+    completarRevelacao();
+    abortRef.current?.abort();
+    creditoRefRef.current = null;
+    setAtivaId(id);
+    setBolhas(alvo.mensagens);
+    setPendenciaCredito(null);
+    setRascunhoAcao(null);
+    setCasoDiag(null);
+    setHistoricoAberto(false);
+  }, [completarRevelacao]);
+
+  const apagarConversaLocal = useCallback((id: string) => {
+    vibrar('selecao');
+    const proximo = apagarConversa({ ativaId, conversas: conversasRef.current }, id);
+    conversasRef.current = proximo.conversas;
+    setConversas(proximo.conversas);
+    AsyncStorage.setItem(CHAT_KEY, JSON.stringify({ ...proximo, ativaId: id === ativaId ? '' : proximo.ativaId })).catch(() => {});
+    if (id === ativaId) {
+      geracaoChatRef.current += 1;
+      completarRevelacao();
+      abortRef.current?.abort();
+      creditoRefRef.current = null;
+      setPendenciaCredito(null);
+      setAtivaId(generateId());
+      setBolhas([SAUDACAO]);
+      setCasoDiag(null);
+      setRascunhoAcao(null);
+    }
+  }, [ativaId, completarRevelacao]);
 
   const executarAcao = useCallback(async (operacao: 'confirmar' | 'cancelar' | 'reverter') => {
     if (!rascunhoAcao || processandoAcao) return;
@@ -316,7 +435,10 @@ export default function OlliChatScreen() {
     });
   }, [nav]);
 
-  const mostrarSugestoes = bolhas.length <= 1 && !digitando;
+  const mostrarSugestoes = carregado && bolhas.length <= 1 && !digitando;
+  const revelandoAgora = bolhas.some((b) => b.visivelAte != null);
+  const envioBloqueado = !carregado || (!digitando && !texto.trim() && !revelandoAgora);
+  const iconeEnviarAtivo = !envioBloqueado && (digitando || Boolean(texto.trim()) || revelandoAgora);
 
   return (
     <KeyboardAvoidingView
@@ -347,8 +469,11 @@ export default function OlliChatScreen() {
             >
               <MaterialCommunityIcons name={modoChat === 'consulta' ? 'magnify' : 'pencil-outline'} size={22} color={gradientes.sobreHeader} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={limpar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Limpar conversa">
-              <MaterialCommunityIcons name="broom" size={22} color={gradientes.sobreHeader} />
+            <TouchableOpacity onPress={() => setHistoricoAberto(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Histórico de conversas">
+              <MaterialCommunityIcons name="history" size={22} color={gradientes.sobreHeader} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={limpar} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel="Nova conversa">
+              <MaterialCommunityIcons name="square-edit-outline" size={22} color={gradientes.sobreHeader} />
             </TouchableOpacity>
           </View>
         }
@@ -366,12 +491,13 @@ export default function OlliChatScreen() {
             <Balao
               role={b.role}
               texto={b.texto}
+              visivelAte={b.visivelAte}
               falhou={b.falhou}
               onTentarDeNovo={() => tentarDeNovo(b.id)}
-              onTransformarEmOrcamento={b.id !== 'olli-hello' && !b.local ? () => criarOrcamentoDaResposta(b.texto) : undefined}
+              onTransformarEmOrcamento={b.id !== 'olli-hello' && !b.local && b.visivelAte == null ? () => criarOrcamentoDaResposta(b.texto) : undefined}
               // A saudação fixa e a abertura do caso não são conteúdo gerado —
               // não tem o que revisar nelas.
-              podeSinalizar={b.id !== 'olli-hello' && !b.local}
+              podeSinalizar={b.id !== 'olli-hello' && !b.local && b.visivelAte == null}
               pedido={pedidoAntesDe(bolhas, i)}
             />
           </AnimatedEntrance>
@@ -477,28 +603,45 @@ export default function OlliChatScreen() {
         </View>
       )}
       <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-        <View style={styles.inputWrap}>
+        <View style={styles.composer}>
           <TextInput
             style={styles.input}
             value={texto}
             onChangeText={setTexto}
-            placeholder="Escreva sua mensagem…"
+            placeholder="Mensagem para a OLLI"
             placeholderTextColor={cores.onSurfaceMuted}
             multiline
             onSubmitEditing={() => enviar()}
             blurOnSubmit={false}
           />
+          <TouchableOpacity
+            style={[styles.sendBtn, envioBloqueado && styles.sendBtnDisabled]}
+            onPress={() => {
+              if (digitando) cancelarEnvio();
+              else if (revelandoAgora) completarRevelacao();
+              else enviar();
+            }}
+            disabled={envioBloqueado}
+            activeOpacity={0.85}
+            accessibilityLabel={digitando || revelandoAgora ? 'Parar resposta' : 'Enviar mensagem'}
+          >
+            <MaterialCommunityIcons
+              name={digitando || revelandoAgora ? 'stop' : 'send'}
+              size={18}
+              color={iconeEnviarAtivo ? textoSobre(cores.primary) : cores.onSurfaceMuted}
+            />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.sendBtn, (!texto.trim() || digitando) && styles.sendBtnDisabled]}
-          onPress={() => enviar()}
-          disabled={!texto.trim() || digitando}
-          activeOpacity={0.85}
-          accessibilityLabel="Enviar mensagem"
-        >
-          <MaterialCommunityIcons name="send" size={20} color={textoSobre(cores.primary)} />
-        </TouchableOpacity>
       </View>
+      <ChatHistoricoPainel
+        aberto={historicoAberto}
+        conversas={conversas}
+        ativaId={ativaId}
+        onFechar={() => setHistoricoAberto(false)}
+        onNova={limpar}
+        onAbrir={abrirConversa}
+        onApagar={apagarConversaLocal}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -516,15 +659,17 @@ function pedidoAntesDe(bolhas: Bolha[], idx: number): string {
   return '';
 }
 
-function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento, podeSinalizar, pedido }: { role: 'user' | 'assistant'; texto: string; falhou?: boolean; onTentarDeNovo?: () => void; onTransformarEmOrcamento?: () => void; podeSinalizar?: boolean; pedido?: string }) {
+function Balao({ role, texto, visivelAte, falhou, onTentarDeNovo, onTransformarEmOrcamento, podeSinalizar, pedido }: { role: 'user' | 'assistant'; texto: string; visivelAte?: number; falhou?: boolean; onTentarDeNovo?: () => void; onTransformarEmOrcamento?: () => void; podeSinalizar?: boolean; pedido?: string }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const revelando = visivelAte != null && visivelAte < texto.length;
+  const mostrado = revelando ? texto.slice(0, visivelAte) : texto;
   const isUser = role === 'user';
   if (isUser) {
     return (
       <View style={styles.rowUser}>
         <View style={[styles.bubble, styles.bubbleUser]}>
-          <Text style={styles.bubbleUserText}>{texto}</Text>
+          <Text selectable style={styles.bubbleUserText}>{texto}</Text>
         </View>
       </View>
     );
@@ -534,9 +679,10 @@ function Balao({ role, texto, falhou, onTentarDeNovo, onTransformarEmOrcamento, 
       <View style={styles.olliAvatar}>
         <OlliMascot size={26} onDark float={false} blink={false} />
       </View>
-      <View style={{ maxWidth: '78%' }}>
-        <View style={[styles.bubble, styles.bubbleOlli, falhou && styles.bubbleErro, { maxWidth: '100%' }]}>
-          <Text style={styles.bubbleOlliText}>{texto}</Text>
+      <View style={styles.colunaOlli}>
+        <View style={[styles.bubble, styles.bubbleOlli, falhou && styles.bubbleErro, { maxWidth: '100%' }]} accessibilityState={{ busy: revelando }}>
+          {falhou || revelando ? <Text selectable style={styles.bubbleOlliText}>{mostrado}</Text> : <MarkdownChat texto={mostrado} />}
+          {revelando && <View style={styles.cursor} accessibilityElementsHidden />}
         </View>
         {falhou && (
           <TouchableOpacity style={styles.tentarDeNovoBtn} onPress={onTentarDeNovo} activeOpacity={0.75}>
@@ -665,21 +811,23 @@ function Digitando({ podeCancelar, onCancelar }: { podeCancelar: boolean; onCanc
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
 
   rowUser: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 12 },
-  rowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-end', marginBottom: 12 },
+  rowOlli: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'flex-start', marginBottom: 14 },
   // rgba(127,233,245,x) era o accentLight estático — vira o accentLight do tema.
   olliAvatar: { width: 36, height: 36, borderRadius: BorderRadius.chip, backgroundColor: comAlfa(c.accentLight, 0.12), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.3), justifyContent: 'center', alignItems: 'center', marginRight: 8 },
 
-  bubble: { maxWidth: '78%', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 11 },
-  bubbleUser: { backgroundColor: c.primary, borderBottomRightRadius: 5, ...sombrasDe(c).sm },
+  colunaOlli: { flex: 1, maxWidth: '88%' },
+  bubble: { maxWidth: '100%', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 11 },
+  bubbleUser: { maxWidth: '86%', backgroundColor: c.primary, borderBottomRightRadius: 6, ...sombrasDe(c).sm },
   bubbleUserText: { fontSize: 14.5, color: '#fff', lineHeight: 20 },
   bubbleOlli: { backgroundColor: c.surfaceElevated, borderWidth: 1, borderColor: c.outline, borderBottomLeftRadius: 5 },
   bubbleOlliText: { fontSize: 14.5, color: c.onSurface, lineHeight: 20 },
   // rgba(247,178,59,x) era o warning estático — vira o warning do tema.
   bubbleErro: { borderColor: comAlfa(c.warning, 0.4), backgroundColor: comAlfa(c.warning, 0.08) },
   bubbleTyping: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cursor: { width: 2, height: 16, borderRadius: 1, marginTop: 6, backgroundColor: c.accentLight },
   typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: c.accentLight },
 
   tentarDeNovoBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, alignSelf: 'flex-start', paddingHorizontal: 4, paddingVertical: 4 },
@@ -720,9 +868,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   acaoBotoes: { flexDirection: 'row', gap: 8, marginTop: 12 },
   acaoNota: { color: c.onSurfaceMuted, fontSize: 10.5, lineHeight: 15, marginTop: 10 },
 
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 9, paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
-  inputWrap: { flex: 1, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 16, paddingVertical: Platform.OS === 'ios' ? 10 : 4, justifyContent: 'center', maxHeight: 120, minHeight: 46 },
-  input: { fontSize: 15, color: c.onSurface, maxHeight: 100 },
-  sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).glowBlue },
-  sendBtnDisabled: { backgroundColor: c.surfaceElevated, opacity: 0.6, shadowOpacity: 0 },
+  inputBar: { paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingLeft: 14, paddingRight: 6, paddingVertical: 6, minHeight: 48 },
+  input: { flex: 1, fontSize: 15, color: c.onSurface, maxHeight: 120, paddingTop: Platform.OS === 'ios' ? 8 : 4, paddingBottom: Platform.OS === 'ios' ? 8 : 4 },
+  sendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 2 },
+  sendBtnDisabled: { backgroundColor: c.surfaceElevated },
 });

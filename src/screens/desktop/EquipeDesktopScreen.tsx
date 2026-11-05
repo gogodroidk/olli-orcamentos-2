@@ -369,7 +369,10 @@ function PainelConvite({
   }
 
   function mensagemConvite(link: string): string {
-    return `Você foi convidado para a equipe de ${nomeOrg} no OLLI, como ${PAPEL_LABEL[papel]}. Toque para entrar:\n${link}`;
+    const viaGoogle = email.trim()
+      ? ' Entre com o Google do e-mail que recebeu o convite.'
+      : '';
+    return `Você foi convidado para a equipe de ${nomeOrg} no OLLI, como ${PAPEL_LABEL[papel]}.${viaGoogle} Toque para entrar:\n${link}`;
   }
 
   async function copiarLink() {
@@ -428,13 +431,13 @@ function PainelConvite({
                   label="E-mail (opcional)"
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="para lembrar quem você convidou"
+                  placeholder="tecnico@empresa.com"
                   autoCapitalize="none"
                   keyboardType="email-address"
                   leftIcon="email-outline"
                 />
                 <Text style={styles.dica}>
-                  O convite vai por link — você compartilha por WhatsApp ou onde quiser. O e-mail é só uma anotação.
+                  Se você colocar o e-mail, a pessoa só entra com o Google dessa conta. Sem e-mail, o link vale para quem você enviar.
                 </Text>
 
                 <OlliButton

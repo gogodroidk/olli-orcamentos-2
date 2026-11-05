@@ -1,12 +1,8 @@
-# Linha de base do Trivy (atualizada em 07/10/2026): só restam os achados ALTA SEM CORREÇÃO publicada, 0 CRÍTICA. Cada um VENCE em 31/10/2026:
-# depois disso volta a reprovar o CI. CRÍTICA nunca entra aqui. Corrigir = atualizar a dependência.
-# Corrigidos em 07/10/2026 (saíram daqui): brace-expansion 5.0.9→5.0.12 (override da raiz + web) e axios 1.19.0→1.20.0 (webapp).
-
-# braces@3.0.3 -> sem correção (package-lock.json)
-CVE-2026-93687 exp:2026-10-31
-# node-forge@1.4.0 -> sem correção (package-lock.json)
-CVE-2026-85393 exp:2026-10-31
-# http-cache-semantics@4.2.0 -> sem correção (web/package-lock.json)
-CVE-2026-93748 exp:2026-10-31
-# zod@3.x (package-lock.json raiz e webapp/pnpm-lock.yaml) -> CVE-2023-54404 (DoS por array sem limite): a correção só existe no zod 4 (major, quebra API); usado só para validar entrada própria. Reavaliar na migração p/ zod 4.
-CVE-2023-54404 exp:2026-10-31
+# Linha de base do Trivy (atualizada em 04/11/2026): VAZIA — 0 ALTA, 0 CRÍTICA.
+# Regra: só entra achado ALTA SEM CORREÇÃO publicada, com exp: de no máximo 30 dias. CRÍTICA nunca entra.
+# Corrigir = atualizar a dependência.
+# 04/11/2026: a linha de base de 07/10 venceu em 31/10 e travou o job de dependências da main.
+#   Corrigidos: node-forge 1.4.0→1.4.1 (override da raiz; também fecha CVE-2026-85393),
+#   decode-uri-component 0.5.0→0.5.1 (override da raiz), follow-redirects 1.16.1→1.16.2 (override do webapp).
+#   braces (CVE-2026-93687), http-cache-semantics (CVE-2026-93748) e zod (CVE-2023-54404) não aparecem mais no scan sem linha de base.
+# 07/10/2026: brace-expansion 5.0.9→5.0.12 e axios 1.19.0→1.20.0.

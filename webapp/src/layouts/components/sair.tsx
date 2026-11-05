@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CHAVE_SESSAO_WEB } from "@identidade-upsell";
 import { resetBrandColor } from "@/olli/branding";
 import { useLoginStateContext } from "@/pages/sys/login/providers/login-provider";
 import { useRouter } from "@/routes/hooks";
@@ -36,6 +37,7 @@ export function useSair() {
 		} finally {
 			queryClient.clear(); // não vaza dados cacheados de um tenant p/ outro
 			resetBrandColor(); // volta a cor da marca pro padrão OLLI
+			try { sessionStorage.removeItem(CHAVE_SESSAO_WEB); } catch { /* aba sem storage */ }
 			replace("/auth/login");
 		}
 	}, [signOut, backToLogin, queryClient, replace]);
