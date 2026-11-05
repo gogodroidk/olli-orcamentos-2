@@ -1,12 +1,15 @@
 import type { Empresa } from "@dominio";
 import {
+	ATRASO_ESQUELETO_MS,
 	AVISO_EXEMPLO,
 	calcularChecklistAtivacao,
+	contaMadura,
 	exemploOrcamentoPara,
 	fatosDaEmpresa,
 	fraseDoPrimeiroCliente,
 	itensPrefillDoExemplo,
 	mostrarCartaoPrimeiroOrcamento,
+	mostrarEsqueletoAtivacao,
 	type PassoAtivacaoId,
 	statusFoiEnviado,
 	TITULO_PRIMEIRO_ORCAMENTO,
@@ -23,6 +26,7 @@ import { ehDonoDaConta } from "@/olli/papel";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
+import { Skeleton } from "@/ui/skeleton";
 import { formatBRL } from "./helpers";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 
@@ -42,6 +46,8 @@ const DESTINO: Record<Exclude<PassoAtivacaoId, "primeiro_envio">, string> = {
 interface Leitura<T> {
 	data: T | undefined;
 	isSuccess: boolean;
+	isLoading: boolean;
+	isError: boolean;
 }
 
 interface Props {
@@ -63,24 +69,62 @@ interface Props {
  *  2. Checklist de 4 passos com progresso, até concluir.
  *
  * A regra (o exemplo de cada ofício, os passos, o "some quando conclui") é a MESMA
- * do app, importada de `@ativacao`. 3 estados: enquanto qualquer leitura carrega
- * ou falha, não desenha nada — nem convite de "primeiro orçamento" para quem já
- * tem 40, nem passo "pendente" que ele já cumpriu. Só o DONO vê (membro não edita
- * o cadastro da empresa); papel desconhecido = não mostra.
+ * do app, importada de `@ativacao`. Enquanto alguma leitura carrega, o cartão
+ * reserva o lugar com esqueleto, depois de ATRASO_ESQUELETO_MS. Erro, papel
+ * desconhecido ou conta já madura: não desenha — nem convite de "primeiro
+ * orçamento" para quem já tem 40. Só o DONO vê (membro não edita o cadastro
+ * da empresa).
  */
 export function AtivacaoCard({ orcamentos, recibos, empresa }: Props) {
 	const navigate = useNavigate();
 	const contexto = useContextoDeEscrita();
 	const ehDono = contexto.isSuccess && ehDonoDaConta(contexto.data?.papel);
+	const [passouDoAtraso, setPassouDoAtraso] = useState(false);
 
 	const leiturasProntas = orcamentos.isSuccess && recibos.isSuccess && empresa.isSuccess;
+	const erro = Boolean(orcamentos.isError || recibos.isError || empresa.isError);
+	const madura =
+		orcamentos.isSuccess &&
+		recibos.isSuccess &&
+		contaMadura((orcamentos.data ?? []).length, (recibos.data?.length ?? 0) > 0);
+	const aguardando = !leiturasProntas && Boolean(orcamentos.isLoading || recibos.isLoading || empresa.isLoading);
+	const reservaEsqueleto = mostrarEsqueletoAtivacao({ ehDono, erro, madura, aguardando });
 	// Telemetria do funil: o cartão "Seu primeiro orçamento" foi de fato desenhado.
 	const cartaoVisivel = ehDono && leiturasProntas && mostrarCartaoPrimeiroOrcamento((orcamentos.data ?? []).length);
+	useEffect(() => {
+		if (!reservaEsqueleto) {
+			setPassouDoAtraso(false);
+			return;
+		}
+		const timer = setTimeout(() => setPassouDoAtraso(true), ATRASO_ESQUELETO_MS);
+		return () => clearTimeout(timer);
+	}, [reservaEsqueleto]);
 	useEffect(() => {
 		if (cartaoVisivel) void registrarEtapaAtivacao("ativacao_card_visto");
 	}, [cartaoVisivel]);
 
-	if (!ehDono || !leiturasProntas) return null;
+	if (!ehDono || erro) return null;
+	if (reservaEsqueleto) {
+		if (!passouDoAtraso) return null;
+		return (
+			<Card className="gap-0 overflow-hidden p-0 shadow-sm" role="progressbar" aria-busy="true" aria-label="Carregando o início">
+				<div className="flex items-start gap-3 px-5 py-4">
+					<Skeleton className="size-10 shrink-0 rounded-xl" />
+					<div className="min-w-0 flex-1 space-y-2">
+						<Skeleton className="h-4 w-3/5" />
+						<Skeleton className="h-3.5 w-full" />
+						<Skeleton className="h-3.5 w-11/12" />
+					</div>
+				</div>
+				<div className="space-y-2 border-t border-border/60 px-5 py-4">
+					<Skeleton className="h-11 w-full rounded-md" />
+					<Skeleton className="h-3 w-full" />
+					<Skeleton className="h-3 w-4/5" />
+				</div>
+			</Card>
+		);
+	}
+	if (!leiturasProntas) return null;
 	const listaOrc = orcamentos.data ?? [];
 	const dados = (empresa.data?.dados as Empresa | undefined) ?? null;
 
