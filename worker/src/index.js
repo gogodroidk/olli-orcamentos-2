@@ -10,6 +10,7 @@
  *   POST /chat        → assistente conversacional
  *   POST /ia/importacao/preview → prévia estruturada de catálogo (sem escrita)
  *   POST /ia/autopilot/preview → prévia multimodal de fonte pequena (sem escrita)
+ *   POST /ia/precificacao/rascunho → rascunho de custos para a calculadora (só com PRECIFICACAO_IA=on; senão 404)
  *   GET  /            → health check
  *   POST /resend/webhook → eventos Resend com assinatura Svix (sem JWT)
  *   POST /auth/email-hook → Send Email Hook do Supabase Auth (Standard Webhooks, sem JWT)
@@ -105,6 +106,7 @@ import { modoMotorContratos, processarContratos } from './contratosJob.js';
 import { handleDescadastroEmail } from './emailDescadastro.js';
 import { prepararPreviaImportacaoIa, textoDaFalhaImportacaoIa } from './iaImportacao.js';
 import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES } from './iaAutopilot.js';
+import { prepararRascunhoPrecificacao, precificacaoIaLigada, textoDaFalhaPrecificacaoIa } from './precificacaoIa.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import { withSecurityHeaders } from './securityHeaders.js';
 import { versaoMinimaAndroid } from './versaoMinima.js';
@@ -213,7 +215,7 @@ async function getUser(request, env) {
 // esta lista ANTES do rate limit. `'/'` também é o health check (GET, público);
 // o método separa os dois usos: GET '/' = health sem auth, POST '/' = diagnóstico.
 // Manter esta constante alinhada com os handlers no switch do fetch abaixo.
-const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever', '/ia/importacao/preview', '/ia/autopilot/preview']);
+const IA_ROUTES = new Set(['/', '/voz', '/voz/conversa', '/chat', '/transcrever', '/ia/importacao/preview', '/ia/autopilot/preview', '/ia/precificacao/rascunho']);
 
 function autopilotWorkersAiConfigurada(env, pathname) {
   return pathname === '/ia/autopilot/preview'
@@ -1263,6 +1265,7 @@ const handler = {
         },
         ia_pago: pagamentoOpenRouterPermitido(env) ? 'on' : 'off',
         autopilot: autopilotConfigurado(env, '/ia/autopilot/preview') ? 'on' : 'off',
+        precificacao_ia: precificacaoIaLigada(env) ? 'on' : 'off',
         provedor: provedorIA(env) || 'off',
         voz: env.AI && typeof env.AI.run === 'function' ? 'on' : 'off',
         // Rodada agendada dos contratos recorrentes (só o modo — nunca contagem nem conta).
@@ -1271,6 +1274,13 @@ const handler = {
         geo_backfill: modoGeoBackfill(env) === 'production' ? 'on' : 'off',
       });
     }
+    // Precificação com IA (D-1438). Sem a flag exata, a rota não existe:
+    // 404, sem Allow e sem chamada ao provedor. Com a flag, segue o gate
+    // comum de IA (auth, cota, o mesmo gerarIA do chat).
+    if (url.pathname === '/ia/precificacao/rascunho' && !precificacaoIaLigada(env)) {
+      return json({ ok: false, erro: 'nao_encontrado' }, 404);
+    }
+
     // EXISTÊNCIA primeiro, MÉTODO depois (achado A4 — ver METODOS_POR_ROTA).
     // Path que não existe leva 404 e nenhum `Allow`; path que existe com o verbo
     // errado leva 405 dizendo qual verbo serve. Só passa daqui uma requisição
@@ -1405,6 +1415,24 @@ const handler = {
         });
         if (cobranca.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
         return json(previa);
+      }
+      if (url.pathname === '/ia/precificacao/rascunho') {
+        const rascunho = await prepararRascunhoPrecificacao(corpoIa.raw, env, {
+          gerarIA,
+          beforeAttempt: criarGateTentativasOpenRouter(env, user.id),
+          parseJsonLoose,
+        });
+        if (!rascunho.ok) {
+          const status = rascunho.erro === 'desligada' ? 404 : 422;
+          return json({ ok: false, erro: rascunho.erro, mensagem: textoDaFalhaPrecificacaoIa(rascunho.erro) }, status);
+        }
+        const cobrancaPreco = await cobrarCreditoVoz(env, user, {
+          confirmarCredito: corpoAutorizacao && corpoAutorizacao.confirmarCredito === true,
+          creditoRef: corpoAutorizacao && corpoAutorizacao.creditoRef,
+          conteudo: corpoIa.raw,
+        });
+        if (cobrancaPreco.bloqueado) return json({ ok: false, erro: 'sem_creditos' });
+        return json(rascunho);
       }
       return json({ ok: false, erro: 'nao_encontrado' }, 404);
     } catch (e) {

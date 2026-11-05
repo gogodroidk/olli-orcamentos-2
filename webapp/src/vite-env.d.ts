@@ -14,6 +14,8 @@ interface ImportMetaEnv {
 	 * Ausente no build publicado.
 	 */
 	readonly VITE_PLANOS_AUDIO_IA?: string;
+	/** "on" mostra o rascunho de precificação com IA. Qualquer outro valor deixa desligado. */
+	readonly VITE_PRECIFICACAO_IA?: string;
 }
 
 interface ImportMeta {

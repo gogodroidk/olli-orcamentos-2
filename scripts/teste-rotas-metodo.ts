@@ -80,6 +80,7 @@ checar('DELETE /transcrever → 405 Allow: POST', decidir('/transcrever', 'DELET
 checar('POST /cep/01001000 → 405 Allow: GET', decidir('/cep/01001000', 'POST'), { status: 405, allow: 'GET' });
 checar('POST /feriados/2026 → 405 Allow: GET', decidir('/feriados/2026', 'POST'), { status: 405, allow: 'GET' });
 checar('PUT /eta → 405 Allow: POST', decidir('/eta', 'PUT'), { status: 405, allow: 'POST' });
+checar('GET /ia/precificacao/rascunho → 405 Allow: POST', decidir('/ia/precificacao/rascunho', 'GET'), { status: 405, allow: 'POST' });
 
 console.log('\n3) o que deve PASSAR continua passando (nenhuma rota viva quebrou)');
 // A regressão que este conserto poderia causar é pior que o defeito que ele
@@ -93,6 +94,7 @@ const vivas: [string, string][] = [
   ['/transcrever', 'POST'],
   ['/ia/importacao/preview', 'POST'],
   ['/ia/autopilot/preview', 'POST'],
+  ['/ia/precificacao/rascunho', 'POST'],
   ['/eta', 'POST'],
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
