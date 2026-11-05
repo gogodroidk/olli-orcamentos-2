@@ -1,0 +1,16 @@
+{
+  "include": ["."],
+  "exclude": [
+    "**/node_modules",
+    "**/dist",
+    "**/android",
+    "**/_arquivo-antigo",
+    "**/.ci-local",
+    "**/web-build",
+    "**/.ruff_cache"
+  ],
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}

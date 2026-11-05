@@ -22,7 +22,9 @@ Ele reproduz `.github/workflows/ci.yml` job por job, com os mesmos comandos:
 | `painel` | `npm ci` na raiz e em `web/`, `pnpm i --frozen-lockfile` em `webapp/`, `pnpm run build`, `pnpm run test:importacao`, `pnpm run test:bundle` |
 | `landing` | `npm ci` na raiz e em `web/`, `npx astro check`, `npm run build` |
 | `worker` | `npm ci` em `worker/`, `npm run types`, `npm run types:check`, `npm test`, `npm run check` (bundle sem publicar) |
-| `lint` | `npm ci` na raiz + `npm run lint` (Biome com catraca) |
+| `lint` | `npm ci` na raiz + `bash scripts/gate-codigo-limpo.sh`. Biome com catraca (`npm run lint`), ruff 0.15.20, pyright 1.1.411, semgrep 1.168.0 (regras em `.semgrep.yml`) e `pre-commit validate-config`. Ferramenta que não roda reprova. |
+
+O gate de código limpo (MF-07) mora no job `lint`. No commit, `.githooks/pre-commit` roda o mesmo script em `--staged` (só o que está no índice). Markdown sozinho não chama ruff/pyright/semgrep/biome. Ferramenta ausente reprova; não vale como verde.
 
 A saída mostra cada job com cabeçalho próprio, grava um log por job em `.ci-local/<job>.log`
 (ignorado pelo git) e termina com um **resumo** (VERDE/VERMELHO por job). O exit code é
