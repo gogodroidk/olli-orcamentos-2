@@ -9,6 +9,10 @@ import { Input } from "@/ui/input";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
 import { type FalhaIA, type MensagemChat, perguntarPorSintoma } from "./chat";
+import {
+	resolverTipoEquipamento,
+	TIPOS_EQUIPAMENTO_DIAGNOSTICO,
+} from "../../../../../src/services/tiposEquipamentoDiagnostico";
 
 /** Contexto vindo de um clique em "Aprofundar" na aba Por código. */
 export interface SementeSintoma {
@@ -29,11 +33,7 @@ interface MsgLocal {
 
 const ID_INPUT = "olli-sintoma-input";
 
-const EXEMPLOS = [
-	"Split não gela e a externa não liga",
-	"Faz barulho e desarma o disjuntor ao ligar",
-	"Pisca 5 vezes e para de funcionar",
-];
+
 
 export function PorSintoma({
 	semente,
@@ -43,6 +43,8 @@ export function PorSintoma({
 	aoIrParaCodigo: () => void;
 }) {
 	const navigate = useNavigate();
+	const [tipoId, setTipoId] = useState("ar_condicionado");
+	const tipo = resolverTipoEquipamento(tipoId);
 	const [marca, setMarca] = useState("");
 	const [modelo, setModelo] = useState("");
 	const [codigo, setCodigo] = useState("");
@@ -58,6 +60,7 @@ export function PorSintoma({
 		if (!semente) return;
 		if (semente.marca) setMarca(semente.marca);
 		if (semente.codigo) setCodigo(semente.codigo);
+		setTipoId("ar_condicionado");
 		setModelo("");
 		setPergunta(semente.pergunta ?? "");
 		document.getElementById(ID_INPUT)?.focus();
@@ -70,6 +73,7 @@ export function PorSintoma({
 
 	function contextoStr(): string {
 		const partes: string[] = [];
+		partes.push(`Tipo: ${tipo.label}`);
 		if (marca.trim()) partes.push(`Marca: ${marca.trim()}`);
 		if (modelo.trim()) partes.push(`Modelo: ${modelo.trim()}`);
 		if (codigo.trim()) partes.push(`Código no display: ${codigo.trim().toUpperCase()}`);
@@ -80,7 +84,7 @@ export function PorSintoma({
 		setEnviando(true);
 		setErro(null);
 		const payload: MensagemChat[] = lista.map((m) => ({ role: m.role, texto: m.envio ?? m.texto }));
-		const res = await perguntarPorSintoma(payload);
+		const res = await perguntarPorSintoma(payload, tipo.id);
 		if (res.ok) {
 			setMensagens((atual) => [...atual, { role: "assistant", texto: res.resposta }]);
 		} else {
@@ -119,7 +123,7 @@ export function PorSintoma({
 		const partes = [marca.trim(), modelo.trim()].filter(Boolean).join(" ");
 		const ref = codigo.trim() ? `código ${codigo.trim()}` : "";
 		const nome =
-			["Diagnóstico e reparo", partes ? `— ${partes}` : "", ref ? `(${ref})` : ""]
+			[`Diagnóstico e reparo de ${tipo.label.toLowerCase()}`, partes ? `— ${partes}` : "", ref ? `(${ref})` : ""]
 				.filter(Boolean)
 				.join(" ")
 				.trim() || "Serviço de diagnóstico e reparo";
@@ -138,9 +142,36 @@ export function PorSintoma({
 					<Sparkles className="size-3.5" />
 					Contexto do aparelho <span className="font-normal normal-case">(opcional, mas ajuda)</span>
 				</p>
+				<fieldset className="m-0 mb-3 flex flex-wrap gap-2 border-0 p-0">
+					<legend className="sr-only">Tipo de equipamento</legend>
+					{TIPOS_EQUIPAMENTO_DIAGNOSTICO.map((item) => {
+						const ativo = item.id === tipo.id;
+						return (
+							<button
+								key={item.id}
+								type="button"
+								aria-pressed={ativo}
+								onClick={() => setTipoId(item.id)}
+								className={cn(
+									"rounded-full border px-3 py-1.5 text-xs transition-colors",
+									ativo
+										? "border-primary bg-primary/10 font-semibold text-primary"
+										: "border-border bg-background text-text-primary hover:border-primary/40",
+								)}
+							>
+								{item.label}
+							</button>
+						);
+					})}
+				</fieldset>
+				<p className="mb-3 text-xs text-text-secondary">
+					{tipo.usaBaseHvac
+						? "A base de códigos é desta família."
+						: "A base de códigos é só de ar-condicionado. Neste aparelho a OLLI não usa esse roteiro."}
+				</p>
 				<div className="grid gap-3 sm:grid-cols-3">
-					<Input value={marca} onChange={(e) => setMarca(e.target.value)} placeholder="Marca (ex.: Midea)" aria-label="Marca" />
-					<Input value={modelo} onChange={(e) => setModelo(e.target.value)} placeholder="Modelo (ex.: Xtreme 12k)" aria-label="Modelo" />
+					<Input value={marca} onChange={(e) => setMarca(e.target.value)} placeholder={`Marca (ex.: ${tipo.exemploMarca})`} aria-label="Marca" />
+					<Input value={modelo} onChange={(e) => setModelo(e.target.value)} placeholder={`Modelo (ex.: ${tipo.exemploModelo})`} aria-label="Modelo" />
 					<Input
 						value={codigo}
 						onChange={(e) => setCodigo(e.target.value)}
@@ -166,7 +197,7 @@ export function PorSintoma({
 								</p>
 							</div>
 							<div className="flex flex-wrap justify-center gap-2">
-								{EXEMPLOS.map((ex) => (
+								{tipo.exemplosSintoma.map((ex) => (
 									<button
 										key={ex}
 										type="button"

@@ -12,9 +12,22 @@
  * `@/olli/recursoPlano` (carregando · não confirmado · "Disponível no Empresa").
  */
 import type { ContratoRecorrente, Empresa, SituacaoContrato } from "@dominio";
-import { AlertTriangle, CalendarClock, FileSignature, Loader2, Pencil, PlugZap, Plus, RotateCw, Trash2 } from "lucide-react";
+import {
+	AlertTriangle,
+	CalendarClock,
+	CalendarPlus,
+	Copy,
+	FileSignature,
+	Loader2,
+	Pencil,
+	PlugZap,
+	Plus,
+	RotateCw,
+	Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatarMoeda } from "@/olli/components/campos";
+import { novoId } from "@/olli/contrato";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
 import { CartaoRecursoPlanoPainel, useRecursoPlanoPainel } from "@/olli/recursoPlano";
@@ -22,24 +35,33 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
+import { Input } from "@/ui/input";
 import { Skeleton } from "@/ui/skeleton";
+import { avisoPix } from "../../../../../src/utils/cobrancaCliente";
 import {
+	copiarContrato,
 	diaBR,
+	FILTROS_LISTA_CONTRATO,
+	type FiltroListaContrato,
+	filtrarListaContratos,
+	fraseProrrogarContrato,
 	fraseReceitaMensal,
 	hojeNoBrasil,
 	MODO_COBRANCA_LABEL,
+	ordenarListaContratos,
 	prepararCobrancaContrato,
+	prorrogarFim,
 	proximasVisitas,
 	resumirContratos,
+	rotuloFimContrato,
 	rotuloPeriodicidade,
 	SITUACAO_CONTRATO_LABEL,
 	situacaoEfetiva,
 } from "../../../../../src/utils/contratoRecorrente";
 import { resumoDaGeracao } from "../../../../../src/utils/contratoRecorrenteGeracao";
-import { avisoPix } from "../../../../../src/utils/cobrancaCliente";
 import { numeroWhatsapp } from "../inicio/financeiro";
 import FormContrato from "./FormContrato";
-import { useContratos, useExcluirContrato, useGerarVisitas } from "./useContratos";
+import { useContratos, useExcluirContrato, useGerarVisitas, useSalvarContrato } from "./useContratos";
 
 const VARIANTE: Record<SituacaoContrato, "success" | "warning" | "info" | "error"> = {
 	vigente: "success",
@@ -57,15 +79,25 @@ export default function ContratosPage() {
 	const clientesQ = useOlliList<{ id: string; telefone: string | null }>("clientes", { colunas: "id, telefone" });
 	const gerar = useGerarVisitas();
 	const excluir = useExcluirContrato();
+	const prorrogarSalvar = useSalvarContrato();
 
 	const [formAberto, setFormAberto] = useState(false);
 	const [editando, setEditando] = useState<ContratoRecorrente | null>(null);
+	const [criandoCopia, setCriandoCopia] = useState(false);
 	const [excluindo, setExcluindo] = useState<ContratoRecorrente | null>(null);
+	const [prorrogando, setProrrogando] = useState<ContratoRecorrente | null>(null);
 	const [aviso, setAviso] = useState<string | null>(null);
+	const [busca, setBusca] = useState("");
+	const [filtro, setFiltro] = useState<FiltroListaContrato>("todos");
 
 	const contratos = leitura.data?.status === "ok" ? leitura.data.contratos : [];
 	const resumo = useMemo(() => resumirContratos(contratos), [contratos]);
 	const hoje = hojeNoBrasil();
+	const lista = useMemo(
+		() => ordenarListaContratos(filtrarListaContratos(contratos, filtro, busca)),
+		[contratos, filtro, busca],
+	);
+	const fimProrrogado = prorrogando ? prorrogarFim(prorrogando) : null;
 	const empresa = (empresaQ.data?.dados as Empresa | undefined) ?? null;
 
 	// Papel: fail-closed. Carregando → espera; erro → não mostra valores; técnico → fora.
@@ -107,13 +139,21 @@ export default function ContratosPage() {
 
 	function linkCobranca(c: ContratoRecorrente): { url: string | null; alerta: string | null } {
 		const cobranca = prepararCobrancaContrato({ contrato: c, empresa });
-		const tel = c.clienteId ? (clientesQ.data ?? []).find((x) => x.id === c.clienteId)?.telefone ?? "" : "";
+		const tel = c.clienteId ? ((clientesQ.data ?? []).find((x) => x.id === c.clienteId)?.telefone ?? "") : "";
 		const num = numeroWhatsapp(tel);
 		const alertaPix =
-			cobranca.situacaoPix === "sem_valor" ? "Contrato sem valor: a mensagem vai sem Pix." : (avisoPix(cobranca.situacaoPix)?.titulo ?? null);
+			cobranca.situacaoPix === "sem_valor"
+				? "Contrato sem valor: a mensagem vai sem Pix."
+				: (avisoPix(cobranca.situacaoPix)?.titulo ?? null);
 		// Sem telefone válido, abre o WhatsApp para escolher o contato (nunca um número torto).
 		const url = `https://wa.me/${num ?? ""}?text=${encodeURIComponent(cobranca.texto)}`;
-		return { url, alerta: [alertaPix, num ? null : "Cliente sem celular válido: escolha o contato no WhatsApp."].filter(Boolean).join(" ") || null };
+		return {
+			url,
+			alerta:
+				[alertaPix, num ? null : "Cliente sem celular válido: escolha o contato no WhatsApp."]
+					.filter(Boolean)
+					.join(" ") || null,
+		};
 	}
 
 	return (
@@ -133,6 +173,7 @@ export default function ContratosPage() {
 						className="gap-2"
 						onClick={() => {
 							setEditando(null);
+							setCriandoCopia(false);
 							setFormAberto(true);
 						}}
 					>
@@ -180,7 +221,18 @@ export default function ContratosPage() {
 							<p className="text-2xl font-bold text-text-primary tabular-nums">{fraseReceitaMensal(resumo)}</p>
 							<p className="text-sm text-text-secondary">
 								{resumo.ativos} {resumo.ativos === 1 ? "contrato ativo" : "contratos ativos"}
-								{resumo.terminandoEm30Dias ? ` · ${resumo.terminandoEm30Dias} terminando em 30 dias` : ""}
+								{resumo.terminandoEm30Dias ? (
+									<>
+										{" · "}
+										<button
+											type="button"
+											className="font-semibold text-primary underline"
+											onClick={() => setFiltro("terminando")}
+										>
+											{resumo.terminandoEm30Dias} terminando em 30 dias
+										</button>
+									</>
+								) : null}
 							</p>
 						</div>
 						<div className="flex flex-col items-start gap-1 sm:items-end">
@@ -198,12 +250,43 @@ export default function ContratosPage() {
 									}
 								}}
 							>
-								{gerar.isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CalendarClock className="size-4" aria-hidden="true" />}
+								{gerar.isPending ? (
+									<Loader2 className="size-4 animate-spin" aria-hidden="true" />
+								) : (
+									<CalendarClock className="size-4" aria-hidden="true" />
+								)}
 								Conferir visitas agora
 							</Button>
 							{aviso && <output className="text-sm text-text-secondary">{aviso}</output>}
 						</div>
 					</Card>
+
+					{contratos.length > 0 && (
+						<div className="mb-4 flex flex-col gap-3">
+							<Input
+								value={busca}
+								onChange={(e) => setBusca(e.target.value)}
+								placeholder="Buscar cliente, nome ou endereço"
+								aria-label="Buscar contratos"
+								autoCapitalize="none"
+								autoCorrect="off"
+							/>
+							<fieldset className="flex min-w-0 flex-wrap gap-2 border-0 p-0" aria-label="Filtrar contratos">
+								{FILTROS_LISTA_CONTRATO.map((f) => (
+									<Button
+										key={f.id}
+										type="button"
+										size="sm"
+										variant={filtro === f.id ? "default" : "outline"}
+										aria-pressed={filtro === f.id}
+										onClick={() => setFiltro(f.id)}
+									>
+										{f.label}
+									</Button>
+								))}
+							</fieldset>
+						</div>
+					)}
 
 					{contratos.length === 0 ? (
 						<Card className="flex flex-col items-center gap-3 p-10 text-center">
@@ -217,6 +300,7 @@ export default function ContratosPage() {
 								className="gap-2"
 								onClick={() => {
 									setEditando(null);
+									setCriandoCopia(false);
 									setFormAberto(true);
 								}}
 							>
@@ -224,12 +308,32 @@ export default function ContratosPage() {
 								Criar primeiro contrato
 							</Button>
 						</Card>
+					) : lista.length === 0 ? (
+						<Card className="flex flex-col items-center gap-3 p-10 text-center">
+							<p className="font-semibold text-text-primary">Nenhum contrato neste filtro</p>
+							<p className="max-w-md text-sm text-text-secondary">
+								{busca.trim()
+									? "Nada combina com essa busca. Limpe o texto ou troque o filtro."
+									: "Troque o filtro para ver os outros contratos."}
+							</p>
+							<Button
+								variant="outline"
+								onClick={() => {
+									setFiltro("todos");
+									setBusca("");
+								}}
+							>
+								Ver todos
+							</Button>
+						</Card>
 					) : (
 						<div className="grid gap-3 md:grid-cols-2">
-							{contratos.map((c) => {
+							{lista.map((c) => {
 								const situacao = situacaoEfetiva(c, hoje);
 								const proximas = proximasVisitas(c);
 								const cobranca = linkCobranca(c);
+								const fim = rotuloFimContrato(c);
+								const podeProrrogar = prorrogarFim(c) !== null;
 								return (
 									<Card key={c.id} className="flex flex-col gap-3 p-4">
 										<div className="flex items-start justify-between gap-2">
@@ -240,8 +344,9 @@ export default function ContratosPage() {
 											<Badge variant={VARIANTE[situacao]}>{SITUACAO_CONTRATO_LABEL[situacao]}</Badge>
 										</div>
 										<p className="text-sm text-text-secondary">
-											{rotuloPeriodicidade(c.periodicidade)} · R$ {formatarMoeda(c.valor)} {MODO_COBRANCA_LABEL[c.modoCobranca]} ·{" "}
-											{c.ativos.length} {c.ativos.length === 1 ? "ativo" : "ativos"}
+											{rotuloPeriodicidade(c.periodicidade)} · R$ {formatarMoeda(c.valor)}{" "}
+											{MODO_COBRANCA_LABEL[c.modoCobranca]} · {c.ativos.length}{" "}
+											{c.ativos.length === 1 ? "ativo" : "ativos"}
 											{c.responsavelNome ? ` · ${c.responsavelNome}` : ""}
 										</p>
 										<p className="flex items-center gap-2 text-sm font-medium text-text-primary">
@@ -252,6 +357,7 @@ export default function ContratosPage() {
 													? `Terminou em ${diaBR(c.dataFim)}`
 													: "Sem visitas previstas"}
 										</p>
+										{fim && <p className="text-sm font-medium text-text-secondary">{fim}</p>}
 										{cobranca.alerta && <p className="text-xs text-text-secondary">{cobranca.alerta}</p>}
 										<div className="flex flex-wrap gap-2">
 											<Button
@@ -260,12 +366,40 @@ export default function ContratosPage() {
 												className="gap-1"
 												onClick={() => {
 													setEditando(c);
+													setCriandoCopia(false);
 													setFormAberto(true);
 												}}
 											>
 												<Pencil className="size-3.5" aria-hidden="true" />
 												Editar
 											</Button>
+											<Button
+												size="sm"
+												variant="outline"
+												className="gap-1"
+												onClick={() => {
+													setEditando(copiarContrato(c, new Date(), novoId));
+													setCriandoCopia(true);
+													setFormAberto(true);
+												}}
+											>
+												<Copy className="size-3.5" aria-hidden="true" />
+												Copiar
+											</Button>
+											{podeProrrogar && (
+												<Button
+													size="sm"
+													variant="outline"
+													className="gap-1"
+													onClick={() => {
+														prorrogarSalvar.reset();
+														setProrrogando(c);
+													}}
+												>
+													<CalendarPlus className="size-3.5" aria-hidden="true" />
+													Prorrogar 12 meses
+												</Button>
+											)}
 											{cobranca.url && (
 												<Button size="sm" variant="outline" asChild>
 													<a href={cobranca.url} target="_blank" rel="noopener noreferrer">
@@ -291,7 +425,68 @@ export default function ContratosPage() {
 				</>
 			)}
 
-			<FormContrato aberto={formAberto} aoFechar={() => setFormAberto(false)} contrato={editando} aoSalvar={setAviso} />
+			<FormContrato
+				aberto={formAberto}
+				aoFechar={() => {
+					setFormAberto(false);
+					setCriandoCopia(false);
+				}}
+				contrato={editando}
+				criando={criandoCopia}
+				aoSalvar={setAviso}
+			/>
+
+			<Dialog
+				open={!!prorrogando && !!fimProrrogado}
+				onOpenChange={(v) => !v && !prorrogarSalvar.isPending && setProrrogando(null)}
+			>
+				<DialogContent className="max-w-md">
+					<DialogHeader>
+						<DialogTitle>Prorrogar 12 meses</DialogTitle>
+						<DialogDescription>
+							{prorrogando?.dataFim && fimProrrogado?.dataFim
+								? fraseProrrogarContrato(prorrogando.dataFim, fimProrrogado.dataFim)
+								: "Não dá para prorrogar este contrato."}
+						</DialogDescription>
+					</DialogHeader>
+					{prorrogarSalvar.isError && (
+						<p role="alert" className="rounded-lg bg-error/10 px-3 py-2 text-sm font-medium text-error">
+							{(prorrogarSalvar.error as Error)?.message ?? "Não foi possível prorrogar."}
+						</p>
+					)}
+					<DialogFooter>
+						<Button
+							variant="outline"
+							onClick={() => setProrrogando(null)}
+							disabled={prorrogarSalvar.isPending}
+							autoFocus
+						>
+							Cancelar
+						</Button>
+						<Button
+							disabled={prorrogarSalvar.isPending || !fimProrrogado}
+							onClick={async () => {
+								if (!fimProrrogado?.dataFim) return;
+								try {
+									const r = await prorrogarSalvar.mutateAsync(fimProrrogado);
+									const gerado = r.geracao ? resumoDaGeracao(r.geracao) : null;
+									setAviso(
+										gerado
+											? `${gerado} Fim no OLLI: ${diaBR(fimProrrogado.dataFim)}.`
+											: `Fim atualizado para ${diaBR(fimProrrogado.dataFim)}. Não consegui gerar as visitas agora — tento de novo na próxima abertura.`,
+									);
+									setProrrogando(null);
+								} catch {
+									/* o erro aparece no próprio diálogo */
+								}
+							}}
+						>
+							{prorrogarSalvar.isPending && <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />}
+							Prorrogar
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
 			{/* Diálogo próprio (e não o ConfirmarExclusao): aquele promete "restaurar da
 			    lixeira", e contrato ainda não tem tela de lixeira — prometer seria mentir.

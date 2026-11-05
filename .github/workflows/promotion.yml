@@ -11,6 +11,21 @@ on:
         required: true
         type: choice
         options: [staging, production]
+      hotfix:
+        description: "Hotfix D-0636 (motivo com pix, login, dados ou seguranca)"
+        required: false
+        type: boolean
+        default: false
+      hotfix_motivo:
+        description: "Motivo do hotfix, com a categoria no texto"
+        required: false
+        type: string
+        default: ""
+      changelog:
+        description: "Changelog de 1 a 5 linhas, separadas por |"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -116,6 +131,16 @@ jobs:
     steps:
       - name: Checkout immutable ref
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Janela de produção (D-0636)
+        env:
+          OLLI_HOTFIX: ${{ github.event.inputs.hotfix }}
+          OLLI_HOTFIX_MOTIVO: ${{ github.event.inputs.hotfix_motivo }}
+          OLLI_CHANGELOG: ${{ github.event.inputs.changelog }}
+        run: node scripts/janela-release.mjs --alvo producao
       - name: Production approval boundary
         run: |
           echo "GitHub production environment approval was granted for $GITHUB_SHA"

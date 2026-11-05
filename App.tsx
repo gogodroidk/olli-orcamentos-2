@@ -5,6 +5,7 @@ import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring
 import { scheduleOnRN } from 'react-native-worklets';
 import { PaperProvider } from 'react-native-paper';
 import { registerTranslation, pt as ptDatas } from 'react-native-paper-dates';
+import { iniciarRastreio, resetarRastreioTelas, telaMudou } from './src/services/rastreioTelas';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,6 +31,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
 import { AvisoRelogioErrado } from './src/components/AvisoRelogioErrado';
+import { AtualizacaoObrigatoria, useVersaoMinima } from './src/components/AtualizacaoObrigatoria';
 import { curvas } from './src/components/motion/curvas';
 import { DURACAO, MOLA, TOQUE, useReduzirMovimento } from './src/theme/motion';
 import { AppNavigator } from './src/navigation/AppNavigator';
@@ -304,6 +306,8 @@ export default Sentry.wrap(App);
 
 function AppConteudo() {
   const { modo, cores } = useTema();
+  // Build Android abaixo da versão mínima do servidor (D-1326): a tela de atualizar substitui o navegador.
+  const versao = useVersaoMinima();
   // O tema do Paper é recalculado só quando o modo ou a cor de marca mudam.
   const paperTheme = useMemo(() => criarAppTheme(modo, cores), [modo, cores]);
   const [dbReady, setDbReady] = useState(false);
@@ -466,6 +470,9 @@ function AppConteudo() {
     if (!supabase) return;
     let usuarioDaSessao: string | null = null;
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      // Rastreio de uso: logout descarta a fila (nada vaza para o próximo usuário); login/boot marca a sessão.
+      if (event === 'SIGNED_OUT') resetarRastreioTelas();
+      if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) iniciarRastreio();
       if (session && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION')) {
         if (usuarioDaSessao !== session.user.id) {
           usuarioDaSessao = session.user.id;
@@ -581,11 +588,13 @@ function AppConteudo() {
               total, como qualquer site responsivo. No nativo isto nunca se
               aplicou — comportamento do APK intacto. */}
           <View style={[styles.appFrame, { backgroundColor: cores.background }]}>
-            {ready && (
+            {ready && versao === 'atualizar' && <AtualizacaoObrigatoria />}
+            {ready && versao !== 'atualizar' && (
               // linking com URLs reais (v4): o mapa é fixado no boot (linkingConfig).
               <NavigationContainer
                 ref={navigationRef}
                 linking={linkingConfig}
+                onStateChange={() => telaMudou(navigationRef.getCurrentRoute()?.name)}
                 // GATE DETERMINÍSTICO (web): com `linking`, a URL inicial tem
                 // precedência sobre initialRouteName — sem isto, um visitante
                 // deslogado abrindo '/' ou '/orcamentos' cairia DENTRO das Tabs

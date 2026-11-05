@@ -22,7 +22,7 @@ import { cancelarRitualDiario } from '../../services/ritualDiario';
 import { ResumoEmailControle, descricaoResumoEmail } from '../../components/ResumoEmailControle';
 import { useResumoEmail } from '../../hooks/useResumoEmail';
 import { ROTULO_RESUMO_EMAIL } from '../../services/resumoEmailPreferencia';
-import { adicionarFotoGaleria } from '../../utils/fotosOrcamento';
+import { escolherFotoPerfil } from '../../utils/escolherFotoPerfil';
 import { criarOrganizacao, aceitarConvite, extrairToken, PAPEL_LABEL } from '../../services/equipe';
 import { isSupabaseConfigured, signOut, getCurrentUser } from '../../services/supabase';
 import {
@@ -229,16 +229,15 @@ export default function ContaDesktopScreen() {
   async function handleEscolherFoto() {
     setSalvandoFoto(true);
     try {
-      const resultado = await adicionarFotoGaleria([]);
-      if (resultado.erro === 'PERMISSAO_NEGADA_PERMANENTE') {
-        avisar('Fotos bloqueadas', 'Libere o acesso às fotos nas permissões do navegador para escolher sua foto.');
+      const resultado = await escolherFotoPerfil('galeria');
+      if (!resultado.ok && resultado.motivo === 'cancelado') return;
+      if (!resultado.ok && resultado.motivo === 'permissao') {
+        avisar('Fotos bloqueadas', resultado.mensagem);
         return;
       }
-      if (resultado.erro) { avisar('Ops', resultado.erro); return; }
-      const uri = resultado.uris[0];
-      if (!uri) return;
-      await salvarFotoPerfil(uri);
-      setUser((prev) => (prev ? { ...prev, avatarUrl: uri } : prev));
+      if (!resultado.ok) { avisar('Ops', resultado.mensagem); return; }
+      await salvarFotoPerfil(resultado.dataUri);
+      setUser((prev) => (prev ? { ...prev, avatarUrl: resultado.dataUri } : prev));
       setAvatarErro(false);
     } catch (e: any) {
       avisar('Erro', e?.message ?? 'Não foi possível salvar sua foto agora.');

@@ -114,6 +114,7 @@ export const VERBETES_COMO_FUNCIONA: Readonly<Record<TelaComoFunciona, VerbeteCo
       { icone: 'account-details-outline', texto: 'Toque no cliente para ver orçamentos, visitas e equipamentos dele.' },
       { icone: 'account-clock-outline', texto: 'O selo de meses (ex.: "6+ meses") mostra quem está há tempo sem serviço: pode ser hora de lembrar.' },
     ],
+    artigoId: 'clientes-carteira',
   },
   agenda: {
     tela: 'agenda',
@@ -125,6 +126,7 @@ export const VERBETES_COMO_FUNCIONA: Readonly<Record<TelaComoFunciona, VerbeteCo
       { icone: 'weather-pouring', texto: 'Visita externa com chuva prevista ganha um aviso para remarcar.' },
       { icone: 'repeat', texto: 'Serviço que se repete pode virar uma série (ex.: todo mês).' },
     ],
+    artigoId: 'agenda-visitas',
   },
   os: {
     tela: 'os',
@@ -155,7 +157,7 @@ export const VERBETES_COMO_FUNCIONA: Readonly<Record<TelaComoFunciona, VerbeteCo
     resumo: 'Os aparelhos de cada cliente, com a história de manutenção.',
     passos: [
       { icone: 'air-conditioner', texto: 'Cadastre marca, modelo, série e onde está instalado.' },
-      { icone: 'qrcode', texto: 'Gere a etiqueta QR e cole no aparelho.' },
+      { icone: 'qrcode', texto: 'Gere a etiqueta de 99×38 mm e cole no aparelho.' },
       { icone: 'cellphone-nfc', texto: 'Quem escanear vê a última manutenção e pode pedir orçamento a você, sem login.' },
     ],
     artigoId: 'equipamentos-qr',
@@ -169,6 +171,7 @@ export const VERBETES_COMO_FUNCIONA: Readonly<Record<TelaComoFunciona, VerbeteCo
       { icone: 'table-eye', texto: 'Confira a prévia: cada linha diz se entra ou por que ficou de fora.' },
       { icone: 'database-import-outline', texto: 'Confirme e os dados entram na sua conta.' },
     ],
+    artigoId: 'central-de-dados',
   },
   conta: {
     tela: 'conta',

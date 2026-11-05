@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { obterEstadoOfertaComercial, iniciarTrialPro } from '../services/cotaEnvios';
+import { avisoTrialNaoIniciado } from '../services/limitesComerciais';
 import { getResumoAssinatura, type ResumoAssinatura } from '../services/assinatura';
 import { PRECO_PRO, reais } from '../services/precosPlanos';
 import { sessaoAtiva } from '../services/supabase';
@@ -159,9 +160,10 @@ export function useLembreteAssinatura(): UseLembreteAssinatura {
   const executarInicioTrial = useCallback(async () => {
     setIniciandoTrial(true);
     const inicio = await iniciarTrialPro().catch(() => null);
-    if (!inicio) {
+    if (!inicio || inicio.motivo === 'revisao_caixa') {
       setIniciandoTrial(false);
-      aviso('Não foi possível iniciar', 'Confirme sua conexão e tente novamente. O teste não foi consumido.');
+      const texto = avisoTrialNaoIniciado(inicio);
+      aviso(texto.titulo, texto.mensagem);
       return;
     }
     await recarregarPlanoGlobal().catch(() => {});

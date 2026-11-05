@@ -38,6 +38,21 @@ export const LOGO_MAX_DATAURI_CHARS = 512 * 1024;
 
 export type ResultadoLogo = { ok: true; dataUri: string } | { ok: false; erro: string };
 
+/** Retângulo em pixels da imagem original. A tela de recorte entrega este formato. */
+export type RecorteLogo = { x: number; y: number; largura: number; altura: number };
+
+/** Mensagem para a pessoa, ou null se o arquivo pode seguir para o recorte. */
+export function erroArquivoLogo(arquivo: { type: string; size: number } | null | undefined): string | null {
+	if (!arquivo) return "Escolha um arquivo de imagem.";
+	if (!TIPOS_VALIDOS.has(arquivo.type)) {
+		return "Formato não suportado. Envie o logo em PNG, JPG ou WebP.";
+	}
+	if (arquivo.size > ARQUIVO_MAX_BYTES) {
+		return "Arquivo muito grande (máximo 10 MB). Exporte o logo em um tamanho menor.";
+	}
+	return null;
+}
+
 function carregarImagem(url: string): Promise<HTMLImageElement> {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
@@ -47,36 +62,31 @@ function carregarImagem(url: string): Promise<HTMLImageElement> {
 	});
 }
 
-/**
- * Converte o arquivo em data URI pronto para `logoUri`.
- * NUNCA lança: qualquer falha vira `{ ok: false, erro }` com mensagem para o usuário
- * — um logo que não converte não pode derrubar a tela do cadastro.
- */
-export async function arquivoParaLogoDataUri(arquivo: File): Promise<ResultadoLogo> {
-	if (!TIPOS_VALIDOS.has(arquivo.type)) {
-		return { ok: false, erro: "Formato não suportado. Envie o logo em PNG, JPG ou WebP." };
-	}
-	if (arquivo.size > ARQUIVO_MAX_BYTES) {
-		return { ok: false, erro: "Arquivo muito grande (máximo 10 MB). Exporte o logo em um tamanho menor." };
-	}
+function recorteDentro(img: HTMLImageElement, recorte: RecorteLogo): RecorteLogo | null {
+	const iw = img.naturalWidth;
+	const ih = img.naturalHeight;
+	if (!iw || !ih) return null;
+	const x = Math.max(0, Math.min(iw - 1, Math.round(recorte.x)));
+	const y = Math.max(0, Math.min(ih - 1, Math.round(recorte.y)));
+	const largura = Math.max(1, Math.min(iw - x, Math.round(recorte.largura)));
+	const altura = Math.max(1, Math.min(ih - y, Math.round(recorte.altura)));
+	return { x, y, largura, altura };
+}
 
-	const url = URL.createObjectURL(arquivo);
-	let img: HTMLImageElement | null = null;
-	try {
-		img = await carregarImagem(url);
-	} catch {
-		// tratado logo abaixo (img continua null)
-	} finally {
-		URL.revokeObjectURL(url);
-	}
-	if (!img || !img.naturalWidth || !img.naturalHeight) {
+/**
+ * Desenha o recorte e devolve o data URI. PNG primeiro (transparência);
+ * se estourar o teto, JPEG sobre branco, que casa com o papel do PDF.
+ */
+export function recorteParaLogoDataUri(img: HTMLImageElement, recorte: RecorteLogo): ResultadoLogo {
+	const area = recorteDentro(img, recorte);
+	if (!area) {
 		return { ok: false, erro: "Não consegui ler essa imagem — o arquivo pode estar corrompido." };
 	}
 
 	// Só REDUZ (escala ≤ 1): ampliar um logo pequeno não ganha nitidez, só bytes.
-	const escala = Math.min(1, LOGO_MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
-	const largura = Math.max(1, Math.round(img.naturalWidth * escala));
-	const altura = Math.max(1, Math.round(img.naturalHeight * escala));
+	const escala = Math.min(1, LOGO_MAX_DIM / Math.max(area.largura, area.altura));
+	const largura = Math.max(1, Math.round(area.largura * escala));
+	const altura = Math.max(1, Math.round(area.altura * escala));
 
 	const canvas = document.createElement("canvas");
 	canvas.width = largura;
@@ -85,17 +95,13 @@ export async function arquivoParaLogoDataUri(arquivo: File): Promise<ResultadoLo
 	if (!ctx) {
 		return { ok: false, erro: "Seu navegador não permitiu processar a imagem. Tente outro navegador." };
 	}
-	ctx.drawImage(img, 0, 0, largura, altura);
+	ctx.drawImage(img, area.x, area.y, area.largura, area.altura, 0, 0, largura, altura);
 
-	// 1ª tentativa: PNG — preserva a transparência (a maioria dos logos tem fundo
-	// transparente, e JPEG destruiria isso).
 	const png = canvas.toDataURL("image/png");
 	if (png.startsWith("data:image/png") && png.length <= LOGO_MAX_DATAURI_CHARS) {
 		return { ok: true, dataUri: png };
 	}
 
-	// 2ª tentativa: JPEG sobre fundo BRANCO (fotos/artes densas que estouram o teto
-	// em PNG). Branco casa com o papel do PDF, onde o logo é exibido.
 	const canvasJpeg = document.createElement("canvas");
 	canvasJpeg.width = largura;
 	canvasJpeg.height = altura;
@@ -115,4 +121,28 @@ export async function arquivoParaLogoDataUri(arquivo: File): Promise<ResultadoLo
 		ok: false,
 		erro: "A imagem continua pesada demais mesmo depois de reduzida. Exporte o logo em um tamanho menor e tente de novo.",
 	};
+}
+
+/**
+ * Converte o arquivo inteiro em data URI pronto para `logoUri`.
+ * NUNCA lança: qualquer falha vira `{ ok: false, erro }` com mensagem para o usuário
+ * — um logo que não converte não pode derrubar a tela do cadastro.
+ */
+export async function arquivoParaLogoDataUri(arquivo: File): Promise<ResultadoLogo> {
+	const erro = erroArquivoLogo(arquivo);
+	if (erro) return { ok: false, erro };
+
+	const url = URL.createObjectURL(arquivo);
+	let img: HTMLImageElement | null = null;
+	try {
+		img = await carregarImagem(url);
+	} catch {
+		// tratado logo abaixo (img continua null)
+	} finally {
+		URL.revokeObjectURL(url);
+	}
+	if (!img) {
+		return { ok: false, erro: "Não consegui ler essa imagem — o arquivo pode estar corrompido." };
+	}
+	return recorteParaLogoDataUri(img, { x: 0, y: 0, largura: img.naturalWidth, altura: img.naturalHeight });
 }

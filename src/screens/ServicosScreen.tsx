@@ -18,16 +18,12 @@ import { OlliSkeleton } from '../components/OlliSkeleton';
 import { getServicos, saveServico, deleteServico } from '../database/database';
 import { onSyncAplicado } from '../services/cloudSync';
 import { ServicoItem, UNIDADES } from '../types';
+import { filtrarServicos, margemInfo, mensagemExcluirServico, seloMargem, textoListaServicos } from './desktop/servicoMargem';
 import { formatCurrency } from '../utils/currency';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { goBackOrHome } from '../navigation/safeBack';
 import { GuardaPapel } from '../components/GuardaPapel';
-
-function margemPct(preco?: number, custo?: number): string | null {
-  if (!preco || !custo || custo === 0) return null;
-  return `${Math.round(((preco - custo) / preco) * 100)}%`;
-}
 
 /**
  * Pill discreto "Sincronizando..." — some com fade sozinho depois de exibido.
@@ -77,29 +73,30 @@ function ServicosConteudo() {
   const [carregando, setCarregando] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
+  // A busca vive no estado E num ref: o `load` do foco/sync é estável e precisa
+  // do termo ATUAL. Fechar sobre o `query` do primeiro render zerava o filtro
+  // ao voltar na aba, com o texto ainda escrito na caixa.
+  const queryRef = useRef(query);
+  queryRef.current = query;
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  const load = useCallback(async () => {
+    const all = await getServicos();
+    setItems(all);
+    setFiltered(filtrarServicos(all, queryRef.current));
+    setCarregando(false);
+  }, []);
+
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito
   // trazendo serviços que ainda não existiam localmente).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); load(); }), []);
-
-  async function load() {
-    const all = await getServicos();
-    setItems(all);
-    applyFilter(all, query);
-    setCarregando(false);
-  }
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); void load(); }), [load]);
 
   const refresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
-  function applyFilter(data: ServicoItem[], q: string) {
-    if (!q.trim()) { setFiltered(data); return; }
-    const lower = q.toLowerCase();
-    setFiltered(data.filter(s =>
-      s.nome.toLowerCase().includes(lower) ||
-      (s.descricao ?? '').toLowerCase().includes(lower)
-    ));
+  function aoBuscar(q: string) {
+    setQuery(q);
+    setFiltered(filtrarServicos(items, q));
   }
 
   async function handleSave() {
@@ -154,7 +151,20 @@ function ServicosConteudo() {
       <GradientHeader title="Serviços" subtitle={`${items.length} no catálogo`} onBack={() => goBackOrHome(nav)}>
         <View style={styles.searchBar}>
           <MaterialCommunityIcons name="magnify" size={20} color={cores.onSurfaceVariant} />
-          <TextInput style={styles.searchInput} placeholder="Buscar serviço..." value={query} onChangeText={q => { setQuery(q); applyFilter(items, q); }} placeholderTextColor={cores.onSurfaceMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar serviço..."
+            value={query}
+            onChangeText={aoBuscar}
+            placeholderTextColor={cores.onSurfaceMuted}
+            accessibilityLabel="Buscar serviço"
+            returnKeyType="search"
+          />
+          {query.length > 0 && (
+            <TouchableOpacity onPress={() => aoBuscar('')} accessibilityRole="button" accessibilityLabel="Limpar busca" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
+            </TouchableOpacity>
+          )}
         </View>
       </GradientHeader>
 
@@ -176,36 +186,71 @@ function ServicosConteudo() {
         keyExtractor={s => s.id}
         contentContainerStyle={{ paddingTop: Spacing.base, paddingHorizontal: Spacing.base, gap: 10, flexGrow: 1, paddingBottom: Spacing.base + insets.bottom + 80 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} colors={[cores.primary]} tintColor={cores.primary} />}
-        renderItem={({ item: s, index }) => (
+        renderItem={({ item: s, index }) => {
+          const selo = seloMargem(s.preco, s.custo);
+          const precoZerado = !(s.preco > 0);
+          return (
           <AnimatedEntrance index={index}>
             <View style={styles.card}>
-              {s.fotoUri ? <Image source={{ uri: s.fotoUri }} style={styles.thumb} /> : (
-                <View style={[styles.thumb, styles.thumbPlaceholder]}><MaterialCommunityIcons name="wrench" size={22} color={cores.primary} /></View>
-              )}
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.name}>{s.nome}</Text>
-                {s.descricao ? <Text style={styles.desc} numberOfLines={1}>{s.descricao}</Text> : null}
-                <View style={styles.tagsRow}>
-                  <Text style={styles.price}>{formatCurrency(s.preco)} / {s.unidade}</Text>
-                  {margemPct(s.preco, s.custo) && (
-                    <View style={styles.margemTag}><Text style={styles.margemText}>lucro {margemPct(s.preco, s.custo)}</Text></View>
-                  )}
+              <TouchableOpacity
+                style={styles.cardCorpo}
+                onPress={() => setEditing({ ...s })}
+                accessibilityRole="button"
+                accessibilityLabel={`Editar ${s.nome}`}
+                activeOpacity={0.75}
+              >
+                {s.fotoUri ? <Image source={{ uri: s.fotoUri }} style={styles.thumb} /> : (
+                  <View style={[styles.thumb, styles.thumbPlaceholder]}><MaterialCommunityIcons name="wrench" size={22} color={cores.primary} /></View>
+                )}
+                <View style={styles.cardTextos}>
+                  <Text style={styles.name}>{s.nome}</Text>
+                  {s.descricao ? <Text style={styles.desc} numberOfLines={1}>{s.descricao}</Text> : null}
+                  <View style={styles.tagsRow}>
+                    <Text style={[styles.price, precoZerado && styles.priceZerado]}>{formatCurrency(s.preco)} / {s.unidade}</Text>
+                    {selo && (
+                      <View style={[styles.margemTag, selo.tom === 'prejuizo' && styles.margemTagPrejuizo]}>
+                        <Text style={[styles.margemText, selo.tom === 'prejuizo' && styles.margemTextPrejuizo]}>{selo.texto}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-              </View>
-              <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => setEditing({ ...s })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} /></TouchableOpacity>
-                <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir "${s.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { try { await deleteServico(s.id); load(); } catch { Alert.alert('Erro', 'Não foi possível excluir o serviço agora. Tente novamente.'); } } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => Alert.alert(
+                  'Excluir serviço',
+                  mensagemExcluirServico(s.nome),
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Excluir', style: 'destructive', onPress: async () => { try { await deleteServico(s.id); void load(); } catch { Alert.alert('Erro', 'Não foi possível excluir o serviço agora. Tente novamente.'); } } },
+                  ],
+                )}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Excluir ${s.nome}`}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
+              </TouchableOpacity>
             </View>
           </AnimatedEntrance>
-        )}
-        ListEmptyComponent={<EmptyState icon="wrench-outline" title="Nenhum serviço" subtitle="Cadastre seus serviços para montar orçamentos em segundos." actionLabel="Novo serviço" onAction={() => setEditing({ unidade: 'un', preco: 0 })} />}
+          );
+        }}
+        ListEmptyComponent={(() => {
+          const texto = textoListaServicos(items.length, filtered.length, query);
+          if (texto.estado === 'sem-resultado') {
+            return <EmptyState icon="magnify" title={texto.titulo} subtitle={texto.subtitulo} actionLabel="Limpar busca" onAction={() => aoBuscar('')} />;
+          }
+          return <EmptyState icon="wrench-outline" title={texto.titulo} subtitle={texto.subtitulo} actionLabel="Novo serviço" onAction={() => setEditing({ unidade: 'un', preco: 0 })} />;
+        })()}
       />
       )}
 
-      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={[styles.fab, { bottom: insets.bottom + 24 }]}
+        onPress={() => setEditing({ unidade: 'un', preco: 0 })}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="Novo serviço"
+      >
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
 
@@ -228,10 +273,18 @@ function ServicosConteudo() {
                 <OlliMoneyInput label="Preço de venda" value={editing.preco ?? 0} onChangeValue={v => setEditing(p => p ? { ...p, preco: v } : p)} containerStyle={{ flex: 1, marginRight: 10 }} />
                 <OlliMoneyInput label="Custo (opcional)" value={editing.custo ?? 0} onChangeValue={v => setEditing(p => p ? { ...p, custo: v || undefined } : p)} containerStyle={{ flex: 1 }} />
               </View>
-              {margemPct(editing.preco, editing.custo) && (
+              {seloMargem(editing.preco, editing.custo)?.tom === 'prejuizo' && (
+                <View style={styles.prejuizoBanner}>
+                  <MaterialCommunityIcons name="trending-down" size={18} color={cores.warning} />
+                  <Text style={styles.prejuizoBannerText}>
+                    Preço abaixo do custo · {seloMargem(editing.preco, editing.custo)?.texto} · você perde {formatCurrency((editing.custo ?? 0) - (editing.preco ?? 0))} por {editing.unidade ?? 'un'}. Dá para salvar — confira se é isso que você quer.
+                  </Text>
+                </View>
+              )}
+              {seloMargem(editing.preco, editing.custo)?.tom === 'lucro' && margemInfo(editing.preco, editing.custo) && (
                 <View style={styles.margemBanner}>
                   <MaterialCommunityIcons name="trending-up" size={18} color={cores.success} />
-                  <Text style={styles.margemBannerText}>Margem de {margemPct(editing.preco, editing.custo)} · Lucro {formatCurrency((editing.preco ?? 0) - (editing.custo ?? 0))}</Text>
+                  <Text style={styles.margemBannerText}>Margem de {margemInfo(editing.preco, editing.custo)?.pct}% · Lucro {formatCurrency(margemInfo(editing.preco, editing.custo)?.lucro ?? 0)}</Text>
                 </View>
               )}
               {!editing.preco && (
@@ -243,8 +296,15 @@ function ServicosConteudo() {
               <Text style={styles.unidadeLabel}>Unidade de medida</Text>
               <View style={styles.unidadesRow}>
                 {UNIDADES.map(u => (
-                  <TouchableOpacity key={u} style={[styles.unidade, editing.unidade === u && styles.unidadeActive]} onPress={() => setEditing(p => p ? { ...p, unidade: u } : p)}>
-                    <Text style={[styles.unidadeText, editing.unidade === u && { color: cores.onSurface }]}>{u}</Text>
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.unidade, editing.unidade === u && styles.unidadeActive]}
+                    onPress={() => setEditing(p => p ? { ...p, unidade: u } : p)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Unidade ${u}`}
+                    accessibilityState={{ selected: editing.unidade === u }}
+                  >
+                    <Text style={[styles.unidadeText, editing.unidade === u && styles.unidadeTextActive]}>{u}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -271,18 +331,22 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     ...sombrasDe(c).sm,
   },
   syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
   searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, ...sombrasDe(c).sm },
+  cardCorpo: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  cardTextos: { flex: 1, marginLeft: 12 },
   thumb: { width: 52, height: 52, borderRadius: BorderRadius.md },
   thumbPlaceholder: { backgroundColor: c.primaryContainer, justifyContent: 'center', alignItems: 'center' },
   name: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   desc: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   tagsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
   price: { fontSize: 13, color: c.primary, fontWeight: '700' },
+  priceZerado: { color: c.danger },
   margemTag: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
+  margemTagPrejuizo: { backgroundColor: c.dangerLight },
   margemText: { fontSize: 11, color: c.success, fontWeight: '700' },
-  cardActions: { flexDirection: 'row', gap: 16, marginLeft: 8 },
+  margemTextPrejuizo: { color: c.danger },
   fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).lg, shadowColor: c.primary, shadowOpacity: 0.4 },
   modal: { flex: 1, backgroundColor: c.background },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
@@ -292,7 +356,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   fotoPreview: { width: '100%', height: '100%' },
   fotoBtnLabel: { fontSize: 13, color: c.primary, fontWeight: '700', marginTop: 4 },
   margemBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.successLight, borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base },
-  margemBannerText: { fontSize: 13, color: c.success, fontWeight: '700' },
+  margemBannerText: { fontSize: 13, color: c.success, fontWeight: '700', flex: 1 },
+  prejuizoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.warningLight, borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base },
+  prejuizoBannerText: { fontSize: 13, color: c.warning, fontWeight: '700', flex: 1 },
   avisoBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.danger + '1A', borderRadius: BorderRadius.md, padding: 12, marginBottom: Spacing.base, borderWidth: 1, borderColor: c.danger + '40' },
   avisoBannerText: { fontSize: 13, color: c.danger, fontWeight: '700', flex: 1 },
   unidadeLabel: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, marginBottom: 8 },
@@ -300,5 +366,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   unidade: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: c.outline },
   unidadeActive: { backgroundColor: c.primary, borderColor: c.primary },
   unidadeText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
+  unidadeTextActive: { color: c.onPrimary },
   rowFields: { flexDirection: 'row' },
 });

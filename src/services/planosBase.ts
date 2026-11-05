@@ -219,6 +219,13 @@ export const PREVIEW_EMAIL_GRATIS: string =
     ? 'No plano Grátis os orçamentos são ilimitados, sem cartão.'
     : 'O plano Grátis continua sem cartão e sem prazo.';
 
+/**
+ * Condição do Grátis que o corte NÃO muda: sem cartão e sem prazo (o corte limita a quantidade de envios, não o
+ * tempo nem o cadastro). Mesma regra que o PREVIEW_EMAIL_GRATIS diz depois do corte. Copy de página lê isto em vez
+ * de escrever "permanente" à mão.
+ */
+export const GRATIS_CONDICAO = 'sem cartão e sem prazo';
+
 /** O que TODO plano tem — a alma do Grátis. Nada aqui passa por entitlement. */
 export const RECURSOS_GRATIS: readonly string[] = [
   CORTE_GRATIS_DATA === null

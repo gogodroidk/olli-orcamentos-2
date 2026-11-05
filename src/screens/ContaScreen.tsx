@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Switch, Modal, RefreshControl, TextInput, Image, Platform, Linking } from 'react-native';
+import { definirPreferenciaRastreio, lerPreferenciaRastreio } from '../services/rastreioPreferencia';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -42,7 +43,8 @@ import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { PRECO_PRO, reais } from '../services/precosPlanos';
 import { gerenciarAssinaturaNaPlay } from '../services/playBilling';
-import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
+import { abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
+import { escolherFotoPerfil } from '../utils/escolherFotoPerfil';
 import { criarOrganizacao, aceitarConvite, extrairToken, listarMembros, PAPEL_LABEL, type Organizacao } from '../services/equipe';
 import { APP_VERSION, APP_VERSION_CODE } from '../config';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP, TEXTOS_LOJA, URL_EXCLUIR_CONTA_WEB } from '../config/loja';
@@ -124,6 +126,7 @@ const TEXTO_AJUSTE = {
   ajuda: { titulo: 'Ajuda e suporte', descricao: 'Dúvidas, tutoriais e falar com a gente' },
   dicas: { titulo: 'Mostrar dicas contextuais', descricao: 'Balões curtos explicando elementos da tela' },
   apresentacao: { titulo: 'Rever apresentação e dicas', descricao: 'Mostra a introdução e as dicas de novo' },
+  rastreioUso: { titulo: 'Ajudar a melhorar o OLLI', descricao: 'Registra quais telas e botões você usa, nunca o que você digita. Desligar apaga o que já foi registrado' },
   privacidade: { titulo: 'Política de privacidade', descricao: 'Quais dados o OLLI usa e por quê' },
   termos: { titulo: 'Termos de uso', descricao: 'As regras de uso do OLLI' },
   excluirWeb: { titulo: 'Excluir conta pela web', descricao: 'Pedir a exclusão pelo site, sem precisar do app' },
@@ -238,6 +241,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais, marcas e preços', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
+    { key: 'prospeccao', icon: 'map-marker-radius-outline', label: 'Prospecção', desc: 'Seus clientes no mapa, por raio', color: '#38BDF8', route: 'Prospeccao' },
     // Importar grava clientes, serviços e produtos: é de quem cuida do cadastro.
     { key: 'importar', icon: 'database-import-outline', label: TEXTO_CONVITE_IMPORTAR.titulo, desc: TEXTO_CONVITE_IMPORTAR.descricao, color: c.accentLight, route: 'Importar', ocultarTecnico: true },
     { key: 'contratos', icon: 'calendar-sync-outline', label: 'Contratos recorrentes', desc: 'Visitas e cobrança todo mês', color: c.success, route: 'Contratos', ocultarTecnico: true },
@@ -248,8 +252,9 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'calcOficio', icon: 'calculator-variant-outline', label: 'Calculadoras do ofício', desc: 'Cálculos técnicos do seu ramo', color: c.accentLight, route: 'FerramentasOficio', calcHub: true },
     { key: 'creditos', icon: 'lightning-bolt', label: 'Créditos', desc: TEXTOS_LOJA.creditosMenu, color: '#F7B23B', route: 'Creditos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
+    { key: 'contador', icon: 'bank-outline', label: 'Contador e nota fiscal', desc: 'MEI, ME e NFS-e. A OLLI não emite a nota.', color: c.primary, route: 'Contador', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
-    { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual dos seus orçamentos', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
+    { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual do PDF, com explicação e prévia de cada modelo', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
   ];
 }
 
@@ -331,6 +336,8 @@ export default function ContaScreen() {
   const [autoBackupAtivo, setAutoBackupAtivo] = useState(true);
   // Toggle "Mostrar dicas contextuais" (onboarding.ts) — carregado no foco.
   const [ajudaAtiva, setAjudaAtiva] = useState(true);
+  // Opt-out do rastreio de uso (rastreioPreferencia.ts): 3 estados; 'carregando' até a leitura voltar.
+  const [rastreioPref, setRastreioPref] = useState<'ligado' | 'desligado' | 'desconhecido' | 'carregando'>('carregando');
   // Preferências do Ritual diário ("Bom dia da OLLI" / "Fechar o dia") — 3
   // canais independentes (services/ritualDiario.ts). Defaults do produto: os
   // 2 avisos ligados, domingo mudo — refletidos aqui só até o load() real chegar.
@@ -376,6 +383,7 @@ export default function ContaScreen() {
       } catch { /* best-effort: mantém o default (ativo) */ }
       // Estado da Central de Ajuda/dicas (estaAtiva nunca lança — default: ligada).
       setAjudaAtiva(await estaAtiva());
+      setRastreioPref(await lerPreferenciaRastreio());
       // Preferências do Ritual diário (getPreferenciasRitual nunca lança — cai
       // nos defaults do produto se a leitura falhar).
       const ritual = await getPreferenciasRitual();
@@ -479,6 +487,14 @@ export default function ContaScreen() {
       toast.erro('Não foi possível salvar essa preferência agora. A opção voltou como estava.');
       setAutoBackupAtivo(!v);
     }
+  }
+
+  /** Liga/desliga o rastreio de uso (opt-out LGPD): vale a partir deste momento. Só muda o switch se salvou. */
+  async function handleToggleRastreio(v: boolean) {
+    vibrar('selecao');
+    const salvou = await definirPreferenciaRastreio(v);
+    if (salvou) setRastreioPref(v ? 'ligado' : 'desligado');
+    else toast.erro('Não consegui salvar essa escolha agora. Tente de novo.', { titulo: 'Ajudar a melhorar o OLLI' });
   }
 
   /** Liga/desliga as dicas contextuais (onboarding.ts). Otimista. */
@@ -690,34 +706,31 @@ export default function ContaScreen() {
   }
 
   /**
-   * Escolhe a foto de perfil (câmera ou galeria) reusando o pipeline de fotos
-   * (compressão + cópia persistente) e salva a URI em user_metadata.avatar_url.
-   * A foto de perfil é do USUÁRIO — a logo/identidade da empresa fica em Meu Negócio.
+   * Foto de perfil quadrada, em data URI pequeno, na conta (user_metadata.avatar_url).
+   * A logo da empresa continua em Meu Negócio. Caminho local do aparelho não entra.
    */
   async function handleEscolherFoto(fonte: 'camera' | 'galeria') {
     setShowFotoOpcoes(false);
     setSalvandoFoto(true);
     try {
-      const resultado = fonte === 'camera'
-        ? await adicionarFotoCamera([])
-        : await adicionarFotoGaleria([]);
-
-      if (resultado.erro === 'PERMISSAO_NEGADA_PERMANENTE') {
-        toast.erro('Libere o acesso nos ajustes do aparelho para escolher sua foto.', {
+      const resultado = await escolherFotoPerfil(fonte);
+      if (!resultado.ok && resultado.motivo === 'cancelado') return;
+      if (!resultado.ok && resultado.motivo === 'permissao') {
+        toast.erro(resultado.mensagem, {
           titulo: fonte === 'camera' ? 'Câmera bloqueada' : 'Fotos bloqueadas',
-          acao: { rotulo: 'Abrir ajustes', aoTocar: () => { void abrirConfiguracoesPermissao(); } },
+          ...(resultado.permanente
+            ? { acao: { rotulo: 'Abrir ajustes', aoTocar: () => { void abrirConfiguracoesPermissao(); } } }
+            : {}),
         });
         return;
       }
-      if (resultado.erro) {
-        toast.erro(resultado.erro);
+      if (!resultado.ok) {
+        toast.erro(resultado.mensagem);
         return;
       }
-      const uri = resultado.uris[0];
-      if (!uri) return; // usuário cancelou o picker
 
-      await salvarFotoPerfil(uri);
-      setUser(prev => (prev ? { ...prev, avatarUrl: uri } : prev));
+      await salvarFotoPerfil(resultado.dataUri);
+      setUser(prev => (prev ? { ...prev, avatarUrl: resultado.dataUri } : prev));
       setAvatarErro(false);
       vibrar('sucesso');
     } catch (e: any) {
@@ -860,6 +873,7 @@ export default function ContaScreen() {
     { id: 'ajuda', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.ajuda },
     { id: 'dicas', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.dicas },
     { id: 'apresentacao', secao: SECAO_AJUSTES.ajuda, ...TEXTO_AJUSTE.apresentacao },
+    { id: 'rastreioUso', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.rastreioUso },
     { id: 'privacidade', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.privacidade },
     { id: 'termos', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.termos },
     { id: 'excluirWeb', secao: SECAO_AJUSTES.privacidade, ...TEXTO_AJUSTE.excluirWeb },
@@ -1435,6 +1449,29 @@ export default function ContaScreen() {
         {/* PRIVACIDADE E TERMOS — a Play exige a política acessível DENTRO do app, e a
             exclusão de conta também fora dele (página web pública). */}
         <GrupoAjustes titulo={SECAO_AJUSTES.privacidade} indice={ind(8)}>
+          {mostra('rastreioUso') ? (
+            <LinhaAjuste
+              key="rastreioUso"
+              icone="chart-timeline-variant"
+              cor={cores.accentLight}
+              {...TEXTO_AJUSTE.rastreioUso}
+              direita={
+                rastreioPref === 'carregando' ? (
+                  <ActivityIndicator size="small" color={cores.primary} />
+                ) : rastreioPref === 'desconhecido' ? (
+                  <Text style={{ color: cores.onSurfaceVariant, fontSize: 12 }}>indisponível</Text>
+                ) : (
+                  <Switch
+                    value={rastreioPref === 'ligado'}
+                    onValueChange={handleToggleRastreio}
+                    trackColor={switchTrilho}
+                    thumbColor={rastreioPref === 'ligado' ? cores.primary : '#fff'}
+                    accessibilityLabel={TEXTO_AJUSTE.rastreioUso.titulo}
+                  />
+                )
+              }
+            />
+          ) : null}
           {mostra('privacidade') ? (
             <LinhaAjuste key="privacidade" icone="shield-lock-outline" cor={cores.success} {...TEXTO_AJUSTE.privacidade} onPress={() => nav.navigate('Privacidade')} />
           ) : null}

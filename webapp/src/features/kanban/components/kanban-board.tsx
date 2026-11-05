@@ -31,6 +31,7 @@ import { useMinhaEmpresa } from "@/olli/data";
 import FormOrcamento, { criarRevisaoComoRascunho } from "@/pages/olli/orcamentos/FormOrcamento";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { Skeleton } from "@/ui/skeleton";
 import { cn } from "@/utils";
 import { useDicaDeArraste } from "../hooks/useDicaDeArraste";
@@ -98,13 +99,16 @@ function SetaDeRolagem({ lado, onClick }: { lado: "esquerda" | "direita"; onClic
  *  leitor de tela é o único jeito de saber o que o arraste fez para quem não vê o quadro. */
 const INSTRUCOES_LEITOR_DE_TELA: ScreenReaderInstructions = {
 	draggable:
-		"Para pegar um orçamento, pressione a barra de espaço. " +
+		"Para mudar o estágio sem arrastar, use o botão Mover no card. " +
+		"Para pegar um orçamento pela alça, pressione a barra de espaço. " +
 		"Enquanto arrasta, use as setas do teclado para mover entre colunas. " +
 		"Pressione espaço novamente para soltar na nova coluna, ou Esc para cancelar.",
 };
 
 export default function KanbanBoard() {
-	const { colunas, total, isLoading, isError, error, refetch, mover, emVoo, erro, limparErro } = useQuadro();
+	const { colunas, total, isLoading, isError, error, refetch, mover, finalizar, emVoo, erro, limparErro } = useQuadro();
+	/** Card esperando a confirmação de "Finalizar serviço" (soltar em Finalizados ou menu). */
+	const [aFinalizar, setAFinalizar] = useState<Cartao | null>(null);
 	const { data: empresaLinha } = useMinhaEmpresa();
 	// A `empresa` também é uma tabela de BLOB: o objeto de domínio vive em `dados`.
 	const empresa = (empresaLinha?.dados as Empresa | undefined) ?? null;
@@ -189,6 +193,13 @@ export default function KanbanBoard() {
 		const origem = active.data.current?.colunaId as string | undefined;
 		const destinoId = String(over.id);
 		if (!origem || origem === destinoId) return; // soltou na própria coluna: nada muda.
+
+		if (destinoId === "finalizados") {
+			// Finalizar grava uma OS concluída: pergunta antes (ver `finalizar` no useQuadro).
+			const alvo = colunas.flatMap((c) => c.cartoes).find((c) => c.id === String(active.id));
+			if (alvo) setAFinalizar(alvo);
+			return;
+		}
 
 		const destino = COLUNAS.find((c) => c.id === destinoId);
 		if (!destino?.destino) return; // "Outros" não recebe (ver board-column).
@@ -307,6 +318,7 @@ export default function KanbanBoard() {
 								destaqueId={destaqueId}
 								onMover={mover}
 								onAbrir={abrirEditor}
+								onFinalizar={setAFinalizar}
 							/>
 						))}
 					</div>
@@ -319,6 +331,32 @@ export default function KanbanBoard() {
 					{emArraste ? <CartaoFantasma cartao={emArraste.cartao} coluna={emArraste.coluna} /> : null}
 				</DragOverlay>
 			</DndContext>
+
+			<Dialog open={aFinalizar !== null} onOpenChange={(aberto) => !aberto && setAFinalizar(null)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Finalizar o serviço do orçamento {aFinalizar?.numero}?</DialogTitle>
+						<DialogDescription>
+							A ordem de serviço deste orçamento fica concluída hoje. Se ele ainda não tem OS, o OLLI cria uma já
+							concluída. O orçamento passa para Finalizados.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setAFinalizar(null)}>
+							Cancelar
+						</Button>
+						<Button
+							onClick={() => {
+								const alvo = aFinalizar;
+								setAFinalizar(null);
+								if (alvo) void finalizar(alvo);
+							}}
+						>
+							Finalizar serviço
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 
 			{editor && (
 				<FormOrcamento
