@@ -1,0 +1,12 @@
+# Prévia Z-01: mesmos 301 do v7, menos clinicas, condominios e restaurantes, que nesta versão são páginas próprias.
+ErrorDocument 404 /404.html
+<IfModule mod_alias.c>
+  RedirectMatch 301 ^/manutencao-corretiva/?$ /conserto/
+  RedirectMatch 301 ^/manutencao-preventiva/?$ /limpeza-e-manutencao/
+  RedirectMatch 301 ^/limpeza-higienizacao/?$ /limpeza-e-manutencao/
+  RedirectMatch 301 ^/contrato-de-manutencao/?$ /empresas/
+  RedirectMatch 301 ^/residencial/?$ /casa/
+  RedirectMatch 301 ^/comercial/?$ /empresas/
+  RedirectMatch 301 ^/sistemas-comerciais/?$ /empresas/
+  RedirectMatch 301 ^/refrigeracao-comercial/?$ /camara-fria-e-refrigeracao-comercial/
+</IfModule>

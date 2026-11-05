@@ -1,9 +1,12 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), "publico");
 const WA = "5511958758030";
+const TEL = "+5511958758030";
+const DOMINIO = "https://grtechrefrigeracao.com.br";
+const v7 = JSON.parse(await readFile(join(dirname(fileURLToPath(import.meta.url)), "fonte", "conteudo-v7.json"), "utf8"));
 
 const paginas = [
   { slug: "", titulo: "GR Tech · VRF, manutenção e contrato em São Paulo", desc: "Manutenção de VRF e VRV, contrato e visita técnica em São Paulo. Visita R$ 150, abatida se você fechar. Proposta por escrito." },
@@ -40,13 +43,19 @@ function chrome(p, miolo) {
   const inicio = `${pre}index.html`;
   const nav = [
     ["VRF", `${pre}vrf/`],
-    ["Manutenção", `${pre}manutencao/`],
-    ["Contrato", `${pre}contrato/`],
-    ["Escritórios", `${pre}escritorios/`],
-    ["Clínicas", `${pre}clinicas/`],
-    ["Restaurantes", `${pre}restaurantes/`],
-    ["Condomínios", `${pre}condominios/`],
+    ["Serviços", `${pre}servicos/`],
+    ["Empresas", `${pre}empresas/`],
+    ["Preços", `${pre}precos/`],
+    ["Como funciona", `${pre}como-funciona/`],
+    ["Contato", `${pre}contato/`],
   ];
+  const todas = [
+    ["VRF", `${pre}vrf/`], ["Serviços", `${pre}servicos/`], ["Instalação", `${pre}instalacao/`], ["Limpeza e manutenção", `${pre}limpeza-e-manutencao/`], ["Conserto", `${pre}conserto/`], ["Manutenção", `${pre}manutencao/`], ["Contrato", `${pre}contrato/`],
+    ["Empresas", `${pre}empresas/`], ["Segmentos", `${pre}segmentos/`], ["Casa", `${pre}casa/`], ["Apartamento e condomínio", `${pre}apartamento-e-condominio/`], ["Lojas e restaurantes", `${pre}lojas-e-restaurantes/`], ["Câmara fria", `${pre}camara-fria-e-refrigeracao-comercial/`],
+    ["Escritórios", `${pre}escritorios/`], ["Clínicas", `${pre}clinicas/`], ["Restaurantes", `${pre}restaurantes/`], ["Condomínios", `${pre}condominios/`],
+    ["Preços", `${pre}precos/`], ["Quanto custa", `${pre}quanto-custa/`], ["Como funciona", `${pre}como-funciona/`], ["Dúvidas", `${pre}duvidas/`], ["Sobre", `${pre}sobre/`], ["Atendimento", `${pre}atendimento/`], ["Contato", `${pre}contato/`], ["Resumo para IA", `${pre}resumo-para-ia/`],
+  ];
+  const linksTodas = todas.map(([nome, href]) => `<a href="${href}">${nome}</a>`).join("");
   const links = nav.map(([nome, href]) => `<a href="${href}">${nome}</a>`).join("");
   const msgTopo = "Oi, vim pelo site da GR Tech. É empresa em [bairro]. O que preciso: ___.";
   return `<!doctype html>
@@ -58,6 +67,7 @@ function chrome(p, miolo) {
 <meta name="theme-color" content="#f0f4f8">
 <title>${esc(p.titulo)}</title>
 <meta name="description" content="${esc(p.desc)}">
+${p.nao404 ? "" : `<link rel="canonical" href="${DOMINIO}/${p.slug ? p.slug + "/" : ""}">`}
 <link rel="icon" href="${pre}favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="${pre}estilo.css">
 <script>
@@ -78,19 +88,19 @@ function chrome(p, miolo) {
     <nav class="nav-desk" aria-label="Páginas">${links}${botao(wa(msgTopo), "Chamar no WhatsApp")}</nav>
     <details class="nav-mob">
       <summary>Menu</summary>
-      <nav aria-label="Menu">${links}<a href="${pre}creditos/">Créditos</a><a href="${pre}privacidade/">Privacidade</a></nav>
+      <nav aria-label="Menu">${linksTodas}<a href="${pre}creditos/">Créditos</a><a href="${pre}privacidade/">Privacidade</a></nav>
     </details>
   </div>
 </header>
 <main id="conteudo">${miolo}</main>
 <footer class="rodape"><div class="caixa">
-  <nav aria-label="Rodapé">${links}<a href="${pre}creditos/">Créditos das imagens</a><a href="${pre}privacidade/">Privacidade</a></nav>
-  <p>44.301.204 IGOR DE SOUZA AQUINO · CNPJ 44.301.204/0001-38 · <a href="mailto:contato@grtechrefrigeracao.com.br">contato@grtechrefrigeracao.com.br</a></p>
+  <nav aria-label="Rodapé">${linksTodas}<a href="${pre}creditos/">Créditos das imagens</a><a href="${pre}privacidade/">Privacidade</a></nav>
+  <p>44.301.204 IGOR DE SOUZA AQUINO · CNPJ 44.301.204/0001-38 · <a href="tel:${TEL}">(11) 95875-8030</a> · <a href="mailto:contato@grtechrefrigeracao.com.br">contato@grtechrefrigeracao.com.br</a></p>
   <p><a href="https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp">Consultar CNPJ na Receita Federal</a></p>
   <p>São Paulo e Grande São Paulo. Segunda a sábado, 8h às 18h. Geladeira e freezer domésticos não entram neste atendimento.</p>
   <p>A primeira resposta no WhatsApp pode ser do atendimento com inteligência artificial. A visita, o orçamento e o serviço são de um técnico da GR Tech. Você pode pedir para falar com uma pessoa.</p>
 </div></footer>
-<div class="barra" data-barra>${botao(wa(msgTopo), "Chamar no WhatsApp")}</div>
+<div class="barra" data-barra>${botao(wa(msgTopo), "Chamar no WhatsApp")}<a class="bt bt-tel" href="tel:${TEL}"><span>Ligar</span></a></div>
 <script>
 (function(){
   var b=document.querySelector("[data-barra]");
@@ -427,7 +437,64 @@ const areas = {
   }),
 };
 
+
+// Páginas do v7 (texto real em fonte/conteudo-v7.json), no desenho azul desta prévia.
+function linkV7(pre, href) {
+  if (!href.startsWith("/")) return href;
+  const limpo = href.replace(/^\//, "");
+  return limpo === "" ? `${pre}index.html` : `${pre}${limpo}`;
+}
+function bloco(pre, b) {
+  const partes = [];
+  let lista = [], cards = [], faqs = [], precos = [];
+  const fechar = () => {
+    if (lista.length) { partes.push(corpoLista(lista.map(esc))); lista = []; }
+    if (cards.length) { partes.push(`<div class="grade">${cards.join("")}</div>`); cards = []; }
+    if (faqs.length) { partes.push(`<div class="faq">${faqs.join("")}</div>`); faqs = []; }
+    if (precos.length) { partes.push(`<table class="tabela-precos"><tbody>${precos.join("")}</tbody></table>`); precos = []; }
+  };
+  for (const it of b.itens) {
+    if (it.t !== "li") { if (lista.length) fechar(); }
+    if (it.t !== "card" && cards.length) fechar();
+    if (it.t !== "faq" && faqs.length) fechar();
+    if (it.t !== "preco" && precos.length) fechar();
+    if (it.t === "li") lista.push(it.x);
+    else if (it.t === "card") cards.push(`<a class="card semfoto" href="${linkV7(pre, it.href)}"><div><h3>${esc(it.h)}</h3><p>${esc(it.p)}</p><span>Ver a página</span></div></a>`);
+    else if (it.t === "faq") faqs.push(`<details><summary>${esc(it.q)}</summary><p>${esc(it.a)}</p></details>`);
+    else if (it.t === "preco") precos.push(`<tr><th>${esc(it.n)}${it.nota ? `<small>${esc(it.nota)}</small>` : ""}</th><td>${esc(it.v)}</td></tr>`);
+    else if (it.t === "h3") partes.push(`<h3>${esc(it.x)}</h3>`);
+    else if (it.t === "p") {
+      let h = esc(it.x);
+      for (const [rot, href] of it.l || []) { if (rot) h = h.replace(esc(rot), `<a class="lk" href="${linkV7(pre, href)}">${esc(rot)}</a>`); }
+      partes.push(`<p>${h}</p>`);
+    }
+  }
+  fechar();
+  return `<section class="sec"><div class="caixa prosa">${b.h2 ? `<h2>${esc(b.h2)}</h2>` : ""}${partes.join("")}</div></section>`;
+}
+function paginaV7(pre, slug) {
+  const d = v7[slug];
+  const msg = `Oi, vim pelo site da GR Tech (${d.h1.replace(/\.$/, "")}). Estou em [bairro]. O que preciso: ___.`;
+  // O último bloco do v7 é sempre a chamada final; vira o fecho com botão.
+  const blocos = d.blocos.slice(0, -1);
+  const fim = d.blocos[d.blocos.length - 1];
+  return `<section class="hero"><div class="caixa hero-g so">
+    <div>
+      <p class="olho">${esc(d.olho || "GR Tech")}</p>
+      <h1>${esc(d.h1)}</h1>
+      <p class="lead">${esc(d.lead)}</p>
+      <p class="preco">Visita técnica <b>R$ 150</b>, abatida se você fechar.</p>
+      <div class="hero-a">${botao(wa(msg), "Chamar no WhatsApp")}<a class="lk" href="tel:${TEL}">Ligar (11) 95875-8030</a></div>
+    </div>
+  </div></section>
+  ${slug === "vrf-vrv" ? `<section class="sec"><div class="caixa prosa"><p>Página de VRF no desenho novo, com a ilustração do sistema: <a class="lk" href="${pre}vrf/">abrir a página de VRF</a>.</p></div></section>` : ""}
+  ${blocos.map((b) => bloco(pre, b)).join("\n")}
+  <section class="sec"><div class="caixa prosa">${fim.h2 ? `<h2>${esc(fim.h2)}</h2>` : ""}${fim.itens.filter((i) => i.t === "p").map((i) => `<p>${esc(i.x)}</p>`).join("")}<div class="hero-a">${botao(wa(msg), "Chamar no WhatsApp")}<a class="lk" href="tel:${TEL}">Ligar (11) 95875-8030</a></div></div></section>`;
+}
+for (const slug of Object.keys(v7)) paginas.push({ slug, titulo: v7[slug].titulo, desc: v7[slug].desc, v7: true });
+
 function mioloDe(slug, pre) {
+  if (v7[slug]) return paginaV7(pre, slug);
   if (miolos[slug]) return miolos[slug](pre);
   if (areas[slug]) return areas[slug](pre);
   if (slug === "creditos") return creditos(pre);
@@ -436,7 +503,7 @@ function mioloDe(slug, pre) {
 }
 
 const naoAchei = chrome(
-  { slug: "", titulo: "Página não encontrada · GR Tech", desc: "Essa página não existe nesta prévia." },
+  { slug: "", nao404: true, titulo: "Página não encontrada · GR Tech", desc: "Essa página não existe nesta prévia." },
   `<section class="sec"><div class="caixa prosa"><h1>Essa página não existe.</h1><p class="lead">O endereço não está nesta prévia.</p><p><a class="lk" href="index.html">Voltar ao início</a></p></div></section>`,
 );
 
@@ -448,4 +515,20 @@ for (const p of paginas) {
   await writeFile(arquivo, html);
 }
 await writeFile(join(raiz, "404.html"), naoAchei);
+const hoje = new Date().toISOString().slice(0, 10);
+await writeFile(join(raiz, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paginas.map((p) => `  <url><loc>${DOMINIO}/${p.slug ? p.slug + "/" : ""}</loc><lastmod>${hoje}</lastmod></url>`).join("\n")}\n</urlset>\n`);
+await writeFile(join(raiz, "robots.txt"), `User-agent: *\nAllow: /\n\nSitemap: ${DOMINIO}/sitemap.xml\n`);
+await writeFile(join(raiz, ".htaccess"), `# Prévia Z-01: mesmos 301 do v7, menos clinicas, condominios e restaurantes, que nesta versão são páginas próprias.
+ErrorDocument 404 /404.html
+<IfModule mod_alias.c>
+  RedirectMatch 301 ^/manutencao-corretiva/?$ /conserto/
+  RedirectMatch 301 ^/manutencao-preventiva/?$ /limpeza-e-manutencao/
+  RedirectMatch 301 ^/limpeza-higienizacao/?$ /limpeza-e-manutencao/
+  RedirectMatch 301 ^/contrato-de-manutencao/?$ /empresas/
+  RedirectMatch 301 ^/residencial/?$ /casa/
+  RedirectMatch 301 ^/comercial/?$ /empresas/
+  RedirectMatch 301 ^/sistemas-comerciais/?$ /empresas/
+  RedirectMatch 301 ^/refrigeracao-comercial/?$ /camara-fria-e-refrigeracao-comercial/
+</IfModule>
+`);
 console.log("paginas", paginas.length + 1);

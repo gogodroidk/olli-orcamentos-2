@@ -450,3 +450,15 @@ th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom
   .cena-mundo { display: none !important; }
   .cena-poster { visibility: visible !important; }
 }
+
+/* Páginas vindas do v7 */
+.hero-g.so { grid-template-columns: 1fr; max-width: 820px; }
+.card.semfoto div { padding: 18px; }
+.prosa h3 { margin-top: 1.2em; }
+.prosa .grade, .prosa .faq, .prosa table { margin-top: 16px; }
+.tabela-precos th small { display: block; font-weight: 400; opacity: .8; }
+.tabela-precos td { white-space: nowrap; font-weight: 650; }
+.barra { display: flex; gap: 8px; }
+.barra .bt-tel { width: auto; flex: 0 0 auto; }
+.bt-tel { background: transparent; color: inherit; border: 1px solid currentColor; }
+table { display: block; overflow-x: auto; max-width: 100%; }

@@ -20,10 +20,11 @@ const rotas = [
   "creditos/index.html",
   "privacidade/index.html",
   "404.html",
+  ...Object.keys(JSON.parse(readFileSync(join(aqui, "fonte", "conteudo-v7.json"), "utf8"))).map((s) => `${s}/index.html`),
 ];
 
 const proibidas = [
-  /tel:/i,
+  /tel:(?!\+5511958758030)/i,
   /24\s*h/i,
   /24 horas/i,
   /pmoc/i,
@@ -45,6 +46,9 @@ for (const rota of rotas) {
   assert.match(html, /44\.301\.204\/0001-38/, rota);
   assert.match(html, /wa\.me\/5511958758030/, rota);
   assert.match(html, /data-tema/, rota);
+  assert.match(html, /tel:\+5511958758030/, rota);
+  assert.match(html, /data-barra/, rota);
+  if (rota !== "404.html") assert.match(html, /<link rel="canonical" href="https:\/\/grtechrefrigeracao\.com\.br\//, rota);
   assert.doesNotMatch(html, /olliorcamentos\.online\/(?!privacidade)/, rota);
   for (const regra of proibidas) assert.doesNotMatch(html, regra, `${rota} ${regra}`);
 }
@@ -81,4 +85,10 @@ assert.match(readFileSync(join(pub, "contrato/index.html"), "utf8"), /mensalidad
 assert.match(readFileSync(join(pub, "creditos/index.html"), "utf8"), /Pexels License/);
 assert.match(readFileSync(join(pub, "privacidade/index.html"), "utf8"), /grtechrefrigeracao\.com\.br\/privacidade/);
 
+const mapa = readFileSync(join(pub, "sitemap.xml"), "utf8");
+for (const rota of rotas.filter((r) => r !== "404.html")) {
+  const url = "https://grtechrefrigeracao.com.br/" + rota.replace(/index\.html$/, "");
+  assert.ok(mapa.includes(`<loc>${url}</loc>`), `sitemap ${url}`);
+}
+assert.match(readFileSync(join(pub, "robots.txt"), "utf8"), /Sitemap: https:\/\/grtechrefrigeracao\.com\.br\/sitemap\.xml/);
 console.log("ok", rotas.length);
