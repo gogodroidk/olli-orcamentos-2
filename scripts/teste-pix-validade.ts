@@ -31,6 +31,11 @@ ok('já vencido -> omite', textoValidadePix(local(2026, 10, 23, 15, 0).toISOStri
 const modal = readFileSync(new URL('../src/components/PixPlanoModal.tsx', import.meta.url), 'utf8');
 ok('modal usa textoValidadePix(cobranca.expiresAt)', /textoValidadePix\(cobranca\.expiresAt\)/.test(modal));
 ok('sem "24 h" fixo no modal', !/24\s*h/i.test(modal));
+
+const dialog = readFileSync(new URL('../webapp/src/pages/olli/planos/DialogPix.tsx', import.meta.url), 'utf8');
+ok('painel: horaBr diz amanhã quando o Pix vira o dia', dialog.includes('amanhã, ${hora}'));
+ok('painel: a espera mostra "válido até" junto do horário', dialog.includes('Aguardando o pagamento') && dialog.includes('válido até ${ate}'));
+ok('painel: "24 horas" só explica o Pix expirado', dialog.includes('O Pix vale por 24 horas') && dialog.includes('Este Pix expirou'));
 ok('sem promessa de e-mail 7 dias no modal', !/7 dias/.test(modal));
 // P0-08: "Pagar depois" só fecha a tela (a cobrança segue valendo); não gera Pix novo nem cancela nada.
 ok('botão "Pagar depois" existe e chama aoFechar', /label="Pagar depois"[^>]*onPress=\{aoFechar\}/.test(modal));

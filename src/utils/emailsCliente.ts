@@ -1,6 +1,6 @@
 /**
  * E-mails do cliente (principal + secundário). Fonte única da regra: tela, banco
- * local, sync e envio passam por aqui.
+ * local e sync passam por aqui.
  *
  * Vazio = "não informado" (undefined). Texto que não parece e-mail NÃO é gravado
  * como válido: a tela mostra o erro, nunca descarta em silêncio.
@@ -32,7 +32,7 @@ export function validarEmailsCliente(email?: string | null, email2?: string | nu
   return null;
 }
 
-/** Destinatários de envio: só os válidos, sem repetir, principal primeiro. */
+/** Endereços válidos do cadastro, sem repetir, principal primeiro. */
 export function destinatariosEmail(c: { email?: string | null; email2?: string | null }): string[] {
   const out: string[] = [];
   for (const bruto of [c.email, c.email2]) {
@@ -40,4 +40,22 @@ export function destinatariosEmail(c: { email?: string | null; email2?: string |
     if (e && emailValido(e) && !out.includes(e)) out.push(e);
   }
   return out;
+}
+
+/**
+ * No pull, a nuvem sem e-mail não apaga o que este aparelho digitou quando a
+ * coluna ainda não existia (ou o último push teve de subir sem ela). Nuvem com
+ * e-mail, ou sem essa marca, segue o valor remoto — inclusive null, que é
+ * "não informado" de verdade.
+ */
+export function escolherEmailNoPull(
+  nuvem: { email?: string | null; email2?: string | null },
+  local: { email?: string | null; email2?: string | null } | null | undefined,
+  preservarLocal: boolean,
+): { email: string | null; email2: string | null } {
+  const nuvemVazia = !nuvem.email && !nuvem.email2;
+  if (preservarLocal && nuvemVazia) {
+    return { email: local?.email ?? null, email2: local?.email2 ?? null };
+  }
+  return { email: nuvem.email ?? null, email2: nuvem.email2 ?? null };
 }

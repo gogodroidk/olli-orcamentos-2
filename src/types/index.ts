@@ -246,7 +246,7 @@ export interface Cliente {
   cep?: string;
   /** E-mail principal do cliente. Ausente = não informado (nunca string vazia). */
   email?: string;
-  /** E-mail secundário (ex.: sócio, financeiro). Só existe com `email` preenchido; orçamento/recibo vão para os dois. */
+  /** E-mail secundário (ex.: sócio, financeiro). Só existe com `email` preenchido e diferente dele. */
   email2?: string;
   criadoEm: string;
   /** LIXEIRA (Frente 1): ISO do momento em que foi excluido (soft delete). Ausente/undefined = ATIVO. */
@@ -838,6 +838,11 @@ export interface DiagnosticoInput {
   modelo?: string;
   codigo?: string;
   sintoma?: string;
+  /**
+   * Família do aparelho (`ar_condicionado`, `geladeira`, `tv`…).
+   * Ausente = ar-condicionado, para o app antigo.
+   */
+  tipoEquipamento?: string;
 }
 
 /** Resposta estruturada da OLLI Técnica (formato do briefing do Igor). */
@@ -853,6 +858,16 @@ export interface DiagnosticoIA {
   mensagemCliente: string;
   sugestaoOrcamento: string;
   fontes: string[];
+  /** Riscos desta família no caso. Vazio quando a resposta antiga não trazia. */
+  riscos?: string[];
+  /** O que separar antes da visita. */
+  ferramentas?: string[];
+  /** Quando interromper. */
+  quandoParar?: string;
+  /** Id da família, carimbado pelo worker. A base offline também preenche. */
+  tipoEquipamento?: string;
+  /** Rótulo em português, carimbado pelo worker ou pela base offline. */
+  rotuloEquipamento?: string;
 }
 
 /** De onde veio o diagnóstico: cache local/nuvem, IA ao vivo, ou a base offline. */

@@ -42,7 +42,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
   return [
     { key: 'olliVoz', icon: 'microphone', label: 'OLLI por voz', desc: 'Monte orçamentos falando', color: c.accentLight, route: 'OlliVoz' },
     { key: 'olliChat', icon: 'chat-processing-outline', label: 'Chat com a OLLI', desc: 'Sua assistente técnica', color: c.primaryLight, route: 'OlliChat' },
-    { key: 'diagnosticoIA', icon: 'robot-outline', label: 'Diagnóstico IA', desc: 'Descreva o defeito, a OLLI ajuda', color: c.accentLight, route: 'DiagnosticoIA', verticalHvac: true },
+    { key: 'diagnosticoIA', icon: 'robot-outline', label: 'Diagnóstico IA', desc: 'Ar, geladeira, TV, lavadora e outros', color: c.accentLight, route: 'DiagnosticoIA', verticalHvac: true },
     { key: 'erro', icon: 'card-search-outline', label: 'Códigos de erro', desc: 'Diagnóstico · OLLI Técnica', color: c.accentLight, route: 'Diagnostico', verticalHvac: true },
     { key: 'tinta', icon: 'format-paint', label: 'Calculadora de tinta', desc: 'Litros e latas pela área', color: c.warning, route: 'CalculadoraTinta', vertical: 'pintura' },
     { key: 'anvisa', icon: 'file-certificate-outline', label: 'Comprovante de controle de pragas', desc: 'Dedetização · RDC 622/2022, art. 19', color: c.success, route: 'CertificadoAnvisa', vertical: 'dedetizacao' },
@@ -52,6 +52,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos' },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo' },
+    { key: 'contador', icon: 'bank-outline', label: 'Contador e nota fiscal', desc: 'MEI, ME e NFS-e no portal oficial', color: c.primary, route: 'Contador' },
     // '#F7B23B' era o warning fixo do handoff escuro — agora acompanha o warning
     // (ajustado por contraste) do modo atual.
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: c.warning, route: 'MeuNegocio' },

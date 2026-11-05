@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
-import { destinatariosEmail, emailValido, normalizarEmail, validarEmailsCliente } from '../src/utils/emailsCliente.ts';
+import { existsSync, readFileSync } from 'node:fs';
+import { destinatariosEmail, escolherEmailNoPull, emailValido, normalizarEmail, validarEmailsCliente } from '../src/utils/emailsCliente.ts';
 
 // normalizar: vazio é "não informado", nunca string vazia
 assert.equal(normalizarEmail('  Ana@X.com '), 'ana@x.com');
@@ -35,10 +35,42 @@ for (const src of [sync, painel]) {
   assert.match(src, /email:\s*c\.email \?\? null/);
   assert.match(src, /email2:\s*c\.email2 \?\? null/);
 }
-// nuvem sem a coluna não pode apagar o e-mail do aparelho
-assert.match(sync, /clientesSemColunasEmail \? \(local\?\.email \?\? null\)/);
-const mig = readFileSync(new URL('../supabase/migrations/20261030050000_clientes_email_secundario.sql', import.meta.url), 'utf8');
+// nuvem sem a coluna, ou push que deixou o e-mail de fora, não apaga o do aparelho
+assert.match(sync, /escolherEmailNoPull/);
+assert.match(sync, /marcarEmailForaDoPush/);
+assert.match(sync, /esquecerEmailForaDoPush/);
+assert.equal(sync.includes('20261030050000'), false);
+assert.equal(sync.includes('30/10'), false);
+
+const migUrl = new URL('../supabase/migrations/20261106053000_clientes_email_secundario.sql', import.meta.url);
+const mig = readFileSync(migUrl, 'utf8');
 assert.match(mig, /add column if not exists email\s+text/);
 assert.match(mig, /add column if not exists email2 text/);
+assert.equal(existsSync(new URL('../supabase/migrations/20261030050000_clientes_email_secundario.sql', import.meta.url)), false);
+
+const painelMut = readFileSync(new URL('../webapp/src/olli/mutacoes.ts', import.meta.url), 'utf8');
+const form = readFileSync(new URL('../webapp/src/pages/olli/clientes/FormCliente.tsx', import.meta.url), 'utf8');
+const tipos = readFileSync(new URL('../src/types/index.ts', import.meta.url), 'utf8');
+assert.equal(painelMut.includes('30/10'), false);
+assert.equal(painelMut.includes('sexta'), false);
+assert.match(painelMut, /ainda não guarda o e-mail do cliente/);
+assert.equal(form.includes('Para enviar orçamento e recibo.'), false);
+assert.match(form, /Opcional\. Fica no cadastro do cliente\./);
+assert.equal(tipos.includes('orçamento/recibo vão para os dois'), false);
+
+// pull: marca ligada e nuvem vazia conserva o aparelho; sem marca, null remoto vence;
+// nuvem com e-mail vence mesmo com a marca (outro aparelho já gravou de verdade).
+assert.deepEqual(
+  escolherEmailNoPull({ email: null, email2: null }, { email: 'a@b.co', email2: 'c@d.co' }, true),
+  { email: 'a@b.co', email2: 'c@d.co' },
+);
+assert.deepEqual(
+  escolherEmailNoPull({ email: null, email2: null }, { email: 'a@b.co', email2: null }, false),
+  { email: null, email2: null },
+);
+assert.deepEqual(
+  escolherEmailNoPull({ email: 'c@d.co', email2: null }, { email: 'a@b.co', email2: null }, true),
+  { email: 'c@d.co', email2: null },
+);
 
 console.log('teste-cliente-email: todas as verificações passaram');

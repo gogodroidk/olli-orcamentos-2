@@ -99,7 +99,8 @@ function SetaDeRolagem({ lado, onClick }: { lado: "esquerda" | "direita"; onClic
  *  leitor de tela é o único jeito de saber o que o arraste fez para quem não vê o quadro. */
 const INSTRUCOES_LEITOR_DE_TELA: ScreenReaderInstructions = {
 	draggable:
-		"Para pegar um orçamento, pressione a barra de espaço. " +
+		"Para mudar o estágio sem arrastar, use o botão Mover no card. " +
+		"Para pegar um orçamento pela alça, pressione a barra de espaço. " +
 		"Enquanto arrasta, use as setas do teclado para mover entre colunas. " +
 		"Pressione espaço novamente para soltar na nova coluna, ou Esc para cancelar.",
 };

@@ -1,6 +1,6 @@
-import { escapeHtml, safeHexColor } from './html';
+import { escapeHtml } from './html';
 import { DEFAULT_ACCENT } from './pdfGenerator';
-import { ajustarParaContraste } from '../theme/cores';
+import { corMarcaNoPapel } from './coresMarca';
 
 /**
  * documentoOficioPdf.ts — o "papel" comum dos documentos de ofício (comprovante de
@@ -10,15 +10,9 @@ import { ajustarParaContraste } from '../theme/cores';
  * Documento é papel: sempre claro, independente do tema do app.
  */
 
-function hex6(cor: string): string {
-  return /^#[0-9a-fA-F]{3}$/.test(cor)
-    ? '#' + cor.slice(1).split('').map((c) => c + c).join('')
-    : cor;
-}
-
 /** A cor da marca da empresa, escurecida até ter contraste 4,5:1 no branco. */
 export function corDoDocumento(corMarca: string | undefined): string {
-  return ajustarParaContraste(hex6(safeHexColor(corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT)), '#FFFFFF', 4.5);
+  return corMarcaNoPapel(corMarca ?? DEFAULT_ACCENT, DEFAULT_ACCENT);
 }
 
 /** Linha "rótulo: valor" — omite se o valor estiver vazio. */

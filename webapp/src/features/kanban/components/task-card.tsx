@@ -17,12 +17,12 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * ACESSIBILIDADE (regra 10): arrastar NÃO é o único caminho
  * ═══════════════════════════════════════════════════════════════════════════════
- * Todo card tem o menu "Mover para", que faz exatamente a mesma gravação — é o
- * caminho do teclado, do leitor de tela e do celular (onde arrastar entre colunas
- * roladas é sofrível). Por isso o arraste mora numa ALÇA dedicada, e não no card
- * inteiro: se o card todo fosse o alvo do drag, o Enter/Espaço em cima dele iniciaria
- * um arraste em vez de abrir o menu, e o botão do menu ficaria inalcançável pelo
- * teclado.
+ * Todo card tem o botão "Mover", com o estágio escrito. No celular ele abre uma
+ * gaveta (alvo de 44px); no computador, o menu. É a mesma gravação do arraste —
+ * teclado, leitor de tela e dedo não dependem de soltar o card na coluna certa.
+ * O arraste mora numa ALÇA dedicada, e não no card inteiro: se o card todo fosse
+ * o alvo do drag, o Enter/Espaço em cima dele iniciaria um arraste em vez de
+ * abrir o Mover.
  *
  * A CONSEQUÊNCIA DE ARRASTAR SÓ PELA ALÇA, e como ela é paga: quem tenta arrastar
  * pelo CORPO do card não move nada — e, ao soltar, o `click` abriria o editor do
@@ -37,17 +37,9 @@
  */
 import { useDraggable } from "@dnd-kit/core";
 import type { StatusOrcamento } from "@dominio";
-import { Check, Clock, GripVertical, Loader2, MoreVertical } from "lucide-react";
+import { Clock, GripVertical, Loader2 } from "lucide-react";
 import { type PointerEvent as ReactPointerEvent, useRef } from "react";
-import { Button } from "@/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuLabel,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@/ui/dropdown-menu";
+import BotaoMover from "@/olli/components/BotaoMover";
 import { cn } from "@/utils";
 import {
 	BRL,
@@ -59,6 +51,7 @@ import {
 	rotuloDoStatus,
 	rotuloParado,
 } from "../utils/colunas";
+import { opcoesParaMover } from "../utils/opcoes-mover";
 
 /** Quantos px o ponteiro pode andar entre apertar e soltar e ainda ser "um clique". */
 const TOLERANCIA_DE_CLIQUE = 10;
@@ -81,7 +74,10 @@ function Miolo({ cartao, coluna, salvando }: { cartao: Cartao; coluna: Coluna; s
 			<div className="mt-1.5 flex items-center justify-between gap-2 text-xs">
 				{salvando ? (
 					<span className="flex min-w-0 items-center gap-1">
-						<Loader2 className="size-3 shrink-0 animate-spin text-text-disabled motion-reduce:animate-none" aria-hidden />
+						<Loader2
+							className="size-3 shrink-0 animate-spin text-text-disabled motion-reduce:animate-none"
+							aria-hidden
+						/>
 						<span className="truncate text-text-secondary">Salvando…</span>
 					</span>
 				) : (
@@ -160,6 +156,12 @@ export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, 
 	// Sem blob (linha corrompida/legada) não há documento para abrir — mesma trava da
 	// lista de Orçamentos (`MenuDaLinha`): o corpo fica visível, mas não clicável.
 	const temBlob = blobDoCartao(cartao) !== null;
+	const opcoesMover = opcoesParaMover(COLUNAS, cartao.status, coluna.id).map((opcao) => ({
+		id: opcao.id,
+		grupo: opcao.grupo,
+		atual: opcao.atual,
+		rotulo: opcao.finalizar ? "Finalizar serviço" : rotuloDoStatus(opcao.id),
+	}));
 
 	/** Onde o ponteiro apertou, para separar clique de tentativa de arraste (ver topo). */
 	const apertouEm = useRef<{ x: number; y: number } | null>(null);
@@ -199,83 +201,47 @@ export default function TaskCard({ cartao, coluna, salvando, destaque, onMover, 
 			)}
 
 			{/* O conteúdo não intercepta ponteiro: o clique atravessa para o alvo acima.
-			    Só a alça e o menu voltam a receber (`pointer-events-auto`). */}
+			    Só a alça e o botão Mover voltam a receber (`pointer-events-auto`). */}
 			<div className="pointer-events-none relative z-10">
 				<div className="flex items-center gap-1.5">
-					{!finalizado && <button
-						type="button"
-						ref={setActivatorNodeRef}
-						{...listeners}
-						{...attributes}
-						title="Arraste para outra coluna"
-						aria-label={`Arrastar orçamento ${cartao.numero} para outra coluna. Ou use o menu Mover para.`}
-						disabled={salvando}
-						className={cn(
-							"pointer-events-auto",
-							ALCA,
-							destaque && "bg-primary/15 text-primary ring-2 ring-primary/50 motion-safe:animate-pulse",
-						)}
-					>
-						<GripVertical className="size-4" aria-hidden />
-					</button>}
+					{!finalizado && (
+						<button
+							type="button"
+							ref={setActivatorNodeRef}
+							{...listeners}
+							{...attributes}
+							title="Arraste para outra coluna"
+							aria-label={`Arrastar orçamento ${cartao.numero} para outra coluna. Ou use o botão Mover.`}
+							disabled={salvando}
+							className={cn(
+								"pointer-events-auto",
+								ALCA,
+								destaque && "bg-primary/15 text-primary ring-2 ring-primary/50 motion-safe:animate-pulse",
+							)}
+						>
+							<GripVertical className="size-4" aria-hidden />
+						</button>
+					)}
 
 					<span className="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-text-secondary">
 						{cartao.numero}
 					</span>
 
-					{finalizado ? <span className="ml-auto shrink-0 text-[11px] font-medium text-primary">OS concluída</span> : <DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="icon"
-								disabled={salvando}
-								aria-label={`Mover ${cartao.numero} para outro estágio`}
-								title="Mover para outro estágio"
-								className={cn(
-									"pointer-events-auto relative size-7 shrink-0 text-text-secondary hover:text-text-primary",
-									// Mesmo alvo de toque de 44px da alça, sem crescer no desenho.
-									"after:absolute after:-inset-2 after:content-['']",
-								)}
-							>
-								<MoreVertical className="size-4" aria-hidden />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-56">
-							<DropdownMenuLabel>Mover para</DropdownMenuLabel>
-							<DropdownMenuSeparator />
-							{/* Os 10 status, agrupados pela coluna que os abriga. O arraste só consegue
-							    expressar o status canônico de cada coluna (soltar em "Enviado" grava
-							    `enviado`); o menu devolve a precisão que falta — sem ele não haveria como
-							    registrar "Aguardando assinatura" ou "Expirado" pelo painel. */}
-							{COLUNAS.map((c) => (
-								<div key={c.id}>
-									<DropdownMenuLabel className="px-2 pb-0.5 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-text-disabled">
-										{c.titulo}
-									</DropdownMenuLabel>
-									{c.status.map((s) => {
-										const atual = s === cartao.status;
-										return (
-											<DropdownMenuItem key={s} disabled={atual} onSelect={() => onMover(cartao, s)} className="gap-2">
-												<span className={cn("size-1.5 shrink-0 rounded-full", c.ponto)} aria-hidden />
-												<span className="flex-1">{rotuloDoStatus(s)}</span>
-												{atual && <Check className="size-3.5 text-text-secondary" aria-label="status atual" />}
-											</DropdownMenuItem>
-										);
-									})}
-								</div>
-							))}
-							{/* Finalizar sem arrastar: a mesma ação de soltar em "Finalizados" (conclui a OS). */}
-							{coluna.id !== "finalizados" && (
-								<>
-									<DropdownMenuSeparator />
-									<DropdownMenuItem onSelect={() => onFinalizar(cartao)} className="gap-2">
-										<Check className="size-3.5 shrink-0 text-primary" aria-hidden />
-										<span className="flex-1">Finalizar serviço</span>
-									</DropdownMenuItem>
-								</>
-							)}
-						</DropdownMenuContent>
-					</DropdownMenu>}
+					{finalizado ? (
+						<span className="ml-auto shrink-0 text-[11px] font-medium text-primary">OS concluída</span>
+					) : (
+						<BotaoMover
+							rotuloAcessivel={`Mover orçamento ${cartao.numero} para outro estágio`}
+							titulo={`Mover ${cartao.numero}`}
+							descricao="Escolha o estágio. No celular não precisa arrastar o card até a coluna."
+							desabilitado={salvando}
+							opcoes={opcoesMover}
+							onEscolher={(id) => {
+								if (id === "finalizar") onFinalizar(cartao);
+								else onMover(cartao, id as StatusOrcamento);
+							}}
+						/>
+					)}
 				</div>
 
 				<Miolo cartao={cartao} coluna={coluna} salvando={salvando} />
@@ -299,8 +265,8 @@ export function CartaoFantasma({ cartao, coluna }: { cartao: Cartao; coluna: Col
 				<span className="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-text-secondary">
 					{cartao.numero}
 				</span>
-				{/* Espaço do botão de menu, para o fantasma ter a mesma largura do card real. */}
-				<span className="size-7 shrink-0" aria-hidden />
+				{/* Espaço do botão Mover, para o fantasma ter a mesma largura do card real. */}
+				<span className="h-7 w-14 shrink-0" aria-hidden />
 			</div>
 			<Miolo cartao={cartao} coluna={coluna} />
 		</div>

@@ -187,6 +187,15 @@ export default function ClientesDesktopScreen() {
         <>
           <BarraBusca valor={busca} aoMudar={setBusca} placeholder="Buscar por nome ou telefone…" />
           <Pressable
+            onPress={() => nav.navigate('Prospeccao')}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir a prospecção dos seus clientes no mapa"
+            style={({ hovered, focused }: PressableWebState) => [styles.botaoMapa, hovered && styles.botaoMapaHover, focused && styles.focoVisivel]}
+          >
+            <MaterialCommunityIcons name="map-marker-radius-outline" size={18} color={cores.onSurface} />
+            <Text style={styles.botaoMapaLabel}>Mapa</Text>
+          </Pressable>
+          <Pressable
             onPress={abrirNovo}
             accessibilityRole="button"
             accessibilityLabel="Novo cliente"
@@ -265,6 +274,23 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   botaoNovoLabel: {
     ...Typography.button,
     color: c.onPrimary,
+    fontSize: 13,
+  },
+  botaoMapa: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    backgroundColor: c.surface,
+    borderWidth: 1,
+    borderColor: c.outline,
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+  },
+  botaoMapaHover: { backgroundColor: c.surfacePressed },
+  botaoMapaLabel: {
+    ...Typography.button,
+    color: c.onSurface,
     fontSize: 13,
   },
   celulaTexto: {

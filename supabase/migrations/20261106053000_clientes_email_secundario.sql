@@ -1,5 +1,8 @@
 -- ============================================================================
 -- OLLI — E-MAIL DO CLIENTE (principal + secundário)
+-- Carimbo 20261106053000: depois de 20261104235900, a última migration já na
+-- main em 05/11/2026 (e depois de 20261102210000). Este arquivo NÃO é aplicado
+-- por este PR. Espera o OK que a spec do D-0129 deixou.
 -- ----------------------------------------------------------------------------
 -- O QUE MUDA
 --   clientes: + email, + email2 (text, NULL = "não informado").

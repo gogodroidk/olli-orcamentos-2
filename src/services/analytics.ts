@@ -2,6 +2,7 @@ import { insertEvento } from '../database/database';
 import { generateId } from '../utils/id';
 import { analyticsRemotoLigado, enviarEvento, pseudonimo } from './analyticsRemoto';
 import { getCurrentUser } from './supabase';
+import { eventoFunil } from './rastreioTelas';
 
 /**
  * Instrumentação de eventos (Etapa 0.4 do PROCESSO).
@@ -54,6 +55,14 @@ export const Eventos = {
   // aberto no Início e o teste do Pro liberado pelo servidor no 1º envio.
   exemploAtivacaoAberto: 'ativacao_exemplo_aberto',
   trialAutomaticoLiberado: 'trial_automatico_liberado',
+  // Rastreio de uso (funil até o 1º pagamento): abertura do app, tela de Planos, Pix gerado e pago.
+  sessaoIniciada: 'sessao_iniciada',
+  planosAberto: 'planos_aberto',
+  pixGerado: 'pix_gerado',
+  pixPago: 'pix_pago',
+  // Estúdio de marca à parte (D-1438 G25). Sem briefing: o texto fica no pedido, não no funil.
+  identidadeUpsellAberto: 'identidade_upsell_aberto',
+  identidadeUpsellAnotado: 'identidade_upsell_anotado',
 } as const;
 
 export type EventoNome = (typeof Eventos)[keyof typeof Eventos] | string;
@@ -71,6 +80,9 @@ export function track(evento: EventoNome, props?: Record<string, unknown>): void
   // sem PII, com id pseudonimizado. As duas pontas divergirem em conteúdo é o
   // desenho, não um bug: são públicos diferentes.
   void enviarRemoto(evento, props);
+  // RASTREIO DE USO (user_tela_log): só os 10 eventos do funil saem do aparelho, como nome fixo, sem props.
+  // Desligado por flag e sujeito ao opt-out (rastreioTelas.ts); no-op quando não aplicável.
+  eventoFunil(evento);
 }
 
 /**

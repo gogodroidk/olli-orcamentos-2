@@ -38,6 +38,7 @@ import {
   LEMBRETES_ENVIADOS_STAMP_KEY,
   PULL_INICIAL_OK_PREFIX,
   ULTIMO_PULL_KEY,
+  CLIENTE_EMAIL_FORA_PUSH_KEY,
 } from './storageKeys';
 import type {
   PmocPlano,
@@ -61,6 +62,7 @@ import { dataBrParaIsoSeguro } from '../utils/date';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisual';
 import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCliente';
+import { escolherEmailNoPull } from '../utils/emailsCliente';
 import { garantiaAteDaOS } from '../utils/garantiaServico';
 import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from './verticais';
@@ -173,9 +175,47 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
 const COLUNAS_CLIENTE_GEO = ['lat', 'lon', 'ibge', 'geo_precisao'] as const;
 let clientesSemColunasGeo = false;
 
-/** Servidor sem a migration 20261030050000: o push reenvia sem `email`/`email2` (e o pull não os lê). */
+/** Servidor sem a migration 20261106053000: o push reenvia sem `email`/`email2`. Isso não é sync do e-mail. */
 const COLUNAS_CLIENTE_EMAIL = ['email', 'email2'] as const;
 let clientesSemColunasEmail = false;
+
+async function lerIdsEmailForaDoPush(): Promise<Set<string>> {
+  try {
+    const bruto = await AsyncStorage.getItem(CLIENTE_EMAIL_FORA_PUSH_KEY);
+    if (!bruto) return new Set();
+    const lista = JSON.parse(bruto) as unknown;
+    if (!Array.isArray(lista)) return new Set();
+    return new Set(lista.filter((id): id is string => typeof id === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+/** O último push deste cliente subiu sem a coluna. Sobrevive a reiniciar o app. */
+async function emailFicouDeForaDoPush(id: string): Promise<boolean> {
+  return (await lerIdsEmailForaDoPush()).has(id);
+}
+
+async function marcarEmailForaDoPush(id: string): Promise<void> {
+  try {
+    const ids = await lerIdsEmailForaDoPush();
+    if (ids.has(id)) return;
+    ids.add(id);
+    await AsyncStorage.setItem(CLIENTE_EMAIL_FORA_PUSH_KEY, JSON.stringify([...ids]));
+  } catch {
+    // best-effort: sem a marca, um pull depois da migration pode apagar o e-mail local
+  }
+}
+
+async function esquecerEmailForaDoPush(id: string): Promise<void> {
+  try {
+    const ids = await lerIdsEmailForaDoPush();
+    if (!ids.delete(id)) return;
+    await AsyncStorage.setItem(CLIENTE_EMAIL_FORA_PUSH_KEY, JSON.stringify([...ids]));
+  } catch {
+    // best-effort
+  }
+}
 
 function geoParaRow(c: Cliente): Record<string, unknown> {
   if (clientesSemColunasGeo) return {};
@@ -1175,11 +1215,20 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       for (const c of COLUNAS_CLIENTE_GEO) delete (row as Record<string, unknown>)[c];
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
     }
-    if (error && table === 'clientes' && !clientesSemColunasEmail && erroDeColunaDesconhecida(error)) {
-      // Servidor sem a migration de e-mail: reenvia sem as colunas (ver COLUNAS_CLIENTE_EMAIL).
-      clientesSemColunasEmail = true;
-      for (const col of COLUNAS_CLIENTE_EMAIL) delete (row as Record<string, unknown>)[col];
-      ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
+    if (error && table === 'clientes' && COLUNAS_CLIENTE_EMAIL.some((c) => erroDeColunaDesconhecidaDe(error, c))) {
+      // Servidor sem a migration de e-mail: reenvia sem as colunas. O relógio da
+      // nuvem avança, mas o e-mail ficou de fora — a marca impede o pull de
+      // tratar esse null como "a pessoa apagou". Vale para o próximo cliente
+      // da mesma sessão, não só para o primeiro.
+      const registro = row as Record<string, unknown>;
+      const temColunaEmail = COLUNAS_CLIENTE_EMAIL.some((c) => c in registro);
+      if (temColunaEmail) {
+        clientesSemColunasEmail = true;
+        for (const col of COLUNAS_CLIENTE_EMAIL) delete registro[col];
+        ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
+        const id = registro.id;
+        if (!error && typeof id === 'string') await marcarEmailForaDoPush(id);
+      }
     }
     if (error && table === 'agendamentos' && !agendaSemColunaExterna && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration da visita externa: reenvia sem ela (ver COLUNA_AGENDA_EXTERNA).
@@ -1227,6 +1276,16 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       agendaSemColunasEquipe = true;
       for (const c of COLUNAS_AGENDA_EQUIPE) delete (row as Record<string, unknown>)[c];
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
+    }
+    if (!error && table === 'clientes') {
+      const registro = row as Record<string, unknown>;
+      const id = registro.id;
+      // Subiu COM as colunas: a migration já está no servidor. Desliga a marca
+      // para o próximo pull aceitar o e-mail da nuvem (inclusive um null real).
+      if (typeof id === 'string' && COLUNAS_CLIENTE_EMAIL.some((c) => c in registro)) {
+        clientesSemColunasEmail = false;
+        await esquecerEmailForaDoPush(id);
+      }
     }
     if (error) {
       if (tabelaDocumentoNumerado(table)) {
@@ -1580,9 +1639,13 @@ async function localUpsertCliente(c: Cliente): Promise<void> {
   const local = await db.getFirstAsync<any>(
     'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao, email, email2 FROM clientes WHERE id = ?', [c.id],
   );
-  // E-mail: nuvem sem a coluna (clientesSemColunasEmail) não pode apagar o do aparelho.
-  const email = clientesSemColunasEmail ? (local?.email ?? null) : (c.email ?? null);
-  const email2 = clientesSemColunasEmail ? (local?.email2 ?? null) : (c.email2 ?? null);
+  // E-mail ficou de fora do push (coluna ausente nesta sessão, ou a marca que
+  // sobrevive ao reinício): a nuvem vazia não ganha do aparelho. Nuvem com
+  // e-mail, ou sem a marca, segue o valor remoto.
+  const preservarLocal = clientesSemColunasEmail || await emailFicouDeForaDoPush(c.id);
+  const escolhido = escolherEmailNoPull(c, local, preservarLocal);
+  const email = escolhido.email;
+  const email2 = escolhido.email2;
   if (local) {
     const geoLocal = geoParaColunas(lerGeoDaLinha(local));
     const mudou = mudancaDeEndereco(local, c);
@@ -3315,6 +3378,19 @@ async function executarSyncOnLogin(): Promise<void> {
       .then(m => m.espelharVersoesPendentes())
       .catch(() => 0);
     if (syncAbortado(geracao)) return;
+    // Pagamentos do ledger que ficaram PENDENTES (registrados offline) ou SEM VÍNCULO com o recibo (o vínculo
+    // foi tentado antes de o recibo subir: 23503 'recibo_do_pagamento_nao_encontrado'). A rotina existia, mas
+    // não tinha chamador: o pendente ficava pendente para sempre (28/10: R$ 1.460 sem vínculo). Vem DEPOIS do
+    // pushAllLocal, quando o recibo já está na nuvem. Idempotente (idempotency_key no servidor); falha fica
+    // para a próxima retomada.
+    // Só no aparelho do DONO (ou conta pessoal): o membro não registra nem vincula pagamento do dono
+    // (a RPC recusa) e tentaria de novo em todo sync (LIVRE #266 P2). `desconhecido` também não roda.
+    if (contextoEquipe.status === 'pessoal') {
+      await import('./pagamentos')
+        .then(m => m.sincronizarPagamentosPendentes())
+        .catch(() => 0);
+      if (syncAbortado(geracao)) return;
+    }
     // Fotos da OS (I0 · selo "no aparelho/enviada"): o arquivo já está salvo no
     // aparelho desde o clique; aqui só sobe a cópia para o bucket privado. Vem
     // DEPOIS das linhas (a OS existe na nuvem antes da foto) e respeita a espera

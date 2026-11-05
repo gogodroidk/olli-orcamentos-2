@@ -57,14 +57,10 @@ import { useSalvar } from "@/olli/mutacoes";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { buscarCep } from "./cep";
+import { normalizarEmail, validarEmailsCliente } from "../../../../../src/utils/emailsCliente";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 
 const soDigitos = (s: string | undefined | null) => (s ?? "").replace(/\D/g, "");
-
-// Mesma regra de `src/utils/emailsCliente.ts` do app (o painel não importa valor de fora de @dominio).
-const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const emailNorm = (s: string) => s.trim().toLowerCase();
-const emailOk = (s: string) => s.length <= 254 && EMAIL_VALIDO.test(s);
 
 /** Linha da tabela `clientes`. Colunas 1:1 com o domínio (ver `clienteToRow`). */
 export type LinhaCliente = Record<string, unknown>;
@@ -255,12 +251,8 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSal
 		}
 		if (campos.cpf.length > 0 && !cpfValido(campos.cpf)) e.cpf = "CPF inválido.";
 		if (campos.cnpj.length > 0 && !cnpjValido(campos.cnpj)) e.cnpj = "CNPJ inválido.";
-		const m1 = emailNorm(campos.email);
-		const m2 = emailNorm(campos.email2);
-		if (m1 && !emailOk(m1)) e.email = "E-mail inválido. Confira o endereço.";
-		else if (m2 && !emailOk(m2)) e.email2 = "Segundo e-mail inválido. Confira o endereço.";
-		else if (m2 && !m1) e.email = "Preencha o e-mail principal antes do segundo.";
-		else if (m1 && m2 && m1 === m2) e.email2 = "O segundo e-mail é igual ao principal.";
+		const erroEmail = validarEmailsCliente(campos.email, campos.email2);
+		if (erroEmail) e[erroEmail.campo] = erroEmail.mensagem;
 		return e;
 	};
 
@@ -302,8 +294,8 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSal
 		opcional("complemento", texto(campos.complemento));
 		opcional("cidade", texto(campos.cidade));
 		opcional("estado", texto(campos.estado).toUpperCase().slice(0, 2));
-		opcional("email", emailNorm(campos.email));
-		opcional("email2", emailNorm(campos.email2));
+		opcional("email", normalizarEmail(campos.email) ?? "");
+		opcional("email2", normalizarEmail(campos.email2) ?? "");
 
 		try {
 			await salvar.mutateAsync(c);
@@ -354,7 +346,7 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSal
 				</Campo>
 
 				<div className="grid gap-4 sm:grid-cols-2">
-					<Campo rotulo="E-mail" erro={erros.email} dica="Para enviar orçamento e recibo.">
+					<Campo rotulo="E-mail" erro={erros.email} dica="Opcional. Fica no cadastro do cliente.">
 						<Input
 							id={`${idBase}-email`}
 							type="email"

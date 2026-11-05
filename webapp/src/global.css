@@ -131,26 +131,23 @@
 	}
 }
 
-/* Shadcn UI Light Theme */
+/* Shadcn UI Light Theme — areia/creme. O azul de marca continua em --primary. */
 :root {
-	/* D-1438 ("scroll branco, não sincroniza com o sistema"): sem `color-scheme` o navegador desenha
-	   barra de rolagem e controles nativos SEMPRE claros, inclusive no tema escuro. */
-	color-scheme: light;
-	--radius: 0.5rem;
-	--background: var(--colors-common-white);
-	--foreground: var(--colors-common-black);
-	--card: var(--colors-common-white);
-	--card-foreground: var(--colors-common-black);
-	--popover: var(--colors-common-white);
-	--popover-foreground: var(--colors-common-black);
+	--radius: 1rem;
+	--background: var(--colors-background-default);
+	--foreground: var(--colors-text-primary);
+	--card: var(--colors-background-paper);
+	--card-foreground: var(--colors-text-primary);
+	--popover: var(--colors-background-paper);
+	--popover-foreground: var(--colors-text-primary);
 	--primary: var(--colors-palette-primary-default);
 	--primary-foreground: var(--colors-common-white);
-	--secondary: var(--colors-palette-gray-200);
-	--secondary-foreground: var(--colors-palette-gray-600);
-	--muted: var(--colors-palette-gray-200);
-	--muted-foreground: var(--colors-palette-gray-600);
-	--accent: var(--colors-palette-gray-200);
-	--accent-foreground: var(--colors-palette-gray-600);
+	--secondary: var(--colors-background-neutral);
+	--secondary-foreground: var(--colors-text-secondary);
+	--muted: var(--colors-background-neutral);
+	--muted-foreground: var(--colors-text-secondary);
+	--accent: var(--colors-background-neutral);
+	--accent-foreground: var(--colors-text-secondary);
 	--destructive: var(--colors-palette-error-default);
 	--destructive-foreground: #ffffff;
 	--border: rgba(var(--colors-palette-gray-500Channel) / var(--opacity-border));
@@ -161,28 +158,27 @@
 	--chart-3: oklch(0.398 0.07 227.392);
 	--chart-4: oklch(0.828 0.189 84.429);
 	--chart-5: oklch(0.769 0.188 70.08);
-	--sidebar: var(--colors-palette-gray-200);
-	--sidebar-foreground: var(--colors-palette-gray-800);
+	--sidebar: var(--colors-background-paper);
+	--sidebar-foreground: var(--colors-text-primary);
 	--sidebar-primary: var(--colors-palette-primary-default);
 	--sidebar-primary-foreground: var(--colors-palette-primary-lighter);
-	--sidebar-accent: var(--colors-palette-gray-200);
-	--sidebar-accent-foreground: var(--colors-palette-gray-800);
-	--sidebar-border: var(--colors-palette-gray-200);
+	--sidebar-accent: var(--colors-background-neutral);
+	--sidebar-accent-foreground: var(--colors-text-primary);
+	--sidebar-border: var(--colors-palette-gray-300);
 	--sidebar-ring: var(--colors-palette-primary-default);
 }
 
-/* Shadcn UI Dark Theme — navy da família do app (não preto/zinza), ver
-   theme/tokens/color.ts (darkColorTokens.background). Elevação por degrau de
-   luminosidade: background (mais escuro) → card/popover → secondary/muted/
-   accent/sidebar (--colors-background-neutral, mais claro ainda). */
+/* Shadcn UI Dark Theme — grafite quente, ver theme/tokens/color.ts
+   (darkColorTokens.background). Elevação por degrau de luminosidade:
+   background (mais escuro) → card/popover → secondary/muted/accent/sidebar
+   (--colors-background-neutral, mais claro ainda). */
 [data-theme-mode="dark"] {
-	color-scheme: dark;
 	--background: var(--colors-background-default);
-	--foreground: var(--colors-common-white);
+	--foreground: var(--colors-text-primary);
 	--card: var(--colors-background-paper);
-	--card-foreground: var(--colors-common-white);
+	--card-foreground: var(--colors-text-primary);
 	--popover: var(--colors-background-paper);
-	--popover-foreground: var(--colors-common-white);
+	--popover-foreground: var(--colors-text-primary);
 	--primary: var(--colors-palette-primary-default);
 	--primary-foreground: var(--colors-common-white);
 	--secondary: var(--colors-background-neutral);
@@ -202,11 +198,11 @@
 	--chart-4: oklch(0.627 0.265 303.9);
 	--chart-5: oklch(0.645 0.246 16.439);
 	--sidebar: var(--colors-background-neutral);
-	--sidebar-foreground: var(--colors-common-white);
+	--sidebar-foreground: var(--colors-text-primary);
 	--sidebar-primary: var(--colors-palette-primary-default);
 	--sidebar-primary-foreground: var(--colors-palette-primary-darker);
 	--sidebar-accent: var(--colors-background-neutral);
-	--sidebar-accent-foreground: var(--colors-common-white);
+	--sidebar-accent-foreground: var(--colors-text-primary);
 	--sidebar-border: rgba(var(--colors-palette-gray-500Channel) / var(--opacity-border));
 	--sidebar-ring: var(--colors-palette-primary-default);
 }

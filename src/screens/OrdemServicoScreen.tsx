@@ -14,7 +14,7 @@ import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { OlliButton } from '../components/OlliButton';
-import { OlliInput } from '../components/OlliInput';
+import { FormularioDadosOS } from '../components/os/FormularioDadosOS';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -30,6 +30,7 @@ import {
   getOrdem,
   criarOSDeOrcamento,
   criarOSManual,
+  editarDadosOS,
   atualizarStatusOS,
   atribuirTecnico,
   atualizarChecklist,
@@ -62,6 +63,7 @@ import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { useRascunhoCampo } from '../hooks/useRascunhoCampo';
 import { chaveRascunho } from '../services/rascunhoCampo';
+import type { PatchDadosOS } from '../utils/ordemServicoEdicao';
 // Encerramento em 60 s: fluxo único de fim de atendimento (regra pura em utils/encerramentoOS).
 import { EncerrarAtendimentoModal } from '../components/encerramento/EncerrarAtendimentoModal';
 import { DicaContextual } from '../components/DicaContextual';
@@ -443,6 +445,8 @@ function DetalheOS({
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
   const [addingFoto, setAddingFoto] = useState(false);
   const [showAtribuir, setShowAtribuir] = useState(false);
+  const [editandoDados, setEditandoDados] = useState(false);
+  const [salvandoDados, setSalvandoDados] = useState(false);
   // Dinheiro (custo do material, lucro) só para quem vê valores — o técnico da
   // equipe registra o que saiu, mas não vê custo nem lucro.
   const { pode: podeAcao } = usePermissao();
@@ -535,6 +539,40 @@ function DetalheOS({
       Alert.alert('Não deu', e?.message ?? 'Não consegui mudar o status agora.');
     } finally {
       setSalvandoStatus(null);
+    }
+  }
+
+  async function salvarEdicao(patch: PatchDadosOS, limpar: () => void) {
+    if (!ordem) return;
+    setSalvandoDados(true);
+    try {
+      const atualizada = await editarDadosOS(ordem.id, patch);
+      limpar();
+      setOrdem((prev) => (prev ? {
+        ...prev,
+        clienteId: atualizada.clienteId,
+        clienteNome: atualizada.clienteNome,
+        titulo: atualizada.titulo,
+        descricao: atualizada.descricao,
+        observacoes: atualizada.observacoes,
+        dataAgendada: atualizada.dataAgendada,
+        valor: atualizada.valor,
+        atualizadoEm: atualizada.atualizadoEm,
+      } : atualizada));
+      if (atualizada.clienteId) {
+        try { setCliente(await getCliente(atualizada.clienteId)); } catch { setCliente(null); }
+      } else {
+        setCliente(null);
+      }
+      vibrar('sucesso');
+      onMudou();
+      setEditandoDados(false);
+    } catch (e: unknown) {
+      vibrar('erro');
+      const msg = e instanceof Error ? e.message : 'Não consegui salvar a ordem agora.';
+      Alert.alert('Não deu', msg);
+    } finally {
+      setSalvandoDados(false);
     }
   }
 
@@ -711,9 +749,11 @@ function DetalheOS({
             {/* Resumo */}
             <View style={styles.bloco}>
               <LinhaInfo icon="account-outline" label="Cliente" valor={ordem.clienteNome || '—'} />
-              {ordem.dataAgendada ? (
-                <LinhaInfo icon="calendar-clock-outline" label="Agendada" valor={formatarDataCurta(ordem.dataAgendada)} />
-              ) : null}
+              <LinhaInfo
+                icon="calendar-clock-outline"
+                label="Agendada"
+                valor={ordem.dataAgendada ? (formatarDataCurta(ordem.dataAgendada) || 'Sem data') : 'Sem data'}
+              />
               {typeof ordem.valor === 'number' ? (
                 <LinhaInfo icon="cash" label="Valor" valor={formatarValor(ordem.valor)} />
               ) : null}
@@ -722,6 +762,18 @@ function DetalheOS({
               ) : null}
               {ordem.descricao ? (
                 <Text style={styles.descricao}>{ordem.descricao}</Text>
+              ) : null}
+              {ehGestao ? (
+                <TouchableOpacity
+                  style={[styles.atribuirBtn, { marginTop: 10 }]}
+                  activeOpacity={0.85}
+                  onPress={() => { vibrar('selecao'); setEditandoDados(true); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Editar ordem"
+                >
+                  <MaterialCommunityIcons name="pencil-outline" size={18} color={cores.accentLight} />
+                  <Text style={styles.atribuirBtnText}>Editar ordem</Text>
+                </TouchableOpacity>
               ) : null}
             </View>
 
@@ -917,11 +969,13 @@ function DetalheOS({
               <LucroVisitaFaixa ordem={ordem} onAbrirMeuNegocio={abrirMeuNegocio} />
             ) : null}
 
-            {/* Observações — só leitura (registradas na criação da OS) */}
-            {ordem.observacoes ? (
+            {/* Observações — a gestão completa pelo "Editar ordem". */}
+            {(ordem.observacoes || ehGestao) ? (
               <View style={styles.bloco}>
                 <Text style={styles.blocoTitulo}>Observações</Text>
-                <Text style={styles.descricao}>{ordem.observacoes}</Text>
+                <Text style={ordem.observacoes ? styles.descricao : styles.vazioTexto}>
+                  {ordem.observacoes || 'Nenhuma observação ainda.'}
+                </Text>
               </View>
             ) : null}
 
@@ -985,6 +1039,44 @@ function DetalheOS({
           }}
         />
       )}
+
+      {editandoDados && ordem ? (
+        <Modal visible animationType="slide" onRequestClose={() => setEditandoDados(false)} presentationStyle="fullScreen">
+          <View style={styles.detalheContainer}>
+            <GradientHeader
+              onBack={() => setEditandoDados(false)}
+              title="Editar ordem"
+              subtitle={ordem.numero ? `Nº ${ordem.numero}` : undefined}
+            />
+            <ScrollView
+              contentContainerStyle={{
+                paddingTop: Spacing.base,
+                paddingHorizontal: Spacing.base,
+                paddingBottom: 40 + insets.bottom,
+              }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <FormularioDadosOS
+                key={ordem.id}
+                iniciais={{
+                  clienteId: ordem.clienteId,
+                  clienteNome: ordem.clienteNome,
+                  titulo: ordem.titulo,
+                  descricao: ordem.descricao,
+                  observacoes: ordem.observacoes,
+                  dataAgendada: ordem.dataAgendada,
+                  valor: ordem.valor,
+                }}
+                rotuloSalvar="Salvar alterações"
+                salvando={salvandoDados}
+                aoCancelar={() => setEditandoDados(false)}
+                onSalvar={(patch, limpar) => { void salvarEdicao(patch, limpar); }}
+              />
+            </ScrollView>
+          </View>
+        </Modal>
+      ) : null}
 
       {/* Modal atribuir técnico */}
       {showAtribuir && ordem && (
@@ -1399,26 +1491,13 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
   );
 }
 
-/** Passo "manual" — form mínimo (cliente + título; descrição opcional). */
+/** Passo "manual" — cliente, serviço, dia, valor e observações. O rascunho vive no formulário. */
 function NovaOSManual({ criando, onCriar }: {
   criando: boolean;
   /** `limparRascunho` deve ser chamado só quando a OS foi criada de verdade. */
   onCriar: (parcial: Partial<OrdemServico>, limparRascunho: () => void) => void;
 }) {
-  const cores = useCores();
-  const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
-  // Rascunho por campo (I0): a OS manual meio preenchida volta se o app morrer.
-  const [clienteNome, setClienteNome, rascCliente] = useRascunhoCampo(chaveRascunho('os-nova', 'cliente'));
-  const [titulo, setTitulo, rascTitulo] = useRascunhoCampo(chaveRascunho('os-nova', 'titulo'));
-  const [descricao, setDescricao, rascDescricao] = useRascunhoCampo(chaveRascunho('os-nova', 'descricao'));
-  const limparRascunho = () => {
-    rascCliente.limpar();
-    rascTitulo.limpar();
-    rascDescricao.limpar();
-  };
-
-  const valido = clienteNome.trim().length > 0 && titulo.trim().length > 0;
 
   return (
     <ScrollView
@@ -1428,45 +1507,11 @@ function NovaOSManual({ criando, onCriar }: {
       }}
       keyboardShouldPersistTaps="handled"
     >
-      <OlliInput
-        label="Cliente"
-        required
-        value={clienteNome}
-        onChangeText={setClienteNome}
-        placeholder="Nome do cliente"
-        leftIcon="account-outline"
-      />
-      <OlliInput
-        label="Título do serviço"
-        required
-        value={titulo}
-        onChangeText={setTitulo}
-        placeholder="Ex.: Manutenção do ar-condicionado"
-        leftIcon="clipboard-text-outline"
-      />
-      <Text style={styles.manualLabel}>Descrição (opcional)</Text>
-      <TextInput
-        style={styles.obsInput}
-        value={descricao}
-        onChangeText={setDescricao}
-        placeholder="Detalhes do que precisa ser feito..."
-        placeholderTextColor={cores.onSurfaceMuted}
-        multiline
-      />
-      <OlliButton
-        label="Criar ordem de serviço"
-        variant="gradient"
-        size="lg"
-        fullWidth
-        loading={criando}
-        disabled={!valido}
-        onPress={() => onCriar({
-          clienteNome: clienteNome.trim(),
-          titulo: titulo.trim(),
-          descricao: descricao.trim() || undefined,
-        }, limparRascunho)}
-        icon={<MaterialCommunityIcons name="clipboard-check-outline" size={20} color="#fff" />}
-        style={{ marginTop: Spacing.base }}
+      <FormularioDadosOS
+        rascunhoEscopo="os-nova"
+        rotuloSalvar="Criar ordem de serviço"
+        salvando={criando}
+        onSalvar={(patch, limpar) => onCriar(patch, limpar)}
       />
     </ScrollView>
   );
@@ -1579,13 +1624,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 12,
   },
   fotoBtnText: { fontSize: 13.5, fontWeight: '800', color: c.accentLight },
-
-  obsInput: {
-    backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline,
-    paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: c.onSurface,
-    minHeight: 88, textAlignVertical: 'top', marginTop: 4,
-  },
-  manualLabel: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, marginTop: 6, marginBottom: 2 },
 
   // Sheets / modais
   // Scrim padrão de modal — sempre escuro, convenção universal de overlay.
