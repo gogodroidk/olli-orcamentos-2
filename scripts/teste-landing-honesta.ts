@@ -55,6 +55,8 @@ for (const arquivo of arquivos(RAIZ_WEB, /\.astro$/)) {
 }
 
 const home = ler('../web/src/pages/index.astro');
+const faqHome = ler('../web/src/data/conteudoSite.ts');
+const faqPrecos = ler('../web/src/data/faqPlanos.ts');
 const oficio = ler('../web/src/pages/para/[oficio].astro');
 const planosPagina = ler('../web/src/pages/planos.astro');
 const llms = ler('../web/src/pages/llms.txt.ts');
@@ -66,19 +68,27 @@ const termos = ler('../src/content/legal/termos.ts');
 const privacidade = ler('../src/content/legal/privacidade.ts');
 
 // ─── 2. Offline é do app Android, não da web ───────────────────────────────────
-assert.doesNotMatch(home, /a: "Funciona\. O app guarda tudo/, 'FAQ de offline não pode responder "Funciona." sem dizer que é só no app');
-assert.match(home, /No aplicativo Android \(em teste fechado\)/, 'FAQ de offline deve limitar a promessa ao app Android');
-assert.match(home, /Pelo navegador — no celular ou no computador — a OLLI precisa de internet/, 'FAQ de offline deve dizer que a web precisa de internet');
+// A redação da FAQ saiu da home para um módulo só, compartilhado com /perguntas/.
+// O gate continua na redação E na página: a home tem de renderizar a lista inteira.
+assert.match(home, /faqProduto\(\)/, 'a home mostra a FAQ do produto');
+assert.doesNotMatch(home, /faq\.slice\(/, 'a home não pode esconder offline nem calculadoras');
+assert.match(planosPagina, /faqPlanos\(\)/, 'a página de preços mostra a FAQ de preços');
+assert.doesNotMatch(faqHome, /a: "Funciona\. O app guarda tudo/, 'FAQ de offline não pode responder "Funciona." sem dizer que é só no app');
+assert.match(faqHome, /No aplicativo Android \(em teste fechado\)/, 'FAQ de offline deve limitar a promessa ao app Android');
+assert.match(faqHome, /Pelo navegador — no celular ou no computador — a OLLI precisa de internet/, 'FAQ de offline deve dizer que a web precisa de internet');
 assert.doesNotMatch(home, /benchmark|das 25 ferramentas/i, 'benchmark de concorrente é bastidor, não copy');
+assert.doesNotMatch(faqHome, /benchmark|das 25 ferramentas/i, 'benchmark de concorrente é bastidor, não copy');
 assert.doesNotMatch(oficio, /sem sinal\./, 'página de ofício leva à web, que não funciona sem sinal');
 assert.doesNotMatch(ajuda, /Tudo funciona offline/, 'Central de Ajuda não pode prometer offline sem dizer que é do app');
 assert.match(ajuda, /pelo navegador, o OLLI precisa de conexão/, 'Central de Ajuda deve dizer que a web precisa de internet');
 
 // Nada de "abaixo do DAS do MEI": o Empresa custa mais que o DAS.
 assert.doesNotMatch(home, /DAS do MEI/, 'comparação com o DAS era falsa para o plano Empresa');
+assert.doesNotMatch(faqHome, /DAS do MEI/, 'comparação com o DAS era falsa para o plano Empresa');
 // Contagem de calculadoras derivada, nunca digitada.
 assert.doesNotMatch(home, /21 calculadoras|3 de elétrica/, 'contagem de calculadoras tem de vir de data/oficios.ts');
-assert.match(home, /\$\{TOTAL_CALCULADORAS\} calculadoras de campo divididas por ofício/, 'FAQ de calculadoras deve usar TOTAL_CALCULADORAS');
+assert.doesNotMatch(faqHome, /21 calculadoras|3 de elétrica/, 'contagem de calculadoras tem de vir de data/oficios.ts');
+assert.match(faqHome, /\$\{TOTAL_CALCULADORAS\} calculadoras de campo divididas por ofício/, 'FAQ de calculadoras deve usar TOTAL_CALCULADORAS');
 
 // ─── 3. Zero não vira copy ─────────────────────────────────────────────────────
 assert.match(oficio, /calculos\.length > 0\s*\?\s*`\$\{dor\} Grátis para começar/, 'meta description precisa de ramo sem calculadora');
@@ -94,7 +104,7 @@ assert.doesNotMatch(planosPagina, /a IA tem 3 usos/, 'cota do Grátis vem de IA_
 assert.match(cartoes, /b\.emBreve \?/, 'cartão de plano precisa de terceiro estado para "em breve"');
 
 // ─── 5. Pix: condicionado e pelo mesmo preço ──────────────────────────────────
-for (const [nome, fonte] of [['home', home], ['planos', planosPagina], ['cartões', cartoes], ['llms.txt', llms]] as const) {
+for (const [nome, fonte] of [['faq do produto', faqHome], ['faq de preços', faqPrecos], ['cartões', cartoes], ['llms.txt', llms]] as const) {
   assert.match(fonte, /PIX_PLANO_LIGADO/, `${nome}: copy de Pix tem de ficar atrás do PIX_PLANO_LIGADO`);
 }
 const pix = ler('../web/src/data/pix.ts');

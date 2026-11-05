@@ -9,7 +9,6 @@ import Layout from "../layouts/Layout.astro";
 import { postsPublicados } from "./blog/_dados";
 import {
 	APP_CADASTRO_URL,
-	GOOGLE_PLAY_TESTE_URL,
 	PASSOS,
 	faqProduto,
 } from "../data/conteudoSite";
@@ -23,7 +22,6 @@ import {
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 
 const faq = faqProduto();
-const perguntas = faq.slice(0, 3);
 const posts = (await postsPublicados()).slice(0, 3);
 const precos = [
 	{ nome: "Grátis", valor: reais(0), nota: "sem prazo" },
@@ -70,7 +68,7 @@ const precos = [
 						</p>
 						<div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
 							<a
-								href={GOOGLE_PLAY_TESTE_URL}
+								href="https://play.google.com/apps/testing/online.olliorcamentos.app"
 								target="_blank"
 								rel="noopener noreferrer"
 								aria-label="Acessar o teste fechado do OLLI para Android na Google Play (abre em nova guia)"
@@ -211,7 +209,7 @@ const precos = [
 						<a href="/perguntas/" class="rodape-link font-semibold text-brand-fg">Ver todas</a>
 					</div>
 					<div class="mt-4">
-						<ListaFaq itens={perguntas} />
+						<ListaFaq itens={faq} />
 					</div>
 				</div>
 			</div>
