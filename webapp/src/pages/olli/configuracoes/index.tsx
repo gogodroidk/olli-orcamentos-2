@@ -85,7 +85,9 @@ export default function ConfiguracoesPage() {
 			}
 			const { error } = await supabase.auth.updateUser(atualizacao);
 			if (error) {
-				if (error.code === "current_password_mismatch" || error.code === "current_password_required") {
+				// O GoTrue nomeia a constante ErrorCodeCurrentPasswordMismatch, mas a string
+				// enviada é current_password_invalid (v2.189 e master). current_password_mismatch não existe.
+				if (error.code === "current_password_invalid" || error.code === "current_password_mismatch" || error.code === "current_password_required") {
 					throw new Error("A senha atual não confere. Nada foi alterado.");
 				}
 				throw error;
