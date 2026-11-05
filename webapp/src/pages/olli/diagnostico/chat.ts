@@ -154,6 +154,8 @@ export type RespostaChat =
 export interface OpcoesAssistente {
 	/** Ofício/vertical, quando a tela conhece. Vazio mantém o modo geral do Worker. */
 	vertical?: string;
+	/** Família do aparelho no diagnóstico. Vazio não muda o chat comum. */
+	tipoEquipamento?: string;
 	/** Só telas com confirmação explícita de gasto devem enviar true. */
 	confirmarCredito?: boolean;
 	creditoRef?: string;
@@ -192,6 +194,7 @@ export async function perguntarAoAssistente(
 			body: JSON.stringify({
 				mensagens,
 				vertical: opcoes.vertical,
+				...(opcoes.tipoEquipamento ? { tipoEquipamento: opcoes.tipoEquipamento } : {}),
 				confirmarCredito: opcoes.confirmarCredito === true,
 				creditoRef: opcoes.creditoRef,
 				modo: opcoes.modo,
@@ -249,7 +252,10 @@ export async function perguntarAoAssistente(
 	}
 }
 
-/** Compatibilidade da ferramenta HVAC: mesma função, vertical explícita. */
-export function perguntarPorSintoma(mensagens: MensagemChat[]): Promise<RespostaChat> {
-	return perguntarAoAssistente(mensagens, { vertical: "refrigeracao" });
+/** Diagnóstico por sintoma: ofício de refrigeração e a família do aparelho. */
+export function perguntarPorSintoma(
+	mensagens: MensagemChat[],
+	tipoEquipamento?: string,
+): Promise<RespostaChat> {
+	return perguntarAoAssistente(mensagens, { vertical: "refrigeracao", tipoEquipamento });
 }

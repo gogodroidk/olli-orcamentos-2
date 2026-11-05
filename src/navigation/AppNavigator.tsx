@@ -161,7 +161,7 @@ export type RootStackParamList = {
   // `equipamentoId` (ficha do QR → "Código de erro deste equipamento"): o
   // diagnóstico já sabe a marca, o cliente e o equipamento para o orçamento do defeito.
   Diagnostico: { equipamentoId?: string } | undefined;
-  DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string };
+  DiagnosticoIA: { marca?: string; modelo?: string; codigo?: string; sintoma?: string; tipoEquipamento?: string };
   // Fase 3 — OLLI conversacional + planos
   OlliVoz: undefined;
   OlliChat: undefined;
