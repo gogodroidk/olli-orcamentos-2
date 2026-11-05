@@ -5,7 +5,6 @@ import {
 	ARTIGOS_AJUDA,
 	CATEGORIAS_AJUDA,
 	corpoVisivel,
-	faqSchemaOrg,
 	markdownAjudaLlms,
 	type AjudaArtigo,
 	type AjudaBloco,
@@ -55,7 +54,6 @@ export default function AjudaPage() {
 			}),
 		[categoria, termo],
 	);
-	const jsonLd = useMemo(() => JSON.stringify(faqSchemaOrg("web")).replace(/</g, "\\u003c"), []);
 	const markdown = useMemo(() => markdownAjudaLlms("web"), []);
 	const porCategoria = useMemo(() => {
 		const grupos = new Map<string, AjudaArtigo[]>();
@@ -69,7 +67,6 @@ export default function AjudaPage() {
 
 	return (
 		<div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6" data-ai-readable="true" data-ai-surface="olli-help-center">
-			<script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
 			<header className="rounded-2xl border border-primary/20 bg-primary/5 p-5 md:p-7">
 				<div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
 					<div>

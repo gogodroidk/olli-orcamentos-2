@@ -78,8 +78,8 @@ const painel = ler("webapp/src/pages/olli/ajuda/index.tsx");
 assert.match(painel, /data-ai-readable/);
 assert.match(painel, /corpoVisivel\(artigo, "web"\)/);
 assert.match(painel, /markdownAjudaLlms\("web"\)/);
-assert.match(painel, /faqSchemaOrg\("web"\)/);
 assert.match(painel, /ORDEM_COMO_FUNCIONA/);
+assert.doesNotMatch(painel, /dangerouslySetInnerHTML/);
 assert.doesNotMatch(painel, /artigo\.corpo\.map\(/);
 
 const publico = ler("web/src/pages/ajuda/index.astro");
