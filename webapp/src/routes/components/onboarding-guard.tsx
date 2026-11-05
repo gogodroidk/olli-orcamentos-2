@@ -1,4 +1,5 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import { Skeleton } from "@/ui/skeleton";
 import { useMinhaEmpresa } from "@/olli/data";
 import { Button } from "@/ui/button";
 
@@ -16,9 +17,9 @@ export default function OnboardingGuard({ children }: { children: React.ReactNod
 	if (empresa.isLoading) {
 		return (
 			<div className="grid min-h-svh place-items-center bg-background px-6" role="status">
-				<div className="flex items-center gap-3 text-sm text-text-secondary">
-					<Loader2 className="size-5 animate-spin" aria-hidden />
-					Preparando seu espaço de trabalho…
+				<div className="flex w-full max-w-xs flex-col items-center gap-4">
+					<Skeleton className="h-2.5 w-40 rounded-full" />
+					<p className="text-sm text-text-secondary">Preparando seu espaço de trabalho…</p>
 				</div>
 			</div>
 		);

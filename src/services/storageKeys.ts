@@ -275,6 +275,19 @@ export const MALA_MARCADOS_KEY = 'olli.mala.marcados.v1';
 export const RADAR_TEMPO_KEY = 'olli.radarTempo.v1';
 
 /**
+ * "Pagar depois" (P0-08): a última cobrança Pix do plano, com o id da conta, para o cartão
+ * "Pix aguardando" em Planos reabrir o mesmo código (services/pixPendente).
+ */
+export const PIX_PENDENTE_KEY = 'olli.planos.pix_pendente';
+
+/**
+ * Último pedido de identidade visual à parte (services/identidadeUpsell).
+ * Dado da conta: o briefing sai no logout para o próximo usuário do aparelho
+ * não herdar o pedido.
+ */
+export const IDENTIDADE_UPSELL_KEY = 'olli.identidadeUpsell.v1'; // gitleaks:allow -- nome da gaveta no aparelho, não é credencial
+
+/**
  * Todas as chaves de dados do usuário, para a limpeza de logout remover de uma
  * vez (allow-list explícita — nunca AsyncStorage.clear()). NÃO inclui a chave de
  * onboarding ('olli.onboarded', preferência do aparelho) nem a sessão do Supabase.
@@ -309,6 +322,8 @@ export const APP_DATA_STORAGE_KEYS = [
   LEMBRETES_ENVIADOS_KEY,
   LEMBRETES_ENVIADOS_STAMP_KEY,
   CELEBRACOES_KEY,
+  PIX_PENDENTE_KEY, // brCode/plano da conta: sai no logout
+  IDENTIDADE_UPSELL_KEY,
   VESPERA_NOTIF_KEY,
   VESPERA_ENVIADOS_KEY,
   VESPERA_AVISO_DIA_KEY,
