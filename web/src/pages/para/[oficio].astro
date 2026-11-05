@@ -38,6 +38,7 @@ import {
 // Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
 import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
 import { FRASE_GRATIS_CURTA, GRATIS_CONDICAO, TEXTO_SELO_OLLI } from "../../data/recursos";
+import { postsPublicados } from "../blog/_dados";
 
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
@@ -101,6 +102,19 @@ const oficio = id === "geral" ? OFICIO_GERAL : OFICIOS.find((o) => o.id === id)!
 const profissao = alias?.profissao ?? PROFISSAO_POR_OFICIO[id];
 const dor = DOR_POR_OFICIO[id];
 const calculos = calculosDoOficio(id);
+
+/**
+ * "Leia também": os posts publicados DESTE ofício (campo `oficio` do front-matter, validado contra
+ * VERTICAIS) — a ponte inversa à que `blog/[slug].astro` já faz (post → página do ofício). Nenhuma lista
+ * escrita à mão: post novo marcado com o ofício aparece aqui sozinho, rascunho nunca aparece (`postsPublicados`).
+ * Posts do próprio ofício primeiro; os `oficio: 'todos'` (que o schema manda aparecer em TODAS as páginas) completam até 3.
+ * Sem post, o bloco some (não renderiza título vazio).
+ */
+const todosPosts = await postsPublicados();
+const leiaTambem = [
+	...todosPosts.filter((p) => p.data.oficio === id),
+	...todosPosts.filter((p) => p.data.oficio === "todos"),
+].slice(0, 3);
 
 const titulo = `App de orçamento e ordem de serviço para ${profissao} — OLLI`;
 const slug = SLUG_POR_OFICIO[id];
@@ -400,6 +414,26 @@ const schemaFaq = {
 				>.
 			</p>
 		</section>
+
+		{/* ══════════ LEIA TAMBÉM (ponte página → artigo do blog) ══════════ */}
+		{leiaTambem.length > 0 && (
+			<section class="mx-auto max-w-4xl px-6 pb-4 pt-16" aria-labelledby="leia-tambem">
+				<h2 id="leia-tambem" class="text-sm font-semibold uppercase tracking-wide text-muted">Leia também</h2>
+				<ul class="mt-4 grid gap-3 sm:grid-cols-2">
+					{leiaTambem.map((p) => (
+						<li>
+							<a
+								href={`/blog/${p.id}/`}
+								class="block min-h-11 rounded-xl border border-line bg-white p-4 transition hover:border-brand"
+							>
+								<span class="block font-semibold text-slate">{p.data.titulo}</span>
+								<span class="mt-1 block text-sm text-muted">{p.data.descricao}</span>
+							</a>
+						</li>
+					))}
+				</ul>
+			</section>
+		)}
 
 		{/* ══════════ OUTROS OFÍCIOS (links internos = o hub-and-spoke) ══════════ */}
 		<section class="mx-auto max-w-4xl px-6 py-16">
