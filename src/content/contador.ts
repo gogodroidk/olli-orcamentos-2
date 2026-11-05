@@ -141,7 +141,7 @@ export const CAMINHOS_NFSE: CaminhoNota[] = [
     id: 'me-epp',
     titulo: 'ME e EPP do Simples Nacional',
     quando:
-      'Desde 01/11/2026 a nota sai pelo Emissor Nacional, no site ou por API. A API pede credenciamento prévio no painel do contribuinte. O OLLI não faz essa integração e não transmite a nota.',
+      'Desde 01/11/2026 a nota sai pelo Emissor Nacional, na aplicação web ou por API. A API pede credenciamento prévio no painel do contribuinte. O OLLI não faz essa integração e não transmite a nota.',
     fonte: { rotulo: 'Diretrizes de 29/10/2026', href: FONTE_AVISO_SIMPLES_NFSE },
   },
 ];
@@ -155,7 +155,7 @@ export const PASSOS_NFSE: PassoNota[] = [
   {
     id: 'abrir',
     texto:
-      'Abra o Emissor Nacional no site oficial, ou o aplicativo NFS-e Mobile indicado na página do serviço do gov.br.',
+      'Abra o Emissor Nacional na página oficial, ou o aplicativo NFS-e Mobile indicado na página do serviço do gov.br.',
   },
   {
     id: 'entrar',

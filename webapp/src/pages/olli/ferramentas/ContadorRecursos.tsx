@@ -16,7 +16,7 @@ import {
  */
 export function ContadorRecursos() {
 	return (
-		<div className="mt-5 space-y-4 border-t border-border pt-5" aria-labelledby="contador">
+		<section className="mt-5 space-y-4 border-t border-border pt-5" aria-labelledby="contador">
 			<div>
 				<h3 id="contador" className="font-semibold text-text-primary">
 					Contador: nota fiscal e tipos de empresa
@@ -104,6 +104,6 @@ export function ContadorRecursos() {
 			</ul>
 
 			<p className="text-xs leading-relaxed text-text-disabled">{RODAPE_CONTADOR}</p>
-		</div>
+		</section>
 	);
 }
