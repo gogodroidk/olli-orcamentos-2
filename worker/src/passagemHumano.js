@@ -1,8 +1,9 @@
 /**
- * P0-34 — passagem para humano. Não envia WhatsApp.
+ * P0-34 — passagem para humano. Este módulo não chama a Meta.
  * SAIR continua em private.wa_texto_pede_sair: quem chama passa pediuSair.
  * A frase do gatilho 5 é a única. Os outros cinco devolvem corpo vazio.
- * O estado na fila nasce na migration 20261102180000; o CTO aplica, terça ou sexta.
+ * O webhook só envia a frase se o banco devolver o telefone em respostas
+ * (migration 20261103200000) e o guarda wa_autorizar_envio liberar.
  */
 
 export const FRASE_IA =
