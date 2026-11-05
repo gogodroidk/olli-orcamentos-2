@@ -29,8 +29,8 @@ const PARAGRAFO_CTA_TERMOS: string | null =
       'link do orçamento levam também uma linha convidando quem recebe o orçamento a conhecer o OLLI; nos ' +
       'planos Pro e Empresa, o selo e o convite não aparecem.';
 
-/** Data do documento: a de 2/10 até uma mudança datada entrar no ar (vale a mais recente). */
-const ATUALIZADO_EM = CTA_PRESTADOR_NO_AR_EM === null ? '2 de outubro de 2026' : diaExtenso(CTA_PRESTADOR_NO_AR_EM);
+/** Desligado, fica a data já publicada na main (2/11, #265). Ligado, o dia do convite tem de ser esse ou depois. */
+const ATUALIZADO_EM = CTA_PRESTADOR_NO_AR_EM === null ? '2 de novembro de 2026' : diaExtenso(CTA_PRESTADOR_NO_AR_EM);
 
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
