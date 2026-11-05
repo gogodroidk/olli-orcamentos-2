@@ -834,6 +834,11 @@ export interface DiagnosticoInput {
   modelo?: string;
   codigo?: string;
   sintoma?: string;
+  /**
+   * Família do aparelho (`ar_condicionado`, `geladeira`, `tv`…).
+   * Ausente = ar-condicionado, para o app antigo.
+   */
+  tipoEquipamento?: string;
 }
 
 /** Resposta estruturada da OLLI Técnica (formato do briefing do Igor). */
@@ -849,6 +854,16 @@ export interface DiagnosticoIA {
   mensagemCliente: string;
   sugestaoOrcamento: string;
   fontes: string[];
+  /** Riscos desta família no caso. Vazio quando a resposta antiga não trazia. */
+  riscos?: string[];
+  /** O que separar antes da visita. */
+  ferramentas?: string[];
+  /** Quando interromper. */
+  quandoParar?: string;
+  /** Id da família, carimbado pelo worker. A base offline também preenche. */
+  tipoEquipamento?: string;
+  /** Rótulo em português, carimbado pelo worker ou pela base offline. */
+  rotuloEquipamento?: string;
 }
 
 /** De onde veio o diagnóstico: cache local/nuvem, IA ao vivo, ou a base offline. */

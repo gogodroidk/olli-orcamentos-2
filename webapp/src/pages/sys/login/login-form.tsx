@@ -11,6 +11,7 @@ import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
 import { Input } from "@/ui/input";
 import { cn } from "@/utils";
+import { ConviteAviso } from "./components/ConviteAviso";
 import { EmailAutocompleteInput } from "./components/EmailAutocompleteInput";
 import { OAuthButtons } from "./components/OAuthButtons";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
@@ -20,7 +21,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 	const [loading, setLoading] = useState(false);
 	const navigatge = useNavigate();
 
-	const { loginState, setLoginState, destinoPosLogin } = useLoginStateContext();
+	const { loginState, setLoginState, destinoPosLogin, conviteToken } = useLoginStateContext();
 	const destino = destinoPosLogin ?? GLOBAL_CONFIG.defaultRoute;
 	const signIn = useSignIn();
 
@@ -70,6 +71,13 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 						<h1 className="text-2xl font-bold">{t("sys.login.signInFormTitle")}</h1>
 						<p className="text-balance text-sm text-muted-foreground">{t("sys.login.signInFormDescription")}</p>
 					</div>
+
+					{conviteToken ? (
+						<>
+							<ConviteAviso />
+							<OAuthButtons />
+						</>
+					) : null}
 
 					<FormField
 						control={form.control}
@@ -132,9 +140,10 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 						Entrar com código por e-mail
 					</Button>
 
-					{/* Login por celular/QR do template ficam escondidos até terem backend real. */}
+					{/* Login por celular/QR do template ficam escondidos até terem backend real.
+					    No convite, o Google fica no topo, junto do aviso. */}
 
-					<OAuthButtons />
+					{conviteToken ? null : <OAuthButtons />}
 
 					{/* 注册 */}
 					<div className="text-center text-sm">

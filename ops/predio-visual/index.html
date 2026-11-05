@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3E%3C/svg%3E">
+  <title>Prédio OLLI — 3 andares</title>
+  <style>
+    :root {
+      --ceu-0: #070b16;
+      --ceu-1: #0A1020;
+      --andar: #101A30;
+      --andar-alt: #0D1629;
+      --sala: #16233F;
+      --texto: #F4F7FB;
+      --texto-2: #C5D4E8;
+      --ciano: #67E8F9;
+      --bloq: #FECACA;
+      --bloq-fundo: #4A1D24;
+      --dur-curta: 160ms;
+      --dur-media: 360ms;
+      --dur-lenta: 700ms;
+      --desloc: 2px;
+      --ease: cubic-bezier(.2, .8, .2, 1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(var(--ceu-0), var(--ceu-1) 24%);
+      color: var(--texto);
+      font: 16px/1.4 system-ui, sans-serif;
+    }
+    body[data-ceu="dia"] { --ceu-0: #1c3a5a; }
+    body[data-ceu="tarde"] { --ceu-0: #3a2a22; }
+    body[data-ceu="noite"] { --ceu-0: #070b16; }
+    main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+    h1 { font-size: 22px; font-weight: 650; margin: 0 0 8px; }
+    .topo, .nota { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--texto-2); }
+    .nota { margin: 8px 0 14px; font-size: 14px; }
+    .abas { display: none; gap: 8px; margin-bottom: 12px; }
+    .abas button {
+      min-height: 38px;
+      border: 1px solid #27385E;
+      background: var(--andar);
+      color: var(--texto);
+      border-radius: 999px;
+      padding: 8px 14px;
+    }
+    .abas button[aria-selected="true"] { border-color: var(--ciano); }
+    .andar {
+      background: var(--andar);
+      border: 1px solid #1B2A47;
+      border-left: 8px solid var(--faixa, #1F6DA7);
+      border-radius: 16px;
+      margin-bottom: 14px;
+      padding: 14px 16px;
+    }
+    .andar:nth-child(even) { background: var(--andar-alt); }
+    .andar header { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+    .andar header span { color: var(--texto); font-weight: 700; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+    .andar h2 { margin: 0; font-size: 18px; }
+    .sala { display: grid; grid-template-columns: repeat(auto-fill, 168px); gap: 12px; justify-content: start; }
+    .vazio { color: var(--texto-2); margin: 0; }
+    .desk {
+      position: relative;
+      width: 168px;
+      min-height: 168px;
+      padding: 8px 8px 10px;
+      text-align: left;
+      color: inherit;
+      background: transparent;
+      border: 0;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .balao {
+      display: block;
+      font-size: 13px;
+      background: var(--sala);
+      color: var(--texto);
+      border-radius: 10px;
+      padding: 4px 8px;
+      min-height: 28px;
+    }
+    .pessoa { position: relative; height: 64px; display: flex; justify-content: flex-start; align-items: flex-end; padding-left: 8px; }
+    .rosto {
+      width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+      position: relative; z-index: 2; margin-bottom: -6px; border: 2px solid var(--ceu-1);
+      background: #24365A; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+    }
+    .corpo { position: absolute; bottom: 0; width: 52px; height: 30px; z-index: 1; }
+    .corpo rect { fill: #7E93BE; }
+    .zz { display: none; position: absolute; right: 18%; top: 0; font-size: 12px; color: var(--texto-2); font-style: normal; }
+    .desk.parado .zz { display: inline; }
+    .mesa { display: block; height: 16px; background: #2C4068; border-radius: 6px; position: relative; }
+    .mon {
+      position: absolute; right: 6px; top: -12px; z-index: 3;
+      min-width: 64px; height: 18px; padding: 0 4px;
+      border: 2px solid #3A4E73; border-radius: 3px;
+      background: #0A1020; color: var(--texto); font-size: 11px; line-height: 14px;
+    }
+    .desk.trabalhando .mon, .desk.conversando .mon { background: var(--ciano); color: #0A1020; border-color: var(--ciano); }
+    .desk.bloqueado .mon { border-color: #F87171; color: var(--bloq); }
+    .desk.bloqueado .balao { background: var(--bloq-fundo); color: var(--bloq); }
+    .desk.parado .rosto, .desk.parado .corpo { filter: saturate(.35); }
+    .placa { display: block; margin-top: 6px; font-size: 13px; color: var(--texto-2); }
+    .placa b { color: var(--texto); font-weight: 700; }
+    .aviao {
+      position: absolute; left: 0; top: 0; z-index: 5; width: 18px; height: 18px;
+      color: var(--ciano); pointer-events: none;
+    }
+    #predio { position: relative; }
+    #falas { list-style: none; padding: 0; margin: 12px 0 0; color: var(--texto-2); font-size: 14px; }
+    #falas li { margin: 4px 0; }
+    dialog {
+      width: min(520px, 92vw); background: var(--andar); color: var(--texto);
+      border: 1px solid #27385E; border-radius: 16px; padding: 0;
+    }
+    dialog header, dialog .corpo-dialogo { padding: 16px 18px; }
+    dialog header { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #27385E; }
+    dialog h3 { margin: 16px 18px 0; font-size: 14px; }
+    dialog ul { margin: 8px 18px 16px; padding-left: 18px; }
+    dialog button { min-height: 38px; }
+    :focus-visible { outline: 2px solid var(--ciano); outline-offset: 2px; }
+    @media (max-width: 720px) {
+      .abas { display: flex; }
+      .andar { display: none; }
+      .andar.escolhido { display: block; }
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .desk.trabalhando .corpo { animation: dig var(--dur-lenta) var(--ease) infinite alternate; }
+      .desk.parado .zz { animation: sobe calc(var(--dur-lenta) * 3) var(--ease) infinite; }
+    }
+    @keyframes dig { to { transform: translateY(calc(var(--desloc) * -1)); } }
+    @keyframes sobe {
+      from { transform: translateY(0); opacity: .45; }
+      to { transform: translateY(-6px); opacity: 0; }
+    }
+    body[data-ceu="noite"] .desk.trabalhando .mesa { box-shadow: 0 0 12px rgba(255, 196, 120, .35); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Prédio OLLI</h1>
+  <div class="topo">
+    <p id="resumo">ainda sem leitura</p>
+    <p id="sinal">lendo o arquivo local</p>
+  </div>
+  <p class="nota" id="nota"></p>
+  <div class="abas" id="abas" role="tablist" aria-label="Andares"></div>
+  <div id="predio">
+    <p class="vazio" id="espera">Lendo andares.json e estado.json nesta pasta.</p>
+  </div>
+  <section aria-label="Quem falou com quem">
+    <h2 class="vazio">Quem falou com quem</h2>
+    <ul id="falas"></ul>
+    <p id="fala-viva" aria-live="polite"></p>
+  </section>
+</main>
+<dialog id="det">
+  <header>
+    <div>
+      <strong id="det-nome"></strong>
+      <div id="det-sub"></div>
+    </div>
+    <button type="button" id="det-fechar">Fechar</button>
+  </header>
+  <div class="corpo-dialogo">
+    <h3>Tarefa</h3>
+    <p id="det-tarefa"></p>
+    <h3>Falas</h3>
+    <ul id="det-falas"></ul>
+    <h3 id="det-mem-h">Memórias</h3>
+    <ul id="det-mem"></ul>
+  </div>
+</dialog>
+<script type="module">
+import {
+  AVIAO_MS,
+  POLL_MS,
+  agrupar,
+  ceuDaHora,
+  conversasNovas,
+  cortar,
+  fichaMesa,
+  mesmaFila,
+  resumo,
+  textoResumo,
+  textoSinal,
+  validarEstado,
+} from './predio-modelo.mjs';
+
+const $ = (id) => document.getElementById(id);
+const predio = $('predio');
+const vistos = new Set();
+const agentes = new Map();
+let mapa = null;
+let rostos = {};
+let ultimoOkMs = 0;
+let relogio = 0;
+let primeiraLeitura = true;
+let andarEscolhido = null;
+let filas = new Map();
+
+function reduz() {
+  return matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function aplicarCeu() {
+  document.body.dataset.ceu = ceuDaHora(new Date().getHours());
+}
+
+function marcarSinal(ok) {
+  const agora = Date.now();
+  if (ok) ultimoOkMs = agora;
+  $('sinal').textContent = textoSinal({ ok, agoraMs: agora, ultimoOkMs });
+}
+
+async function lerJson(caminho) {
+  const resposta = await fetch(caminho, { cache: 'no-store' });
+  if (!resposta.ok) throw new Error(caminho);
+  return resposta.json();
+}
+
+function classeMesa(status) {
+  return `desk ${status === 'sem estado' ? 'sem-estado' : status}`;
+}
+
+function criarMesa(ficha) {
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = classeMesa(ficha.status);
+  botao.dataset.id = ficha.id;
+  botao.setAttribute('aria-label', ficha.aria);
+  const balao = document.createElement('span');
+  balao.className = 'balao';
+  balao.textContent = ficha.balao;
+  const pessoa = document.createElement('span');
+  pessoa.className = 'pessoa';
+  pessoa.append(rostoDe(ficha), corpoSvg(), Object.assign(document.createElement('i'), { className: 'zz', textContent: 'z z z' }));
+  const mesa = document.createElement('span');
+  mesa.className = 'mesa';
+  const mon = document.createElement('span');
+  mon.className = 'mon';
+  mon.textContent = ficha.monitor;
+  mesa.append(mon);
+  const placa = document.createElement('span');
+  placa.className = 'placa';
+  const nome = document.createElement('b');
+  nome.textContent = ficha.nome;
+  placa.append(nome, document.createTextNode(` ${ficha.papel} · ${ficha.status}`));
+  botao.append(balao, pessoa, mesa, placa);
+  botao.addEventListener('click', () => abrir(ficha.id));
+  return botao;
+}
+
+function rostoDe(ficha) {
+  if (!ficha.rosto) {
+    const ini = document.createElement('span');
+    ini.className = 'rosto';
+    ini.textContent = ficha.iniciais;
+    return ini;
+  }
+  const img = document.createElement('img');
+  img.className = 'rosto';
+  img.alt = '';
+  img.src = ficha.rosto;
+  img.addEventListener('error', () => {
+    const ini = document.createElement('span');
+    ini.className = 'rosto';
+    ini.textContent = ficha.iniciais;
+    img.replaceWith(ini);
+  });
+  return img;
+}
+
+function corpoSvg() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 52 30');
+  svg.setAttribute('class', 'corpo');
+  svg.setAttribute('aria-hidden', 'true');
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', '8');
+  rect.setAttribute('y', '4');
+  rect.setAttribute('width', '36');
+  rect.setAttribute('height', '22');
+  rect.setAttribute('rx', '9');
+  svg.append(rect);
+  return svg;
+}
+
+function atualizarMesa(agente) {
+  const ficha = fichaMesa(agente, rostos);
+  const botao = predio.querySelector(`.desk[data-id="${CSS.escape(ficha.id)}"]`);
+  if (!botao) return;
+  botao.className = classeMesa(ficha.status);
+  botao.setAttribute('aria-label', ficha.aria);
+  botao.querySelector('.balao').textContent = ficha.balao;
+  botao.querySelector('.mon').textContent = ficha.monitor;
+  const placa = botao.querySelector('.placa');
+  placa.replaceChildren();
+  const nome = document.createElement('b');
+  nome.textContent = ficha.nome;
+  placa.append(nome, document.createTextNode(` ${ficha.papel} · ${ficha.status}`));
+}
+
+function salaDe(pessoas, vazio) {
+  const sala = document.createElement('div');
+  sala.className = 'sala';
+  if (!pessoas.length) {
+    const p = document.createElement('p');
+    p.className = 'vazio';
+    p.textContent = vazio;
+    sala.append(p);
+    return sala;
+  }
+  sala.append(...pessoas.map((agente) => criarMesa(fichaMesa(agente, rostos))));
+  return sala;
+}
+
+function desenharAndar(andar, pessoas) {
+  const secao = document.createElement('section');
+  secao.className = 'andar';
+  secao.dataset.andar = andar.id;
+  secao.style.setProperty('--faixa', andar.faixa || '#1F6DA7');
+  secao.setAttribute('aria-label', `${andar.rotulo} ${andar.nome}`);
+  const header = document.createElement('header');
+  const rotulo = document.createElement('span');
+  rotulo.textContent = andar.rotulo || '';
+  const titulo = document.createElement('h2');
+  titulo.textContent = andar.nome || andar.id;
+  header.append(rotulo, titulo);
+  secao.append(header, salaDe(pessoas, 'Sala em montagem.'));
+  return secao;
+}
+
+function montarAbas(andares) {
+  const abas = $('abas');
+  abas.replaceChildren();
+  for (const andar of andares) {
+    const botao = document.createElement('button');
+    botao.type = 'button';
+    botao.role = 'tab';
+    botao.dataset.andar = andar.id;
+    botao.textContent = andar.rotulo;
+    botao.addEventListener('click', () => {
+      andarEscolhido = andar.id;
+      aplicarAba();
+    });
+    abas.append(botao);
+  }
+}
+
+function aplicarAba() {
+  const secoes = [...predio.querySelectorAll('.andar')];
+  if (!andarEscolhido && secoes[0]) andarEscolhido = secoes[0].dataset.andar;
+  for (const secao of secoes) secao.classList.toggle('escolhido', secao.dataset.andar === andarEscolhido);
+  for (const botao of $('abas').querySelectorAll('button')) {
+    botao.setAttribute('aria-selected', botao.dataset.andar === andarEscolhido ? 'true' : 'false');
+  }
+}
+
+function atualizarSala(idAndar, pessoas) {
+  const ids = pessoas.map((pessoa) => pessoa.id);
+  const sala = predio.querySelector(`[data-andar="${idAndar}"] .sala`);
+  if (!sala) return;
+  if (!mesmaFila(filas.get(idAndar)?.map((id) => ({ id })) || [], ids.map((id) => ({ id })))) {
+    sala.replaceChildren(...(pessoas.length
+      ? pessoas.map((agente) => criarMesa(fichaMesa(agente, rostos)))
+      : [Object.assign(document.createElement('p'), { className: 'vazio', textContent: 'Sala em montagem.' })]));
+    filas.set(idAndar, ids);
+  } else {
+    for (const agente of pessoas) atualizarMesa(agente);
+  }
+}
+
+function pintar(estado) {
+  const grupos = agrupar(estado.agentes, mapa);
+  agentes.clear();
+  for (const agente of estado.agentes) agentes.set(agente.id, agente);
+  $('resumo').textContent = textoResumo(resumo(estado.agentes));
+  $('nota').textContent = typeof mapa.nota === 'string' ? mapa.nota : '';
+  const temFora = Boolean(predio.querySelector('[data-andar="sem-mapa"]'));
+  const querFora = grupos.semMapa.length > 0;
+  const estruturaMudou = predio.querySelector('.andar') === null
+    || temFora !== querFora
+    || grupos.andares.some((andar) => !predio.querySelector(`[data-andar="${andar.id}"]`));
+  if (estruturaMudou) {
+    predio.replaceChildren();
+    filas = new Map();
+    for (const andar of grupos.andares) {
+      predio.append(desenharAndar(andar, andar.pessoas));
+      filas.set(andar.id, andar.pessoas.map((pessoa) => pessoa.id));
+    }
+    if (grupos.semMapa.length) {
+      predio.append(desenharAndar({ id: 'sem-mapa', rotulo: 'Fora do mapa', nome: 'Área sem empresa', faixa: '#94A3B8' }, grupos.semMapa));
+      filas.set('sem-mapa', grupos.semMapa.map((pessoa) => pessoa.id));
+    }
+    const abas = [...grupos.andares];
+    if (grupos.semMapa.length) abas.push({ id: 'sem-mapa', rotulo: 'Fora do mapa' });
+    montarAbas(abas);
+  } else {
+    for (const andar of grupos.andares) atualizarSala(andar.id, andar.pessoas);
+    if (querFora) atualizarSala('sem-mapa', grupos.semMapa);
+  }
+  aplicarAba();
+}
+
+function abrir(id) {
+  const agente = agentes.get(id);
+  if (!agente) return;
+  $('det-nome').textContent = agente.nome;
+  $('det-sub').textContent = `${agente.papel || ''} · ${agente.status || 'sem estado'}`;
+  $('det-tarefa').textContent = agente.tarefa || '—';
+  const falas = $('det-falas');
+  falas.replaceChildren();
+  const listaFalas = Array.isArray(agente.falas) ? agente.falas : [];
+  if (!listaFalas.length) falas.append(Object.assign(document.createElement('li'), { textContent: 'Sem fala registrada.' }));
+  for (const fala of listaFalas) {
+    const item = document.createElement('li');
+    item.textContent = typeof fala === 'string' ? fala : String(fala?.texto || '');
+    falas.append(item);
+  }
+  $('det-mem-h').textContent = agente.total_memorias ? `Memórias · ${agente.total_memorias}` : 'Memórias';
+  const memorias = $('det-mem');
+  memorias.replaceChildren();
+  const listaMem = Array.isArray(agente.memorias) ? agente.memorias : [];
+  if (!listaMem.length) memorias.append(Object.assign(document.createElement('li'), { textContent: 'Sem memória registrada.' }));
+  for (const memoria of listaMem) {
+    const item = document.createElement('li');
+    item.textContent = typeof memoria === 'string' ? memoria : String(memoria?.texto || '');
+    memorias.append(item);
+  }
+  $('det').showModal();
+}
+
+function anunciar(conversa) {
+  const de = agentes.get(conversa.de);
+  const para = agentes.get(conversa.para);
+  const nomeDe = de?.nome || conversa.de || 'alguém';
+  const nomePara = para?.nome || conversa.para || 'alguém';
+  const texto = cortar(conversa.texto || '', 80);
+  const item = document.createElement('li');
+  item.textContent = texto ? `${nomeDe} falou com ${nomePara}: ${texto}` : `${nomeDe} falou com ${nomePara}`;
+  const lista = $('falas');
+  lista.prepend(item);
+  while (lista.children.length > 8) lista.lastElementChild.remove();
+  $('fala-viva').textContent = `${nomeDe} falou com ${nomePara}`;
+}
+
+function centro(elemento) {
+  const caixa = elemento.getBoundingClientRect();
+  const base = predio.getBoundingClientRect();
+  return { x: caixa.left - base.left + caixa.width / 2, y: caixa.top - base.top + caixa.height / 2 };
+}
+
+function voar(conversa) {
+  anunciar(conversa);
+  const origem = predio.querySelector(`.desk[data-id="${CSS.escape(String(conversa.de || ''))}"]`);
+  const destino = predio.querySelector(`.desk[data-id="${CSS.escape(String(conversa.para || ''))}"]`);
+  if (!origem || !destino || reduz()) return;
+  const aviao = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  aviao.setAttribute('viewBox', '0 0 24 24');
+  aviao.setAttribute('class', 'aviao');
+  aviao.setAttribute('aria-hidden', 'true');
+  const traco = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  traco.setAttribute('d', 'M2 12 L22 4 L13 22 L11 13 Z');
+  traco.setAttribute('fill', 'none');
+  traco.setAttribute('stroke', 'currentColor');
+  traco.setAttribute('stroke-width', '1.6');
+  aviao.append(traco);
+  predio.append(aviao);
+  const a = centro(origem);
+  const b = centro(destino);
+  const animacao = aviao.animate(
+    [
+      { transform: `translate(${a.x}px, ${a.y}px)`, opacity: 1 },
+      { transform: `translate(${b.x}px, ${b.y}px)`, opacity: 0 },
+    ],
+    { duration: AVIAO_MS, easing: 'cubic-bezier(.2,.8,.2,1)', fill: 'forwards' },
+  );
+  animacao.onfinish = () => aviao.remove();
+}
+
+function soltarAvioes(conversas) {
+  const novas = conversasNovas(vistos, conversas);
+  for (const conversa of novas) vistos.add(conversa.id);
+  if (primeiraLeitura) {
+    primeiraLeitura = false;
+    return;
+  }
+  for (const conversa of novas) voar(conversa);
+}
+
+async function ciclo() {
+  aplicarCeu();
+  try {
+    if (!mapa) {
+      mapa = await lerJson('andares.json');
+      try { rostos = await lerJson('rostos.json'); } catch { rostos = {}; }
+    }
+  } catch {
+    $('espera').textContent = 'Mapa de andares indisponível.';
+    marcarSinal(false);
+    return;
+  }
+  try {
+    const estado = validarEstado(await lerJson('estado.json'));
+    if (!estado) throw new Error('estado');
+    pintar(estado);
+    soltarAvioes(estado.conversas);
+    marcarSinal(true);
+  } catch {
+    marcarSinal(false);
+    if (!predio.querySelector('.andar') && mapa) {
+      pintar({ agentes: [], conversas: [] });
+      $('resumo').textContent = 'sem sinal';
+    }
+  }
+}
+
+function ligar() {
+  if (relogio || document.hidden) return;
+  relogio = setInterval(() => { void ciclo(); }, POLL_MS);
+}
+
+function desligar() {
+  clearInterval(relogio);
+  relogio = 0;
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) desligar();
+  else {
+    void ciclo();
+    ligar();
+  }
+});
+$('det-fechar').addEventListener('click', () => $('det').close());
+$('det').addEventListener('click', (evento) => {
+  if (evento.target === $('det')) $('det').close();
+});
+void ciclo().then(ligar);
+</script>
+</body>
+</html>

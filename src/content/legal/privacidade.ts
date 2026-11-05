@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '26 de outubro de 2026',
+  atualizadoEm: '2 de novembro de 2026',
   aviso:
-    'Documento atualizado em 26 de outubro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 2 de novembro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -68,8 +68,7 @@ export const PRIVACIDADE: LegalDoc = {
       titulo: '1. Quem é o controlador dos dados',
       paragrafos: [
         'O OLLI é operado por OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA, CNPJ ' +
-          '65.361.266/0001-05, com sede na Rua Henrique Perdigão, 350, Jardim Ipanema ' +
-          '(Cidade Líder), São Paulo/SP, CEP 03582-110 ("OLLI", "nós"). Somos o ' +
+          '65.361.266/0001-05 ("OLLI", "nós"). Somos o ' +
           'controlador dos dados necessários para criar e manter a sua conta, processar ' +
           'a sua assinatura e operar o aplicativo.',
         'Para dúvidas sobre privacidade, exercício de direitos ou para falar com o canal ' +
@@ -100,6 +99,13 @@ export const PRIVACIDADE: LegalDoc = {
           'No aplicativo Android, a assinatura dos planos pagos é cobrada e gerenciada pela Google Play, ' +
           'quando essa opção estiver disponível. Os demais itens de pagamento abaixo só se aplicam quando você ' +
           'inicia uma compra pela versão web ou por outro canal em que o checkout esteja explicitamente disponível.',
+        'Formulário de diagnóstico de OLLI Serviços. Se você pedir um diagnóstico na página de serviços, ' +
+          'recebemos nome do negócio, cidade, descrição da dor e WhatsApp. Usamos para preparar o diagnóstico ' +
+          'e a proposta e responder por WhatsApp, com base no seu consentimento. Também consultamos informações ' +
+          'públicas do seu negócio (site, Google, redes). Guardamos por no máximo 180 dias se não houver proposta ' +
+          'e, se houver contrato, pelo prazo legal. Os dados ficam em servidores de provedores de nuvem ' +
+          '(Supabase, Cloudflare) e não são vendidos. Você pode pedir acesso, correção, exclusão ou parar de ' +
+          'receber mensagens a qualquer momento.',
       ],
       tabela: [
         {
@@ -119,7 +125,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Login com o Google: nome, e-mail e foto do perfil da sua conta Google',
-          finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google". Recebemos do Google apenas o que identifica a conta (nome, e-mail e foto do perfil); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
+          finalidade: 'Entrar ou criar a conta com o botão "Continuar com o Google", inclusive quando um convite de equipe pede o Google do e-mail que recebeu o convite. Recebemos do Google apenas o que identifica a conta (nome, e-mail e foto do perfil); não recebemos a sua senha do Google nem acessamos o seu Gmail, Drive ou contatos por este login.',
           base: 'Execução de contrato (art. 7º, V) e consentimento ao autorizar o login (art. 7º, I).',
         },
         {
@@ -178,9 +184,9 @@ export const PRIVACIDADE: LegalDoc = {
           base: 'Legítimo interesse do prestador em acompanhar a proposta que enviou (art. 7º, IX), com dados mínimos e não identificáveis.',
         },
         {
-          dado: 'Uso do app (analytics local no aparelho)',
-          finalidade: 'Entender quais telas ajudam e melhorar o produto.',
-          base: 'Legítimo interesse (art. 7º, IX).',
+          dado: 'Uso do app (telas visitadas e ações dentro do app)',
+          finalidade: "Entender passo a passo como o OLLI é usado: quais telas e botões você usa, em que ponto as pessoas travam e quais erros acontecem, para corrigir problemas e decidir o que melhorar. Registramos o tipo da ação e a hora (por exemplo, 'abriu a tela de orçamento', 'tocou em Enviar'), ligados a um código da sua conta, e não ao seu nome. Não registramos o que você digita, nem senhas, nem o conteúdo dos seus orçamentos, nem nome, telefone, endereço ou localização dos seus clientes, e não gravamos a tela. Os eventos ficam no seu aparelho e são enviados aos nossos servidores. Guardamos o registro detalhado por até 90 dias; depois, só um resumo diário por tela por até 12 meses, e depois só números gerais.",
+          base: "Legítimo interesse (art. 7º, IX) em melhorar o produto, usando o mínimo de dados necessário. Você pode desativar em Conta > Privacidade > 'Ajudar a melhorar o OLLI', e vale a partir desse momento, em todos os seus aparelhos; ao desativar, apagamos o que já foi registrado de você.",
         },
         {
           dado: 'Origem da visita (site e telas de entrada do painel web)',
@@ -233,9 +239,9 @@ export const PRIVACIDADE: LegalDoc = {
         'Supabase — banco de dados, autenticação e armazenamento de arquivos (fotos, logomarcas ' +
           'e PDFs, em depósito privado) na nuvem, com isolamento por usuário ' +
           '(Row Level Security), de forma que cada conta só enxerga os próprios dados.',
-        'Google — login com o Google ("Continuar com o Google"), quando você escolhe essa opção: ' +
-          'o Google confirma a sua identidade e nos informa o nome, o e-mail e a foto do perfil da conta. ' +
-          'O Google trata esse login conforme a própria política de privacidade.',
+        'Google — login com o Google ("Continuar com o Google"), quando você escolhe essa opção, ' +
+          'inclusive no convite de equipe: o Google confirma a sua identidade e nos informa o nome, ' +
+          'o e-mail e a foto do perfil da conta. O Google trata esse login conforme a própria política de privacidade.',
         'Google Play — no aplicativo Android, cobrança e gestão das assinaturas dos planos pagos ' +
           '(processador de pagamento da loja), quando essa opção estiver disponível. A Google ' +
           'recebe os dados do pagamento, e o OLLI recebe da Google Play o histórico da compra ' +

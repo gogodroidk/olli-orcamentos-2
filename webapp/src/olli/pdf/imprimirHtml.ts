@@ -81,7 +81,15 @@ export function imprimirHtml(html: string): Promise<void> {
 			resolve();
 		};
 
-		iframe.onload = () => {
+		// IMPRIME UMA VEZ SÓ (D-1438: "abre duas telas"). O iframe dispara `load` DUAS vezes: a 1ª no
+		// about:blank, durante o appendChild; a 2ª quando o `document.close()` termina. Com o handler ligado
+		// antes do append, cada load chamava `print()`: o dono cancelava um diálogo e o outro abria.
+		// Agora o handler só é ligado DEPOIS de escrever o HTML e roda uma única vez; o timer é a rede
+		// para o navegador que não dispara o load do close.
+		let disparou = false;
+		const aoCarregar = () => {
+			if (disparou) return;
+			disparou = true;
 			try {
 				const win = iframe.contentWindow;
 				if (!win) {
@@ -122,5 +130,8 @@ export function imprimirHtml(html: string): Promise<void> {
 		doc.open();
 		doc.write(html);
 		doc.close();
+		iframe.onload = aoCarregar;
+		if (doc.readyState === "complete") setTimeout(aoCarregar, 0);
+		else setTimeout(aoCarregar, 3000);
 	});
 }

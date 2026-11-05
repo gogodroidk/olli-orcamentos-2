@@ -4,6 +4,7 @@ import { track, Eventos } from './analytics';
 import { supabase } from './supabase';
 import { DiagnosticoInput, DiagnosticoIA, DiagnosticoResultado, CodigoErro } from '../types';
 import { tipoLimiteIA } from './erroIA';
+import { resolverTipoEquipamento, type TipoEquipamentoDiagnostico } from './tiposEquipamentoDiagnostico';
 
 /** Token de acesso da sessão atual (ou null se deslogado/sem backend). Nunca lança. */
 async function accessTokenAtual(): Promise<string | null> {
@@ -20,11 +21,11 @@ function norm(s?: string): string {
   return (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-// v3: invalida respostas antigas produzidas antes da troca Gemini → OpenRouter.
-// `cache_ia` não tem TTL; sem o bump, um diagnóstico v2 poderia continuar sendo
-// servido para sempre e atribuído ao provedor novo sem nunca ter passado nele.
+// v4: a família entra na chave. Sem isso, um diagnóstico de split em cache
+// seria servido para a TV da mesma marca e do mesmo código.
 function chave(input: DiagnosticoInput): string {
-  return `diag:v3:${norm(input.marca)}|${norm(input.modelo)}|${norm(input.codigo)}|${norm(input.sintoma)}`;
+  const tipo = resolverTipoEquipamento(input.tipoEquipamento).id;
+  return `diag:v4:${tipo}|${norm(input.marca)}|${norm(input.modelo)}|${norm(input.codigo)}|${norm(input.sintoma)}`;
 }
 
 /** Timeout do diagnóstico por IA: 30s (campo, conexão instável). */
@@ -92,7 +93,11 @@ export async function diagnosticarCaso(
         const r = await fetch(DIAGNOSTICO_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ ...input, contextoBase }),
+          body: JSON.stringify({
+            ...input,
+            tipoEquipamento: resolverTipoEquipamento(input.tipoEquipamento).id,
+            contextoBase,
+          }),
           signal: controller.signal,
         });
         if (r.ok) {
@@ -148,6 +153,8 @@ async function melhorMatch(input: DiagnosticoInput): Promise<CodigoErro | null> 
 }
 
 async function contextoDaBase(input: DiagnosticoInput): Promise<string | undefined> {
+  // A base local é de ar-condicionado. Mandá-la num caso de TV só confunde.
+  if (!resolverTipoEquipamento(input.tipoEquipamento).usaBaseHvac) return undefined;
   const m = await melhorMatch(input);
   if (!m) return undefined;
   return [
@@ -187,9 +194,74 @@ function avisoFallback(): string {
   }
 }
 
+function complementoDaFamilia(tipo: TipoEquipamentoDiagnostico): Pick<
+  DiagnosticoIA,
+  'riscos' | 'ferramentas' | 'quandoParar' | 'tipoEquipamento' | 'rotuloEquipamento'
+> {
+  return {
+    riscos: tipo.riscos,
+    ferramentas: tipo.ferramentas,
+    quandoParar: tipo.quandoParar,
+    tipoEquipamento: tipo.id,
+    rotuloEquipamento: tipo.label,
+  };
+}
+
+/**
+ * Fora do ar-condicionado não existe base offline. O aviso não pode dizer
+ * que estamos "mostrando a base de códigos".
+ */
+function avisoSemBaseHvac(): string {
+  switch (ultimoMotivoFalha) {
+    case 'auth':
+      return 'Sua sessão expirou — entre de novo em Conta para usar a OLLI. A base offline só tem códigos de ar-condicionado, então seguem os cuidados desta família.';
+    case 'timeout':
+      return 'A IA demorou demais para responder. A base offline só tem códigos de ar-condicionado, então seguem os cuidados desta família.';
+    case 'offline':
+      return 'Sem conexão agora. A base offline só tem códigos de ar-condicionado, então seguem os cuidados desta família.';
+    case 'servidor':
+      return 'A OLLI está muito requisitada. A base offline só tem códigos de ar-condicionado, então seguem os cuidados desta família.';
+    case 'limite_diario':
+      return 'O limite diário da OLLI online foi atingido. Ele volta às 21h (horário de Brasília). A base offline só tem códigos de ar-condicionado.';
+    case 'limite_global':
+      return 'A capacidade gratuita da OLLI online acabou por hoje. Ela volta às 21h (horário de Brasília). A base offline só tem códigos de ar-condicionado.';
+    case 'cancelado':
+      return 'Análise cancelada. A base offline só tem códigos de ar-condicionado, então seguem os cuidados desta família.';
+    default:
+      return DIAGNOSTICO_URL
+        ? 'A IA não respondeu agora. A base offline só tem códigos de ar-condicionado, então seguem os cuidados desta família — não é um diagnóstico fechado.'
+        : 'Diagnóstico por IA ainda não ligado. A base offline só tem códigos de ar-condicionado, então seguem os cuidados desta família.';
+  }
+}
+
 /** Monta um diagnóstico estruturado a partir da base local (sem IA). */
 async function fallbackBase(input: DiagnosticoInput): Promise<DiagnosticoResultado> {
   const aviso = avisoFallback();
+  const tipo = resolverTipoEquipamento(input.tipoEquipamento);
+
+  // Fora do ar-condicionado a base de 698 códigos não se aplica. Dizer que
+  // achou um código de split numa geladeira seria mentira.
+  if (!tipo.usaBaseHvac) {
+    const local = tipo.semNuvem;
+    return {
+      fonte: 'base',
+      aviso: avisoSemBaseHvac(),
+      diagnostico: {
+        resumo: local.resumo,
+        significadoProvavel: local.significado,
+        causasComuns: [],
+        testesEmOrdem: local.testes,
+        pecasSuspeitas: [],
+        naoFacaAinda: local.naoFaca,
+        nivelConfianca: 'Baixa',
+        confiancaJustificativa: 'A base offline do OLLI só cobre códigos de ar-condicionado.',
+        mensagemCliente: local.mensagem,
+        sugestaoOrcamento: local.orcamento,
+        fontes: [],
+        ...complementoDaFamilia(tipo),
+      },
+    };
+  }
 
   const m = await melhorMatch(input);
   if (!m) {
@@ -211,6 +283,7 @@ async function fallbackBase(input: DiagnosticoInput): Promise<DiagnosticoResulta
         mensagemCliente: 'Preciso confirmar o modelo do aparelho para fechar o diagnóstico com segurança.',
         sugestaoOrcamento: 'Visita técnica + diagnóstico; orçamento da peça após confirmação.',
         fontes: [],
+        ...complementoDaFamilia(tipo),
       },
     };
   }
@@ -232,6 +305,7 @@ async function fallbackBase(input: DiagnosticoInput): Promise<DiagnosticoResulta
       mensagemCliente: `Identifiquei um indício de "${m.falha}". Vou confirmar com alguns testes antes de orçar qualquer peça.`,
       sugestaoOrcamento: 'Diagnóstico + mão de obra; peça suspeita orçada após teste.',
       fontes: m.url ? [m.url] : [],
+      ...complementoDaFamilia(tipo),
     },
   };
 }

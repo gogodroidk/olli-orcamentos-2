@@ -534,6 +534,19 @@ export default function ClientesScreen() {
           icon="gesture-tap"
           texto="Cadastre seus clientes aqui. Toque em um cliente para ver o histórico, criar orçamento, agendar visita ou chamar no WhatsApp na hora."
         />
+        <TouchableOpacity
+          style={styles.mapaAtalho}
+          onPress={() => nav.navigate('Prospeccao')}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir a prospecção: seus clientes no mapa, por raio, rota e nicho"
+        >
+          <MaterialCommunityIcons name="map-marker-radius-outline" size={20} color={cores.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.mapaAtalhoTitulo}>Prospecção no mapa</Text>
+            <Text style={styles.mapaAtalhoSub}>Raio, rota e nicho dos seus clientes. No celular, parte da base do cadastro.</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceVariant} />
+        </TouchableOpacity>
         <DicaDoRoteiro local="clientes" />
       </View>
 
@@ -667,6 +680,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, minHeight: 40,
   },
   importarBtnTexto: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  mapaAtalho: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline,
+    padding: 12, marginTop: 10,
+  },
+  mapaAtalhoTitulo: { color: c.onSurface, fontWeight: '800', fontSize: 14 },
+  mapaAtalhoSub: { color: c.onSurfaceVariant, fontSize: 12, marginTop: 2 },
   syncPill: {
     position: 'absolute', top: 8, alignSelf: 'center', zIndex: 20,
     flexDirection: 'row', alignItems: 'center', gap: 6,
