@@ -4,6 +4,7 @@ import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { useTituloDaAba } from "@/hooks/use-titulo-da-aba";
 import SettingButton from "@/layouts/components/setting-button";
+import { destinoDoConvitePendente, extrairTokenConviteDaBusca, guardarConvitePendente } from "@convite-google";
 import { destinoDepoisDoLogin, lerIntencaoPlano } from "@/olli/plano-intent";
 import { useAuthHydrated, useUserToken } from "@/store/userStore";
 import BrandHero from "./components/BrandHero";
@@ -35,9 +36,14 @@ function LoginPage() {
 	}
 
 	if (token.accessToken) {
+		// Quem já está logado não monta o LoginProvider. Sem gravar agora, o
+		// ?convite= da página do convite se perde no redirect.
+		const daUrl = extrairTokenConviteDaBusca(window.location.search);
+		if (daUrl) guardarConvitePendente(window.sessionStorage, daUrl);
 		// Quem veio de um CTA de plano volta para o plano — pela URL (login por
 		// e-mail) ou pela intenção guardada antes do redirect do OAuth.
 		const destino =
+			destinoDoConvitePendente(window.sessionStorage) ??
 			destinoDepoisDoLogin(lerIntencaoPlano(window.location.search)) ??
 			destinoDepoisDoOAuth() ??
 			GLOBAL_CONFIG.defaultRoute;

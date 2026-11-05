@@ -36,6 +36,7 @@ export function getFrontendDashboardRoutes(): RouteObject[] {
 		{ path: "equipamentos", element: Component("/pages/olli/equipamentos") },
 
 		{ path: "equipe", element: Component("/pages/olli/equipe") },
+		{ path: "equipe/aceitar", element: Component("/pages/olli/equipe/aceitar") },
 
 		// ─── Ferramentas ────────────────────────────────────────
 		{ path: "ferramentas", element: Component("/pages/olli/ferramentas") },
