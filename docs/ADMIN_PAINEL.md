@@ -10,7 +10,9 @@ Painel interno do dono e da equipe (não é o painel do prestador). Servido pelo
 | `worker/src/admin.js` | roteador `/admin/api/*`, `requireAdmin`, gates de papel/AAL, leituras (métricas, usuários, ficha) e ações antigas (plano, bloqueio, exclusão, funil, admins) |
 | `worker/src/adminSessao.js` | sessão por cookie HttpOnly + aparelho confiável |
 | `worker/src/adminFerramentas.js` | créditos, desconectar aparelhos, confirmar e-mail, código de acesso, notas, CNPJ, registro de export |
+| `worker/src/adminOperacao.js` | busca, churn, conversão por plano, lote e CSV de orçamentos (puro, sem rede) |
 | `worker/src/adminPagina.js` | a página inteira |
+| `worker/scripts/teste-admin-operacao.js` | testes da operação nova |
 | `worker/src/adminDataPolicy.js` | o que cada papel enxerga na ficha (inclui `notas`) |
 | `supabase/migrations/20261005100000_admin_dispositivos_confiaveis.sql` | tabela `admin_trusted_devices` + função `admin_revogar_sessoes` |
 | `scripts/teste-admin-sessao.ts` | testes da sessão, aparelho confiável e créditos |
@@ -45,6 +47,9 @@ Painel interno do dono e da equipe (não é o painel do prestador). Servido pelo
 | Nota interna | suporte | linha `nota_interna` na trilha (não edita, não apaga) |
 | Consultar CNPJ | suporte | BrasilAPI → OpenCNPJ; sem sócios |
 | Relatório TXT, exportar CSV, funil | admin | export é auditado antes do download |
+| Busca Ctrl+K (contas e orçamentos) | admin + AAL2 | `GET /admin/api/busca` |
+| Lista de orçamentos com filtro e CSV | admin + AAL2 | `GET /admin/api/orcamentos`; CSV reusa o registro de export |
+| Bloquear, desbloquear ou nota em lote (até 25, com motivo) | o mesmo da ação individual | `POST /admin/api/users/lote`; não exclui, não mexe em crédito nem plano |
 | Excluir conta | owner + código desta sessão | cancela Stripe/MP/Play, apaga arquivos |
 
 ## O que fica DESLIGADO de propósito
@@ -58,9 +63,16 @@ Painel interno do dono e da equipe (não é o painel do prestador). Servido pelo
 - **Personificação ("entrar como o usuário")**: fora até haver modo só-leitura com faixa visível e
   prazo curto.
 
+## Operação no painel (sem migração)
+
+- **Saíram em 30 dias:** cliente, plano pro/empresa na linha, status de saída, período encerrado na janela e gateway real (Stripe, Pix ou Play). Cortesia, demo e conta interna ficam de fora. Leitura falha = indisponível, nunca zero.
+- **Viraram pagantes:** contas de clientes com pagamento ativo agora, e a taxa de quem já fez o 1º orçamento em cada plano.
+- **Filtros salvos** ficam só neste navegador (`localStorage`), no máximo 8. Não há tabela nova.
+- **Lote** reusa bloqueio e nota. A trilha ganha uma linha `usuarios_acao_lote` com a contagem, além da linha de cada conta.
+
 ## Ideias para a próxima leva
 
-- Ações em lote (ex.: mandar e-mail para "nunca orçaram").
+- Mandar e-mail em lote (ex.: "nunca orçaram"). O lote de bloqueio e nota já existe.
 - Validação de telefone (libphonenumber-js) e e-mail descartável (lista open-source local).
 - Cache de CNPJ no KV para a consulta do painel.
 - Gráfico de cadastros/ativação por semana na visão geral.
