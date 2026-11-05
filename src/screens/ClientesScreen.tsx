@@ -543,7 +543,7 @@ export default function ClientesScreen() {
           <MaterialCommunityIcons name="map-marker-radius-outline" size={20} color={cores.primary} />
           <View style={{ flex: 1 }}>
             <Text style={styles.mapaAtalhoTitulo}>Prospecção no mapa</Text>
-            <Text style={styles.mapaAtalhoSub}>Raio, rota e nicho a partir de onde você está. Só os seus clientes.</Text>
+            <Text style={styles.mapaAtalhoSub}>Raio, rota e nicho dos seus clientes. No celular, parte da base do cadastro.</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceVariant} />
         </TouchableOpacity>
