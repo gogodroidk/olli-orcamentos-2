@@ -55,7 +55,8 @@
  * está desligada — só `ABACATE_PERMITIR_DEV=true` (staging/teste) a aceita.
  */
 import { sha256Hex } from './googleAuth.js';
-import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
+import { lancarCreditos } from './creditos.js';
+import { concederPlanoPeriodo, PACOTES, PLANO_PIX } from './mercadopago.js';
 import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
@@ -229,15 +230,18 @@ function baseDaVigencia(cobranca, pagoEm) {
 }
 
 /**
- * externalId = `olli:pl:<userId>:<pedidoId>:<planoKey>` — mesmo formato do Pix de
- * plano do Mercado Pago. Devolve { userId, planoKey } ou null.
+ * externalId = `olli:<pl|cr>:<userId>:<pedidoId>:<chave>` — mesmo formato do Pix do
+ * Mercado Pago. `pl` = período de plano (chave em PLANO_PIX); `cr` = pacote de
+ * créditos (chave em PACOTES; D-1063: o Pix de créditos saiu do MP e veio para cá).
+ * Devolve { tipo, userId, planoKey | pacoteKey } ou null.
  */
 function lerVinculo(cobranca) {
   const ext = cobranca && cobranca.metadata && cobranca.metadata.externalId;
   const partes = typeof ext === 'string' ? ext.split(':') : [];
-  if (partes.length !== 5 || partes[0] !== 'olli' || partes[1] !== 'pl') return null;
-  if (!partes[2] || !PLANO_PIX[partes[4]]) return null;
-  return { userId: partes[2], planoKey: partes[4] };
+  if (partes.length !== 5 || partes[0] !== 'olli' || !partes[2]) return null;
+  if (partes[1] === 'pl' && PLANO_PIX[partes[4]]) return { tipo: 'pl', userId: partes[2], planoKey: partes[4] };
+  if (partes[1] === 'cr' && PACOTES[partes[4]]) return { tipo: 'cr', userId: partes[2], pacoteKey: partes[4] };
+  return null;
 }
 
 /**
@@ -269,7 +273,7 @@ function lerVinculo(cobranca) {
  *            registrado?, jaConsumida?, motivo? } — `jaConsumida` e `motivo` só
  * alimentam a trilha do webhook; nenhuma decisão depende deles.
  */
-async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
+export async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const idEnc = encodeURIComponent(idCobranca);
   const cobranca = await abacateFetch(env, `/transparents/get?id=${idEnc}`);
   if (!cobranca) return { estado: 'indisponivel' };
@@ -282,9 +286,9 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   // não pode virar plano pago em produção.
   if (cobranca.devMode === true && modoAbacate(env) !== 'teste') return { estado: 'invalida', motivo: 'dev_mode' };
 
-  const plano = PLANO_PIX[vinculo.planoKey];
-  if (Number(cobranca.amount) !== centavos(plano)) {
-    console.error('[olli-abacate] valor da cobrança difere do catálogo — não libera', vinculo.planoKey);
+  const esperado = vinculo.tipo === 'cr' ? PACOTES[vinculo.pacoteKey].amount : centavos(PLANO_PIX[vinculo.planoKey]);
+  if (Number(cobranca.amount) !== esperado) {
+    console.error('[olli-abacate] valor da cobrança difere do catálogo — não libera', vinculo.planoKey || vinculo.pacoteKey);
     return { estado: 'invalida', motivo: 'valor_divergente' };
   }
 
@@ -296,11 +300,29 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const consumo = { origem: ORIGEM_CONSUMO, eventId: idCobranca };
   const claim = await reivindicarEvento(env, {
     ...consumo,
-    tipo: 'plano_pix',
-    payload: { user_id: vinculo.userId, plano: vinculo.planoKey, valor_centavos: Number(cobranca.amount) },
+    tipo: vinculo.tipo === 'cr' ? 'credito_pix' : 'plano_pix',
+    payload: vinculo.tipo === 'cr'
+      ? { user_id: vinculo.userId, pacote: vinculo.pacoteKey, valor_centavos: Number(cobranca.amount) }
+      : { user_id: vinculo.userId, plano: vinculo.planoKey, valor_centavos: Number(cobranca.amount) },
   });
   if (!claim.ok) return { estado: 'indisponivel' };
   if (claim.duplicado) return { estado: 'liberado', registrado: true, jaConsumida: true };
+
+  // Créditos: o ledger já é idempotente por (origem, ref) — a mesma cobrança credita uma vez só,
+  // mesmo que a marca 'processado' falhe e o webhook reenvie. Sem vigência: não usa recebido_em.
+  if (vinculo.tipo === 'cr') {
+    const pacote = PACOTES[vinculo.pacoteKey];
+    const lanc = await lancarCreditos(env, {
+      userId: vinculo.userId, delta: pacote.creditos, origem: 'pix', ref: `abacate:${idCobranca}`, descricao: `OLLI ${pacote.nome}`,
+    });
+    if (!lanc.ok) {
+      await marcarEvento(env, { ...consumo, status: 'falhou', erro: 'credito_nao_lancado' });
+      return { estado: 'indisponivel' };
+    }
+    const registrado = await marcarEvento(env, { ...consumo, status: 'processado' });
+    if (!registrado) console.error('[olli-abacate] crédito lançado, mas o consumo não gravou — aguardando reenvio');
+    return { estado: 'liberado', registrado };
+  }
   // A âncora da vigência é o `recebido_em` que o PRÓPRIO claim devolveu (insert novo ou
   // retentativa). Sem ela não dá para saber quanto tempo o cliente pagou depois da criação:
   // NÃO cai na criação em silêncio (quem pagou 20 h depois perderia até 24 h). Fecha
@@ -328,6 +350,41 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const registrado = await marcarEvento(env, { ...consumo, status: 'processado' });
   if (!registrado) console.error('[olli-abacate] plano liberado, mas o consumo não gravou — aguardando reenvio');
   return { estado: 'liberado', registrado };
+}
+
+/**
+ * Cobrança Pix de um PACOTE DE CRÉDITOS (D-1063: chamada por POST /mp/pix, que manteve o
+ * contrato do app). Mesma validade de 24 h do plano. Sem lembrete 'Pix vence' (o e-mail
+ * fala de plano). Devolve o corpo da resposta do app, ou null se a AbacatePay recusou.
+ */
+export async function criarCobrancaCredito(env, user, pacote) {
+  const externalId = `olli:cr:${user.id}:${crypto.randomUUID()}:${pacote.id}`;
+  const data = await abacateFetch(env, '/transparents/create', {
+    method: 'POST',
+    body: JSON.stringify({
+      method: 'PIX',
+      data: {
+        amount: pacote.amount,
+        expiresIn: PIX_EXPIRA_S,
+        description: descricaoAbacate(`OLLI ${pacote.nome}`),
+        externalId,
+        metadata: { externalId },
+      },
+    }),
+  });
+  if (!data || !data.brCode) {
+    console.error('[olli-abacate] criar Pix de créditos falhou —', JSON.stringify({ pacote: pacote.id, resposta: data ? 'sem_brCode' : 'nula' }));
+    return null;
+  }
+  return {
+    ok: true,
+    id: data.id,
+    brCode: data.brCode,
+    brCodeBase64: data.brCodeBase64 || '',
+    status: data.status || 'PENDING',
+    expiresAt: data.expiresAt || null,
+    pacote: { id: pacote.id, nome: pacote.nome, creditos: pacote.creditos, amount: pacote.amount },
+  };
 }
 
 // ─── GET /abacate/config ─────────────────────────────────────
