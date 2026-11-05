@@ -43,7 +43,8 @@ function checar(nome: string, condicao: unknown, detalhe = ''): void {
 
 const AGORA = '2026-10-04T12:00:00Z';
 const AGORA_MS = Date.parse(AGORA);
-const MES = '2026-11-04T12:00:00Z';
+// A view SQL usa now() de verdade. 2026-11-04 ao meio-dia já venceu no dia do teste.
+const MES = '2027-01-04T12:00:00Z';
 const ANO = '2027-10-04T12:00:00Z';
 
 type Linha = {
@@ -231,9 +232,8 @@ for (const [i, c] of CASOS.entries()) {
   checar(`SQL = JS: ${c.nome}`, linha && linha.motivo === c.esperado, `SQL ${linha?.motivo}, esperado ${c.esperado}`);
 }
 
-// A view usa now(); em 04/10/2026 ou depois, os mesmos casos valem enquanto as
-// vigências de teste não vencem. Compara só o conjunto que a view devolve com
-// o que a função diz para now().
+// A view usa now(). As vigências de teste ficam à frente desse relógio e também
+// à frente de AGORA (04/10/2026). Compara o conjunto da view com a função.
 const view = await db.query<{ user_id: string }>('select user_id from public.assinaturas_pagantes order by user_id');
 const agoraReal = await db.query<{ user_id: string }>(
   `select user_id from public.assinaturas
