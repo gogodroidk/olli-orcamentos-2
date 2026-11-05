@@ -100,7 +100,7 @@ function CardLigado() {
           accessibilityRole="button"
           accessibilityLabel={voz.ouvindo ? 'Parar de ouvir' : 'Falar'}
         >
-          <MaterialCommunityIcons name={voz.ouvindo ? 'stop' : 'microphone'} size={18} color={cores.accent} />
+          <MaterialCommunityIcons name={voz.ouvindo ? 'stop' : 'microphone'} size={18} color={cores.accentLight} />
           <Text style={styles.botaoTexto}>{voz.ouvindo ? 'Parar' : 'Falar'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
