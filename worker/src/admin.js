@@ -30,6 +30,9 @@
  *   POST /admin/api/user/nota?id=        → nota interna (linha `nota_interna` na trilha)
  *   GET  /admin/api/cnpj?cnpj=           → dados públicos da Receita (BrasilAPI → OpenCNPJ)
  *   POST /admin/api/export/registrar     → audita a exportação CSV antes do download
+ *   GET  /admin/api/busca?q=             → contas (e-mail, nome) e orçamentos
+ *   GET  /admin/api/orcamentos           → lista com status e texto, sem apagados
+ *   POST /admin/api/users/lote           → bloquear, desbloquear ou nota, com motivo
  *
  * A página (HTML/CSS/JS) mora em adminPagina.js.
  * Segurança: toda rota /admin/api exige JWT validado pelo Supabase. O e-mail
@@ -78,6 +81,17 @@ import {
   revogarSessoesUsuario,
 } from './adminFerramentas.js';
 import { adminHtml } from './adminPagina.js';
+import {
+  buscarUsuarios,
+  consultaOrcamentos,
+  juntarPorId,
+  normalizarTermo,
+  projetarOrcamentoLista,
+  resumirChurn,
+  resumirConversaoPorPlano,
+  resumirVencendo,
+  validarLote,
+} from './adminOperacao.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -336,7 +350,7 @@ async function metrics(env) {
     rest(env, 'clientes?select=id,user_id'),
     rest(env, 'agendamentos?select=id,user_id'),
     listarAtividades(env),
-    lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
+    lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,mp_preapproval_id,revenuecat_transacao_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
     lerEstado(env, 'funil_exclusoes?select=user_id,email'),
     lerEstado(env, 'admin_memberships?select=user_id'),
   ]);
@@ -432,7 +446,32 @@ async function metrics(env) {
     nuncaOrcaram: orcamentosOk ? Math.max(0, users.length - ativados) : null,
     taxaAtivacao: orcamentosOk ? (users.length ? Math.round((ativados / users.length) * 100) : 0) : null,
     receita,
+    operacao: operacaoPainel({
+      assinaturas, exclusoes, admins, todosUsuarios, usuariosClientes: users, orcamentos: orcamentosOk ? orcs : null, contexto: contextoInternas, agoraMs: now,
+    }),
   });
+}
+
+function operacaoPainel({ assinaturas, exclusoes, admins, todosUsuarios, usuariosClientes, orcamentos, contexto, agoraMs }) {
+  const vazio = {
+    churn: { estado: 'indisponivel' },
+    vencendo: { estado: 'indisponivel' },
+    conversaoPorPlano: { estado: 'indisponivel' },
+  };
+  if (!assinaturas.ok || !exclusoes.ok || !admins.ok) return vazio;
+  const todos = todosUsuarios.map((u) => ({ id: u.id, email: u.email }));
+  const clientes = usuariosClientes.map((u) => ({ id: u.id, email: u.email }));
+  return {
+    churn: resumirChurn({ assinaturas: assinaturas.dados, usuarios: todos, contexto, agoraMs }),
+    vencendo: resumirVencendo({ assinaturas: assinaturas.dados, usuarios: todos, contexto, agoraMs }),
+    conversaoPorPlano: resumirConversaoPorPlano({
+      usuarios: clientes,
+      assinaturas: assinaturas.dados,
+      orcamentos,
+      contexto,
+      agoraMs,
+    }),
+  };
 }
 
 async function users(env) {
@@ -1076,6 +1115,91 @@ async function setOrgInterna(env, actor, body = {}) {
   return json({ ok: true, ...contagens, auditoria });
 }
 
+async function lerOrcamentos(env, opcoes) {
+  return lerEstado(env, consultaOrcamentos(opcoes));
+}
+
+function projetarLista(papel, linhas) {
+  const campos = camposAdmin(papel, 'orcamentos');
+  return (linhas || []).map((linha) => projetarOrcamentoLista(linha, campos));
+}
+
+async function listarOrcamentosAdmin(env, papel, params) {
+  const status = params.get('status') || '';
+  const termo = normalizarTermo(params.get('q') || '');
+  const leitura = await lerOrcamentos(env, { termo: termo.length >= 2 ? termo : '', status, limite: 100 });
+  if (!leitura.ok) return json({ ok: false, erro: 'orcamentos_indisponiveis' }, 502);
+  return json({ ok: true, estado: 'ok', orcamentos: projetarLista(papel, leitura.dados) });
+}
+
+async function buscaGlobal(env, papel, q) {
+  const termo = normalizarTermo(q);
+  if (termo.length < 2) return json({ ok: false, erro: 'busca_curta' }, 400);
+  const auth = await listAuthUsers(env);
+  const base = auth.map((u) => ({
+    id: u.id,
+    email: u.email || '',
+    nome: (u.user_metadata && (u.user_metadata.full_name || u.user_metadata.name)) || '',
+    empresa: '',
+  }));
+  let usuarios = buscarUsuarios(base, termo, 8);
+  if (usuarios.length) {
+    const ids = usuarios.map((h) => h.id).join(',');
+    const emps = await lerEstado(env, `empresa?select=user_id,dados&user_id=in.(${ids})`);
+    if (emps.ok) {
+      const nomes = new Map(emps.dados.map((e) => [e.user_id, textoEmpresa(e)]));
+      usuarios = usuarios.map((h) => ({ ...h, empresa: nomes.get(h.id) || '' }));
+    }
+  }
+  const porTexto = await lerOrcamentos(env, { termo, limite: 20 });
+  if (!porTexto.ok) {
+    return json({ ok: true, usuarios, orcamentos: [], orcamentosEstado: 'indisponivel' });
+  }
+  let extras = [];
+  if (usuarios.length) {
+    const dosUsuarios = await lerOrcamentos(env, { userIds: usuarios.map((h) => h.id), limite: 20 });
+    if (dosUsuarios.ok) extras = dosUsuarios.dados;
+  }
+  const orcamentos = projetarLista(papel, juntarPorId([porTexto.dados, extras], 8));
+  return json({ ok: true, usuarios, orcamentos, orcamentosEstado: 'ok' });
+}
+
+function textoEmpresa(e) {
+  const dados = e && e.dados && typeof e.dados === 'object' ? e.dados : {};
+  return String(dados.nome || '');
+}
+
+async function acaoEmLote(env, actor, body) {
+  const v = validarLote(body);
+  if (v.erro) return json({ ok: false, erro: v.erro }, 400);
+  const feitos = [];
+  const falhas = [];
+  for (const id of v.ids) {
+    if (v.acao !== 'nota' && id.toLowerCase() === String(actor.id || '').toLowerCase()) {
+      falhas.push({ id, erro: 'autoacao_proibida' });
+      continue;
+    }
+    const requestId = (v.requestId ? `${v.requestId}:${id}` : crypto.randomUUID()).slice(0, 120);
+    try {
+      const r = v.acao === 'nota'
+        ? await notaInterna(env, actor, id, { texto: v.texto, requestId }, { auditar })
+        : await setBan(env, id, v.acao === 'bloquear', actor, { motivo: v.motivo, requestId, dias: v.dias });
+      const j = await r.json().catch(() => ({ ok: false, erro: 'resposta_invalida' }));
+      if (r.ok && j.ok !== false) feitos.push(id);
+      else falhas.push({ id, erro: j.erro || 'falha' });
+    } catch {
+      falhas.push({ id, erro: 'falha' });
+    }
+  }
+  const auditoria = await auditar(env, actor, {
+    acao: 'usuarios_acao_lote',
+    motivo: v.motivo,
+    depois: { acao: v.acao, feitos: feitos.length, falhas: falhas.length },
+    requestId: v.requestId || null,
+  });
+  return json({ ok: true, feitos, falhas, auditoria });
+}
+
 // ─── roteador ────────────────────────────────────────────────
 export async function handleAdmin(request, env, url) {
   if (url.pathname === '/admin' || url.pathname === '/admin/') {
@@ -1167,6 +1291,22 @@ export async function handleAdmin(request, env, url) {
     }
     if (m === 'POST' && p === '/admin/api/export/registrar') {
       return exigir(user, 'admin', { aal2: true }) || registrarExport(env, user, body, { auditar });
+    }
+    if (m === 'GET' && p === '/admin/api/busca') {
+      const gateBusca = exigir(user, 'admin', { aal2: true });
+      if (gateBusca) return gateBusca;
+      return buscaGlobal(env, user.papel, url.searchParams.get('q'));
+    }
+    if (m === 'GET' && p === '/admin/api/orcamentos') {
+      const gateOrc = exigir(user, 'admin', { aal2: true });
+      if (gateOrc) return gateOrc;
+      return listarOrcamentosAdmin(env, user.papel, url.searchParams);
+    }
+    if (m === 'POST' && p === '/admin/api/users/lote') {
+      const acao = body && body.acao;
+      const gateLote = exigir(user, acao === 'nota' ? 'detalhe' : 'suporte', { aal2: true });
+      if (gateLote) return gateLote;
+      return acaoEmLote(env, user, body);
     }
     // Métricas, listas globais, feedback, administradores e auditoria são dados
     // de governança/PII. O gate explícito exige papel suficiente E AAL2 antes de
