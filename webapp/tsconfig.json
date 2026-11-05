@@ -96,7 +96,8 @@
 			"@identidade-visual": ["../src/utils/identidadeVisual.ts"],
 			// ESTÚDIO DE MARCA À PARTE — a mesma oferta e as mesmas travas de preço do app.
 			// Módulo puro, sem React Native. O preço novo não entra aqui.
-			"@identidade-upsell": ["../src/services/identidadeUpsell.ts"]
+			"@identidade-upsell": ["../src/services/identidadeUpsell.ts"],
+			"@chat-ui": ["../src/utils/chatUi.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],
