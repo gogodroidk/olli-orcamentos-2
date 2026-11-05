@@ -41,6 +41,7 @@ import { FONTES_CSS } from './fontesProprias.js';
 import { qrSvg } from '../../src/utils/qrcode.ts';
 import { ctaPrestadorHtml, seloOlliHtml } from '../../src/utils/marcaOlli.ts';
 import { RECURSO_REMOVE_MARCA, temAcessoRecurso } from '../../src/services/entitlements.ts';
+import { corMarcaNoPapel } from '../../src/utils/coresMarca.ts';
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
 
 const ACCENT = '#0B6FCE';
@@ -844,7 +845,9 @@ export function metaOpenGraph(nomePrestador) {
 }
 
 function shell(inner, accentRaw = ACCENT, mostrarSelo = true, og = '') {
-  const accent = safeHexColor(accentRaw, ACCENT);
+  // Cabeçalho é texto branco sobre a cor; pílula e total são a cor sobre fundo claro.
+  // As duas falham juntas quando a marca é clara. Escurece só nesse caso.
+  const accent = corMarcaNoPapel(accentRaw, ACCENT);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>

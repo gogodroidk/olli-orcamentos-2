@@ -134,6 +134,7 @@ export async function enviarConvite(env, { para, empresa, papel, link }) {
   const texto = [
     `${empresa || 'Sua empresa'} te convidou para entrar na equipe como ${papel || 'técnico'}.`,
     '',
+    'Abra o convite e entre com o Google deste mesmo e-mail. Outra conta não entra neste convite.',
     `Abra o convite: ${link}`,
     '',
     'O OLLI é o app onde a equipe recebe as ordens de serviço, registra fotos e colhe a assinatura do cliente.',
@@ -151,6 +152,7 @@ export async function enviarConvite(env, { para, empresa, papel, link }) {
       <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#4A5568">
         Você entra como <strong>${papelLabel}</strong>. No OLLI você recebe as ordens de serviço,
         registra as fotos do serviço e colhe a assinatura do cliente — tudo pelo celular, mesmo sem sinal.
+        Use o Google deste mesmo e-mail. Outra conta não entra neste convite.
       </p>
       <a href="${url}" style="display:inline-block;background:#0B6FCE;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:13px 24px;border-radius:10px">
         Aceitar o convite

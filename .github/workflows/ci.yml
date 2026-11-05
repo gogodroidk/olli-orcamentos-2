@@ -195,13 +195,14 @@ jobs:
       - name: Validar bundle sem publicar
         run: npm run check
 
-  # 5) Lint (Biome) com catraca: app (raiz) + painel (webapp/). Reprova só erro
-  # NOVO — os 173 + 58 erros de 29/09 estão congelados em scripts/lint-base.json.
-  # Também roda dentro do preflight; o job separado existe para o PR mostrar
-  # "lint" com nome próprio, sem esperar typecheck, suíte e Doctor.
+  # 5) Lint + gate de código limpo (MF-07): Biome com catraca, ruff, pyright,
+  # semgrep e a config do pre-commit. O Biome reprova só erro NOVO — os 173 + 58
+  # erros de 29/09 estão congelados em scripts/lint-base.json. Também roda dentro
+  # do preflight; o job separado existe para o PR mostrar "lint" com nome próprio.
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     continue-on-error: false
     steps:
       - name: Checkout
@@ -217,5 +218,14 @@ jobs:
       - name: Instalar dependências (npm ci — package-lock.json na raiz)
         run: npm ci
 
-      - name: Lint sem erro novo
-        run: npm run lint
+      - name: Instalar uv 0.13.5 (checksum conferido)
+        run: |
+          curl -sSfL -o uv.tgz https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-unknown-linux-gnu.tar.gz
+          echo "f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f  uv.tgz" | sha256sum -c -
+          tar -xzf uv.tgz
+          sudo mv uv-x86_64-unknown-linux-gnu/uv uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/
+
+      # Biome (catraca) + ruff + pyright + semgrep + pre-commit. O script
+      # reprova se a ferramenta não rodar. Versões cravadas dentro dele.
+      - name: Gate de código limpo (ruff, biome, pyright, semgrep, pre-commit)
+        run: bash scripts/gate-codigo-limpo.sh

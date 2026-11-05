@@ -248,6 +248,37 @@ export function termosPadraoContrato(
   };
 }
 
+export interface LinhaClausula {
+  titulo: string;
+  texto: string;
+}
+
+/**
+ * As cláusulas que o prestador VÊ e edita, na mesma ordem e com os mesmos
+ * números que o PDF. O texto jurídico fixo (CDC, Código Civil) não entra aqui:
+ * ele sai no papel e não é caixa editável. Cláusula complementar só aparece
+ * quando há texto — o gerador também a omite quando está vazia.
+ */
+export function linhasDeClausulas(termos: TermosContrato): LinhaClausula[] {
+  const multa = formatNumber(termos.multaAtrasoPercent, termos.multaAtrasoPercent % 1 === 0 ? 0 : 2);
+  const juros = formatNumber(termos.jurosMesPercent, termos.jurosMesPercent % 1 === 0 ? 0 : 2);
+  const linhas: LinhaClausula[] = [
+    { titulo: 'Do objeto', texto: termos.objeto },
+    { titulo: 'Do local', texto: termos.local },
+    { titulo: 'Do preço e da forma de pagamento', texto: termos.pagamento },
+    { titulo: 'Do prazo de execução', texto: termos.prazo },
+    { titulo: 'Das obrigações da contratada', texto: termos.obrigacoesContratada },
+    { titulo: 'Das obrigações do contratante', texto: termos.obrigacoesContratante },
+    { titulo: 'Da garantia', texto: termos.garantia },
+    { titulo: 'Do atraso no pagamento', texto: `Multa de ${multa}% e juros de ${juros}% ao mês.` },
+    { titulo: 'Da rescisão', texto: `Aviso prévio de ${termos.avisoPrevioDias} dias.` },
+    { titulo: 'Do foro', texto: termos.foro },
+  ];
+  const extras = termos.clausulasExtras.trim();
+  if (extras) linhas.push({ titulo: 'Das disposições complementares', texto: extras });
+  return linhas;
+}
+
 /* ─── Renderização ─────────────────────────────────────────────────────── */
 
 /** Tabela de itens (a mesma informação da proposta, dentro do contrato). */

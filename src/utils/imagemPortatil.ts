@@ -1,5 +1,6 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import { FOTO_PERFIL_MAX_DATA_URI_CHARS, FOTO_PERFIL_MAX_DIMENSAO } from './identidadeVisual';
 
 /** Limites compartilhados com o painel web (`logoUpload.ts`). */
 export const IMAGEM_IDENTIDADE_MAX_DIMENSAO = 512;
@@ -81,5 +82,46 @@ export async function imagemEscolhidaParaDataUri(
       ok: false,
       erro: 'Não consegui processar essa imagem. Escolha outra foto e tente novamente.',
     };
+  }
+}
+
+/**
+ * Foto de perfil para `user_metadata.avatar_url`.
+ * JPEG pequeno, sem EXIF. PNG de logo continua no outro conversor.
+ */
+export async function fotoPerfilEscolhidaParaDataUri(
+  asset: ImagePickerAsset,
+): Promise<ResultadoImagemPortatil> {
+  try {
+    if (!asset?.uri || (asset.type && asset.type !== 'image')) {
+      return { ok: false, erro: 'Escolha uma foto.' };
+    }
+    if (
+      typeof asset.fileSize === 'number'
+      && asset.fileSize > IMAGEM_IDENTIDADE_MAX_ORIGINAL_BYTES
+    ) {
+      return { ok: false, erro: 'A foto original passa de 10 MB. Escolha outra.' };
+    }
+
+    const contexto = ImageManipulator.manipulate(asset.uri);
+    const largura = Number(asset.width) || 0;
+    const altura = Number(asset.height) || 0;
+    if (Math.max(largura, altura) > FOTO_PERFIL_MAX_DIMENSAO) {
+      contexto.resize(
+        largura >= altura
+          ? { width: FOTO_PERFIL_MAX_DIMENSAO, height: null }
+          : { width: null, height: FOTO_PERFIL_MAX_DIMENSAO },
+      );
+    }
+
+    const imagem = await contexto.renderAsync();
+    for (const compress of [0.72, 0.55, 0.4]) {
+      const jpeg = await imagem.saveAsync({ base64: true, format: SaveFormat.JPEG, compress });
+      const uri = dataUri('jpeg', jpeg.base64);
+      if (uri && uri.length <= FOTO_PERFIL_MAX_DATA_URI_CHARS) return { ok: true, dataUri: uri };
+    }
+    return { ok: false, erro: 'Não consegui deixar a foto leve o bastante. Tente outra.' };
+  } catch {
+    return { ok: false, erro: 'Não consegui processar essa foto. Escolha outra.' };
   }
 }

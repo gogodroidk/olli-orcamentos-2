@@ -13,7 +13,7 @@ import { nowISO } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
 import { ServicoItem, UNIDADES } from '../../types';
 import { avisar, confirmar } from './dialogo';
-import { margemInfo } from './servicoMargem';
+import { abaixoDoCusto, margemInfo, mensagemExcluirServico } from './servicoMargem';
 
 interface Props {
   servico: ServicoItem | null;
@@ -91,7 +91,7 @@ export function PainelServico({ servico, visivel, aoFechar, aoSalvar }: Props) {
 
   async function handleExcluir() {
     if (!servico) return;
-    if (!(await confirmar('Excluir serviço', `Excluir "${servico.nome}"? Essa ação não pode ser desfeita.`))) return;
+    if (!(await confirmar('Excluir serviço', mensagemExcluirServico(servico.nome)))) return;
     setExcluindo(true);
     try {
       await deleteServico(servico.id);
@@ -173,11 +173,22 @@ export function PainelServico({ servico, visivel, aoFechar, aoSalvar }: Props) {
               />
             </View>
 
-            {margem !== null && (
+            {abaixoDoCusto(form.preco, form.custo) && (
+              <View style={styles.prejuizoBanner}>
+                <MaterialCommunityIcons name="trending-down" size={18} color={cores.warning} />
+                <Text style={styles.prejuizoBannerText}>
+                  Preço abaixo do custo
+                  {margem ? ` · prejuízo ${Math.abs(margem.pct)}%` : ''}
+                  {` · você perde ${formatCurrency((form.custo ?? 0) - (form.preco ?? 0))} por ${form.unidade ?? 'un'}. `}
+                  Dá para salvar — confira se é isso que você quer.
+                </Text>
+              </View>
+            )}
+            {margem !== null && !abaixoDoCusto(form.preco, form.custo) && (
               <View style={styles.margemBanner}>
                 <MaterialCommunityIcons name="trending-up" size={18} color={cores.success} />
                 <Text style={styles.margemBannerText}>
-                  Margem de {margem.pct}% · Lucro {formatCurrency((form.preco ?? 0) - (form.custo ?? 0))}
+                  Margem de {margem.pct}% · Lucro {formatCurrency(margem.lucro)}
                 </Text>
               </View>
             )}
@@ -336,6 +347,21 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   margemBannerText: {
     fontSize: 13,
     color: c.success,
+    fontWeight: '700',
+    flex: 1,
+  },
+  prejuizoBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: c.warningLight,
+    borderRadius: BorderRadius.md,
+    padding: 12,
+    marginBottom: Spacing.base,
+  },
+  prejuizoBannerText: {
+    fontSize: 13,
+    color: c.warning,
     fontWeight: '700',
     flex: 1,
   },

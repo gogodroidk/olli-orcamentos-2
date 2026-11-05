@@ -1,0 +1,35 @@
+# Gate de código limpo (MF-07). Junta os templates da casa
+# (pre-commit-js-ts.yaml + pre-commit-python.yaml + semgrep).
+# O hook que o git dispara é .githooks/pre-commit (core.hooksPath).
+# Este arquivo é a mesma porta, para `pre-commit validate-config` e
+# `pre-commit run`. Não use `pre-commit install`: ele reescreveria o hook
+# versionado e tiraria o gitleaks.
+#
+# Sem --write. A catraca do Biome continua em `npm run lint`.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff (lint + format)
+        entry: bash scripts/gate-codigo-limpo.sh --sem-prova --so ruff
+        language: system
+        types: [python]
+
+      - id: pyright
+        name: pyright (type check)
+        entry: bash scripts/gate-codigo-limpo.sh --sem-prova --so pyright
+        language: system
+        types: [python]
+
+      - id: biome-check
+        name: biome (catraca, sem autofix)
+        entry: bash scripts/gate-codigo-limpo.sh --sem-prova --so biome
+        language: system
+        types_or: [javascript, jsx, ts, tsx]
+        pass_filenames: false
+
+      - id: semgrep
+        name: semgrep (eval/exec)
+        entry: bash scripts/gate-codigo-limpo.sh --sem-prova --so semgrep
+        language: system
+        types_or: [python, javascript, jsx, ts, tsx]

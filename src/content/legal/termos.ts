@@ -46,8 +46,7 @@ export const TERMOS: LegalDoc = {
     'Se você usa o OLLI em nome de uma empresa, declara ter poderes para aceitar ' +
       'estes Termos em nome dela. Se não concordar com algum ponto, não utilize o app.',
     'O OLLI é fornecido por OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA, CNPJ ' +
-      '65.361.266/0001-05, com sede na Rua Henrique Perdigão, 350, Jardim Ipanema ' +
-      '(Cidade Líder), São Paulo/SP, CEP 03582-110.',
+      '65.361.266/0001-05.',
   ],
   secoes: [
     {
