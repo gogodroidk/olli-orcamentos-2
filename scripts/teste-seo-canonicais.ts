@@ -54,7 +54,13 @@ for (const [arq, canon] of PAGINAS) {
 caso('as variantes de anúncio ficam fora do sitemap, sem enfraquecer o filtro das rotas utilitárias', () => {
   assert.match(config, /VARIANTES_DE_ANUNCIO = \['\/eletricista\/', '\/refrigeracao\/'\]/);
   assert.match(config, /VARIANTES_DE_ANUNCIO\.includes\(caminho\)\) return false/);
-  assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'\]/);
+  assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'(, '\/servicos\/')?\]/);
+  // /servicos/: noindex sai do sitemap; publicada entra. O teste acompanha a flag.
+  const servicos = ler('web/src/data/servicos.ts');
+  const lista = config.match(/\['\/admin\/'[^\]]*\]/)?.[0] ?? '';
+  if (/PAGINA_PUBLICADA = false/.test(servicos)) assert.ok(lista.includes("'/servicos/'"), '/servicos/ noindex precisa sair do sitemap');
+  else if (/PAGINA_PUBLICADA = true/.test(servicos)) assert.ok(!lista.includes("'/servicos/'"), '/servicos/ publicada precisa entrar no sitemap');
+  else assert.fail('PAGINA_PUBLICADA não encontrado em servicos.ts');
 });
 
 caso('lastmod das páginas fixas: datas válidas (AAAA-MM-DD), nenhuma no futuro, /para/* coberto', () => {

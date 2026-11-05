@@ -112,7 +112,9 @@ export default defineConfig({
         // Rotas utilitárias e de redirecionamento têm noindex na página. Não
         // adianta pedir ao crawler para indexar e depois contradizer no HTML:
         // elas ficam fora do sitemap desde a origem.
-        if (['/admin/', '/404/', '/excluir-conta/'].includes(caminho)) return false;
+        // /servicos/ é noindex enquanto PAGINA_PUBLICADA=false (data/servicos.ts).
+        // Ao publicar de verdade, tire '/servicos/' desta lista no mesmo PR.
+        if (['/admin/', '/404/', '/excluir-conta/', '/servicos/'].includes(caminho)) return false;
         if (VARIANTES_DE_ANUNCIO.includes(caminho)) return false;
         if (ALIASES_PARA_FORA.includes(caminho)) return false;
         if (!caminho.startsWith('/blog/')) return true;

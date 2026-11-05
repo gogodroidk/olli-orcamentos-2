@@ -71,6 +71,8 @@ import { handleAuthEmailHook } from './authEmailHook.js';
 import { createPersistedAiActionDraft, handleIaActions } from './iaActions.js';
 import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
+import { handlePedidoDiagnostico } from './pedidoDiagnostico.js';
+import { limparPedidosDiagnostico } from './servicosRetencao.js';
 import { receberPedidoEtiqueta, renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { renderConfirmacao, responderConfirmacao } from './confirmacaoVisita.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
@@ -924,6 +926,8 @@ const handler = {
     ctx.waitUntil(limparRastreioUso(env, agendado)); // retenção do rastreio de uso: 90 dias
     // Retenção do WhatsApp (parecer LEGAL 07/10): fila de entrada 180 dias/12 meses, envios 12 meses; uma vez por dia (06:19 UTC).
     ctx.waitUntil(limparWhatsappAntigo(env, agendado));
+    // Pedidos de diagnóstico do /servicos/: 180 dias sem proposta, só com SERVICOS_RETENCAO_MODE=production.
+    ctx.waitUntil(limparPedidosDiagnostico(env, agendado));
     // Conversões de anúncio pelo servidor (Meta CAPI: cadastro e assinatura de quem
     // aceitou o aviso de cookies). A cada 10 min, 1 a 4 subrequests. Sem token (segredo
     // ou Vault do Supabase), desligado (e diz isso no log). Ver anunciosConversoes.js.
@@ -1032,6 +1036,11 @@ const handler = {
     // cuida do método e de OPTIONS/CORS por rota.
     if (url.pathname.startsWith('/equipe/')) {
       return handleEquipe(request, env, url);
+    }
+
+    // ── PEDIDO DE DIAGNÓSTICO da página /servicos/ (POST público, antes do gate da IA) ──
+    if (url.pathname === '/servicos/pedido') {
+      return handlePedidoDiagnostico(request, env);
     }
 
     // ── CONTA DO USUÁRIO (excluir conta: POST JWT) ──

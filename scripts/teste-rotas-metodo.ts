@@ -116,7 +116,7 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   // decisão, não esquecimento. `/admin` aparece nas DUAS formas em index.js
   // (`=== '/admin'` para a tela e `startsWith('/admin/')` para a API), e foi
   // isto que a primeira versão desta seção deixou passar.
-  const DELEGADAS_EXATAS = ['/admin'];
+  const DELEGADAS_EXATAS = ['/admin', '/servicos/pedido'];
   // `/play/` (worker/src/play.js: /play/config e /play/verificar) responde o próprio
   // 405, como as demais rotas de dinheiro. `/revenuecat/` saiu junto com o RevenueCat.
   // `/whatsapp/` (worker/src/whatsappCloud.js: webhook, enviar, fila, aprovar) também responde o próprio 405 por
