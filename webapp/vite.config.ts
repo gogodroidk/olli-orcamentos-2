@@ -46,6 +46,8 @@ const atribuicaoFonte = fileURLToPath(new URL("../web/src/lib/atribuicao.ts", im
 const metaPixelFonte = fileURLToPath(new URL("../web/src/lib/metaPixel.ts", import.meta.url));
 const consentimentoFonte = fileURLToPath(new URL("../web/src/lib/consentimento.ts", import.meta.url));
 const googleTagFonte = fileURLToPath(new URL("../web/src/lib/googleTag.ts", import.meta.url));
+// Filtro e ordem da lista de orçamentos: a MESMA regra do app. Módulo puro.
+const listaOrcamentosFonte = fileURLToPath(new URL("../src/utils/listaOrcamentos.ts", import.meta.url));
 // Identidade visual (site, link do Google, recorte e caixa da logo). Módulo puro, zero imports.
 const identidadeVisualFonte = fileURLToPath(new URL("../src/utils/identidadeVisual.ts", import.meta.url));
 // Estúdio de marca à parte: a MESMA regra do app (src/services/identidadeUpsell.ts). Módulo puro.
@@ -124,6 +126,7 @@ export default defineConfig(({ mode }) => {
 				"@meta-pixel": metaPixelFonte,
 				"@consentimento": consentimentoFonte,
 				"@google-tag": googleTagFonte,
+				"@lista-orcamentos": listaOrcamentosFonte,
 				"@identidade-visual": identidadeVisualFonte,
 				"@identidade-upsell": identidadeUpsellFonte,
 				"@chat-ui": chatUiFonte,

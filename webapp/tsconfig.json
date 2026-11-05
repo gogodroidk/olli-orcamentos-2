@@ -92,6 +92,10 @@
 			"@meta-pixel": ["../web/src/lib/metaPixel.ts"],
 			"@consentimento": ["../web/src/lib/consentimento.ts"],
 			"@google-tag": ["../web/src/lib/googleTag.ts"],
+			// LISTA DE ORÇAMENTOS — filtro e ordem (status, data, valor, cliente, busca).
+			// A MESMA regra do app (src/utils/listaOrcamentos.ts). Módulo puro: só importa
+			// a busca sem acento de consultasSql.ts, sem React Native.
+			"@lista-orcamentos": ["../src/utils/listaOrcamentos.ts"],
 			// IDENTIDADE VISUAL — site próprio, link de avaliação do Google, recorte e
 			// a caixa em px da logo no PDF. A MESMA regra do app. Módulo puro, zero imports.
 			"@identidade-visual": ["../src/utils/identidadeVisual.ts"],
