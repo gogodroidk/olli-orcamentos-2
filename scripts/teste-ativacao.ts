@@ -17,6 +17,7 @@ import {
   dataCurtaBr,
   exemploOrcamentoPara,
   fatosDaEmpresa,
+  fraseDoPrimeiroCliente,
   itensPrefillDoExemplo,
   mostrarCartaoPrimeiroOrcamento,
   statusFoiEnviado,
@@ -64,6 +65,17 @@ assert.match(AVISO_EXEMPLO, /exemplo/i);
 assert.match(AVISO_EXEMPLO, /troque/i);
 assert.match(AVISO_EXEMPLO, /não uma tabela de preços/i);
 assert.match(TITULO_PRIMEIRO_ORCAMENTO, /primeiro orçamento em 1 minuto/i);
+
+// Z-62: a frase do cartão mora numa função só. O gancho é quem pediu preço;
+// não afirma que a pessoa já tem cliente, não promete prazo novo nem preço de plano.
+const fraseRefri = fraseDoPrimeiroCliente(EXEMPLOS_POR_VERTICAL.refrigeracao.titulo.toLowerCase(), 'R$ 260,00');
+assert.equal(
+  fraseRefri,
+  'Preparamos um exemplo de higienização de ar-condicionado (R$ 260,00). Pense em quem te pediu preço esta semana: ponha o nome e os valores dele e envie.',
+);
+assert.match(fraseRefri, /quem te pediu preço esta semana/);
+assert.doesNotMatch(fraseRefri, /Troque o cliente e os valores/);
+assert.doesNotMatch(fraseRefri, /R\$ 39|R\$ 99|1 minuto/);
 
 // Ofício: `verticais` explícitas vencem; senão o `segmento` legado; senão pergunta.
 assert.equal(verticalDoExemplo({ verticais: ['pintura'], segmento: 'eletrica' }), 'pintura');
@@ -215,6 +227,8 @@ assert.match(migration, new RegExp(`interval '${TRIAL_PRO_DIAS} days'`), 'servid
 
 const componenteApp = ler('../src/components/AtivacaoInicio.tsx');
 assert.match(componenteApp, /from '\.\.\/services\/ativacao'/, 'app usa a regra única');
+assert.match(componenteApp, /fraseDoPrimeiroCliente\(/, 'app usa a frase única do primeiro cliente');
+assert.doesNotMatch(componenteApp, /Troque o cliente e os valores/, 'app não guarda a frase velha');
 assert.match(componenteApp, /pode\('gerenciar_faturamento'\)/, 'só o dono vê a ativação no app');
 assert.match(componenteApp, /leitura\.estado !== 'pronto'\) return null/, 'app não desenha enquanto lê ou com erro');
 assert.match(componenteApp, /onSyncAplicado\(/, 'app relê a ativação quando o pull da nuvem grava (SQLite vazio no 1º login não é conta vazia)');
@@ -236,6 +250,8 @@ assert.match(visualizar, /const confirmou = await confirmarEnvioOrcamento/, 'só
 
 const cardPainel = ler('../webapp/src/pages/olli/inicio/AtivacaoCard.tsx');
 assert.match(cardPainel, /from "@ativacao"/, 'painel usa a regra única');
+assert.match(cardPainel, /fraseDoPrimeiroCliente\(/, 'painel usa a frase única do primeiro cliente');
+assert.doesNotMatch(cardPainel, /Troque o cliente e os valores/, 'painel não guarda a frase velha');
 assert.match(cardPainel, /ehDonoDaConta/, 'só o dono vê a ativação no painel');
 assert.match(cardPainel, /isSuccess/, 'painel respeita os 3 estados');
 assert.match(ler('../webapp/src/pages/olli/inicio/index.tsx'), /<AtivacaoCard\b/, 'Início do painel mostra a ativação');
