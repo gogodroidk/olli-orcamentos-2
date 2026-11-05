@@ -52,6 +52,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos' },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais e estoque', color: c.primary, route: 'Produtos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo' },
+    { key: 'contador', icon: 'bank-outline', label: 'Contador e nota fiscal', desc: 'MEI, ME e NFS-e no portal oficial', color: c.primary, route: 'Contador' },
     // '#F7B23B' era o warning fixo do handoff escuro — agora acompanha o warning
     // (ajustado por contraste) do modo atual.
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: c.warning, route: 'MeuNegocio' },

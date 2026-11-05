@@ -119,6 +119,7 @@ export function criarLinkingConfig(
 
         // ─── Frentes novas ──────────────────────────────────────────────
         Ajuda: 'ajuda',
+        Contador: 'contador',
         Privacidade: 'privacidade',
         Termos: 'termos',
         Lixeira: 'lixeira',

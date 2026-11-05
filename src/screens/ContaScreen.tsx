@@ -251,6 +251,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'calcOficio', icon: 'calculator-variant-outline', label: 'Calculadoras do ofício', desc: 'Cálculos técnicos do seu ramo', color: c.accentLight, route: 'FerramentasOficio', calcHub: true },
     { key: 'creditos', icon: 'lightning-bolt', label: 'Créditos', desc: TEXTOS_LOJA.creditosMenu, color: '#F7B23B', route: 'Creditos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
+    { key: 'contador', icon: 'bank-outline', label: 'Contador e nota fiscal', desc: 'MEI, ME e NFS-e. A OLLI não emite a nota.', color: c.primary, route: 'Contador', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
     { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual do PDF, com explicação e prévia de cada modelo', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
   ];

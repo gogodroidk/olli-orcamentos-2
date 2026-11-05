@@ -48,6 +48,7 @@ import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import PrepararNotaScreen from '../screens/PrepararNotaScreen';
 import CertificadoCaixaDaguaScreen from '../screens/CertificadoCaixaDaguaScreen';
 import FerramentasOficioScreen from '../screens/FerramentasOficioScreen';
+import ContadorScreen from '../screens/ContadorScreen';
 import CreditosScreen from '../screens/CreditosScreen';
 import PlanosScreen from '../screens/PlanosScreen';
 import VimDeOutroAppScreen from '../screens/VimDeOutroAppScreen';
@@ -175,6 +176,8 @@ export type RootStackParamList = {
   CertificadoCaixaDagua: undefined;
   // Hub de calculadoras por ofício (adapta-se à vertical; some sem calculadora).
   FerramentasOficio: undefined;
+  // Guia de contador: tipos de empresa e NFS-e. A OLLI não emite a nota.
+  Contador: undefined;
   // Saldo de créditos + recarga por Pix (Mercado Pago — o único gateway de Pix
   // do OLLI; ver src/services/pixCreditos.ts → /mp/*).
   Creditos: undefined;
@@ -383,6 +386,7 @@ const CertificadoAnvisaCentro = comCentroDesktop(CertificadoAnvisaScreen);
 const PrepararNotaCentro = comCentroDesktop(PrepararNotaScreen);
 const CertificadoCaixaDaguaCentro = comCentroDesktop(CertificadoCaixaDaguaScreen);
 const FerramentasOficioCentro = comCentroDesktop(FerramentasOficioScreen);
+const ContadorCentro = comCentroDesktop(ContadorScreen);
 const CreditosCentro = comCentroDesktop(CreditosScreen);
 const PlanosCentro = comCentroDesktop(PlanosScreen);
 const VimDeOutroAppCentro = comCentroDesktop(VimDeOutroAppScreen);
@@ -763,6 +767,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />
       <Stack.Screen name="FerramentasOficio" component={FerramentasOficioCentro} />
+      <Stack.Screen name="Contador" component={ContadorCentro} />
       <Stack.Screen name="Creditos" component={CreditosCentro} />
       <Stack.Screen name="Planos" component={PlanosCentro} />
       <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
