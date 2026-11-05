@@ -63,6 +63,7 @@ function removerDocumento(texto: string): string {
   return texto
     .replace(new RegExp(CPF_PONTUADO.source, 'g'), ' ')
     .replace(new RegExp(CNPJ_PONTUADO.source, 'g'), ' ')
+    .replace(/\b(cpf|cnpj)\b[:\s-]*\d[\d.\/-]*/gi, ' ')
     .replace(/\b(cpf|cnpj)\b[:\s-]*/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
