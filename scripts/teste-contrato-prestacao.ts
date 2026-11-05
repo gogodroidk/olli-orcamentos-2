@@ -465,7 +465,7 @@ checar('pdfGenerator ainda exporta o selo e o accent', pdfOrc.includes("export {
 checar('img() do orçamento continua escapando', pdfOrc.includes("return escapeHtml(IMG_CACHE[uri] || (uri.startsWith('data:') ? uri : ''));"), true);
 // O certificado ANVISA tinha o MESMO buraco aberto; foi fechado aqui.
 const anvisa = semComentarios(ler('../src/utils/certificadoAnvisaPdf.ts'));
-checar('o certificado ANVISA escapa a logo', anvisa.includes('<img src="${escapeHtml(logoData)}"/>'), true);
+checar('o certificado ANVISA escapa a logo', anvisa.includes('escapeHtml(logoData)') && anvisa.includes('tagImgLogo'), true);
 checar('e escapa a assinatura', anvisa.includes('<img src="${escapeHtml(assinaturaData)}"/>'), true);
 
 // A tela: sem entrada visível, o documento nasce escondido — que era o problema.

@@ -7,6 +7,13 @@ import { escapeHtml } from './html';
 import { corMarcaNoPapel } from './coresMarca';
 import { DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
 import { formatarNumeroExibicao } from './numeroDocumento';
+import {
+  CAIXA_LOGO_CABECALHO,
+  CAIXA_LOGO_CAPA,
+  CAIXA_LOGO_CAPA_FOTO,
+  siteParaDocumento,
+  tagImgLogo,
+} from './identidadeVisual';
 
 // Reexportado para compatibilidade: o WhatsApp agora vive no helper de saída.
 export { abrirWhatsApp } from './exportarDocumento';
@@ -297,7 +304,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
   if (plano.tipo === 'nenhuma') return '';
 
   const emitidoEm = o.dataEmissao ? formatDateBR(o.dataEmissao) : formatDate(o.criadoEm);
-  const contatoEmpresa = [empresa.telefone, empresa.site].filter(Boolean).join('  ·  ');
+  const contatoEmpresa = [empresa.telefone, siteParaDocumento(empresa.site)].filter(Boolean).join('  ·  ');
   const logoSrc = img(empresa.logoUri);
   const revisaoLinha = o.revisaoDeNumero
     ? `<div class="cover-num">Revisão do nº ${escapeHtml(formatarNumeroExibicao(o.revisaoDeNumero))}</div>`
@@ -310,7 +317,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
       <div class="cover-scrim"></div>
       <div class="cover-inner cover-inner-photo">
         ${logoSrc
-          ? `<img src="${logoSrc}" class="cover-logo cover-logo-onphoto" />`
+          ? tagImgLogo(logoSrc, 'cover-logo cover-logo-onphoto', CAIXA_LOGO_CAPA_FOTO)
           : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
         <div class="cover-kicker">ORÇAMENTO</div>
         <div class="cover-num">Nº ${escapeHtml(formatarNumeroExibicao(o.numero))} · ${emitidoEm}</div>
@@ -328,7 +335,7 @@ function renderCapa(o: Orcamento, empresa: Empresa, plano: PlanoCapa): string {
       <div class="cover-inner">
         <div class="cover-brand">
           ${logoSrc
-            ? `<img src="${logoSrc}" class="cover-logo" />`
+            ? tagImgLogo(logoSrc, 'cover-logo', CAIXA_LOGO_CAPA)
             : `<div class="cover-brand-name">${escapeHtml(empresa.nome)}</div>`}
         </div>
         <div class="cover-kicker">ORÇAMENTO</div>
@@ -576,7 +583,8 @@ export function gerarHtmlOrcamento(
     empresa.endereco,
     [empresa.cidade, empresa.estado].filter(Boolean).join('/'),
   ].filter(Boolean).join(' · ');
-  const contatoEmpresa = [empresa.telefone, empresa.email].filter(Boolean).join(' · ');
+  const siteDoc = siteParaDocumento(empresa.site);
+  const contatoEmpresa = [empresa.telefone, empresa.email, siteDoc].filter(Boolean).join(' · ');
 
   // Rodapé do prestador: contato apenas. Dados de cobrança não entram no
   // orçamento; removerMarca só afeta a linha da marca OLLI.
@@ -748,7 +756,7 @@ ${renderCapa(o, empresa, planoCapa)}
     <!-- HEADER -->
     <div class="header">
       <div class="header-left">
-        ${mostrarLogoNoHeader ? `<img src="${img(empresa.logoUri)}" class="brand-logo" />` : ''}
+        ${mostrarLogoNoHeader ? tagImgLogo(img(empresa.logoUri), 'brand-logo', CAIXA_LOGO_CABECALHO) : ''}
         <div class="brand-name">${escapeHtml(empresa.nome)}</div>
         ${tagline ? `<div class="brand-tagline">${escapeHtml(tagline)}</div>` : ''}
       </div>

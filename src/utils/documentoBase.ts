@@ -2,6 +2,7 @@ import type { Empresa } from '../types';
 import { escapeHtml } from './html';
 import { corMarcaNoPapel } from './coresMarca';
 import { footerSeloOlliHtml, DEFAULT_ACCENT } from './marcaOlli';
+import { CAIXA_LOGO_DOCUMENTO, siteParaDocumento, tagImgLogo } from './identidadeVisual';
 
 /**
  * documentoBase.ts — CHASSI dos documentos jurídicos do prestador (contrato,
@@ -253,16 +254,18 @@ export function cabecalhoDocumento(
   subtitulo: string,
 ): string {
   const logo = imgSrc(logoDataUri);
+  const site = siteParaDocumento(empresa.site);
   const tituloHtml = (Array.isArray(titulo) ? titulo : [titulo as string])
     .map(linha => escapeHtml(linha))
     .join('<br/>');
   return `
   <div class="topo">
     <div class="marca">
-      ${logo ? `<img src="${logo}" class="marca-logo"/>` : ''}
+      ${tagImgLogo(logo, 'marca-logo', CAIXA_LOGO_DOCUMENTO)}
       <div>
         <div class="marca-nome">${escapeHtml(empresa.nome)}</div>
         ${empresa.especialidade ? `<div class="marca-esp">${escapeHtml(empresa.especialidade)}</div>` : ''}
+        ${site ? `<div class="marca-esp">${escapeHtml(site)}</div>` : ''}
       </div>
     </div>
     <div class="doc-tit">

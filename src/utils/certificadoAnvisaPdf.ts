@@ -1,6 +1,7 @@
 import { Empresa } from '../types';
 import { imagemParaDataUri } from './imagemDataUri';
 import { escapeHtml } from './html';
+import { CAIXA_LOGO_DOCUMENTO, tagImgLogo } from './identidadeVisual';
 import { footerSeloOlliHtml } from './pdfGenerator';
 import { corDoDocumento, cssDocumentoOficio, linhaInfo } from './documentoOficioPdf';
 import {
@@ -74,7 +75,7 @@ export async function montarHtmlCertificadoAnvisa(
 <body>
   <div class="topo">
     <div class="marca">
-      ${logoData ? `<img src="${escapeHtml(logoData)}"/>` : ''}
+      ${tagImgLogo(logoData ? escapeHtml(logoData) : '', 'marca-logo', CAIXA_LOGO_DOCUMENTO)}
       <div>
         <div class="marca-nome">${escapeHtml(dados.empresaRazaoSocial || empresa.nome)}</div>
         ${empresa.especialidade ? `<div class="marca-esp">${escapeHtml(empresa.especialidade)}</div>` : ''}

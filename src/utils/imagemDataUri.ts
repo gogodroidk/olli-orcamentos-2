@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { mimeDeBase64Imagem } from './identidadeVisual';
 
 /* ─── Conversão de imagem para data URI (multiplataforma) ─────────────
  * O HTML do PDF precisa de imagens embutidas como data URI:
@@ -18,8 +19,8 @@ const IMG_TIMEOUT_MS = 5000;
 
 /**
  * Teto de tamanho do ARQUIVO ORIGINAL antes de virar base64 (8 MB). Fotos vindas
- * do picker sem redimensionamento (ex.: logo em MeuNegocioScreen, que salva a URI
- * bruta) podem chegar em dezenas de MB — ler isso inteiro para base64 (que infla
+ * do picker sem redimensionamento podem chegar em dezenas de MB — ler isso
+ * inteiro para base64 (que infla
  * ~33%) e embutir no HTML pode estourar a memória do Hermes no Android. Acima do
  * teto, tratamos como falha de conversão (mesmo contrato: PDF segue sem a imagem).
  */
@@ -93,7 +94,8 @@ async function nativeUriToDataUri(uri: string): Promise<string | null> {
     const b64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-    return `data:image/jpeg;base64,${b64}`;
+    const mime = mimeDeBase64Imagem(b64) ?? 'image/jpeg';
+    return `data:${mime};base64,${b64}`;
   } catch {
     return null;
   }
