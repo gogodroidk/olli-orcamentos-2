@@ -23,6 +23,7 @@ import { generateId } from '../../utils/id';
 import { abrirWhatsApp, exportarHtmlComoPdf } from '../../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../../utils/reciboPdf';
 import { montarMensagemPedidoAvaliacao } from '../../utils/mensagensOrcamento';
+import { linkAvaliacaoUsavel } from '../../utils/identidadeVisual';
 import { retornoDoOficio } from '../../utils/posVenda';
 import {
   INFO_PASSO,
@@ -535,7 +536,7 @@ export function EncerrarAtendimentoModal({
       case 'avaliacao': {
         if (dados.estado === 'carregando') return <OlliSkeleton height={60} radius={16} />;
         if (dados.estado === 'erro') return (<>{indisponivel()}{pular('avaliacao')}</>);
-        const link = empresa?.linkGoogleAvaliacoes?.trim();
+        const link = linkAvaliacaoUsavel(empresa?.linkGoogleAvaliacoes);
         if (!link) {
           return (
             <>

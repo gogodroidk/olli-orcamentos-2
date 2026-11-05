@@ -19,10 +19,15 @@
  * SAIR/opt-out, primeiro contato só com OK humano, fora da janela de 24 h só template, intervalo entre
  * templates, teto diário. Aqui o worker só traduz a decisão em HTTP e fala com a Graph API.
  *
+ * P0-34: preço, contrato, reclamação, dado e incerteza ficam na fila, sem texto automático.
+ * A frase de "sou uma IA" sai só quando wa_registrar_entradas devolve o telefone em respostas
+ * e wa_autorizar_envio libera. Número inativo não devolve respostas. Este arquivo não liga ativo.
+ *
  * LOG: só contagens e rótulos. NUNCA telefone, nome, texto da mensagem, token nem corpo de resposta da Meta.
  */
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { chamarRpcServico } from './emailRpc.js';
+import { FRASE_IA } from './passagemHumano.js';
 
 export const WHATSAPP_CLOUD_VERSION = '2026-10-07.v1';
 export const GRAPH_VERSAO = 'v23.0';
@@ -34,6 +39,9 @@ export const LOTE_ENTRADAS = 100;
 export const LOTE_STATUS = 200;
 /** Teto de chamadas ao banco por webhook (o Workers Free dá 50 subrequests por invocação). */
 export const MAX_LOTES_POR_WEBHOOK = 40;
+/** Frases automáticas por webhook. O resto fica na fila para uma pessoa. */
+const MAX_RESPOSTAS_IA = 5;
+const TEL_RESPOSTA = /^55[0-9]{10,11}$/;
 const TEXTO_MAX = 1600;
 
 function resposta(corpo, status = 200, extra = {}) {
@@ -189,6 +197,97 @@ export function normalizarWebhook(payload) {
   return { porNumero, statuses, ignoradas, valido: true };
 }
 
+function telefonesDaResposta(registro) {
+  if (!registro || registro.motivo === 'numero_inativo' || !Array.isArray(registro.respostas)) {
+    return { telefones: [], cortadas: 0 };
+  }
+  const validos = [];
+  for (const item of registro.respostas) {
+    const tel = typeof item?.telefone === 'string' ? item.telefone : '';
+    if (TEL_RESPOSTA.test(tel)) validos.push(tel);
+  }
+  return {
+    telefones: validos.slice(0, MAX_RESPOSTAS_IA),
+    cortadas: Math.max(0, validos.length - MAX_RESPOSTAS_IA),
+  };
+}
+
+async function enviarFraseIa(config, fetchImpl, phoneNumberId, telefone) {
+  const decisao = await chamarRpcServico(config, fetchImpl, 'wa_autorizar_envio', {
+    p_phone_number_id: phoneNumberId,
+    p_telefone: telefone,
+    p_tipo: 'texto',
+    p_template: null,
+    p_user_id: null,
+  });
+  if (!decisao || decisao.pode !== true) {
+    const motivo = typeof decisao?.motivo === 'string' ? decisao.motivo : 'recusado';
+    log('whatsapp_resposta_ia', { resultado: 'bloqueado', motivo: motivo.slice(0, 40) });
+    return false;
+  }
+  const destino = typeof decisao.telefone === 'string' && TEL_RESPOSTA.test(decisao.telefone) ? decisao.telefone : null;
+  const concluir = (waId, codigo) => chamarRpcServico(config, fetchImpl, 'wa_concluir_envio', {
+    p_envio_id: decisao.envio_id, p_wa_message_id: waId, p_codigo_falha: codigo,
+  }).catch(() => null);
+  if (!destino) {
+    await concluir(null, 'payload_invalido');
+    log('whatsapp_resposta_ia', { resultado: 'falhou', motivo: 'telefone_invalido' });
+    return false;
+  }
+  const token = await chamarRpcServico(config, fetchImpl, 'wa_token_numero', { p_phone_number_id: phoneNumberId });
+  if (typeof token !== 'string' || token.length < 20) {
+    await concluir(null, 'sem_token');
+    log('whatsapp_resposta_ia', { resultado: 'falhou', motivo: 'sem_token' });
+    return false;
+  }
+  const mensagem = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: destino,
+    type: 'text',
+    text: { body: FRASE_IA, preview_url: false },
+  };
+  let r;
+  try {
+    r = await fetchImpl(`https://graph.facebook.com/${GRAPH_VERSAO}/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(mensagem),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    await concluir(null, 'rede');
+    log('whatsapp_resposta_ia', { resultado: 'falhou', motivo: 'rede' });
+    return false;
+  }
+  const corpo = await r.json().catch(() => null);
+  const waId = corpo?.messages?.[0]?.id;
+  if (!r.ok || typeof waId !== 'string') {
+    const codigo = String(corpo?.error?.code ?? `http_${r.status}`).slice(0, 40);
+    await concluir(null, codigo);
+    log('whatsapp_resposta_ia', { resultado: 'falhou', motivo: 'meta_erro', codigo });
+    return false;
+  }
+  await concluir(waId, null);
+  log('whatsapp_resposta_ia', { resultado: 'enviado' });
+  return true;
+}
+
+async function responderIaSeHouver(config, fetchImpl, phoneNumberId, registro) {
+  if (!/^[0-9]{5,20}$/.test(phoneNumberId)) return 0;
+  const { telefones, cortadas } = telefonesDaResposta(registro);
+  if (cortadas > 0) log('whatsapp_resposta_ia', { resultado: 'cortado', restantes: cortadas });
+  let enviadas = 0;
+  for (const tel of telefones) {
+    try {
+      if (await enviarFraseIa(config, fetchImpl, phoneNumberId, tel)) enviadas += 1;
+    } catch (erro) {
+      log('whatsapp_resposta_ia', { resultado: 'falhou', motivo: String(erro?.codigo || 'erro').slice(0, 40) });
+    }
+  }
+  return enviadas;
+}
+
 // ─── Webhook ────────────────────────────────────────────────────────────────────
 
 export async function handleWhatsappWebhook(request, env, dependencias = {}) {
@@ -239,7 +338,7 @@ export async function handleWhatsappWebhook(request, env, dependencias = {}) {
   const n = normalizarWebhook(payload);
   if (!n.valido) return resposta({ ok: true, ignorado: true });
 
-  const total = { registradas: 0, duplicadas: 0, saiu: 0, ignoradas: n.ignoradas, status: 0 };
+  const total = { registradas: 0, duplicadas: 0, saiu: 0, ignoradas: n.ignoradas, status: 0, respostas_ia: 0 };
   const lotesEntrada = [];
   for (const [phoneNumberId, itens] of n.porNumero) {
     for (const lote of emLotes(itens, LOTE_ENTRADAS)) lotesEntrada.push({ phoneNumberId, lote });
@@ -258,6 +357,12 @@ export async function handleWhatsappWebhook(request, env, dependencias = {}) {
       total.duplicadas += contagem(r?.duplicadas, 'duplicadas');
       total.saiu += contagem(r?.saiu, 'saiu');
       total.ignoradas += contagem(r?.ignoradas, 'ignoradas');
+      // A gravação já passou. Falha da frase não vira 500: a Meta reenviaria e a frase se perderia na duplicata.
+      try {
+        total.respostas_ia += await responderIaSeHouver(config, fetchImpl, phoneNumberId, r);
+      } catch (erro) {
+        log('whatsapp_resposta_ia', { resultado: 'falhou', motivo: String(erro?.codigo || 'erro').slice(0, 40) });
+      }
     }
     for (const lote of lotesStatus) {
       if (restante <= 0) break;

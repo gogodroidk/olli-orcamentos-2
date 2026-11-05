@@ -5,7 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
 import { LayoutDesktop } from '../../components/web/LayoutDesktop';
 import { TabelaDados, Coluna } from '../../components/web/TabelaDados';
-import { BarraBusca, normalizarBusca } from '../../components/web/BarraBusca';
+import { BarraBusca } from '../../components/web/BarraBusca';
 import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
 import { PainelServico } from './PainelServico';
@@ -15,7 +15,7 @@ import { usePermissao } from '../../hooks/usePermissao';
 import { formatCurrency } from '../../utils/currency';
 import { ServicoItem } from '../../types';
 import { avisar, confirmar } from './dialogo';
-import { margemInfo } from './servicoMargem';
+import { abaixoDoCusto, filtrarServicos, margemInfo, mensagemExcluirServico, seloMargem, textoListaServicos } from './servicoMargem';
 
 /**
  * Serviços desktop (v4) — tabela com busca e painel lateral de
@@ -74,14 +74,8 @@ function ServicosConteudo() {
   useFocusEffect(useCallback(() => { carregar(); }, [carregar]));
   useEffect(() => onSyncAplicado(carregar), [carregar]);
 
-  const linhas: ServicoItem[] = useMemo(() => {
-    if (!busca.trim()) return servicos;
-    const q = normalizarBusca(busca);
-    return servicos.filter((s) =>
-      normalizarBusca(s.nome).includes(q) ||
-      normalizarBusca(s.descricao ?? '').includes(q)
-    );
-  }, [servicos, busca]);
+  const linhas: ServicoItem[] = useMemo(() => filtrarServicos(servicos, busca), [servicos, busca]);
+  const vazioLista = textoListaServicos(servicos.length, linhas.length, busca);
 
   function abrirNovo() {
     setServicoEditando(null);
@@ -94,7 +88,7 @@ function ServicosConteudo() {
   }
 
   async function excluir(s: ServicoItem) {
-    if (!(await confirmar('Excluir serviço', `Excluir "${s.nome}"? Essa ação não pode ser desfeita.`))) return;
+    if (!(await confirmar('Excluir serviço', mensagemExcluirServico(s.nome)))) return;
     try {
       await deleteServico(s.id);
       carregar();
@@ -134,7 +128,17 @@ function ServicosConteudo() {
       alinhamento: 'direita',
       ordenavel: true,
       valorOrdenacao: (s) => s.preco,
-      render: (s) => <Text style={styles.celulaPreco}>{formatCurrency(s.preco)}</Text>,
+      render: (s) => {
+        const zerado = !(s.preco > 0);
+        return (
+          <Text
+            style={[styles.celulaPreco, zerado && styles.celulaPrecoZerado]}
+            accessibilityLabel={zerado ? `${formatCurrency(s.preco)}, preço zerado, entra de graça no orçamento` : undefined}
+          >
+            {formatCurrency(s.preco)}
+          </Text>
+        );
+      },
     },
     {
       chave: 'custo',
@@ -148,16 +152,16 @@ function ServicosConteudo() {
     {
       chave: 'margem',
       titulo: 'Margem',
-      largura: 100,
+      largura: 150,
       alinhamento: 'direita',
       ordenavel: true,
-      valorOrdenacao: (s) => margemInfo(s.preco, s.custo)?.pct ?? -1,
+      valorOrdenacao: (s) => margemInfo(s.preco, s.custo)?.pct ?? (abaixoDoCusto(s.preco, s.custo) ? -100 : -1),
       render: (s) => {
-        const margem = margemInfo(s.preco, s.custo);
-        if (margem === null) return <Text style={styles.celulaTexto}>—</Text>;
+        const selo = seloMargem(s.preco, s.custo);
+        if (!selo) return <Text style={styles.celulaTexto}>—</Text>;
         return (
-          <Text style={[styles.celulaTexto, styles.celulaMargem]}>
-            {margem.pct}%
+          <Text style={[styles.celulaTexto, selo.tom === 'prejuizo' ? styles.celulaPrejuizo : styles.celulaMargem]}>
+            {selo.texto}
           </Text>
         );
       },
@@ -209,13 +213,23 @@ function ServicosConteudo() {
         aoClicarLinha={(s) => abrirEdicao(s)}
         ordenacaoInicial={{ chave: 'nome', direcao: 'asc' }}
         vazio={
-          <EmptyState
-            icon="wrench-outline"
-            title="Nenhum serviço"
-            subtitle="Cadastre seus serviços para montar orçamentos em segundos."
-            actionLabel="Novo serviço"
-            onAction={abrirNovo}
-          />
+          vazioLista.estado === 'sem-resultado' ? (
+            <EmptyState
+              icon="magnify"
+              title={vazioLista.titulo}
+              subtitle={vazioLista.subtitulo}
+              actionLabel="Limpar busca"
+              onAction={() => setBusca('')}
+            />
+          ) : (
+            <EmptyState
+              icon="wrench-outline"
+              title={vazioLista.titulo}
+              subtitle={vazioLista.subtitulo}
+              actionLabel="Novo serviço"
+              onAction={abrirNovo}
+            />
+          )
         }
       />
 
@@ -319,9 +333,16 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     color: c.primary,
     fontWeight: '700',
   },
+  celulaPrecoZerado: {
+    color: c.danger,
+  },
   celulaMargem: {
     fontWeight: '700',
     color: c.success,
+  },
+  celulaPrejuizo: {
+    fontWeight: '700',
+    color: c.danger,
   },
   acoesLinha: {
     flexDirection: 'row',

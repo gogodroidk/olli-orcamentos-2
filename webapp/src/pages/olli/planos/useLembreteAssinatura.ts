@@ -22,6 +22,7 @@ import {
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { avisoTrialNaoIniciado } from "@limites-comerciais";
 import { iniciarTrialPro, obterEstadoOfertaComercial } from "@/olli/cota-envios";
 import { useMinhaAssinatura } from "@/olli/marcaDocumento";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
@@ -48,8 +49,9 @@ export const opcoesOfertaComercial = queryOptions({
  */
 export async function comecarTesteProComAviso(recarregar: () => Promise<unknown>): Promise<boolean> {
 	const inicio = await iniciarTrialPro();
-	if (!inicio) {
-		toast.error("Não foi possível iniciar o teste. Confirme a conexão e tente novamente; o teste não foi consumido.");
+	if (!inicio || inicio.motivo === "revisao_caixa") {
+		const aviso = avisoTrialNaoIniciado(inicio);
+		toast.error(`${aviso.titulo}. ${aviso.mensagem}`);
 		return false;
 	}
 	await recarregar();

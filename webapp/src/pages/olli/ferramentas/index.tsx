@@ -5,6 +5,7 @@ import { Input } from "@/ui/input";
 import { cn } from "@/utils";
 import { PACKS_OFICIO } from "@precificacao";
 import { CalculadoraDialog } from "./CalculadoraDialog";
+import { ContadorRecursos } from "./ContadorRecursos";
 import { CALCULOS, type CalculoOficio, type VerticalId } from "./calculos";
 import { categoriaDe, CATEGORIAS, ORDEM_CATEGORIAS, iconeDe } from "./meta";
 
@@ -50,7 +51,7 @@ export default function FerramentasPage() {
 		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
 			{/* Cabeçalho */}
 			<div className="flex items-center gap-4">
-				<div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[#3FD8EA] text-white shadow-md shadow-primary/25">
+				<div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[#3FD8EA] text-primary-foreground shadow-md shadow-primary/25">
 					<Wrench className="size-6" strokeWidth={2.2} />
 				</div>
 				<div className="min-w-0">
@@ -119,8 +120,12 @@ export default function FerramentasPage() {
 			<section className="rounded-2xl border border-border bg-card p-5 shadow-sm" aria-labelledby="recursos-uteis">
 				<div className="flex items-start gap-3">
 					<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><Landmark className="size-5" /></span>
-					<div><h2 id="recursos-uteis" className="font-semibold text-text-primary">Recursos úteis para o seu negócio</h2><p className="mt-1 text-sm text-text-secondary">A OLLI organiza o trabalho; estas são fontes oficiais para obrigações, previdência e capacitação.</p></div>
+					<div>
+						<h2 id="recursos-uteis" className="font-semibold text-text-primary">Recursos úteis para o seu negócio</h2>
+						<p className="mt-1 text-sm text-text-secondary">A OLLI organiza o trabalho e não emite nota fiscal. O guia de contador explica MEI, ME e os outros tipos de empresa, com fonte oficial. Em seguida, previdência e capacitação.</p>
+					</div>
 				</div>
+				<ContadorRecursos />
 				<div className="mt-4 grid gap-3 md:grid-cols-3">
 					{RECURSOS_UTEIS.map((recurso) => <a key={recurso.titulo} href={recurso.href} target="_blank" rel="noreferrer" className="group rounded-xl border border-border bg-background p-4 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"><div className="flex items-center justify-between gap-2"><span className="font-medium text-text-primary group-hover:text-primary">{recurso.titulo}</span><ExternalLink className="size-4 shrink-0 text-text-disabled" /></div><p className="mt-1.5 text-xs leading-relaxed text-text-secondary">{recurso.texto}</p><span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary">Abrir fonte oficial <ChevronRight className="size-3.5" /></span></a>)}
 				</div>

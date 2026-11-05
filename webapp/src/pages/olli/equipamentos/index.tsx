@@ -603,15 +603,14 @@ function ChipSituacao({
 				"inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
 				"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
 				ativo
-					? "border-primary bg-primary text-white"
+					? "border-primary bg-primary text-primary-foreground"
 					: "border-border bg-transparent text-text-secondary hover:bg-bg-neutral",
 			)}
 		>
 			{rotulo}
 			{/* Contador é DADO (quantos existem), não estado desabilitado — não usa o
-			    token de "disabled". Ativo: branco quase sólido (o antigo /75 reprovava
-			    AA sobre --primary). Inativo: text-secondary, legível no claro e no escuro. */}
-			<span className={cn("tabular-nums", ativo ? "text-white/90" : "text-text-secondary")}>{quantidade}</span>
+			    token de "disabled". Ativo: a mesma tinta do botão. Inativo: text-secondary. */}
+			<span className={cn("tabular-nums", ativo ? "text-primary-foreground" : "text-text-secondary")}>{quantidade}</span>
 		</button>
 	);
 }

@@ -1,5 +1,5 @@
 import { useAuthHydrated, useUserToken } from "@/store/userStore";
-import { Loader2 } from "lucide-react";
+import { Skeleton } from "@/ui/skeleton";
 import { useCallback, useEffect } from "react";
 import { useRouter } from "../hooks";
 
@@ -26,10 +26,10 @@ export default function LoginAuthGuard({ children }: Props) {
 	// claro que o painel esta verificando, em vez de mostrar uma tela vazia.
 	if (!authHydrated) {
 		return (
-			<div className="grid min-h-svh place-items-center bg-background" role="status" aria-live="polite">
-				<div className="flex items-center gap-3 text-sm text-muted-foreground">
-					<Loader2 className="size-5 animate-spin" aria-hidden />
-					Verificando sua sessão…
+			<div className="grid min-h-svh place-items-center bg-background px-6" role="status" aria-live="polite">
+				<div className="flex w-full max-w-xs flex-col items-center gap-4">
+					<Skeleton className="h-2.5 w-40 rounded-full" />
+					<p className="text-sm text-muted-foreground">Verificando sua sessão…</p>
 				</div>
 			</div>
 		);

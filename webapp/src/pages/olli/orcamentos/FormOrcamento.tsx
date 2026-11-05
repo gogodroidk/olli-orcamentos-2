@@ -929,7 +929,7 @@ function Editor({
 										className={cn(
 											"rounded-md px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
 											orc.descontoTipo === tipo
-												? "bg-primary text-white"
+												? "bg-primary text-primary-foreground"
 												: "text-text-secondary hover:text-text-primary",
 										)}
 									>

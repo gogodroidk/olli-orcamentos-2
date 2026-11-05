@@ -29,12 +29,16 @@ import { imprimirHtml } from "./imprimirHtml";
  * Gera e imprime o PDF do orçamento. NUNCA lança silenciosamente: a falha volta pro
  * chamador mostrar um toast — um botão de PDF que "não faz nada" é o padrão que a casa mata.
  */
-export async function imprimirOrcamento(
+/**
+ * HTML do orçamento no painel — o mesmo que `imprimirOrcamento` manda para o papel.
+ * A Central de documentos usa isto na prévia visual, sem um segundo layout.
+ */
+export function htmlDoOrcamento(
 	orcamento: Orcamento,
 	empresa: Empresa,
 	depoimentos: Depoimento[] = [],
 	opcoes?: { removerMarca?: boolean },
-): Promise<void> {
+): string {
 	// gerarHtmlOrcamento (SÍNCRONO, puro) em vez de montarHtmlOrcamentoCompleto: este
 	// último faz populateImages (converte file:// do celular — no painel as imagens já
 	// são data:/http) e obterLinkPublico (import dinâmico que puxa o Supabase e o async-
@@ -46,8 +50,16 @@ export async function imprimirOrcamento(
 	// `accentRaw` fica `undefined` de propósito: o gerador então honra a cor de marca
 	// DAQUELE orçamento (`o.corMarca`), que é o mesmo caminho do celular. Passar a cor
 	// da empresa aqui faria o painel imprimir numa cor e o app noutra.
-	const html = gerarHtmlOrcamento(orcamento, empresa, depoimentos, undefined, {
+	return gerarHtmlOrcamento(orcamento, empresa, depoimentos, undefined, {
 		removerMarca: opcoes?.removerMarca === true,
 	});
-	await imprimirHtml(html);
+}
+
+export async function imprimirOrcamento(
+	orcamento: Orcamento,
+	empresa: Empresa,
+	depoimentos: Depoimento[] = [],
+	opcoes?: { removerMarca?: boolean },
+): Promise<void> {
+	await imprimirHtml(htmlDoOrcamento(orcamento, empresa, depoimentos, opcoes));
 }

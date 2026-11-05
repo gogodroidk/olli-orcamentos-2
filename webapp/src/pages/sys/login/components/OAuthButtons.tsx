@@ -1,3 +1,4 @@
+import { queryParamsEscolherContaGoogle, queryParamsGoogleConvite } from "@convite-google";
 import { novaTentativaOAuth } from "@oauth-retorno";
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
@@ -61,7 +62,7 @@ function AvisoNavegadorInApp({ app }: { app: NavegadorInApp }) {
 
 export function OAuthButtons() {
 	const { t } = useTranslation();
-	const { callbackAuthPath, intencaoPlano } = useLoginStateContext();
+	const { callbackAuthPath, intencaoPlano, conviteToken, loginHintGoogle } = useLoginStateContext();
 	const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 	const [inApp] = useState(navegadorInAppAtual);
 
@@ -83,10 +84,17 @@ export function OAuthButtons() {
 			// storage bloqueado: o login segue, só perde intenção/correlação do funil
 		}
 		void registrarFunilAuth("oauth_iniciado", { plataforma: "web", provedor: provider, tentativa });
+		const queryParams =
+			provider === "google" && conviteToken
+				? (queryParamsGoogleConvite(loginHintGoogle) ?? queryParamsEscolherContaGoogle())
+				: undefined;
 		try {
 			const { error } = await supabase.auth.signInWithOAuth({
 				provider,
-				options: { redirectTo: `${window.location.origin}${callbackAuthPath}` },
+				options: {
+					redirectTo: `${window.location.origin}${callbackAuthPath}`,
+					...(queryParams ? { queryParams } : {}),
+				},
 			});
 			if (error) {
 				void registrarFunilAuth("oauth_erro", { plataforma: "web", provedor: provider, tentativa, motivo: "provedor" });

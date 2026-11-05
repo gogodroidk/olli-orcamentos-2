@@ -20,7 +20,7 @@ import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 import { chamarRpcServico } from './emailRpc.js';
 import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
-import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos } from './emailLembretesPolicy.js';
+import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos, sufixoLigaNaoAberto } from './emailLembretesPolicy.js';
 import { selecionarPixVence } from './pixVencePolicy.js';
 import { selecionarNaoAbertos } from './orcamentoNaoAbertoPolicy.js';
 
@@ -136,11 +136,12 @@ async function executarRodada(env, dependencias = {}) {
       if (motivo === 'teto_diario') break;
     }
 
-    // "Orçamento não aberto em 48 h" (Z-123): aviso ao PRESTADOR, nunca ao cliente. Só roda com o tipo
-    // `nao_aberto` listado EXPLICITAMENTE no sufixo do MODE ("production" sozinho NÃO liga) e usa o que
-    // sobrou do teto da rodada. Falha aqui não derruba o resto: vira `nao_aberto_falhou` nas decisões.
+    // "Orçamento não aberto em 48 h" (Z-123): aviso ao PRESTADOR, nunca ao cliente. Só roda se
+    // `sufixoLigaNaoAberto` for true (MODE production e a palavra exata no sufixo). "production"
+    // sozinho NÃO liga. Usa o que sobrou do teto da rodada. Falha aqui não derruba o resto:
+    // vira `nao_aberto_falhou` nas decisões.
     let naoAbertos = 0;
-    if (restoModo.length > 0 && tiposPermitidos.has('nao_aberto') && !tetoDiarioAtingido && enfileirados < tetoRodada) try {
+    if (sufixoLigaNaoAberto(texto(env?.EMAIL_LEMBRETES_MODE, 80)) && !tetoDiarioAtingido && enfileirados < tetoRodada) try {
       const lista = await chamarRpcServico(config, fetchImpl, 'listar_nao_abertos_email', {
         p_now: agoraIso,
         p_limit: LIMITE_CANDIDATOS,
