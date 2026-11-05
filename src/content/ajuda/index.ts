@@ -352,7 +352,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
         conteudo: [
           'Cadastre o equipamento a partir do cadastro do cliente (ou pela tela de Equipamentos).',
           'Sincronize com a nuvem pelo menos uma vez (é o banco que gera o código do QR, por segurança) — depois disso a etiqueta fica disponível.',
-          'Toque em "Gerar etiqueta" para ver o QR pronto pra imprimir e colar na porta física do equipamento.',
+          'Toque em "Ver etiqueta / QR". A etiqueta ideal é 99,1 × 38,1 mm: em casa, folha A4 Pimaco A4363 ou Colacril CA4363 (14 adesivos), impressão em 100% sem ajustar à página; na gráfica, vinil branco fosco com laminação fosca, no mesmo tamanho.',
           'Ao escanear, qualquer pessoa (você, o cliente, um outro técnico) abre a página pública daquele equipamento — sem precisar login.',
         ],
       },
