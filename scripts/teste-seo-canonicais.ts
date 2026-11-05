@@ -54,7 +54,13 @@ for (const [arq, canon] of PAGINAS) {
 caso('as variantes de anúncio ficam fora do sitemap, sem enfraquecer o filtro das rotas utilitárias', () => {
   assert.match(config, /VARIANTES_DE_ANUNCIO = \['\/eletricista\/', '\/refrigeracao\/'\]/);
   assert.match(config, /VARIANTES_DE_ANUNCIO\.includes\(caminho\)\) return false/);
-  assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'\]/);
+  assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'(, '\/servicos\/')?\]/);
+  // /servicos/: noindex sai do sitemap; publicada entra. O teste acompanha a flag.
+  const servicos = ler('web/src/data/servicos.ts');
+  const lista = config.match(/\['\/admin\/'[^\]]*\]/)?.[0] ?? '';
+  if (/PAGINA_PUBLICADA = false/.test(servicos)) assert.ok(lista.includes("'/servicos/'"), '/servicos/ noindex precisa sair do sitemap');
+  else if (/PAGINA_PUBLICADA = true/.test(servicos)) assert.ok(!lista.includes("'/servicos/'"), '/servicos/ publicada precisa entrar no sitemap');
+  else assert.fail('PAGINA_PUBLICADA não encontrado em servicos.ts');
 });
 
 caso('lastmod das páginas fixas: datas válidas (AAAA-MM-DD), nenhuma no futuro, /para/* coberto', () => {
@@ -66,6 +72,17 @@ caso('lastmod das páginas fixas: datas válidas (AAAA-MM-DD), nenhuma no futuro
     assert.ok(d <= hoje, `data no futuro ${d}`);
   }
   assert.match(config, /startsWith\('\/para\/'\) \? LASTMOD_PARA/);
+});
+
+caso('aliases de /para/ (D-1013): cada um aponta para vertical existente, fica fora do sitemap e a página manda canonicalPath', () => {
+  const pagina = ler('web/src/pages/para/[oficio].astro');
+  assert.match(pagina, /canonicalPath=\{canonicalPath\}/);
+  const aliases = [...oficios.matchAll(/\{ slug: '([a-z0-9-]+)', id: '([a-z_]+)'/g)];
+  assert.equal(aliases.length, 5, 'esperava 5 aliases');
+  for (const [, slug, id] of aliases) {
+    assert.ok(config.includes(`'/para/${slug}/'`), `alias ${slug} fora de ALIASES_PARA_FORA (entraria no sitemap)`);
+    assert.match(oficios, new RegExp(`\\b${id}: '[a-z0-9-]+'`), `vertical ${id} sem slug`);
+  }
 });
 
 console.log(`\nteste-seo-canonicais: ${ok} casos OK`);

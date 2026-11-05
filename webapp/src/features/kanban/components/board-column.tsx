@@ -26,7 +26,7 @@ import { useDroppable } from "@dnd-kit/core";
 import type { StatusOrcamento } from "@dominio";
 import { Badge } from "@/ui/badge";
 import { cn } from "@/utils";
-import { BRL, type Cartao, type ColunaMontada } from "../utils/colunas";
+import { aceitaSoltar, BRL, type Cartao, type ColunaMontada } from "../utils/colunas";
 import TaskCard from "./task-card";
 
 /** Largura mínima da coluna em px. Ver o cabeçalho antes de mexer. */
@@ -39,14 +39,17 @@ type Props = {
 	destaqueId?: string | null;
 	onMover: (cartao: Cartao, novoStatus: StatusOrcamento) => void;
 	onAbrir: (cartao: Cartao) => void;
+	/** Pede para finalizar o serviço (abre a confirmação no quadro). */
+	onFinalizar: (cartao: Cartao) => void;
 };
 
-export default function BoardColumn({ montada, emVoo, destaqueId, onMover, onAbrir }: Props) {
+export default function BoardColumn({ montada, emVoo, destaqueId, onMover, onAbrir, onFinalizar }: Props) {
 	const { coluna, cartoes, soma, temSemValor } = montada;
 
 	// "Outros" (status desconhecido) não tem status canônico para gravar — então não
-	// aceita drop. Ela existe só para que NENHUM orçamento suma do quadro.
-	const podeReceber = coluna.destino !== null;
+	// aceita drop. Ela existe só para que NENHUM orçamento suma do quadro. "Finalizados"
+	// aceita: soltar ali conclui o serviço, depois de confirmar (ver `aceitaSoltar`).
+	const podeReceber = aceitaSoltar(coluna);
 	const { setNodeRef, isOver } = useDroppable({ id: coluna.id, disabled: !podeReceber });
 
 	// `md:min-w-[180px]` é o PISO_DA_COLUNA escrito à mão: o Tailwind gera o CSS lendo
@@ -95,6 +98,7 @@ export default function BoardColumn({ montada, emVoo, destaqueId, onMover, onAbr
 						destaque={c.id === destaqueId}
 						onMover={onMover}
 						onAbrir={onAbrir}
+						onFinalizar={onFinalizar}
 					/>
 				))}
 

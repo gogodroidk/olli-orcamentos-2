@@ -1,8 +1,8 @@
 /**
  * A LINHA QUE ENSINA O GESTO. Aparece uma vez (ver `useDicaDeArraste`), some sozinha.
  *
- * Ela mostra os DOIS ícones de verdade do card — a alça e o menu — porque o texto
- * "use a alça" só ajuda quem consegue ligar a palavra ao desenho que está na tela.
+ * Ela mostra a alça de verdade do card, porque o texto "use a alça" só ajuda quem
+ * consegue ligar a palavra ao desenho. O caminho principal é o botão "Mover".
  * Os ícones são decorativos (`aria-hidden`); o texto lido em voz alta funciona sem
  * eles, e quem usa leitor de tela recebe as instruções completas do arraste pelo
  * próprio dnd-kit (ver `INSTRUCOES_LEITOR_DE_TELA` em `kanban-board.tsx`).
@@ -13,7 +13,7 @@
  *
  * Movimento: só `opacity`, e a transição desliga em `prefers-reduced-motion`.
  */
-import { GripVertical, Lightbulb, MoreVertical, X } from "lucide-react";
+import { GripVertical, Lightbulb, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/utils";
 
@@ -41,17 +41,12 @@ export default function DicaDeArraste({ saindo, aoFechar }: { saindo: boolean; a
 			<Lightbulb className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
 
 			<p className="flex-1 text-sm leading-relaxed text-text-primary">
-				<span className="font-semibold">Dá para arrastar.</span> Pegue o card pela alça
+				<span className="font-semibold">Toque em Mover</span> no card para mudar o estágio — no celular a lista abre
+				inteira, sem arrastar. Se preferir, pegue pela alça
 				<Tecla>
 					<GripVertical className="size-3" />
 				</Tecla>
-				<span className="sr-only">(o ícone de arrastar, no canto esquerdo do card)</span> e solte em outra coluna. Sem
-				arrastar — no celular ou pelo teclado — abra o menu do card
-				<Tecla>
-					<MoreVertical className="size-3" />
-				</Tecla>
-				<span className="sr-only">(três pontinhos, no canto direito do card)</span> e use{" "}
-				<span className="font-medium">Mover para</span>.
+				<span className="sr-only">(o ícone de arrastar, no canto esquerdo do card)</span> e solte em outra coluna.
 			</p>
 
 			<button

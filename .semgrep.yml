@@ -1,0 +1,25 @@
+# Regras locais do gate (MF-07). Sem registry: não baixa regra e não envia código.
+# Chamada solta a eval/exec. Método .exec (regex, SQL de teste) não casa.
+# Uma regra por família de linguagem: juntar python com javascript faz o
+# padrão deixar de casar (semgrep 1.168).
+rules:
+  - id: olli-python-eval-proibido
+    languages: [python]
+    message: Chamada a eval é proibida no OLLI. Escreva o código explícito.
+    severity: ERROR
+    pattern: eval(...)
+  - id: olli-js-eval-proibido
+    languages: [javascript]
+    message: Chamada a eval é proibida no OLLI. Escreva o código explícito.
+    severity: ERROR
+    pattern: eval(...)
+  - id: olli-ts-eval-proibido
+    languages: [typescript]
+    message: Chamada a eval é proibida no OLLI. Escreva o código explícito.
+    severity: ERROR
+    pattern: eval(...)
+  - id: olli-python-exec-proibido
+    languages: [python]
+    message: Chamada a exec é proibida no OLLI. Escreva o código explícito.
+    severity: ERROR
+    pattern: exec(...)

@@ -27,7 +27,9 @@
  */
 
 import { linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp.js';
+import { FONTES_CSS } from './fontesProprias.js';
 import { lerCorpoLimitado } from './bodyLimit.js';
+import { corMarcaNoPapel } from '../../src/utils/coresMarca.ts';
 
 const ACCENT = '#0B6FCE';
 const RESPOSTA_MAX_BYTES = 1024;
@@ -54,10 +56,6 @@ function esc(v) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function corSegura(v) {
-  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : ACCENT;
 }
 
 function logoSegura(prestador) {
@@ -200,7 +198,7 @@ function htmlResp(body, status = 200) {
       // Página estática sem <script>; img só data: (a logo do prestador);
       // form-action 'self' para os dois botões.
       'Content-Security-Policy':
-        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; font-src https://olliorcamentos.online; img-src data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
     },
   });
 }
@@ -241,7 +239,8 @@ export async function responderConfirmacao(token, env, request) {
 
 // ─── páginas ─────────────────────────────────────────────────────────────────
 function shell(inner, accentRaw) {
-  const accent = corSegura(accentRaw);
+  // Cabeçalho com texto branco. Marca clara escurece só até 4,5:1; #123ABC fica.
+  const accent = corMarcaNoPapel(accentRaw, ACCENT);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -249,9 +248,7 @@ function shell(inner, accentRaw) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
 <title>Confirmação de visita</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>${FONTES_CSS}</style>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EEF1F5;color:#1A2230;-webkit-font-smoothing:antialiased;padding:24px 16px 48px}

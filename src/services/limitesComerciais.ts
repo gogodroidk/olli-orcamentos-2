@@ -42,10 +42,25 @@ export const CREDITO_TROCA_PEDIDOS_MAX = 3;
 export type CanalEnvioOrcamento = 'pdf' | 'link' | 'whatsapp';
 export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';
 
+export interface AvisoLimiteAntigas {
+  /** Instante (ISO) em que o limite passa a valer para a conta. */
+  aPartirDe: string;
+  usados30d: number;
+}
+
 export interface EstadoOfertaComercial {
   planoEfetivo: PlanoId;
-  /** Orçamentos distintos enviados neste mês (informativo — não existe teto). */
+  /** Orçamentos distintos enviados neste mês (informativo; só vira teto se `limiteEnvios` vier). */
   enviosUsados: number;
+  /** Teto mensal (ex.: 5) SÓ em conta nova do Grátis com o corte ligado (P0-09); `null` = sem teto. */
+  limiteEnvios: number | null;
+  /** Quanto falta no mês (0 = esgotado); `null` quando não há teto. */
+  enviosRestantes: number | null;
+  /**
+   * Conta ANTERIOR ao corte, ainda antes do limite (`corte_antigas`): quando o limite começa e quantos envios
+   * ela fez nos últimos 30 dias (valor do banco). `null` = nada a avisar (nova, Pro, ou servidor sem o sinal).
+   */
+  avisoLimiteAntigas: AvisoLimiteAntigas | null;
   trialEstado: TrialEstado;
   trialTerminaEm: string | null;
   trialDias: number;
@@ -54,19 +69,29 @@ export interface EstadoOfertaComercial {
   preservaDados: true;
 }
 
-export interface InicioTrialPro {
-  iniciado: boolean;
-  replay: boolean;
-  terminaEm: string;
-}
+export type InicioTrialPro =
+  | {
+      iniciado: boolean;
+      replay: boolean;
+      terminaEm: string;
+      motivo: null;
+    }
+  | {
+      iniciado: false;
+      replay: false;
+      terminaEm: null;
+      motivo: 'revisao_caixa';
+    };
 
 export interface ReservaEnvioOrcamento {
   /**
-   * Sempre `true` desde 01/10/2026: o Grátis é ilimitado e nenhum envio é barrado
-   * por cota. O tipo literal garante que nenhuma tela volte a ter um ramo de
-   * recusa (o último, o "Cota mensal utilizada" do detalhe, saiu em 02/10/2026).
+   * `true` quase sempre: o Grátis é ilimitado e falha de registro NUNCA barra o envio.
+   * A ÚNICA recusa é `cota_esgotada` com `permitido:false` vinda do servidor — conta
+   * nova do Grátis que já usou o limite do mês (P0-09; o servidor só devolve isso
+   * quando o corte está ligado em `limite_gratis_config`). Toda tela que envia
+   * precisa tratar `permitido === false` (hoje: `autorizarEntrega` na Visualizar).
    */
-  permitido: true;
+  permitido: boolean;
   planoEfetivo: PlanoId;
   /** Orçamentos distintos registrados neste mês (informativo). */
   usados: number;
@@ -81,10 +106,11 @@ export interface ReservaEnvioOrcamento {
    *   envio segue, só não conta para o teste automático nem para o funil;
    * - `ambiente_local`: sem Supabase configurado (desenvolvimento).
    *
-   * `cota_esgotada` de um servidor antigo nunca chega aqui: `interpretarReservaEnvio`
-   * o transforma em `sem_registro`.
+   * - `cota_esgotada`: recusa REAL (`permitido:false`) do limite do Grátis em conta nova.
    */
-  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local';
+  motivo: 'plano_pago' | 'trial_ativo' | 'dentro_da_cota' | 'sem_registro' | 'ambiente_local' | 'cota_esgotada';
+  /** Só quando recusado por limite: o teto do mês (ex.: 5). */
+  limiteEnvios: number | null;
 }
 
 function inteiroNaoNegativo(valor: unknown, fallback: number): number {
@@ -92,9 +118,10 @@ function inteiroNaoNegativo(valor: unknown, fallback: number): number {
 }
 
 /**
- * Lê `meu_estado_oferta_comercial`. Os campos de cota (`limite_envios`,
- * `envios_restantes`) são IGNORADOS de propósito: o servidor antigo ainda os manda
- * com o 5, o novo manda `null`, e nenhum dos dois pode reinventar uma cota no app.
+ * Lê `meu_estado_oferta_comercial`. `limite_envios`/`envios_restantes` só valem como
+ * número inteiro positivo/não negativo e só em plano Grátis; qualquer outra coisa vira
+ * `null` (= sem teto). O app NUNCA inventa teto: quem manda é o servidor (corte em
+ * `limite_gratis_config`), e conta antiga ou com o corte desligado recebe `null`.
  */
 export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial | null {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
@@ -108,9 +135,22 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
     ? v.trial_termina_em
     : null;
   if (v.trial_estado === 'active' && !terminaEm) return null;
+  // O teto só vale com o SINAL do servidor novo (`limite_conta_nova: true`): o servidor antigo mandava limite_envios=5
+  // para todo Grátis, sem limite real — mostrar 'X de 5' ali seria informação falsa.
+  // Dois sinais do servidor: conta NOVA (`limite_conta_nova`) e conta ANTIGA já limitada (`limite_conta_antiga`, a partir de D+30).
+  const sinalLimite = v.limite_conta_nova === true || v.limite_conta_antiga === true;
+  const limite = plano === 'gratis' && sinalLimite && typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0
+    ? v.limite_envios
+    : null;
+  const restantes = limite !== null && typeof v.envios_restantes === 'number' && Number.isSafeInteger(v.envios_restantes) && v.envios_restantes >= 0
+    ? v.envios_restantes
+    : null;
   return {
     planoEfetivo: plano,
     enviosUsados: inteiroNaoNegativo(v.envios_usados, 0),
+    limiteEnvios: limite,
+    enviosRestantes: limite !== null ? restantes : null,
+    avisoLimiteAntigas: plano === 'gratis' ? interpretarAvisoAntigas(v.aviso_limite_antigas) : null,
     trialEstado: v.trial_estado as TrialEstado,
     trialTerminaEm: terminaEm,
     trialDias: TRIAL_PRO_DIAS,
@@ -120,13 +160,40 @@ export function interpretarEstadoOferta(valor: unknown): EstadoOfertaComercial |
   };
 }
 
+function interpretarAvisoAntigas(valor: unknown): AvisoLimiteAntigas | null {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
+  const a = valor as Record<string, unknown>;
+  if (typeof a.a_partir_de !== 'string' || Number.isNaN(Date.parse(a.a_partir_de))) return null;
+  if (typeof a.usados_30d !== 'number' || !Number.isSafeInteger(a.usados_30d) || a.usados_30d < 0) return null;
+  return { aPartirDe: a.a_partir_de, usados30d: a.usados_30d };
+}
+
 export function interpretarInicioTrial(valor: unknown): InicioTrialPro | null {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
   const v = valor as Record<string, unknown>;
   if (typeof v.iniciado !== 'boolean' || typeof v.replay !== 'boolean') return null;
   if (v.requires_card !== false || v.auto_renews !== false || v.data_disposition !== 'preserve') return null;
+  if (v.motivo === 'revisao_caixa') {
+    if (v.iniciado !== false || v.replay !== false || v.termina_em != null) return null;
+    return { iniciado: false, replay: false, terminaEm: null, motivo: 'revisao_caixa' };
+  }
+  if (v.motivo != null) return null;
   if (v.trial_dias !== TRIAL_PRO_DIAS || typeof v.termina_em !== 'string' || Number.isNaN(Date.parse(v.termina_em))) return null;
-  return { iniciado: v.iniciado, replay: v.replay, terminaEm: v.termina_em };
+  return { iniciado: v.iniciado, replay: v.replay, terminaEm: v.termina_em, motivo: null };
+}
+
+/** Texto honesto quando o botão de teste não inicia. Não diz que a pessoa já usou o teste. */
+export function avisoTrialNaoIniciado(inicio: InicioTrialPro | null): { titulo: string; mensagem: string } {
+  if (inicio?.motivo === 'revisao_caixa') {
+    return {
+      titulo: 'Teste em revisão',
+      mensagem: 'Esta caixa de e-mail já tem outras contas na OLLI. O teste novo não começa. Seus orçamentos continuam no Grátis e nada foi apagado.',
+    };
+  }
+  return {
+    titulo: 'Não foi possível iniciar',
+    mensagem: 'Confirme sua conexão e tente novamente. O teste não foi consumido.',
+  };
 }
 
 /**
@@ -143,6 +210,16 @@ export function interpretarReservaEnvio(valor: unknown): ReservaEnvioOrcamento {
   const v = valor as Record<string, unknown>;
   const motivo = v.motivo;
   const motivos = new Set(['plano_pago', 'trial_ativo', 'dentro_da_cota']);
+  // Única recusa do contrato: limite do Grátis em conta nova (servidor com corte ligado).
+  if (v.permitido === false && motivo === 'cota_esgotada') {
+    return {
+      ...envioSemRegistro(),
+      permitido: false,
+      usados: inteiroNaoNegativo(v.usados, 0),
+      motivo: 'cota_esgotada',
+      limiteEnvios: typeof v.limite_envios === 'number' && Number.isSafeInteger(v.limite_envios) && v.limite_envios > 0 ? v.limite_envios : null,
+    };
+  }
   if (v.permitido !== true || !motivos.has(motivo as string)) return envioSemRegistro();
 
   const plano: PlanoId = v.plano_efetivo === 'empresa' ? 'empresa' : v.plano_efetivo === 'pro' ? 'pro' : 'gratis';
@@ -160,6 +237,7 @@ export function interpretarReservaEnvio(valor: unknown): ReservaEnvioOrcamento {
     reservaToken,
     trialElegivel: v.trial_elegivel === true,
     motivo: motivo as 'plano_pago' | 'trial_ativo' | 'dentro_da_cota',
+    limiteEnvios: null,
   };
 }
 
@@ -174,9 +252,76 @@ export function envioSemRegistro(): ReservaEnvioOrcamento {
     reservaToken: null,
     trialElegivel: false,
     motivo: 'sem_registro',
+    limiteEnvios: null,
   };
 }
 
 export function reservaAmbienteLocal(): ReservaEnvioOrcamento {
   return { ...envioSemRegistro(), motivo: 'ambiente_local' };
+}
+
+// ─── Contador "X de 5" (P0-09) ───────────────────────────────────────────────
+
+/** O contador só aparece a partir do 3º envio do mês (antes disso é ruído). */
+export const CONTADOR_ENVIOS_A_PARTIR_DE = 3;
+
+export type ContadorEnvios =
+  | { mostrar: false }
+  | { mostrar: true; usados: number; limite: number; restantes: number; esgotado: boolean; texto: string };
+
+/**
+ * Regra PURA do contador: só conta nova do Grátis com teto (`limiteEnvios` do servidor), a
+ * partir do 3º envio. Conta antiga (limite nulo), Pro/Empresa e oferta que não carregou
+ * (`null`) não mostram nada — o servidor continua sendo quem barra o 6º envio.
+ */
+export function contadorEnvios(oferta: EstadoOfertaComercial | null): ContadorEnvios {
+  if (!oferta || oferta.planoEfetivo !== 'gratis' || oferta.limiteEnvios === null) return { mostrar: false };
+  const limite = oferta.limiteEnvios;
+  const usados = Math.min(oferta.enviosUsados, limite);
+  if (oferta.enviosUsados < CONTADOR_ENVIOS_A_PARTIR_DE) return { mostrar: false };
+  const restantes = oferta.enviosRestantes ?? Math.max(0, limite - oferta.enviosUsados);
+  const esgotado = restantes <= 0;
+  return {
+    mostrar: true,
+    usados,
+    limite,
+    restantes,
+    esgotado,
+    texto: esgotado
+      ? `Você usou os ${limite} envios do Grátis deste mês. Eles voltam no próximo mês.`
+      : `${usados} de ${limite} envios do Grátis usados neste mês.`,
+  };
+}
+
+// ─── Aviso às contas ANTIGAS (limite a partir de D+30) ───────────────────────
+
+export type AvisoAntigas =
+  | { mostrar: false }
+  | { mostrar: true; chave: string; dataBR: string; texto: string };
+
+/** `dd/mm/aaaa` no fuso de Brasília (UTC−3, sem horário de verão), sem depender de Intl. */
+function dataBrasilia(iso: string): string {
+  const d = new Date(Date.parse(iso) - 3 * 60 * 60 * 1000);
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
+/**
+ * Regra PURA do banner "a partir de {D+30} o Grátis passa a permitir até 5 envios por mês". Só aparece com o sinal do
+ * servidor (`avisoLimiteAntigas`) e enquanto o limite ainda não começou; `limite` vem do servidor (nunca fixo aqui).
+ * `chave` identifica ESTE aviso (muda se a data mudar) para a dispensa de 1 vez.
+ */
+export function avisoAntigas(oferta: EstadoOfertaComercial | null, limite: number, agora: Date = new Date()): AvisoAntigas {
+  const a = oferta?.avisoLimiteAntigas;
+  if (!oferta || oferta.planoEfetivo !== 'gratis' || !a) return { mostrar: false };
+  if (Date.parse(a.aPartirDe) <= agora.getTime()) return { mostrar: false };
+  const dataBR = dataBrasilia(a.aPartirDe);
+  const usou = a.usados30d === 1 ? 'Você usou 1 nos últimos 30 dias.' : `Você usou ${a.usados30d} nos últimos 30 dias.`;
+  return {
+    mostrar: true,
+    chave: `olli:aviso_limite_antigas:${a.aPartirDe}`,
+    dataBR,
+    texto: `A partir de ${dataBR} o Grátis passa a permitir até ${limite} envios por mês. ${usou}`,
+  };
 }

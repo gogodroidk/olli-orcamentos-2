@@ -3,11 +3,11 @@ import { registrarAtividadeUsuario } from '../services/equipe';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform,
-  Keyboard, Alert, ActivityIndicator,
+  Keyboard, Alert, TextInput,
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
-import { useNavigation, useRoute, RouteProp, usePreventRemove, type NavigationAction } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useNavigation, useRoute, type RouteProp, usePreventRemove, type NavigationAction } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../utils/haptico';
@@ -19,17 +19,18 @@ import { avisar, confirmar } from './desktop/dialogo';
 import { StepIndicator } from '../components/StepIndicator';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
+import { OlliSkeleton } from '../components/OlliSkeleton';
 import { Celebracao } from '../components/Celebracao';
 import {
   getOrcamento, getNextOrcamentoNumber, saveOrcamento, getClientes, getEmpresa, edicaoBloqueada,
   getUltimoOrcamentoDoCliente,
 } from '../database/database';
-import { Orcamento, ItemOrcamento, Empresa } from '../types';
+import type { Orcamento, ItemOrcamento, Empresa } from '../types';
 import { generateId } from '../utils/id';
 import { nowISO } from '../utils/date';
 import { emptyOrcamento, clienteParaOrc, calcTotais, round2 } from '../utils/orcamentoBase';
 import { formatCurrency } from '../utils/currency';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import type { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { track, Eventos } from '../services/analytics';
 import { AVISO_EXEMPLO } from '../services/ativacao';
@@ -137,6 +138,9 @@ export default function NovoOrcamentoScreen() {
   const ehExemplo = !isEdit && !!(route.params as any)?.exemploVertical;
 
   const [passo, setPasso] = useState<Passo>('cliente');
+  // Decidido ao ENTRAR no Revisar (nome vazio?) e fixo até sair: se dependesse do texto, o campo
+  // 'Para quem é?' desmontava na 1ª letra digitada (teclado fechava, nome ficava com 1 letra).
+  const [pedirNome, setPedirNome] = useState(false);
   const [saving, setSaving] = useState(false);
   const [orc, setOrc] = useState<Orcamento | null>(null);
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
@@ -201,6 +205,7 @@ export default function NovoOrcamentoScreen() {
     if (novo === passo) return;
     Keyboard.dismiss();
     animarPasso(direcaoDaTroca(passo, novo), novo);
+    setPedirNome(novo === 'revisar' && !(orc?.clienteNome ?? '').trim());
     setPasso(novo);
   }
 
@@ -329,7 +334,7 @@ export default function NovoOrcamentoScreen() {
       if (!montadoRef.current) return;
       // Cliente já ligado ao cadastro (veio do CRM): o passo "Cliente" não tem o
       // que fazer — abre direto em Itens (o "Voltar" ainda leva ao cliente).
-      const inicial = passoInicial({ edicao: false, clienteLigado });
+      const inicial = passoInicial({ edicao: false, clienteLigado, exemplo: ehExemplo });
       setPasso(inicial);
       progresso.set(progressoDoPasso(inicial));
       setOrc(base);
@@ -342,7 +347,7 @@ export default function NovoOrcamentoScreen() {
         mensagem: 'Os dados do aparelho não carregaram agora. Nada foi perdido — toque em “Tentar de novo”.',
       });
     }
-  }, [isEdit, orcamentoId, prefillClienteId, prefillClienteNome, prefillItem, prefillItems, prefillLaudo, nav, progresso]);
+  }, [isEdit, ehExemplo, orcamentoId, prefillClienteId, prefillClienteNome, prefillItem, prefillItems, prefillLaudo, nav, progresso]);
 
   // Carga automática UMA vez só. `carregar` muda de identidade se `nav` ou os
   // params mudarem (setParams, navigate para a mesma rota) — recarregar aí
@@ -614,9 +619,22 @@ export default function NovoOrcamentoScreen() {
             />
           </View>
         ) : (
-          <View style={styles.estadoBox} accessibilityLabel="Carregando o orçamento">
-            <ActivityIndicator size="large" color={cores.primary} />
-            <Text style={styles.estadoTexto}>Preparando o orçamento…</Text>
+          <View style={styles.esqueletoEditor} accessibilityRole="progressbar" accessibilityLabel="Carregando o orçamento">
+            <OlliSkeleton width="40%" height={12} />
+            <OlliSkeleton width="100%" height={48} radius={BorderRadius.md} />
+            <OlliSkeleton width="30%" height={12} />
+            <View style={styles.esqueletoLinha}>
+              <OlliSkeleton width="70%" height={16} />
+              <OlliSkeleton width="24%" height={16} />
+            </View>
+            <View style={styles.esqueletoLinha}>
+              <OlliSkeleton width="70%" height={16} />
+              <OlliSkeleton width="24%" height={16} />
+            </View>
+            <View style={styles.esqueletoRodape}>
+              <OlliSkeleton width="40%" height={16} />
+              <OlliSkeleton width="100%" height={50} radius={BorderRadius.lg} />
+            </View>
           </View>
         )}
       </View>
@@ -701,6 +719,21 @@ export default function NovoOrcamentoScreen() {
           />
         )}
         {passo === 'ajustar' && <Step3Detalhes orc={orc} onChange={update} empresa={empresa} />}
+        {passo === 'revisar' && pedirNome && (
+          <View style={styles.paraQuem}>
+            <Text style={styles.paraQuemRotulo}>Para quem é?</Text>
+            <TextInput
+              style={styles.paraQuemInput}
+              value={orc.clienteNome}
+              onChangeText={(t) => update({ clienteNome: t.slice(0, 160) })}
+              placeholder="Nome do cliente"
+              placeholderTextColor={cores.onSurfaceMuted}
+              autoCapitalize="words"
+              returnKeyType="done"
+              accessibilityLabel="Para quem é o orçamento. Digite o nome do cliente."
+            />
+          </View>
+        )}
         {passo === 'revisar' && (
           <Step4Personalizacao
             orc={orc}
@@ -806,8 +839,17 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   content: { flex: 1 },
   estadoBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: 10 },
+  esqueletoEditor: { flex: 1, padding: Spacing.base, gap: Spacing.sm },
+  esqueletoLinha: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  esqueletoRodape: { marginTop: 'auto', gap: Spacing.sm },
   estadoTitulo: { fontSize: 18, fontWeight: '800', color: c.onSurface, textAlign: 'center' },
   estadoTexto: { fontSize: 14, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
+  paraQuem: { marginHorizontal: Spacing.md, marginTop: Spacing.sm, gap: 6 },
+  paraQuemRotulo: { color: c.onSurface, fontSize: 14, fontWeight: '600' },
+  paraQuemInput: {
+    minHeight: 48, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline,
+    paddingHorizontal: Spacing.md, color: c.onSurface, backgroundColor: c.surface, fontSize: 16,
+  },
   revisionBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
     marginBottom: 10, paddingHorizontal: 11, paddingVertical: 8,

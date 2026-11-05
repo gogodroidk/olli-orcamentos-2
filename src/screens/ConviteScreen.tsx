@@ -8,9 +8,16 @@ import { vibrar } from '../utils/haptico';
 import { Spacing, BorderRadius, useCores, useEstilos, type Cores } from '../theme';
 import { OlliButton } from '../components/OlliButton';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { aceitarConvite, extrairToken, rotuloPapel } from '../services/equipe';
+import { aceitarConvite, buscarResumoConvite, extrairToken, rotuloPapel } from '../services/equipe';
 import { recarregarTipoConta } from '../hooks/useTipoConta';
-import { getCurrentUser } from '../services/supabase';
+import { getCurrentUser, signInWithGoogle } from '../services/supabase';
+import {
+  mascararEmailConvite,
+  mensagemAceiteConvite,
+  podeAceitarConvite,
+  type ResumoConvite,
+  sessaoTemGoogle,
+} from '../services/conviteGoogle';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Rota = RouteProp<RootStackParamList, 'Convite'>;
@@ -19,7 +26,7 @@ type Estado =
   | { fase: 'processando' }
   | { fase: 'confirmar'; token: string }
   | { fase: 'sucesso'; nomeOrg: string; papel: string }
-  | { fase: 'precisa_login' }
+  | { fase: 'precisa_login'; mascarado: string }
   | { fase: 'erro'; mensagem: string };
 
 /**
@@ -45,6 +52,10 @@ export default function ConviteScreen() {
   const tokenParam = route.params?.token ?? '';
 
   const [estado, setEstado] = useState<Estado>({ fase: 'processando' });
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [avisoGoogle, setAvisoGoogle] = useState('');
+  const resumoRef = useRef<ResumoConvite | null>(null);
+  const hintRef = useRef('');
 
   useEffect(() => {
     let vivo = true;
@@ -54,9 +65,20 @@ export default function ConviteScreen() {
         if (vivo) setEstado({ fase: 'erro', mensagem: 'Este código de convite não parece válido. Confira o link que você recebeu.' });
         return;
       }
+      const resumo = await buscarResumoConvite(token);
+      if (!vivo) return;
+      resumoRef.current = resumo.ok ? resumo : null;
+      if (!resumo.ok && resumo.erro !== 'indisponivel') {
+        const codigo = resumo.erro === 'invalido' ? 'invalido' : resumo.erro;
+        setEstado({ fase: 'erro', mensagem: mensagemAceiteConvite(codigo) });
+        return;
+      }
+      const hint = resumo.ok && resumo.temEmail ? resumo.email : '';
+      hintRef.current = hint;
       const user = await getCurrentUser();
+      if (!vivo) return;
       if (!user) {
-        if (vivo) setEstado({ fase: 'precisa_login' });
+        setEstado({ fase: 'precisa_login', mascarado: hint ? mascararEmailConvite(hint) : '' });
         return;
       }
       // Só pergunta. Nada é gravado até o toque em "Aceitar convite".
@@ -77,6 +99,32 @@ export default function ConviteScreen() {
     vibrar('selecao');
     setEstado({ fase: 'processando' });
     try {
+      const resumo = resumoRef.current;
+      if (resumo?.ok) {
+        const user = await getCurrentUser();
+        const gate = podeAceitarConvite({
+          sabeEmail: true,
+          temEmail: resumo.temEmail,
+          emailConvite: resumo.email,
+          emailConta: user?.email,
+          temGoogle: sessaoTemGoogle(user),
+        });
+        if (!gate.ok) {
+          vibrar('erro');
+          if (montadoRef.current) {
+            if (gate.codigo === 'outro_email' || gate.codigo === 'exige_google') {
+              setAvisoGoogle(mensagemAceiteConvite(gate.codigo));
+              setEstado({
+                fase: 'precisa_login',
+                mascarado: resumo.temEmail ? mascararEmailConvite(resumo.email) : '',
+              });
+            } else {
+              setEstado({ fase: 'erro', mensagem: mensagemAceiteConvite(gate.codigo) });
+            }
+          }
+          return;
+        }
+      }
       const org = await aceitarConvite(token);
       await recarregarTipoConta();
       if (!montadoRef.current) return;
@@ -104,6 +152,48 @@ export default function ConviteScreen() {
   function irParaEntrar() {
     vibrar('selecao');
     nav.reset({ index: 0, routes: [{ name: 'Entrar' }] });
+  }
+
+  async function entrarComGoogle() {
+    if (googleBusy) return;
+    vibrar('selecao');
+    setAvisoGoogle('');
+    setGoogleBusy(true);
+    try {
+      const res = await signInWithGoogle({ loginHint: hintRef.current });
+      if (res === 'em_andamento') return;
+      if (res === 'cancelado') {
+        setAvisoGoogle('O login com o Google não foi concluído. Tente de novo para aceitar o convite.');
+        return;
+      }
+      if (res !== 'ok') return;
+      const token = extrairToken(tokenParam);
+      const user = await getCurrentUser();
+      if (!token || !user) {
+        setAvisoGoogle('Não consegui confirmar a entrada. Tente de novo.');
+        return;
+      }
+      const resumo = resumoRef.current;
+      if (resumo?.ok) {
+        const gate = podeAceitarConvite({
+          sabeEmail: true,
+          temEmail: resumo.temEmail,
+          emailConvite: resumo.email,
+          emailConta: user.email,
+          temGoogle: sessaoTemGoogle(user),
+        });
+        if (!gate.ok) {
+          setAvisoGoogle(mensagemAceiteConvite(gate.codigo));
+          setEstado({ fase: 'precisa_login', mascarado: hintRef.current ? mascararEmailConvite(hintRef.current) : '' });
+          return;
+        }
+      }
+      setEstado({ fase: 'confirmar', token });
+    } catch (e: any) {
+      setAvisoGoogle(e?.message ?? 'Não foi possível entrar com o Google. Tente de novo.');
+    } finally {
+      setGoogleBusy(false);
+    }
   }
 
   return (
@@ -176,18 +266,35 @@ export default function ConviteScreen() {
             <View style={styles.iconWrap}>
               <MaterialCommunityIcons name="login" size={44} color={cores.accentLight} />
             </View>
-            <Text style={styles.titulo}>Entre para aceitar</Text>
+            <Text style={styles.titulo}>Entre com o Google</Text>
             <Text style={styles.sub}>
-              Faça login na sua conta OLLI e toque de novo no link do convite para entrar na equipe.
+              {estado.mascarado
+                ? `Use o Google da conta ${estado.mascarado}, o e-mail que recebeu este convite. Outra conta não entra na equipe.`
+                : 'Entre com o Google do e-mail que recebeu o convite. Se o convite não tiver e-mail, qualquer conta sua serve.'}
             </Text>
             <OlliButton
-              label="Entrar na conta"
+              label="Continuar com o Google"
               variant="gradient"
               size="lg"
               fullWidth
-              onPress={irParaEntrar}
+              haptic={false}
+              loading={googleBusy}
+              onPress={() => { void entrarComGoogle(); }}
+              icon={<MaterialCommunityIcons name="google" size={20} color="#fff" />}
               style={{ marginTop: Spacing.xl, alignSelf: 'stretch' }}
             />
+            {!estado.mascarado ? (
+              <OlliButton
+                label="Entrar com e-mail"
+                variant="outline"
+                size="lg"
+                fullWidth
+                disabled={googleBusy}
+                onPress={irParaEntrar}
+                style={{ marginTop: Spacing.md, alignSelf: 'stretch' }}
+              />
+            ) : null}
+            {avisoGoogle ? <Text style={styles.sub}>{avisoGoogle}</Text> : null}
           </>
         )}
 

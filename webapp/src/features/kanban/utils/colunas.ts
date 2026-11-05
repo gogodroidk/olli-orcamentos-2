@@ -16,6 +16,8 @@
  */
 import { type Orcamento, STATUS_LABELS, type StatusOrcamento } from "@dominio";
 
+export { type OsDoOrcamento, planoDeFinalizacao } from "./finalizacao";
+
 /** Linha da tabela `orcamentos` como ela volta do Supabase (colunas-espelho + blob). */
 export interface LinhaOrcamento {
 	id: string;
@@ -98,7 +100,7 @@ function montar(id: Exclude<ColunaId, "outros" | "finalizados">): Coluna {
 	return { id, titulo: TITULOS[id], status, destino: status[0], ...CORES[id] };
 }
 
-/** As colunas comerciais + Finalizados. Finalizados é informativa: a origem da conclusão é a OS. */
+/** As colunas comerciais + Finalizados. Finalizados = orçamento com OS concluída; soltar ali conclui o serviço (com confirmação). */
 export const COLUNAS: Coluna[] = [
 	montar("rascunho"),
 	montar("enviado"),
@@ -116,6 +118,14 @@ export const COLUNA_OUTROS: Coluna = {
 	destino: null,
 	...CORES.outros,
 };
+
+/**
+ * A coluna aceita soltar card? As comerciais gravam o status canônico; "Finalizados" aceita porque soltar ali
+ * CONCLUI o serviço (a OS do orçamento — ver `planoDeFinalizacao`), sempre depois de confirmar. "Outros" não aceita.
+ */
+export function aceitaSoltar(coluna: Coluna): boolean {
+	return coluna.destino !== null || coluna.id === "finalizados";
+}
 
 export function colunaDoStatus(status: string | null | undefined): ColunaId {
 	if (!status) return "outros";

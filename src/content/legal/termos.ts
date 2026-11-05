@@ -1,3 +1,4 @@
+import { ARTIGO_ARREPENDIMENTO, DIAS_ARREPENDIMENTO } from './arrependimento';
 /**
  * Termos de Uso do OLLI — conteúdo tipado, renderizado pela LegalScreen no app
  * (tema escuro) e na web (mesma tela).
@@ -13,9 +14,9 @@ import type { LegalDoc } from './privacidade';
 
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
-  atualizadoEm: '2 de outubro de 2026',
+  atualizadoEm: '2 de novembro de 2026',
   aviso:
-    'Documento atualizado em 2 de outubro de 2026. Ao criar uma conta ou usar o OLLI, ' +
+    'Documento atualizado em 2 de novembro de 2026. Ao criar uma conta ou usar o OLLI, ' +
     'você concorda com estes Termos e com a Política de Privacidade.',
   intro: [
     'Estes Termos regulam o uso do aplicativo OLLI, uma ferramenta de gestão para ' +
@@ -25,8 +26,7 @@ export const TERMOS: LegalDoc = {
     'Se você usa o OLLI em nome de uma empresa, declara ter poderes para aceitar ' +
       'estes Termos em nome dela. Se não concordar com algum ponto, não utilize o app.',
     'O OLLI é fornecido por OLLI INTELIGENCIA DIGITAL SISTEMAS LTDA, CNPJ ' +
-      '65.361.266/0001-05, com sede na Rua Henrique Perdigão, 350, Jardim Ipanema ' +
-      '(Cidade Líder), São Paulo/SP, CEP 03582-110.',
+      '65.361.266/0001-05.',
   ],
   secoes: [
     {
@@ -96,8 +96,8 @@ export const TERMOS: LegalDoc = {
           'assinaturas” (ou pelo botão “Gerenciar na Google Play” do aplicativo); o plano continua até o ' +
           'fim do período já pago. Reembolsos dessas compras são processados pela Google Play, conforme ' +
           'a política de reembolso dela.',
-        'Nas compras à distância, você tem direito de arrependimento em até 7 dias corridos a contar ' +
-          'da contratação, conforme o art. 49 do Código de Defesa do Consumidor. Fora desse prazo, ' +
+        `Nas compras à distância, você tem direito de arrependimento em até ${DIAS_ARREPENDIMENTO} dias corridos a contar ` +
+          `da contratação, conforme o ${ARTIGO_ARREPENDIMENTO}. Fora desse prazo, ` +
           'valores de períodos já iniciados, em regra, não são reembolsados, salvo disposição legal ' +
           'ou promocional em contrário. Para pedir reembolso, fale com a gente pelo WhatsApp abaixo.',
       ],

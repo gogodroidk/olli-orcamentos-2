@@ -255,7 +255,7 @@ try {
       assert.deepEqual(posts.map((b) => b.event_id), ['ini|2026-09-29T15', 'fim|2026-09-29T15']);
       assert.ok(posts.every((b) => b.origem === 'lembretes_cron'));
       assert.deepEqual(posts[1].payload, {
-        modo: 'production', motivo: 'ok', codigo: null, candidatos: 2, enfileirados: 1,
+        modo: 'production', motivo: 'ok', codigo: null, candidatos: 2, enfileirados: 1, pixVence: 0,
         decisoes: { ativacao: 1, tipo_desligado: 1 }, banco: { enfileirado: 1 },
       });
       const texto = JSON.stringify(w.chamadas);

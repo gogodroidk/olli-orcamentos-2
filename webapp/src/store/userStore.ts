@@ -44,10 +44,13 @@ export type EtapaAtivacao =
 	| "empresa_salva"
 	| "orcamento_enviado"
 	| "client_create"
-	| "quote_create";
+	| "quote_create"
+	// Funil de RECEITA (migration 20261030070000): sem eles não se sabe se alguém chega a ver o preço.
+	| "planos_visto"
+	| "plano_pagar_clicado";
 
 /** Podem repetir, no máximo 1 vez por minuto por evento. */
-const ETAPAS_REPETIVEIS: ReadonlySet<EtapaAtivacao> = new Set(["client_create", "quote_create", "orcamento_enviado"]);
+const ETAPAS_REPETIVEIS: ReadonlySet<EtapaAtivacao> = new Set(["client_create", "quote_create", "orcamento_enviado", "plano_pagar_clicado"]);
 const etapasEnviadas = new Set<string>();
 const etapasUltimoEnvio = new Map<string, number>();
 

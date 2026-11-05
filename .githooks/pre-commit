@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# olli-sql-lint — aviso nas migrations do índice; nunca bloqueia.
+# olli-gate-codigo-limpo — ruff, biome, pyright, semgrep; bloqueia.
+# Segredo: gitleaks nos arquivos staged. Falso-positivo triado vai em .gitleaksignore.
+# Ligar: bash scripts/ligar-githooks.sh (core.hooksPath=.githooks).
+set -u
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+bash scripts/sql-lint.sh --staged || true
+
+rc=0
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks não instalado — gate de segredo PULADO (o ci-local ainda varre o histórico)." >&2
+else
+  gitleaks git --staged --redact --no-banner --log-level warn --gitleaks-ignore-path .gitleaksignore || rc=$?
+fi
+
+bash scripts/gate-codigo-limpo.sh --staged || rc=$?
+exit "$rc"

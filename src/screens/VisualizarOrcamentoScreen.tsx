@@ -37,6 +37,7 @@ import { toast } from '../components/feedback';
 import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
+import { linkAvaliacaoUsavel } from '../utils/identidadeVisual';
 import { formatDateTime, nowISO } from '../utils/date';
 import { formatarDataBR } from '../utils/formatarData';
 import { generateId } from '../utils/id';
@@ -92,6 +93,8 @@ import {
   obterEstadoOfertaComercial,
   reservarEnvioOrcamento,
 } from '../services/cotaEnvios';
+import { useContadorEnvios } from '../hooks/useContadorEnvios';
+import { ContadorEnvios } from '../components/ContadorEnvios';
 import { avisoTrialAutomatico } from '../services/ativacao';
 import { avisar } from './desktop/dialogo';
 import { recarregarPlanoGlobal } from '../hooks/usePlano';
@@ -149,6 +152,8 @@ let convidouIndicacaoNestaSessao = false;
 
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
+  // P0-09: "X de 5 envios" só em conta nova do Grátis, a partir do 3º envio (3 estados no hook).
+  const contadorEstado = useContadorEnvios();
   const route = useRoute<Route>();
   const cores = useCores();
   const gradientes = useGradientes();
@@ -405,13 +410,24 @@ export default function VisualizarOrcamentoScreen() {
   }
 
   /**
-   * Registra o envio (teste automático do Pro + funil). Desde 01/10/2026 o Grátis é
-   * ilimitado: o registro NUNCA barra o envio — se ele falhar, volta como
-   * `sem_registro` e o orçamento sai do mesmo jeito (ver limitesComerciais.ts).
+   * Registra o envio (teste automático do Pro + funil). O Grátis é ilimitado: falha do
+   * registro NUNCA barra o envio (`sem_registro`). Exceção única: `cota_esgotada` do
+   * limite de conta nova (P0-09), tratada logo abaixo (ver limitesComerciais.ts).
    */
   async function autorizarEntrega(canal: CanalEnvioOrcamento): Promise<ReservaEnvioOrcamento | null> {
     if (!orc) return null;
-    return reservarEnvioOrcamento(orc.id, canal);
+    const reserva = await reservarEnvioOrcamento(orc.id, canal);
+    // P0-09: única recusa do contrato — conta nova do Grátis que usou o limite do mês.
+    // Só o ENVIO para; o orçamento fica salvo e editável. Sem a palavra "bloqueado".
+    if (!reserva.permitido) {
+      const teto = reserva.limiteEnvios ?? 5;
+      toast.info(
+        `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, veja os planos na tela Conta.`,
+        { titulo: 'Limite do mês atingido' },
+      );
+      return null;
+    }
+    return reserva;
   }
 
   /**
@@ -567,8 +583,8 @@ export default function VisualizarOrcamentoScreen() {
         if (orc.status === 'rascunho') await updateStatus('enviado');
         // Momento A da indicação: no máximo 1 convite por sessão do app (não vira insistência).
         if (!convidouIndicacaoNestaSessao) {
+          convidouIndicacaoNestaSessao = true;
           setTimeout(() => {
-            convidouIndicacaoNestaSessao = true;
             setIndicacaoAberta(true);
           }, ESPERA_MODAL_SAIR_MS);
         }
@@ -948,7 +964,7 @@ export default function VisualizarOrcamentoScreen() {
 
   // Qual card de ação o topo mostra (ver STATUS_PRE_APROVACAO).
   const servicoPago = statusFin === 'pago' || statusFin === 'recibo_emitido';
-  const linkAvaliacao = empresa?.linkGoogleAvaliacoes?.trim() || '';
+  const linkAvaliacao = linkAvaliacaoUsavel(empresa?.linkGoogleAvaliacoes);
   const cardAcao: 'fechar' | 'cobrar' | 'pos_venda' | null = STATUS_PRE_APROVACAO.includes(orc.status)
     ? 'fechar'
     : cobrancaPronta
@@ -1084,7 +1100,7 @@ export default function VisualizarOrcamentoScreen() {
   /** Pós-venda: pede a avaliação no Google com o link do cadastro (Meu Negócio). */
   async function handlePedirAvaliacao() {
     if (!orc) return;
-    const link = empresa?.linkGoogleAvaliacoes?.trim();
+    const link = linkAvaliacaoUsavel(empresa?.linkGoogleAvaliacoes);
     const telefone = (orc.clienteTelefone || '').trim();
     if (!link) {
       nav.navigate('MeuNegocio');
@@ -1660,6 +1676,7 @@ export default function VisualizarOrcamentoScreen() {
         subtitulo={orc.clienteNome}
         aoFechar={() => setFolha(null)}
       >
+        <ContadorEnvios estado={contadorEstado} />
         <ItemFolha
           icon="whatsapp"
           destaque

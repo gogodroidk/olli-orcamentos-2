@@ -90,5 +90,13 @@ supabase/.temp/
 # Logs do CI local (scripts/ci-local.sh)
 .ci-local/
 
+# Cache do ruff (gate de código limpo, MF-07)
+.ruff_cache/
+
 # Canvas do Maestri (pastas de papel dos agentes) — local, nunca vai pro repo
 .maestri/
+
+# lefthook era chamado por um preinstall esquecido do webapp (removido); se alguém rodar `lefthook install`, não versiona o lixo
+lefthook.yml
+lefthook-local.yml
+.githooks/prepare-commit-msg

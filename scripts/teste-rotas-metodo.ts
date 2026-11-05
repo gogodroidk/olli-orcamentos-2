@@ -80,6 +80,7 @@ checar('DELETE /transcrever → 405 Allow: POST', decidir('/transcrever', 'DELET
 checar('POST /cep/01001000 → 405 Allow: GET', decidir('/cep/01001000', 'POST'), { status: 405, allow: 'GET' });
 checar('POST /feriados/2026 → 405 Allow: GET', decidir('/feriados/2026', 'POST'), { status: 405, allow: 'GET' });
 checar('PUT /eta → 405 Allow: POST', decidir('/eta', 'PUT'), { status: 405, allow: 'POST' });
+checar('GET /ia/precificacao/rascunho → 405 Allow: POST', decidir('/ia/precificacao/rascunho', 'GET'), { status: 405, allow: 'POST' });
 
 console.log('\n3) o que deve PASSAR continua passando (nenhuma rota viva quebrou)');
 // A regressão que este conserto poderia causar é pior que o defeito que ele
@@ -93,6 +94,7 @@ const vivas: [string, string][] = [
   ['/transcrever', 'POST'],
   ['/ia/importacao/preview', 'POST'],
   ['/ia/autopilot/preview', 'POST'],
+  ['/ia/precificacao/rascunho', 'POST'],
   ['/eta', 'POST'],
   ['/eta/saida', 'POST'],
   ['/geocodificar', 'POST'],
@@ -114,12 +116,13 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   // decisão, não esquecimento. `/admin` aparece nas DUAS formas em index.js
   // (`=== '/admin'` para a tela e `startsWith('/admin/')` para a API), e foi
   // isto que a primeira versão desta seção deixou passar.
-  const DELEGADAS_EXATAS = ['/admin'];
+  const DELEGADAS_EXATAS = ['/admin', '/servicos/pedido'];
   // `/play/` (worker/src/play.js: /play/config e /play/verificar) responde o próprio
   // 405, como as demais rotas de dinheiro. `/revenuecat/` saiu junto com o RevenueCat.
   // `/whatsapp/` (worker/src/whatsappCloud.js: webhook, enviar, fila, aprovar) também responde o próprio 405 por
   // rota (webhook GET+POST, as demais POST/GET) e retorna antes da tabela — por isso é delegada, não tabelada.
-  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/whatsapp/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/'];
+  // `/apple/` (worker/src/appleRotas.js: /apple/config, /apple/verificar, /apple/notificacoes) também responde o próprio 405 e 404.
+  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/apple/', '/whatsapp/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/', '/ical/'];
 
   // Rotas resolvidas no roteador de topo por igualdade de path.
   const exatas = new Set(

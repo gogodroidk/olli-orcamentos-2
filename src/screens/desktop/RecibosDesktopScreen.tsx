@@ -21,6 +21,7 @@ import { montarHtmlRecibo } from '../../utils/reciboPdf';
 import { usePlano } from '../../hooks/usePlano';
 import { RECURSO_REMOVE_MARCA } from '../../services/planos';
 import { montarMensagemPedidoAvaliacao } from '../../utils/mensagensOrcamento';
+import { linkAvaliacaoUsavel } from '../../utils/identidadeVisual';
 import { formatCurrency } from '../../utils/currency';
 import { parseDateBR } from '../../utils/date';
 import { RootStackParamList } from '../../navigation/AppNavigator';
@@ -190,7 +191,7 @@ export default function RecibosDesktopScreen() {
   // Pedir avaliação no Google pós-serviço (mestre 1.4): mesma regra da tela
   // mobile — reusa o abrirWhatsApp já existente, só aparece com o link
   // cadastrado em Meu Negócio (Empresa.linkGoogleAvaliacoes).
-  const linkAvaliacao = empresa?.linkGoogleAvaliacoes?.trim();
+  const linkAvaliacao = linkAvaliacaoUsavel(empresa?.linkGoogleAvaliacoes);
   const handlePedirAvaliacao = useCallback(async (r: Recibo) => {
     if (!linkAvaliacao) return;
     if (!r.clienteTelefone?.trim()) {

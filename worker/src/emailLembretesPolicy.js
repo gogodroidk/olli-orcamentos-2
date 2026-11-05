@@ -58,7 +58,7 @@ export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 't
  * ativacao (conta nova sem 1º orçamento), assinatura (renovação/vencimento) e reengajamento
  * (última chamada, parou, trial acabando). Antes a régua era uma chave só (tudo ou nada).
  */
-export const TIPOS_LEMBRETE = Object.freeze(new Set(['ativacao', 'assinatura', 'reengajamento']));
+export const TIPOS_LEMBRETE = Object.freeze(new Set(['ativacao', 'assinatura', 'reengajamento', 'pix_vence']));
 
 /**
  * Lê a lista de tipos que vem DEPOIS dos dois pontos em EMAIL_LEMBRETES_MODE
@@ -71,6 +71,20 @@ export function lerTiposPermitidos(sufixo) {
   if (typeof sufixo !== 'string') return TIPOS_LEMBRETE;
   const lidos = sufixo.toLowerCase().split(',').map((t) => t.trim()).filter((t) => TIPOS_LEMBRETE.has(t));
   return Object.freeze(new Set(lidos));
+}
+
+/**
+ * Checagem do sufixo `nao_aberto` (Z-52). `production` sozinho devolve false:
+ * a régua do orçamento não aberto não mora no conjunto padrão. Só devolve true
+ * quando o MODE é production e o sufixo lista a palavra exata `nao_aberto`.
+ * Quem for chamar `listar_nao_abertos_email` tem de passar por aqui.
+ */
+export function sufixoLigaNaoAberto(modo) {
+  if (typeof modo !== 'string') return false;
+  const [base, ...resto] = modo.trim().toLowerCase().split(':');
+  if (base !== 'production' || resto.length === 0) return false;
+  const tipos = resto.join(':').split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+  return tipos.includes('nao_aberto');
 }
 
 const PRIORIDADE = Object.freeze({

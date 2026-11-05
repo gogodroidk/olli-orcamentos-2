@@ -1,3 +1,6 @@
+> **NÃO EXECUTAR. NÃO ENVIAR ESTE TEXTO.**
+> Rascunho antigo. Não rode o SQL daqui (a tabela `indicacoes` deste checklist não é a migration) e não mande o WhatsApp que promete crédito. O que vale é `docs/HANDOFF_INDICACAO.md` e o arquivo `supabase/migrations/20261010100000_indicacoes.sql` (não aplicar nesta etapa). A recompensa fica desligada (`INDICACAO_CREDITOS = 0`). O cartão que o usuário vê está em `src/utils/indicacaoTexto.ts` e, com 0, não promete crédito.
+
 # Checklist de Execução — Indicação Mínima (Spec CPO 07/10)
 
 **Data:** 2026-10-07  

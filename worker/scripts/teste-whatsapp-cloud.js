@@ -7,6 +7,7 @@
  * (409/429) e a Meta NÃO é chamada quando recusado · resultado da Meta é gravado · LOG sem dado pessoal.
  */
 import assert from 'node:assert/strict';
+import { FRASE_IA } from '../src/passagemHumano.js';
 import {
   handleWhatsappAprovar,
   handleWhatsappEnviar,
@@ -376,6 +377,99 @@ try {
     const m = mundo();
     assert.equal(rotearWhatsapp(new Request('https://x.test/whatsapp/nada'), ENV, { fetchImpl: m.fetchImpl }), null);
     assert.notEqual(rotearWhatsapp(new Request('https://x.test/whatsapp/webhook'), ENV, { fetchImpl: m.fetchImpl }), null);
+  });
+
+  // ─── P0-34: frase só no gatilho ia ─────────────────────────────
+  const RPC_FRASE = {
+    wa_autorizar_envio: () => ({ pode: true, motivo: 'liberado', envio_id: 91, telefone: TEL }),
+    wa_token_numero: () => TOKEN_META,
+    wa_concluir_envio: () => null,
+  };
+  await caso('POST: só o motivo ia manda a frase; o corpo da Meta não leva o texto da pessoa', async () => {
+    const textoPessoa = 'Você é robô?';
+    const segredo = 'teste-falso-000';
+    const m = mundo({ rpcs: {
+      ...RPC_FRASE,
+      wa_registrar_entradas: () => ({
+        registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0,
+        respostas: [{ telefone: TEL, texto: segredo }],
+      }),
+    } });
+    const p = mensagensMeta({ itens: { messages: [{ id: 'wamid.IA1', from: TEL, type: 'text', timestamp: '1790000000', text: { body: textoPessoa } }] } });
+    const r = await postWebhook(m, p);
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.respostas_ia, 1);
+    const g = m.chamadas.filter((c) => c.url.includes('graph.facebook.com'));
+    assert.equal(g.length, 1);
+    assert.equal(g[0].corpo.text.body, FRASE_IA);
+    assert.equal(g[0].corpo.text.preview_url, false);
+    assert.equal(g[0].corpo.to, TEL);
+    assert.equal(JSON.stringify(g[0].corpo).includes(textoPessoa), false);
+    assert.equal(JSON.stringify(g[0].corpo).includes(segredo), false);
+    assert.equal(JSON.stringify(j).includes(TEL), false);
+    assert.equal(m.rpc('wa_autorizar_envio')[0].corpo.p_tipo, 'texto');
+    assert.equal(m.rpc('wa_autorizar_envio')[0].corpo.p_template, null);
+    assert.equal(m.rpc('wa_concluir_envio')[0].corpo.p_codigo_falha, null);
+  });
+  await caso('POST: preço, contrato, reclamação, dado, incerteza, SAIR, duplicata e número inativo não chamam a Meta', async () => {
+    const amostras = [
+      ['preco', { registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0, respostas: [] }, 'Consegue fazer por 20 reais por mês?'],
+      ['contrato', { registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0, respostas: [] }, 'Me manda o contrato e a nota fiscal.'],
+      ['reclamacao', { registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0, respostas: [] }, 'Vou no Procon. Isso foi um absurdo.'],
+      ['dado', { registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0, respostas: [] }, 'Segue a senha do meu banco: teste-falso-000.'],
+      ['incerteza', { registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0, respostas: [] }, 'então, qual é o prazo?'],
+      ['sair', { registradas: 1, duplicadas: 0, saiu: 1, humano: 0, ignoradas: 0, respostas: [] }, 'SAIR'],
+      ['duplicata', { registradas: 0, duplicadas: 1, saiu: 0, humano: 0, ignoradas: 0, respostas: [] }, 'Você é robô?'],
+      ['inativo', { registradas: 0, duplicadas: 0, saiu: 0, humano: 0, ignoradas: 1, motivo: 'numero_inativo', respostas: [{ telefone: TEL }] }, 'Você é robô?'],
+      ['sem-chave', { registradas: 1, duplicadas: 0, saiu: 0, humano: 0, ignoradas: 0 }, 'oi'],
+    ];
+    for (const [nome, rpc, texto] of amostras) {
+      limparCacheSegredos();
+      const m = mundo({ rpcs: { ...RPC_FRASE, wa_registrar_entradas: () => rpc } });
+      const p = mensagensMeta({ itens: { messages: [{ id: `wamid.${nome}`, from: TEL, type: 'text', timestamp: '1790000000', text: { body: texto } }] } });
+      const r = await postWebhook(m, p);
+      assert.equal(r.status, 200, nome);
+      assert.equal((await r.json()).respostas_ia, 0, nome);
+      assert.equal(m.chamadas.filter((c) => c.url.includes('graph.facebook.com')).length, 0, nome);
+      assert.equal(m.rpc('wa_autorizar_envio').length, 0, nome);
+    }
+  });
+  await caso('POST: guarda recusou a frase ia, a Meta não é chamada e o webhook segue 200', async () => {
+    const m = mundo({ rpcs: {
+      wa_registrar_entradas: () => ({ registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0, respostas: [{ telefone: TEL }] }),
+      wa_autorizar_envio: () => ({ pode: false, motivo: 'numero_inativo' }),
+      wa_token_numero: () => TOKEN_META,
+    } });
+    const r = await postWebhook(m, mensagensMeta({ itens: { messages: [{ id: 'wamid.IA2', from: TEL, type: 'text', text: { body: 'Você é robô?' } }] } }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).respostas_ia, 0);
+    assert.equal(m.chamadas.filter((c) => c.url.includes('graph.facebook.com')).length, 0);
+    assert.equal(m.rpc('wa_token_numero').length, 0);
+  });
+  await caso('POST: erro da Meta na frase ia não derruba o webhook e o log fica sem o telefone', async () => {
+    const m = mundo({
+      rpcs: {
+        wa_registrar_entradas: () => ({ registradas: 1, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0, respostas: [{ telefone: TEL }] }),
+        ...RPC_FRASE,
+      },
+      graph: () => ({ status: 400, json: { error: { code: 131047, message: `to ${TEL}` } } }),
+    });
+    const r = await postWebhook(m, mensagensMeta({ itens: { messages: [{ id: 'wamid.IA3', from: TEL, type: 'text', text: { body: 'Você é robô?' } }] } }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).respostas_ia, 0);
+    assert.equal(m.rpc('wa_concluir_envio')[0].corpo.p_codigo_falha, '131047');
+  });
+  await caso('POST: acima de 5 frases ia no mesmo webhook, só as 5 primeiras saem', async () => {
+    const respostas = Array.from({ length: 6 }, () => ({ telefone: TEL }));
+    const m = mundo({ rpcs: {
+      ...RPC_FRASE,
+      wa_registrar_entradas: () => ({ registradas: 6, duplicadas: 0, saiu: 0, humano: 6, ignoradas: 0, respostas }),
+    } });
+    const r = await postWebhook(m, mensagensMeta({ itens: { messages: [{ id: 'wamid.IA4', from: TEL, type: 'text', text: { body: 'Você é robô?' } }] } }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).respostas_ia, 5);
+    assert.equal(m.chamadas.filter((c) => c.url.includes('graph.facebook.com')).length, 5);
   });
 
   // ─── LOG sem dado pessoal ──────────────────────────────────────

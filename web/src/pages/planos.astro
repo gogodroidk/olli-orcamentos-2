@@ -48,7 +48,7 @@ const doze =
 /**
  * FAQ DE DECISÃO — as perguntas que travam a assinatura, respondidas com a VERDADE
  * lida do código e dos Termos:
- *  - grátis sem prazo → entitlements + planosBase (orçamentos ILIMITADOS desde
+ *  - grátis sem prazo → entitlements + planosBase (orçamentos sem teto até o corte, ver CORTE_GRATIS_DATA, desde
  *    01/10/2026, com o selo "Feito com OLLI") + Termos §4 (plano gratuito existe);
  *  - cartão só no pago → Termos §4 (cartão pela Stripe; Pix por período, que só
  *    aparece quando `data/pix.ts` confirmou no build que o Pix está ligado);
@@ -129,7 +129,7 @@ const schemaBreadcrumb = {
 			<a href="/#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
 		</div>
 		<a href={APP_URL} class="inline-flex min-h-11 items-center rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-		<a href={APP_CADASTRO_URL} class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Teste grátis</a>
+		<a href={APP_CADASTRO_URL} class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Começar grátis</a>
 	</Header>
 
 	<main id="conteudo">

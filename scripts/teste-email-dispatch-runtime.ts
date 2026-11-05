@@ -56,11 +56,11 @@ checar('staging continua sem envio', /"WELCOME_DISPATCH_MODE"\s*:\s*"off"/.test(
 // religar (ex.: teste do concierge, 04/10/2026). Sem isso, produção tem de estar ligada.
 const pausaDocumentada = /PAUSA OPERACIONAL[\s\S]*RELIGAR[^\n]*\d{2}\/\d{2}\/\d{4}[\s\S]*"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsProducao);
 checar('lembretes ligados na produção (ou pausa documentada) e desligados no staging',
-  (/"EMAIL_LEMBRETES_MODE"\s*:\s*"production(:[a-z,]+)?"/.test(varsProducao) || pausaDocumentada) && /"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsStaging));
+  (/"EMAIL_LEMBRETES_MODE"\s*:\s*"production(:[a-z_,]+)?"/.test(varsProducao) || pausaDocumentada) && /"EMAIL_LEMBRETES_MODE"\s*:\s*"off"/.test(varsStaging));
 // Régua parcial (07/10/2026): com os lembretes ligados na produção, só o tipo "ativacao" pode estar
 // na lista e só para conta recente; assinatura/reengajamento ficam desligados até a data de religar.
 checar('produção: régua completa (todos os tipos) desde 21/10/2026; ativação segue só p/ contas de até 7 dias',
-  /"EMAIL_LEMBRETES_MODE"\s*:\s*"production"/.test(varsProducao)
+  /"EMAIL_LEMBRETES_MODE"\s*:\s*"production(:[a-z_,]+)?"/.test(varsProducao)
   && /"EMAIL_LEMBRETES_ATIVACAO_MAX_DIAS"\s*:\s*"7"/.test(varsProducao)
   && /21\/10\/2026[^\n]*T-029/.test(varsProducao));
 checar('batch de produção é pequeno (3) e o de staging, um', /"WELCOME_BATCH_LIMIT"\s*:\s*"3"/.test(varsProducao) && /"WELCOME_BATCH_LIMIT"\s*:\s*"1"/.test(varsStaging));

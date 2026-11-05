@@ -74,6 +74,7 @@ const ITENS_PRINCIPAIS: ItemMenu[] = [
   { rota: 'Home', label: 'Início', icon: 'home-outline' },
   { rota: 'OrcamentosTab', label: 'Orçamentos', icon: 'file-document-outline', acao: 'criar_orcamento' },
   { rota: 'ClientesTab', label: 'Clientes', icon: 'account-group-outline', acao: 'ver_clientes' },
+  { rota: 'Prospeccao', label: 'Prospecção', icon: 'map-marker-radius-outline', stack: true, acao: 'ver_clientes' },
   // Catálogo (dono do negócio/gestão). Técnico não mantém catálogo → oculto.
   { rota: 'ServicosTab', label: 'Serviços', icon: 'wrench-outline', acao: 'criar_orcamento', ocultarTecnico: true },
   { rota: 'ProdutosTab', label: 'Produtos', icon: 'package-variant-closed', acao: 'criar_orcamento', ocultarTecnico: true },

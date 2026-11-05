@@ -62,6 +62,8 @@ import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
 const ORIGEM_CONSUMO = 'abacate';
+/** P0-08: fila do lembrete "Pix vence em 3 h" (reuso de webhook_events, sem tabela nova): 'recebido' = lembrete pendente. */
+export const ORIGEM_PIX_COBRANCA = 'pix_cobranca';
 /**
  * Origem da TRILHA do webhook em `webhook_events` (uma linha por evento `log_…`),
  * como o Play RTDN faz com 'play_rtdn'. Separada do consumo ('abacate', uma linha
@@ -369,6 +371,21 @@ async function criarPixPlano(request, env) {
     return json({ ok: false, erro: 'falha_criar_pix' }, 502);
   }
 
+  // P0-08: grava a cobrança para o lembrete de 3 h antes do vencimento. Falha aqui NUNCA derruba a venda
+  // (o cliente já tem o QR): só perde o lembrete e deixa rastro no log (sem brCode nem dado pessoal).
+  try {
+    // Teto de 2,5 s: Supabase lento não pode atrasar o QR do cliente (revisão independente, P2).
+    const gravou = await Promise.race([reivindicarEvento(env, {
+      origem: ORIGEM_PIX_COBRANCA,
+      eventId: data.id,
+      tipo: 'plano_pix_criada',
+      payload: { user_id: user.id, plano: plano.id, expires_at: data.expiresAt || null },
+    }), new Promise((r) => setTimeout(() => r({ ok: false }), 2500))]);
+    if (!gravou.ok) console.error('[olli-abacate] cobrança não gravada para o lembrete — segue a venda');
+  } catch (e) {
+    console.error('[olli-abacate] gravar cobrança para o lembrete falhou —', e && (e.message || e));
+  }
+
   return json({
     ok: true,
     id: data.id,
@@ -468,6 +485,13 @@ async function processarWebhook(env, evt) {
     return { http: 400, corpo: { erro: 'payload_invalido' }, resultado: 'erro', motivo: 'payload_invalido' };
   }
 
+  // Estorno/contestação de um Pix: NÃO revoga sozinho (tirar plano ou crédito de cliente é
+  // decisão do FIN), mas também não some mais calado: vira pendência em webhook_events e erro
+  // na trilha/Sentry. Antes caía no "não interessa" abaixo e quem estornava ficava com o plano.
+  if (evt.event === 'transparent.refunded' || evt.event === 'transparent.disputed') {
+    return registrarEstorno(env, evt);
+  }
+
   // Só o Pix direto pago interessa. Qualquer outro evento: 200 sem ação.
   if (evt.event !== 'transparent.completed') {
     return { http: 200, corpo: { ok: true }, resultado: 'ignorado', motivo: 'evento_nao_tratado' };
@@ -493,6 +517,39 @@ async function processarWebhook(env, evt) {
   // Paga com valor/vínculo/modo que não fecham: não libera, e na trilha é ERRO —
   // é exatamente o "Pix falho" que alguém precisa enxergar.
   return { http: 200, corpo, resultado: 'erro', motivo: `invalida_${r.motivo || 'cobranca'}` };
+}
+
+/** Origem da pendência de estorno/contestação em `webhook_events` (status 'recebido' = a revisar). */
+export const ORIGEM_ESTORNO = 'abacate_estorno';
+
+/**
+ * Pendência de estorno/contestação: uma linha por cobrança e tipo (reenvio não duplica), com
+ * quem pagou e o que comprou, lidos NA AbacatePay (o corpo do webhook não é confiado). Se a
+ * cobrança não puder ser lida, grava assim mesmo, sem vínculo: melhor pendência incompleta que
+ * nenhuma. Só falha de banco pede reenvio (503 — a AbacatePay reenvia 5xx, não 4xx).
+ */
+async function registrarEstorno(env, evt) {
+  const contestacao = evt.event === 'transparent.disputed';
+  const motivo = contestacao ? 'contestacao_pendente' : 'estorno_pendente';
+  const id = idDaCobranca(evt);
+  if (!id) return { http: 200, corpo: { ok: true, sem_vinculo: true }, resultado: 'erro', motivo: `${motivo}_sem_cobranca` };
+  const cobranca = await abacateFetch(env, `/transparents/get?id=${encodeURIComponent(id)}`);
+  const ext = cobranca && cobranca.metadata && typeof cobranca.metadata.externalId === 'string' ? cobranca.metadata.externalId.split(':') : [];
+  const reiv = await reivindicarEvento(env, {
+    origem: ORIGEM_ESTORNO,
+    eventId: `${contestacao ? 'contestacao' : 'estorno'}:${id}`,
+    tipo: evt.event,
+    payload: {
+      cobranca: id,
+      user_id: ext[0] === 'olli' ? ext[2] || null : null,
+      item: ext[0] === 'olli' ? ext[4] || null : null,
+      valor_centavos: cobranca ? Number(cobranca.amount) || null : null,
+      lida_na_abacatepay: !!cobranca,
+    },
+  });
+  if (!reiv.ok) return { http: 503, corpo: { erro: 'indisponivel' }, resultado: 'erro', motivo: `${motivo}_nao_gravado` };
+  console.error('[olli-abacate] Pix', contestacao ? 'CONTESTADO' : 'ESTORNADO', '— pendência para o FIN em webhook_events', ORIGEM_ESTORNO);
+  return { http: 200, corpo: { ok: true, pendencia: motivo }, resultado: 'erro', motivo };
 }
 
 /** id da cobrança no corpo do evento (`data.transparent.id`, ou `data.id`). */

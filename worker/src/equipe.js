@@ -9,8 +9,11 @@
  *   POST /equipe/convite     → cria um convite (JWT owner/admin) e devolve
  *                              { token, link }. O app compartilha o link por
  *                              WhatsApp / share sheet.
- *   GET  /equipe/convite/<t> → página web "Você foi convidado para <empresa>" com
- *                              botão que abre o app (deep link) ou manda baixar.
+ *   GET  /equipe/convite/<t> → página web "Você foi convidado para <empresa>".
+ *                              Com e-mail: botão "Entrar com o Google" no painel.
+ *                              Sem e-mail: botão que abre o app (deep link).
+ *   GET  /equipe/convite/<t>/resumo → JSON do convite aberto (e-mail para o
+ *                              login_hint). Quem não tem o token não lê.
  *
  * Segurança (mesmo modelo do stripe.js):
  *  - POST exige JWT do Supabase (Authorization: Bearer <token>), validado em
@@ -22,8 +25,10 @@
  *    é restritivo.
  */
 import { rateOkSensivel } from './rateLimit.js';
+import { FONTES_CSS } from './fontesProprias.js';
 import { enviarConvite } from './email.js';
 import { derivarEntitlement } from './entitlement.js';
+import { decidirPaginaConvite, normalizarEmailConvite, tokenConviteValido } from './conviteGoogle.js';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -81,7 +86,7 @@ function html(body, status = 200) {
       // A página do convite precisa de um <script> inline (botão "abrir app") e
       // Google Fonts. Sem conexões externas além das fontes.
       'Content-Security-Policy':
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src https://olliorcamentos.online; img-src data:; base-uri 'none'; form-action 'none'",
     },
   });
 }
@@ -323,7 +328,9 @@ export async function handleConvite(request, env) {
   const papel = typeof body.papel === 'string' ? body.papel.trim().toLowerCase() : '';
   if (!PAPEIS_CONVIDAVEIS.has(papel)) return json({ ok: false, erro: 'papel_invalido' }, 400);
 
-  const email = sanitizarEmail(body.email); // opcional — só para lembrar quem foi convidado
+  // Opcional. Com e-mail, só o Google dessa conta aceita (aceitar_convite).
+  // Sem e-mail, o link segue para quem o dono enviar.
+  const email = sanitizarEmail(body.email);
 
   // O papel do solicitante é verificado NO SERVIDOR (nunca no client): só owner/admin
   // convidam. Isto é a linha de defesa real — a UI apenas esconde o botão.
@@ -396,8 +403,46 @@ export async function renderConvitePage(token, env) {
   const nomeOrg = await getNomeOrg(env, conv.org_id);
   const papelLabel = PAPEL_LABEL[conv.papel] || 'membro da equipe';
   const deepLink = `${APP_SCHEME}://convite/${token}`;
-  const sub = `Você foi convidado para entrar na equipe${nomeOrg ? ` de <b>${esc(nomeOrg)}</b>` : ''} como <b>${esc(papelLabel)}</b>.`;
-  return html(pagina('🤝', 'Você recebeu um convite', sub, deepLink, token));
+  const paginaConvite = decidirPaginaConvite(conv.email, token);
+  const extraEmail = paginaConvite.emailMascarado
+    ? ` Para entrar, use o Google da conta <b>${esc(paginaConvite.emailMascarado)}</b>, o e-mail que recebeu este convite.`
+    : '';
+  const sub = `Você foi convidado para entrar na equipe${nomeOrg ? ` de <b>${esc(nomeOrg)}</b>` : ''} como <b>${esc(papelLabel)}</b>.${extraEmail}`;
+  return html(pagina('🤝', 'Você recebeu um convite', sub, deepLink, token, paginaConvite));
+}
+
+/** JSON para o app e o painel pedirem o login_hint. Não devolve e-mail de convite encerrado. */
+export async function resumoConvite(request, token, env) {
+  if (!tokenConviteValido(token)) return json({ ok: false, erro: 'invalido' }, 404);
+  let chave = '';
+  try {
+    const ip = (request.headers.get('CF-Connecting-IP') || 'sem-ip').slice(0, 64);
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${ip}:${token}`));
+    const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+    chave = `convite-resumo:${hex}`;
+  } catch {
+    return json({ ok: false, erro: 'indisponivel' }, 503);
+  }
+  if (!(await rateOk(env, chave))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return json({ ok: false, erro: 'indisponivel' }, 503);
+  }
+  const conv = await getConvite(env, token);
+  if (conv && conv.error) return json({ ok: false, erro: 'indisponivel' }, 503);
+  if (!conv) return json({ ok: false, erro: 'invalido' }, 404);
+  if (conv.aceito_em) return json({ ok: false, erro: 'usado' }, 200);
+  if (conv.expira_em && Date.parse(conv.expira_em) < Date.now()) {
+    return json({ ok: false, erro: 'expirado' }, 200);
+  }
+  const email = normalizarEmailConvite(conv.email);
+  const empresa = await getNomeOrg(env, conv.org_id);
+  return json({
+    ok: true,
+    tem_email: Boolean(email),
+    email: email || undefined,
+    papel: conv.papel,
+    empresa,
+  });
 }
 
 const PAPEL_LABEL = {
@@ -407,15 +452,21 @@ const PAPEL_LABEL = {
 };
 
 // ─── página HTML (tema claro, mesma identidade das páginas do worker) ──
-function pagina(emoji, titulo, subHtml, deepLink, token) {
+function pagina(emoji, titulo, subHtml, deepLink, token, extra = {}) {
   const accent = '#0B6FCE';
-  // Botão "Abrir no app" só quando há deep link (convite válido). O <script>
-  // tenta o app e, se nada acontecer, o usuário usa o CTA de baixar/colar token.
+  const urlGoogle = typeof extra.urlGoogle === 'string' ? extra.urlGoogle : '';
+  const abrirAppSozinho = extra.abrirAppSozinho !== false && !urlGoogle;
+  // Com e-mail, o caminho é o Google no painel. O app fica como segunda opção
+  // e não abre sozinho — senão a página some antes do toque.
+  const botaoGoogle = urlGoogle
+    ? `<a class="btn btn-abrir" href="${esc(urlGoogle)}">Entrar com o Google</a>`
+    : '';
   const botaoApp = deepLink
-    ? `<a class="btn btn-abrir" id="abrir" href="${esc(deepLink)}">Abrir no app OLLI</a>
-       <div class="hint">Se o app não abrir sozinho, instale o OLLI e cole este código na tela <b>Conta → Entrar na equipe</b>:</div>
+    ? `<a class="btn ${urlGoogle ? 'btn-sec' : 'btn-abrir'}" id="abrir" href="${esc(deepLink)}">Abrir no app OLLI</a>
+       <div class="hint">Se preferir o aplicativo, instale o OLLI e cole este código na tela <b>Conta → Entrar na equipe</b>:</div>
        <div class="codebox"><code>${esc(token)}</code></div>`
     : '';
+  const botoes = `${botaoGoogle}${botaoApp}`;
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -423,9 +474,7 @@ function pagina(emoji, titulo, subHtml, deepLink, token) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
 <title>Convite · OLLI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@600;700&display=swap" rel="stylesheet">
+<style>${FONTES_CSS}</style>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EAEEF3;color:#1A2230;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 14px}
@@ -439,6 +488,7 @@ function pagina(emoji, titulo, subHtml, deepLink, token) {
   .sub b{color:#1A2230}
   .btn{display:block;border:none;border-radius:14px;padding:15px;font-family:inherit;font-size:15px;font-weight:800;cursor:pointer;text-decoration:none;margin-top:22px}
   .btn-abrir{background:${accent};color:#fff;box-shadow:0 8px 20px rgba(11,111,206,.30)}
+  .btn-sec{background:#fff;color:${accent};border:1px solid #BBD6F2}
   .btn:active{transform:scale(.98)}
   .hint{margin-top:22px;font-size:13px;color:#5A6575;line-height:1.5}
   .hint b{color:#1A2230}
@@ -455,12 +505,12 @@ function pagina(emoji, titulo, subHtml, deepLink, token) {
         <div class="emoji">${emoji}</div>
         <div class="title">${esc(titulo)}</div>
         <div class="sub">${subHtml}</div>
-        ${botaoApp}
+        ${botoes}
       </div>
     </div>
     <div class="foot">OLLI · o escritório de bolso do prestador</div>
   </div>
-  ${deepLink ? `<script>
+  ${deepLink && abrirAppSozinho ? `<script>
     // Tenta abrir o app automaticamente ao carregar. Se o scheme não estiver
     // registrado (app não instalado), nada acontece e o usuário usa o código.
     (function(){
@@ -481,6 +531,13 @@ export const EQUIPE_ROUTES_PREFIX = '/equipe/';
  */
 export async function handleEquipe(request, env, url) {
   const path = url.pathname;
+
+  // Resumo JSON (login_hint). Antes da página, senão "/resumo" vira parte do token.
+  if (path.startsWith('/equipe/convite/') && path.endsWith('/resumo')) {
+    const token = decodeURIComponent(path.slice('/equipe/convite/'.length, -'/resumo'.length));
+    if (request.method === 'GET') return resumoConvite(request, token, env);
+    return json({ erro: 'metodo_nao_suportado' }, 405);
+  }
 
   // Página pública do convite: GET /equipe/convite/<token>
   if (path.startsWith('/equipe/convite/')) {

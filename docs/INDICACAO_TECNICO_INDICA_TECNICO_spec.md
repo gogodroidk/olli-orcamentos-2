@@ -1,3 +1,6 @@
+> **NÃO EXECUTAR. NÃO ENVIAR ESTE TEXTO.**
+> Rascunho antigo. Não rode o SQL daqui e não mande o WhatsApp que promete mês de Pro grátis, crédito ou Fiador. O que vale é `docs/HANDOFF_INDICACAO.md` e o arquivo `supabase/migrations/20261010100000_indicacoes.sql` (não aplicar nesta etapa). A recompensa fica desligada (`INDICACAO_CREDITOS = 0`). O cartão que o usuário vê está em `src/utils/indicacaoTexto.ts` e, com 0, não promete crédito.
+
 # Execução: Programa de Indicação "Técnico Indica Técnico" — Spec Completa para Dev
 
 **Data:** 2026-10-06  

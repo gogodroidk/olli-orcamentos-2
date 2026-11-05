@@ -17,6 +17,7 @@
  * SELECT da própria linha em public.assinaturas, então não consegue se auto-promover.
  */
 import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
+import { FONTES_CSS } from './fontesProprias.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 
@@ -100,7 +101,7 @@ function html(body, status = 200) {
       'Referrer-Policy': 'no-referrer',
       // Mesma defesa em profundidade do link.js: CSP restritivo, tudo inline.
       'Content-Security-Policy':
-        "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; style-src 'unsafe-inline'; font-src https://olliorcamentos.online; img-src data:; base-uri 'none'; form-action 'none'",
     },
   });
 }
@@ -217,7 +218,7 @@ async function stripeGet(env, path) {
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
     console.error('[olli-stripe] GET', path, r.status, data && data.error && data.error.message);
-    return { ok: false, data };
+    return { ok: false, data, status: r.status };
   }
   return { ok: true, data };
 }
@@ -883,13 +884,20 @@ export async function handleWebhook(request, env) {
       // Casa o user_id via metadata da subscription referenciada na fatura.
       const subId = obj && (typeof obj.subscription === 'string' ? obj.subscription : obj.subscription && obj.subscription.id);
       if (subId) {
-        const { ok, data: sub } = await stripeGet(env, `/subscriptions/${encodeURIComponent(subId)}`);
+        const { ok, data: sub, status } = await stripeGet(env, `/subscriptions/${encodeURIComponent(subId)}`);
         if (ok) {
           const okDb = await sincronizarSubscription(env, sub, sub.status || 'past_due');
           if (!okDb) return json({ erro: 'falha_persistencia' }, 500);
+        } else if (status === 404) {
+          // Subscription inexistente na Stripe (apagada): nada a marcar; reenviar não adianta.
+          console.error('[olli-stripe] payment_failed: subscription inexistente', subId);
+        } else {
+          // Sem a subscription não dá para marcar past_due. 200 aqui viraria 'processado'
+          // (lápide: a Stripe não reenvia) e o cliente com cobrança falha ficaria 'ativo'.
+          // 500 + 'falhou' libera o reenvio (ver reivindicarEvento).
+          await marcarEvento(env, { origem: 'stripe', eventId: evento && evento.id, status: 'falhou', erro: 'stripeGet_subscription_falhou' });
+          return json({ erro: 'falha_stripe' }, 500);
         }
-        // Se não conseguimos buscar a subscription, não falhamos o webhook: a
-        // Stripe reenviará; e updated/deleted futuros corrigem o status.
       }
     }
     // Eventos não tratados: 200 (a Stripe só precisa saber que recebemos).
@@ -930,9 +938,7 @@ function pagina(emoji, titulo, sub, tomOk = true) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta name="robots" content="noindex, nofollow"/>
 <title>${esc(titulo)} · OLLI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Spectral:wght@600;700&display=swap" rel="stylesheet">
+<style>${FONTES_CSS}</style>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Plus Jakarta Sans',-apple-system,system-ui,sans-serif;background:#EAEEF3;color:#1A2230;-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 14px}

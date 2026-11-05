@@ -11,6 +11,9 @@
 #   CI_LOCAL_SEM_INSTALAR=1 bash scripts/ci-local.sh   # pula npm ci / pnpm i
 #
 # Jobs (nomes iguais aos do ci.yml): segredos, dependencias, app-gate, painel, landing, worker, lint.
+# O job lint inclui o gate de código limpo (MF-07): ruff, biome, pyright, semgrep, pre-commit.
+# Extra só local: sql-aviso (sqlfluff nas migrations alteradas; não reprova, mas só mostra VERDE se rodou e
+# não achou nada: achados = AVISO, sqlfluff ausente = NÃO RODOU).
 # Sai com código != 0 se QUALQUER job falhar. Um job que falha não impede os
 # outros de rodar (igual ao Actions, onde os jobs são independentes).
 #
@@ -35,7 +38,7 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 # O Actions não tem .env; o worker e o build não podem depender de segredo local.
 export FORCE_COLOR=0
 
-TODOS_JOBS=(segredos dependencias app-gate painel landing worker lint)
+TODOS_JOBS=(segredos dependencias app-gate painel landing worker lint sql-aviso)
 if [ "$#" -gt 0 ]; then
   JOBS=("$@")
 else
@@ -208,12 +211,22 @@ job_worker() {
 
 job_lint() {
   instalar_raiz_uma_vez || return 1
-  passo "Lint sem erro novo" . npm run lint
+  passo "Gate de código limpo (ruff, biome, pyright, semgrep, pre-commit)" . bash scripts/gate-codigo-limpo.sh
+}
+
+job_sql_aviso() {
+  # Modo aviso: só migrations alteradas vs origin/main. Saída 10 = achados, 11 = não rodou
+  # (o laço abaixo mostra como AVISO / NÃO RODOU, sem reprovar e sem fingir VERDE).
+  if ! bash scripts/instalar-hooks.sh --ver; then
+    echo "[sql-aviso] pre-commit NÃO instalado neste clone — rode: bash scripts/instalar-hooks.sh"
+  fi
+  bash scripts/sql-lint.sh origin/main
 }
 
 declare -A RESULTADO
 declare -A DURACAO
 FALHOU=0
+AVISOS=0
 
 for job in "${JOBS[@]}"; do
   echo
@@ -230,6 +243,12 @@ for job in "${JOBS[@]}"; do
   DURACAO[$job]=$((fim - inicio))
   if [ "$rc" -eq 0 ]; then
     RESULTADO[$job]="VERDE"
+  elif [ "$job" = "sql-aviso" ] && [ "$rc" -eq 10 ]; then
+    RESULTADO[$job]="AVISO (achados do sqlfluff; não reprova)"
+    AVISOS=1
+  elif [ "$job" = "sql-aviso" ] && [ "$rc" -eq 11 ]; then
+    RESULTADO[$job]="NÃO RODOU (sqlfluff ausente; não reprova)"
+    AVISOS=1
   else
     RESULTADO[$job]="VERMELHO (exit $rc)"
     FALHOU=1
@@ -244,6 +263,7 @@ for job in "${JOBS[@]}"; do
   printf '  %-9s %s (%ss)\n' "$job" "${RESULTADO[$job]}" "${DURACAO[$job]}"
 done
 if [ "$FALHOU" -eq 0 ]; then
+  [ "$AVISOS" -eq 1 ] && echo "ATENÇÃO: há job em AVISO / NÃO RODOU acima — não é VERDE limpo; leia antes de registrar."
   if [ -n "$SUJO" ]; then
     echo "RESULTADO: VERDE — mas a árvore tinha mudança não commitada; commite e rode de novo antes de registrar no PR."
   else

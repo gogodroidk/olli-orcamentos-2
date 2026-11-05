@@ -49,10 +49,11 @@ export default function DiagnosticoIA() {
 					<div className="grid size-11 place-items-center rounded-2xl bg-muted text-text-disabled">
 						<Stethoscope className="size-5" />
 					</div>
-					<p className="font-semibold text-text-primary">Diagnóstico IA é de climatização/refrigeração</p>
+					<p className="font-semibold text-text-primary">Diagnóstico IA fica no ofício de refrigeração</p>
 					<p className="max-w-sm text-sm text-text-secondary">
-						Hoje esta ferramenta só cobre a base de ar-condicionado — ainda não há base para o seu ofício. O
-						ofício da empresa se ajusta em "Meu negócio", no app do celular.
+						A base de códigos é de ar-condicionado. O diagnóstico por sintoma também cobre geladeira, TV,
+						monitor, máquina de lavar e outros aparelhos, e continua nesta ferramenta do ofício. O ofício da
+						empresa se ajusta em "Meu negócio", no app do celular.
 					</p>
 				</div>
 			</div>
@@ -69,8 +70,9 @@ export default function DiagnosticoIA() {
 					<h1 className="text-2xl font-bold text-text-primary">Diagnóstico IA</h1>
 				</div>
 				<p className="max-w-2xl text-sm text-text-secondary">
-					Consulte a base oficial de códigos de erro ou descreva o sintoma e deixe a OLLI Técnica montar o
-					raciocínio — sempre testando antes de condenar qualquer peça.
+					A base de códigos é de ar-condicionado. Em Por sintoma, escolha o aparelho: a OLLI também raciocina
+					geladeira, TV, monitor, máquina de lavar e outros — sem tratar tudo como split. Sempre teste antes
+					de condenar qualquer peça.
 				</p>
 			</header>
 
