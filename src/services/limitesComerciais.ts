@@ -69,11 +69,19 @@ export interface EstadoOfertaComercial {
   preservaDados: true;
 }
 
-export interface InicioTrialPro {
-  iniciado: boolean;
-  replay: boolean;
-  terminaEm: string;
-}
+export type InicioTrialPro =
+  | {
+      iniciado: boolean;
+      replay: boolean;
+      terminaEm: string;
+      motivo: null;
+    }
+  | {
+      iniciado: false;
+      replay: false;
+      terminaEm: null;
+      motivo: 'revisao_caixa';
+    };
 
 export interface ReservaEnvioOrcamento {
   /**
@@ -165,8 +173,27 @@ export function interpretarInicioTrial(valor: unknown): InicioTrialPro | null {
   const v = valor as Record<string, unknown>;
   if (typeof v.iniciado !== 'boolean' || typeof v.replay !== 'boolean') return null;
   if (v.requires_card !== false || v.auto_renews !== false || v.data_disposition !== 'preserve') return null;
+  if (v.motivo === 'revisao_caixa') {
+    if (v.iniciado !== false || v.replay !== false || v.termina_em != null) return null;
+    return { iniciado: false, replay: false, terminaEm: null, motivo: 'revisao_caixa' };
+  }
+  if (v.motivo != null) return null;
   if (v.trial_dias !== TRIAL_PRO_DIAS || typeof v.termina_em !== 'string' || Number.isNaN(Date.parse(v.termina_em))) return null;
-  return { iniciado: v.iniciado, replay: v.replay, terminaEm: v.termina_em };
+  return { iniciado: v.iniciado, replay: v.replay, terminaEm: v.termina_em, motivo: null };
+}
+
+/** Texto honesto quando o botão de teste não inicia. Não diz que a pessoa já usou o teste. */
+export function avisoTrialNaoIniciado(inicio: InicioTrialPro | null): { titulo: string; mensagem: string } {
+  if (inicio?.motivo === 'revisao_caixa') {
+    return {
+      titulo: 'Teste em revisão',
+      mensagem: 'Esta caixa de e-mail já tem outras contas na OLLI. O teste novo não começa. Seus orçamentos continuam no Grátis e nada foi apagado.',
+    };
+  }
+  return {
+    titulo: 'Não foi possível iniciar',
+    mensagem: 'Confirme sua conexão e tente novamente. O teste não foi consumido.',
+  };
 }
 
 /**

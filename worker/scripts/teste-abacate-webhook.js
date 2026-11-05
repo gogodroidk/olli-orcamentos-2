@@ -228,15 +228,32 @@ checar('plano NÃO concedido de novo', db.upserts, 1);
 
 console.log('\n5) Evento que não interessa: ignorado');
 reset();
-r = await chamar(evento('log_outro', 'pix_char_X', 'transparent.refunded'));
+r = await chamar(evento('log_outro', 'pix_char_X', 'payout.completed'));
 checar('200', [r.status, r.corpo], [200, { ok: true }]);
 checar('trilha ignorado', resumo(trilha('log_outro')), {
-  tipo: 'transparent.refunded',
+  tipo: 'payout.completed',
   status: 'processado',
   erro: null,
   resultado: 'ignorado',
   motivo: 'evento_nao_tratado',
 });
+
+console.log('\n5b) Estorno e contestação: viram pendência (não somem, não revogam sozinhos)');
+reset();
+cobranca('pix_char_E');
+r = await chamar(evento('log_estorno', 'pix_char_E', 'transparent.refunded'));
+checar('200 com pendência', [r.status, r.corpo], [200, { ok: true, pendencia: 'estorno_pendente' }]);
+const pend = db.eventos.get('abacate_estorno|estorno:pix_char_E');
+checar('pendência gravada com quem pagou e o quê', [pend?.status, pend?.payload?.user_id, pend?.payload?.item, pend?.payload?.valor_centavos, pend?.payload?.lida_na_abacatepay], ['recebido', USER, 'pro_mensal', 3900, true]);
+checar('trilha erro/estorno_pendente', resumo(trilha('log_estorno'))?.motivo, 'estorno_pendente');
+checar('não mexeu no plano', db.upserts, 0);
+r = await chamar(evento('log_estorno_2', 'pix_char_E', 'transparent.refunded'));
+checar('reenvio: 200 e uma pendência só', [r.status, [...db.eventos.keys()].filter((k) => k.startsWith('abacate_estorno|')).length], [200, 1]);
+r = await chamar(evento('log_disputa', 'pix_char_E', 'transparent.disputed'));
+checar('contestação vira outra pendência', [r.corpo.pendencia, !!db.eventos.get('abacate_estorno|contestacao:pix_char_E')], ['contestacao_pendente', true]);
+r = await chamar(evento('log_estorno_sem', 'pix_char_INEXISTENTE', 'transparent.refunded'));
+checar('cobrança ilegível: grava sem vínculo', [r.status, db.eventos.get('abacate_estorno|estorno:pix_char_INEXISTENTE')?.payload?.lida_na_abacatepay], [200, false]);
+checar('webhookSecret nunca no banco (estorno)', corposGravados.some((c) => c.includes(SEGREDO)), false);
 
 console.log('\n6) Sem id de cobrança: ignorado');
 reset();

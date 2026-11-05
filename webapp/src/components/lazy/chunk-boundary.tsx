@@ -77,7 +77,7 @@ export class ChunkBoundary extends Component<Props, State> {
 				<button
 					type="button"
 					onClick={this.recarregar}
-					className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-white transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2"
+					className="inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2"
 				>
 					<RotateCw className="size-4" aria-hidden />
 					Recarregar

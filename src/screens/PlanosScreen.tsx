@@ -29,7 +29,7 @@ import { iniciarTrialPro, obterEstadoOfertaComercial } from '../services/cotaEnv
 import { ContadorEnvios } from '../components/ContadorEnvios';
 import { AvisoLimiteAntigas } from '../components/AvisoLimiteAntigas';
 import { useAvisoLimiteAntigas } from '../hooks/useAvisoLimiteAntigas';
-import { contadorEnvios, type EstadoOfertaComercial } from '../services/limitesComerciais';
+import { avisoTrialNaoIniciado, contadorEnvios, type EstadoOfertaComercial } from '../services/limitesComerciais';
 import {
   PRECO_PRO,
   PRECO_EMPRESA,
@@ -40,7 +40,10 @@ import {
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
+import { track, Eventos } from '../services/analytics';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
+import { PlanosAudioIaCard } from '../components/PlanosAudioIaCard';
+import { planosAudioIaLigada } from '../services/planosAudioIa';
 import { chavePixPlano, checarPixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
 import { buscarPixPendente, esquecerPixPendente, guardarPixPendente } from '../services/pixPendente';
 import { textoValidadePix } from '../utils/pixValidade';
@@ -299,6 +302,11 @@ export default function PlanosScreen() {
   // A descrição é DERIVADA: o preço vem de precosPlanos (nunca escrito de
   // memória — já erramos aqui, "o Pro libera orçamentos ilimitados" era falso
   // porque o Grátis já os tem). Ao mexer nos planos, reveja este texto.
+  // Funil de receita: abriu a tela de Planos (só o nome do evento).
+  useEffect(() => {
+    track(Eventos.planosAberto);
+  }, []);
+
   useEffect(() => {
     aplicarSeo({
       titulo: 'Planos e preços — OLLI Orçamentos',
@@ -789,9 +797,10 @@ export default function PlanosScreen() {
   async function executarInicioTrial() {
     setIniciandoTrial(true);
     const inicio = await iniciarTrialPro();
-    if (!inicio) {
+    if (!inicio || inicio.motivo === 'revisao_caixa') {
       setIniciandoTrial(false);
-      Alert.alert('Não foi possível iniciar', 'Confirme sua conexão e tente novamente. O teste não foi consumido.');
+      const aviso = avisoTrialNaoIniciado(inicio);
+      Alert.alert(aviso.titulo, aviso.mensagem);
       return;
     }
     await carregarPlano();
@@ -1091,6 +1100,8 @@ export default function PlanosScreen() {
         {/* COMPARATIVO — sempre visível (info, não venda): deixa óbvio o que cada
             plano dá e destaca o que o usuário JÁ tem. Sem CTA aqui. */}
         <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={!BUILD_PLAY_SEM_COMPRA_EXTERNA} />
+        {/* D1438-G20: protótipo de áudio. Sem a flag, o card não monta e o microfone não abre. */}
+        {planosAudioIaLigada((process.env as { EXPO_PUBLIC_PLANOS_AUDIO_IA?: string }).EXPO_PUBLIC_PLANOS_AUDIO_IA) ? <PlanosAudioIaCard /> : null}
       </ScrollView>
       <PixPlanoModal
         cobranca={cobrancaPix}

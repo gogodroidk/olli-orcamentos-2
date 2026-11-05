@@ -38,6 +38,7 @@ import { FolhaAlcanceSerie, usePerguntaAlcance } from '../components/agenda/Folh
 import { CampoVisitaExterna } from '../components/agenda/CampoVisitaExterna';
 import { SugestaoEncaixe } from '../components/agenda/SugestaoEncaixe';
 import { ClimaProximasVisitas } from '../components/agenda/ClimaProximasVisitas';
+import { FolhaCalendarioExterno } from '../components/agenda/FolhaCalendarioExterno';
 import { ClimaDaVisita } from '../components/clima/ClimaDaVisita';
 import { SeloConfirmacao } from '../components/vespera/SeloConfirmacao';
 import { useEncaixe } from '../hooks/useEncaixe';
@@ -52,7 +53,7 @@ import { useEquipeResponsaveis } from '../hooks/useEquipeResponsaveis';
 import { usePermissao } from '../hooks/usePermissao';
 import { useTipoConta } from '../hooks/useTipoConta';
 import {
-  aplicarEscopo, agendamentoNoPassado, diaDaOcorrencia, duracaoEstimadaMin, filtrarClientes, horaFimSugerida,
+  aplicarEscopo, agendamentoNoPassado, diaDaOcorrencia, duracaoEstimadaMin, escopoConhecido, filtrarClientes, horaFimSugerida,
   inicioPadraoNovo, ordenarDoDia, paraHHMM, resolverEscopoAgenda, rotuloDuracao, semHoraMarcada, type EntradaEscopo,
 } from '../utils/agendaDominio';
 import {
@@ -206,6 +207,7 @@ export default function AgendaScreen() {
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const googleDisponivel = googleAgendaDisponivel();
+  const [folhaCalendario, setFolhaCalendario] = useState(false);
   // "Só esta / esta e as próximas / toda a série": uma folha para o formulário
   // (desenhada DENTRO do Modal dele) e outra para o arrastar na grade.
   const alcanceForm = usePerguntaAlcance();
@@ -1269,6 +1271,17 @@ export default function AgendaScreen() {
           texto="Troque entre Dia, Semana e Mês no topo. No Dia, segure um compromisso e arraste para mudar o horário."
         />
         <DicaDoRoteiro local="agenda" />
+        {!carregando && !carregandoErro && escopoConhecido(escopo) ? (
+          <TouchableOpacity
+            style={styles.outroCalBtn}
+            onPress={() => { vibrar('selecao'); setFolhaCalendario(true); }}
+            accessibilityRole="button"
+            accessibilityLabel="Levar para outro calendário"
+          >
+            <MaterialCommunityIcons name="calendar-export" size={18} color={cores.accentLight} />
+            <Text style={styles.outroCalTexto}>Levar para outro calendário</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* FILTROS — uma linha só: "Filtros" abre os chips (tipo, status e técnico).
@@ -1329,6 +1342,7 @@ export default function AgendaScreen() {
 
       {/* "Só esta / esta e as próximas / toda a série" do ARRASTAR (fora do form). */}
       <FolhaAlcanceSerie pedido={alcanceTela.pedido} onResposta={alcanceTela.responder} />
+      <FolhaCalendarioExterno visivel={folhaCalendario} aoFechar={() => setFolhaCalendario(false)} escopo={escopo} />
 
       {/* FORM MODAL */}
       <Modal visible={!!editing} animationType="slide" onRequestClose={() => {
@@ -2185,6 +2199,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   dayHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, minHeight: 32 },
   linkPequeno: { fontSize: 13, fontWeight: '800', color: c.accentLight },
+  outroCalBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 8, marginTop: 4, marginBottom: 2, minHeight: 36, paddingHorizontal: 12, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface },
+  outroCalTexto: { fontSize: 13, fontWeight: '800', color: c.onSurface },
   livreTexto: { fontSize: 13, color: c.onSurfaceMuted, marginBottom: 10 },
   semanaDia: { marginBottom: Spacing.sm },
   semanaContagem: { fontSize: 12, fontWeight: '700', color: c.onSurfaceMuted },

@@ -22,7 +22,7 @@ import { generateId } from '../utils/id';
 import { isoToBR, brToISO } from '../utils/masks';
 import { parseHoraHHMM, formatHoraHHMM } from '../utils/date';
 import {
-  PERIODICIDADES_CONTRATO, diaBR, hojeNoBrasil, nomeDoEquipamento, proximasVisitas, validarContrato, valorMensalEquivalente,
+  PERIODICIDADES_CONTRATO, copiarContrato, diaBR, hojeNoBrasil, nomeDoEquipamento, proximasVisitas, validarContrato, valorMensalEquivalente,
 } from '../utils/contratoRecorrente';
 import { formatCurrency } from '../utils/currency';
 import { resumoDaGeracao } from '../utils/contratoRecorrenteGeracao';
@@ -93,10 +93,12 @@ function ContratoConteudo() {
   const route = useRoute<Rota>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
-  const idEdicao = route.params?.id;
+  const idCopia = route.params?.copiarDe;
+  const idEdicao = idCopia ? undefined : route.params?.id;
+  const ehCopia = !!idCopia;
 
   // 3 estados da carga: null = carregando; 'erro' | 'nao_encontrado' | Form.
-  const [form, setForm] = useState<Form | 'erro' | 'nao_encontrado' | null>(idEdicao ? null : paraForm(novoContrato()));
+  const [form, setForm] = useState<Form | 'erro' | 'nao_encontrado' | null>(idEdicao || idCopia ? null : paraForm(novoContrato()));
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [buscaCliente, setBuscaCliente] = useState('');
@@ -110,16 +112,18 @@ function ContratoConteudo() {
     Promise.all([getClientes(), getEquipamentos()])
       .then(([cs, eqs]) => { if (vivo) { setClientes(cs); setEquipamentos(eqs); } })
       .catch(() => {});
-    if (idEdicao) {
+    const idLido = idCopia ?? idEdicao;
+    if (idLido) {
       listarContratos().then((l) => {
         if (!vivo) return;
         if (l.status !== 'ok') { setForm('erro'); setErro(l.mensagem); return; }
-        const achado = l.contratos.find((c) => c.id === idEdicao);
-        setForm(achado ? paraForm(achado) : 'nao_encontrado');
+        const achado = l.contratos.find((c) => c.id === idLido);
+        if (!achado) { setForm('nao_encontrado'); return; }
+        setForm(paraForm(idCopia ? copiarContrato(achado, new Date(), generateId) : achado));
       }).catch(() => { if (vivo) setForm('erro'); });
     }
     return () => { vivo = false; };
-  }, [idEdicao]);
+  }, [idEdicao, idCopia]);
 
   const f = typeof form === 'object' && form !== null ? form : null;
   const c = f?.contrato;
@@ -238,10 +242,18 @@ function ContratoConteudo() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <GradientHeader
         onBack={() => goBackOrHome(nav)}
-        title={idEdicao ? 'Editar contrato' : 'Novo contrato'}
-        subtitle="Cliente + ativos + periodicidade + valor"
+        title={ehCopia ? 'Cópia do contrato' : idEdicao ? 'Editar contrato' : 'Novo contrato'}
+        subtitle={ehCopia ? 'Nada foi salvo ainda' : 'Cliente + ativos + periodicidade + valor'}
       />
       <ScrollView contentContainerStyle={styles.corpo} keyboardShouldPersistTaps="handled">
+        {ehCopia ? (
+          <View style={styles.previa} accessibilityRole="text">
+            <MaterialCommunityIcons name="content-copy" size={16} color={cores.accentLight} />
+            <Text style={styles.previaTexto}>
+              A cópia nasce pausada: nenhuma visita entra até você marcar Ativo e criar. Troque o cliente se for outro endereço. O papel que o cliente já assinou não muda.
+            </Text>
+          </View>
+        ) : null}
         <OlliInput
           label="Nome do contrato"
           required
@@ -380,7 +392,7 @@ function ContratoConteudo() {
           }
         />
 
-        {idEdicao ? (
+        {idEdicao || ehCopia ? (
           <>
             <Text style={styles.label}>Situação</Text>
             <View style={styles.chips}>
@@ -411,7 +423,7 @@ function ContratoConteudo() {
         ) : null}
 
         <OlliButton
-          label={idEdicao ? 'Salvar contrato' : 'Criar contrato'}
+          label={ehCopia ? 'Criar esta cópia' : idEdicao ? 'Salvar contrato' : 'Criar contrato'}
           variant="gradient"
           size="lg"
           fullWidth

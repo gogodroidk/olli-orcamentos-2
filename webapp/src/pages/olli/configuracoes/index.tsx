@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Building2, Check, CreditCard, Database, ExternalLink, FileText, KeyRound, Moon, Palette, Settings2, ShieldCheck, Sun, UserRound } from "lucide-react";
+import { Building2, Check, CreditCard, Database, ExternalLink, FileText, ImagePlus, KeyRound, Moon, Palette, Settings2, ShieldCheck, Sun, Trash2, UserRound } from "lucide-react";
 import { NavLink } from "react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { fotoPerfilExibivel, type RecortePx } from "@identidade-visual";
+import { RecorteImagem } from "@/olli/RecorteImagem";
+import { erroArquivoFoto, recorteParaFotoDataUri } from "@/olli/fotoPerfilWeb";
 import { supabase } from "@/lib/supabase";
 import { useMinhaAssinatura } from "@/olli/marcaDocumento";
 import { useContextoDeEscrita } from "@/olli/mutacoes";
@@ -39,10 +42,15 @@ export default function ConfiguracoesPage() {
 	const temStripe = statusStripe.data?.gerenciavel === true;
 	const faturas = useQuery({ queryKey: ["olli", "stripe", "faturas"], queryFn: listarFaturasStripe, enabled: temStripe, staleTime: 60_000, retry: 1 });
 	const metodo = useQuery({ queryKey: ["olli", "stripe", "metodo"], queryFn: obterMetodoStripe, enabled: temStripe, staleTime: 60_000, retry: 1 });
-	const [conta, setConta] = useState({ nome: "", email: "", avatarUrl: "", senha: "", senhaAtual: "" });
+	const [conta, setConta] = useState({ nome: "", email: "", senha: "", senhaAtual: "" });
 	/** A conta tem senha (identidade de e-mail)? Conta só-Google cria a 1ª senha sem "senha atual". */
 	const [temSenha, setTemSenha] = useState(false);
 	const [salvandoConta, setSalvandoConta] = useState(false);
+	const [fotoUrl, setFotoUrl] = useState("");
+	const [arquivoFoto, setArquivoFoto] = useState<File | null>(null);
+	const [processandoFoto, setProcessandoFoto] = useState(false);
+	const [erroFoto, setErroFoto] = useState<string | null>(null);
+	const inputFotoRef = useRef<HTMLInputElement | null>(null);
 
 	useEffect(() => {
 		supabase.auth.getUser().then(({ data }) => {
@@ -51,11 +59,11 @@ export default function ConfiguracoesPage() {
 			setConta({
 				nome: String(user.user_metadata?.full_name ?? user.user_metadata?.name ?? ""),
 				email: user.email ?? "",
-				avatarUrl: String(user.user_metadata?.avatar_url ?? ""),
 				senha: "",
 				senhaAtual: "",
 			});
 			setTemSenha((user.identities ?? []).some((i) => i.provider === "email"));
+			setFotoUrl(String(user.user_metadata?.avatar_url ?? ""));
 		});
 	}, []);
 
@@ -64,11 +72,11 @@ export default function ConfiguracoesPage() {
 		if (salvandoConta) return;
 		setSalvandoConta(true);
 		try {
+			// A foto tem o próprio botão. Gravar o nome não pode apagar o avatar.
 			const atualizacao: Parameters<typeof supabase.auth.updateUser>[0] = {
 				data: {
 					full_name: conta.nome.trim(),
 					name: conta.nome.trim(),
-					...(conta.avatarUrl.trim() ? { avatar_url: conta.avatarUrl.trim() } : { avatar_url: null }),
 				},
 			};
 			if (conta.email.trim()) atualizacao.email = conta.email.trim();
@@ -103,6 +111,56 @@ export default function ConfiguracoesPage() {
 	};
 
 	const atualizarAparencia = (partial: Partial<typeof aparencia>) => setSettings({ ...aparencia, ...partial });
+	const fotoMostrada = fotoPerfilExibivel(fotoUrl);
+	const fotoSoNesteAparelho = /^file:/i.test(fotoUrl.trim());
+
+	function aoEscolherFoto(evento: React.ChangeEvent<HTMLInputElement>) {
+		const arquivo = evento.target.files?.[0];
+		evento.target.value = "";
+		if (!arquivo) return;
+		const erro = erroArquivoFoto(arquivo);
+		setErroFoto(erro);
+		if (!erro) setArquivoFoto(arquivo);
+	}
+
+	async function aplicarFoto(img: HTMLImageElement, recorte: RecortePx) {
+		setProcessandoFoto(true);
+		setErroFoto(null);
+		try {
+			const resultado = recorteParaFotoDataUri(img, recorte);
+			if (!resultado.ok) {
+				setErroFoto(resultado.erro);
+				return;
+			}
+			const { error } = await supabase.auth.updateUser({ data: { avatar_url: resultado.dataUri } });
+			if (error) throw error;
+			setFotoUrl(resultado.dataUri);
+			setArquivoFoto(null);
+			toast.success("Foto atualizada.");
+		} catch (erro) {
+			const mensagem = erro instanceof Error ? erro.message : "Não consegui salvar a foto.";
+			setErroFoto(mensagem);
+			toast.error(mensagem);
+		} finally {
+			setProcessandoFoto(false);
+		}
+	}
+
+	async function removerFoto() {
+		if (processandoFoto) return;
+		setProcessandoFoto(true);
+		setErroFoto(null);
+		try {
+			const { error } = await supabase.auth.updateUser({ data: { avatar_url: null } });
+			if (error) throw error;
+			setFotoUrl("");
+			toast.success("Foto removida.");
+		} catch (erro) {
+			toast.error(erro instanceof Error ? erro.message : "Não consegui remover a foto.");
+		} finally {
+			setProcessandoFoto(false);
+		}
+	}
 
 	return (
 		<div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
@@ -138,14 +196,53 @@ export default function ConfiguracoesPage() {
 					<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><UserRound className="size-5" /></span>
 					<div><h2 className="font-semibold text-text-primary">Minha conta</h2><p className="mt-1 text-sm text-text-secondary">Nome, e-mail, foto e senha do seu acesso pessoal. A identidade da empresa fica em Meu negócio.</p></div>
 				</div>
+				<div className="mt-5 flex flex-wrap items-center gap-4">
+					{fotoMostrada ? (
+						<img src={fotoMostrada} alt="Sua foto de perfil" className="size-16 rounded-2xl object-cover" />
+					) : (
+						<span className="grid size-16 place-items-center rounded-2xl bg-bg-neutral text-sm font-semibold text-text-secondary">{conta.nome.trim().charAt(0).toUpperCase() || "?"}</span>
+					)}
+					<div className="min-w-0 flex-1">
+						<p className="text-sm font-medium text-text-primary">Foto de perfil</p>
+						<p className="mt-1 text-xs text-text-secondary">
+							{fotoSoNesteAparelho
+								? "Essa foto só existe neste aparelho. Escolha outra para ela aparecer na sua conta."
+								: "Quadrada, enviada com a sua conta. Não é a logo da empresa."}
+						</p>
+						<input ref={inputFotoRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Enviar foto de perfil" onChange={aoEscolherFoto} />
+						<div className="mt-2 flex flex-wrap gap-2">
+							<Button type="button" variant="outline" size="sm" disabled={processandoFoto} onClick={() => inputFotoRef.current?.click()}>
+								<ImagePlus className="size-4" />
+								{fotoMostrada || fotoSoNesteAparelho ? "Trocar foto" : "Enviar foto"}
+							</Button>
+							{fotoUrl.trim() && (
+								<Button type="button" variant="ghost" size="sm" disabled={processandoFoto} onClick={() => void removerFoto()}>
+									<Trash2 className="size-4" />
+									Remover
+								</Button>
+							)}
+						</div>
+						{erroFoto && <p role="alert" className="mt-2 text-xs font-medium text-error">{erroFoto}</p>}
+					</div>
+				</div>
 				<form onSubmit={salvarConta} className="mt-5 grid gap-4 sm:grid-cols-2">
 					<label className="text-sm font-medium text-text-primary">Nome de exibição<input className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" value={conta.nome} onChange={(e) => setConta((atual) => ({ ...atual, nome: e.target.value }))} autoComplete="name" /></label>
 					<label className="text-sm font-medium text-text-primary">E-mail<input className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" type="email" value={conta.email} onChange={(e) => setConta((atual) => ({ ...atual, email: e.target.value }))} autoComplete="email" /></label>
-					<label className="text-sm font-medium text-text-primary">URL da foto de perfil<input className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" value={conta.avatarUrl} onChange={(e) => setConta((atual) => ({ ...atual, avatarUrl: e.target.value }))} placeholder="https://…" inputMode="url" /></label>
-					<label className="text-sm font-medium text-text-primary">Nova senha (opcional)<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senha} onChange={(e) => setConta((atual) => ({ ...atual, senha: e.target.value }))} autoComplete="new-password" minLength={8} placeholder="Deixe em branco para manter" /></span></label>
-					{temSenha && conta.senha.trim() !== "" && <label className="text-sm font-medium text-text-primary sm:col-start-2">Senha atual<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senhaAtual} onChange={(e) => setConta((atual) => ({ ...atual, senhaAtual: e.target.value }))} autoComplete="current-password" required aria-describedby="ajuda-senha-atual" /></span><span id="ajuda-senha-atual" className="mt-1 block text-xs font-normal text-text-secondary">Para sua segurança, a troca de senha pede a senha que você usa hoje.</span></label>}
+					<label className="text-sm font-medium text-text-primary sm:col-span-2">Nova senha (opcional)<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senha} onChange={(e) => setConta((atual) => ({ ...atual, senha: e.target.value }))} autoComplete="new-password" minLength={8} placeholder="Deixe em branco para manter" /></span></label>
+					{temSenha && conta.senha.trim() !== "" && <label className="text-sm font-medium text-text-primary sm:col-span-2">Senha atual<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senhaAtual} onChange={(e) => setConta((atual) => ({ ...atual, senhaAtual: e.target.value }))} autoComplete="current-password" required aria-describedby="ajuda-senha-atual" /></span><span id="ajuda-senha-atual" className="mt-1 block text-xs font-normal text-text-secondary">Para sua segurança, a troca de senha pede a senha que você usa hoje.</span></label>}
 					<div className="sm:col-span-2 flex flex-wrap items-center gap-3"><Button type="submit" disabled={salvandoConta}>{salvandoConta ? "Salvando…" : "Salvar dados da conta"}</Button><span className="text-xs text-text-secondary">Alterar e-mail pode exigir confirmação no endereço novo.</span></div>
 				</form>
+				{arquivoFoto && (
+					<RecorteImagem
+						arquivo={arquivoFoto}
+						uso="foto"
+						aplicando={processandoFoto}
+						onCancelar={() => {
+							if (!processandoFoto) setArquivoFoto(null);
+						}}
+						onAplicar={(img, recorte) => void aplicarFoto(img, recorte)}
+					/>
+				)}
 			</Card>
 		</div>
 	);

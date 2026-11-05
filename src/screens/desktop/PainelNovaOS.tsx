@@ -1,10 +1,10 @@
 import { formatarNumeroExibicao } from '../../utils/numeroDocumento';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, Modal, Pressable, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Spacing, BorderRadius, Typography, useCores, useEstilos, type Cores } from '../../theme';
-import { OlliInput } from '../../components/OlliInput';
 import { OlliButton } from '../../components/OlliButton';
+import { FormularioDadosOS } from '../../components/os/FormularioDadosOS';
 import { EmptyState } from '../../components/EmptyState';
 import { PressableWebState } from '../../components/web/pressableWebState';
 // Mesmas funções de serviço da OrdemServicoScreen mobile (NovaOS) — nenhuma
@@ -54,10 +54,11 @@ export function PainelNovaOS({ visivel, aoFechar, aoCriada }: Props) {
     }
   }
 
-  async function criarManual(parcial: Partial<OrdemServico>) {
+  async function criarManual(parcial: Partial<OrdemServico>, limpar: () => void) {
     setCriando(true);
     try {
       const os = await criarOSManual(parcial);
+      limpar();
       aoCriada(os.id);
     } catch (e: any) {
       avisar('Não deu', e?.message ?? 'Não consegui criar a OS agora.');
@@ -212,56 +213,19 @@ function NovaOSDeOrcamento({ criando, onCriar }: { criando: boolean; onCriar: (o
   );
 }
 
-function NovaOSManual({ criando, onCriar }: { criando: boolean; onCriar: (parcial: Partial<OrdemServico>) => void }) {
+function NovaOSManual({ criando, onCriar }: {
+  criando: boolean;
+  onCriar: (parcial: Partial<OrdemServico>, limpar: () => void) => void;
+}) {
   const styles = useEstilos(criarEstilos);
-  const cores = useCores();
-  const [clienteNome, setClienteNome] = useState('');
-  const [titulo, setTitulo] = useState('');
-  const [descricao, setDescricao] = useState('');
-
-  const valido = clienteNome.trim().length > 0 && titulo.trim().length > 0;
 
   return (
     <ScrollView contentContainerStyle={styles.conteudo} keyboardShouldPersistTaps="handled">
-      <OlliInput
-        label="Cliente"
-        required
-        autoFocus
-        value={clienteNome}
-        onChangeText={setClienteNome}
-        placeholder="Nome do cliente"
-        leftIcon="account-outline"
-      />
-      <OlliInput
-        label="Título do serviço"
-        required
-        value={titulo}
-        onChangeText={setTitulo}
-        placeholder="Ex.: Manutenção do ar-condicionado"
-        leftIcon="clipboard-text-outline"
-      />
-      <Text style={styles.manualLabel}>Descrição (opcional)</Text>
-      {React.createElement('textarea', {
-        value: descricao,
-        onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => setDescricao(e.target.value),
-        placeholder: 'Detalhes do que precisa ser feito...',
-        rows: 4,
-        style: {
-          fontFamily: 'inherit', fontSize: 14, color: cores.onSurface, backgroundColor: cores.surface,
-          border: `1px solid ${cores.outline}`, borderRadius: BorderRadius.md, padding: 12, outline: 'none',
-          resize: 'vertical' as const, marginTop: 4, marginBottom: Spacing.base,
-        },
-      })}
-      <OlliButton
-        label="Criar ordem de serviço"
-        variant="gradient"
-        size="lg"
-        fullWidth
-        loading={criando}
-        disabled={!valido}
-        onPress={() => onCriar({ clienteNome: clienteNome.trim(), titulo: titulo.trim(), descricao: descricao.trim() || undefined })}
-        icon={<MaterialCommunityIcons name="clipboard-check-outline" size={20} color="#fff" />}
-        style={{ marginTop: Spacing.sm }}
+      <FormularioDadosOS
+        rascunhoEscopo="os-nova"
+        rotuloSalvar="Criar ordem de serviço"
+        salvando={criando}
+        onSalvar={(patch, limpar) => onCriar(patch, limpar)}
       />
     </ScrollView>
   );
@@ -299,7 +263,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   orcMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   orcValor: { ...Typography.body, fontWeight: '800' as const, color: c.primaryLight },
 
-  manualLabel: { fontSize: 13, fontWeight: '800' as const, color: c.onSurfaceVariant, marginTop: 6, marginBottom: 2 },
 
   rodape: { padding: Spacing.xl, borderTopWidth: 1, borderTopColor: c.outline },
 });

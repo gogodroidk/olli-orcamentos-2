@@ -76,6 +76,7 @@
 			"@auth-policy": ["../src/services/authPolicy.ts"],
 			"@oauth-retorno": ["../src/services/oauthRetorno.ts"],
 			"@acesso-codigo": ["../src/services/acessoCodigo.ts"],
+			"@convite-google": ["../src/services/conviteGoogle.ts"],
 			"@sentry-scrub": ["../src/services/sentryScrub.ts"],
 			"@sentry-captura": ["../src/services/sentryCaptura.ts"],
 			"@ajuda": ["../src/content/ajuda/index.ts"],
@@ -90,7 +91,17 @@
 			"@atribuicao": ["../web/src/lib/atribuicao.ts"],
 			"@meta-pixel": ["../web/src/lib/metaPixel.ts"],
 			"@consentimento": ["../web/src/lib/consentimento.ts"],
-			"@google-tag": ["../web/src/lib/googleTag.ts"]
+			"@google-tag": ["../web/src/lib/googleTag.ts"],
+			// IDENTIDADE VISUAL — site próprio, link de avaliação do Google, recorte e
+			// a caixa em px da logo no PDF. A MESMA regra do app. Módulo puro, zero imports.
+			"@identidade-visual": ["../src/utils/identidadeVisual.ts"],
+			// ESTÚDIO DE MARCA À PARTE — a mesma oferta e as mesmas travas de preço do app.
+			// Módulo puro, sem React Native. O preço novo não entra aqui.
+			"@identidade-upsell": ["../src/services/identidadeUpsell.ts"],
+			"@chat-ui": ["../src/utils/chatUi.ts"],
+			// PROSPECÇÃO — raio, rota e nicho em cima das coordenadas que o cadastro
+			// já tem (D-1438 G19). Módulo puro, sem API de mapa.
+			"@prospeccao": ["../src/utils/prospeccaoMapa.ts"]
 		}
 	},
 	"include": ["src", "src/types", "tailwind.config.ts"],

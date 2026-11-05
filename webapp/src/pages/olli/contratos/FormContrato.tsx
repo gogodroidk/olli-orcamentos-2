@@ -63,11 +63,13 @@ interface Props {
 	aberto: boolean;
 	aoFechar: () => void;
 	contrato: ContratoRecorrente | null;
+	/** Cópia ainda não gravada: o `contrato` é o rascunho novo, pausado. */
+	criando?: boolean;
 	/** Frase do que a gravação fez ("1 visita nova na agenda"). */
 	aoSalvar: (frase: string) => void;
 }
 
-export default function FormContrato({ aberto, aoFechar, contrato, aoSalvar }: Props) {
+export default function FormContrato({ aberto, aoFechar, contrato, criando = false, aoSalvar }: Props) {
 	const formId = useId();
 	const salvar = useSalvarContrato();
 	const equipe = useTecnicos();
@@ -155,12 +157,16 @@ export default function FormContrato({ aberto, aoFechar, contrato, aoSalvar }: P
 		<FormDialog
 			aberto={aberto}
 			aoFechar={aoFechar}
-			titulo={contrato ? "Editar contrato" : "Novo contrato recorrente"}
-			descricao="Cliente + ativos + periodicidade + valor. O OLLI coloca cada visita na agenda."
+			titulo={criando ? "Cópia do contrato" : contrato ? "Editar contrato" : "Novo contrato recorrente"}
+			descricao={
+				criando
+					? "Nada foi salvo. A cópia nasce pausada: nenhuma visita entra até você marcar Ativo e criar. Troque o cliente se for outro endereço. O papel que o cliente já assinou não muda."
+					: "Cliente + ativos + periodicidade + valor. O OLLI coloca cada visita na agenda."
+			}
 			formId={formId}
 			salvando={salvar.isPending}
 			erro={erro ?? (salvar.isError ? ((salvar.error as Error)?.message ?? "Não foi possível salvar.") : null)}
-			rotuloSalvar={contrato ? "Salvar contrato" : "Criar contrato"}
+			rotuloSalvar={criando ? "Criar esta cópia" : contrato ? "Salvar contrato" : "Criar contrato"}
 			largo
 		>
 			<form id={formId} onSubmit={submeter} className="space-y-4">
@@ -370,7 +376,7 @@ export default function FormContrato({ aberto, aoFechar, contrato, aoSalvar }: P
 					</Campo>
 				</div>
 
-				{contrato && (
+				{(contrato || criando) && (
 					<Campo rotulo="Situação">
 						<Select value={c.situacao} onValueChange={(v) => set({ situacao: v as SituacaoContrato })}>
 							<SelectTrigger className="w-full">
@@ -396,10 +402,19 @@ export default function FormContrato({ aberto, aoFechar, contrato, aoSalvar }: P
 					/>
 				</Campo>
 
-				<p className={cn("rounded-lg px-3 py-2 text-sm", previa.length ? "bg-primary/10 text-text-primary" : "text-text-secondary")}>
+				<p
+					className={cn(
+						"rounded-lg px-3 py-2 text-sm",
+						previa.length ? "bg-primary/10 text-text-primary" : "text-text-secondary",
+					)}
+				>
 					{previa.length
 						? `Próximas visitas: ${previa.map(diaBR).join(" · ")}`
-						: "Preencha cliente, ativo, periodicidade e primeira visita para ver as próximas datas."}
+						: validarContrato(montado).length === 0 && montado.situacao !== "vigente"
+							? "Pausado ou encerrado: nenhuma visita nova entra na agenda."
+							: validarContrato(montado).length === 0 && montado.dataFim && montado.dataFim < hojeNoBrasil()
+								? "O fim já passou: ajuste a data para voltar a gerar visitas."
+								: "Preencha cliente, ativo, periodicidade e primeira visita para ver as próximas datas."}
 				</p>
 			</form>
 		</FormDialog>
