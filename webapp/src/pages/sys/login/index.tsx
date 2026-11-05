@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Skeleton } from "@/ui/skeleton";
 import { Navigate } from "react-router";
 import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
@@ -26,10 +26,10 @@ function LoginPage() {
 		return (
 			// `role="status"` fica no filho: no próprio <main> ele trocaria o papel do
 			// elemento e a página perderia o landmark que este <main> existe para dar.
-			<main className="grid min-h-svh place-items-center bg-background">
-				<div className="flex items-center gap-3 text-sm text-muted-foreground" role="status" aria-live="polite">
-					<Loader2 className="size-5 animate-spin" aria-hidden />
-					Verificando sua sessão…
+			<main className="grid min-h-svh place-items-center bg-background px-6">
+				<div className="flex w-full max-w-xs flex-col items-center gap-4" role="status" aria-live="polite">
+					<Skeleton className="h-2.5 w-40 rounded-full" />
+					<p className="text-sm text-muted-foreground">Verificando sua sessão…</p>
 				</div>
 			</main>
 		);
@@ -62,7 +62,7 @@ function LoginPage() {
 				{/* Landmark `<main>`: o formulário é o conteúdo principal da página (leitor
 				    de tela pula direto para cá; Lighthouse cobra a ausência). */}
 				<main className="flex flex-1 items-center justify-center">
-					<div className="w-full max-w-xs">
+					<div className="w-full max-w-xs rounded-2xl bg-card p-6 shadow-card">
 						<LoginProvider>
 							<LoginForm />
 							<RegisterForm />
