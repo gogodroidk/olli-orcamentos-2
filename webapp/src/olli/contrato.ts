@@ -127,6 +127,9 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
 		criado_em: c.criadoEm,
 		excluido_em: c.excluidoEm ?? null,
 		atualizado_em: c.atualizadoEm ?? c.criadoEm,
+		// null = "não informado". Painel e app gravam a mesma coisa.
+		email: c.email ?? null,
+		email2: c.email2 ?? null,
 	};
 }
 

@@ -57,6 +57,7 @@ import { useSalvar } from "@/olli/mutacoes";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { buscarCep } from "./cep";
+import { normalizarEmail, validarEmailsCliente } from "../../../../../src/utils/emailsCliente";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 
 const soDigitos = (s: string | undefined | null) => (s ?? "").replace(/\D/g, "");
@@ -88,6 +89,8 @@ export function linhaParaCliente(linha: LinhaCliente): Cliente {
 	if (txt(linha.cidade)) c.cidade = txt(linha.cidade);
 	if (txt(linha.estado)) c.estado = txt(linha.estado);
 	if (txt(linha.cep)) c.cep = txt(linha.cep);
+	if (txt(linha.email)) c.email = txt(linha.email);
+	if (txt(linha.email2)) c.email2 = txt(linha.email2);
 	if (txt(linha.excluido_em)) c.excluidoEm = txt(linha.excluido_em);
 	if (txt(linha.atualizado_em)) c.atualizadoEm = txt(linha.atualizado_em);
 	return c;
@@ -106,6 +109,8 @@ interface Campos {
 	complemento: string;
 	cidade: string;
 	estado: string;
+	email: string;
+	email2: string;
 }
 
 function camposIniciais(c: Cliente | null): Campos {
@@ -119,10 +124,12 @@ function camposIniciais(c: Cliente | null): Campos {
 		complemento: c?.complemento ?? "",
 		cidade: c?.cidade ?? "",
 		estado: c?.estado ?? "",
+		email: c?.email ?? "",
+		email2: c?.email2 ?? "",
 	};
 }
 
-type Erros = Partial<Record<"nome" | "telefone" | "cpf" | "cnpj", string>>;
+type Erros = Partial<Record<"nome" | "telefone" | "cpf" | "cnpj" | "email" | "email2", string>>;
 
 /** Estado da busca de CEP. `falhou` ≠ `nao_encontrado` — ver `cep.ts`. */
 type EstadoCep = "parado" | "buscando" | "ok" | "nao_encontrado" | "falhou";
@@ -244,6 +251,8 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSal
 		}
 		if (campos.cpf.length > 0 && !cpfValido(campos.cpf)) e.cpf = "CPF inválido.";
 		if (campos.cnpj.length > 0 && !cnpjValido(campos.cnpj)) e.cnpj = "CNPJ inválido.";
+		const erroEmail = validarEmailsCliente(campos.email, campos.email2);
+		if (erroEmail) e[erroEmail.campo] = erroEmail.mensagem;
 		return e;
 	};
 
@@ -274,7 +283,7 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSal
 		// Opcionais: presentes só quando preenchidos. Apagar um campo tem que
 		// REMOVER a chave — deixar "" no lugar faria o app exibir campo vazio como
 		// se fosse valor, e `?? null` gravaria string vazia na coluna.
-		const opcional = (chave: "cpf" | "cnpj" | "cep" | "endereco" | "complemento" | "cidade" | "estado", v: string) => {
+		const opcional = (chave: "cpf" | "cnpj" | "cep" | "endereco" | "complemento" | "cidade" | "estado" | "email" | "email2", v: string) => {
 			if (v) c[chave] = v;
 			else delete c[chave];
 		};
@@ -285,6 +294,8 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSal
 		opcional("complemento", texto(campos.complemento));
 		opcional("cidade", texto(campos.cidade));
 		opcional("estado", texto(campos.estado).toUpperCase().slice(0, 2));
+		opcional("email", normalizarEmail(campos.email) ?? "");
+		opcional("email2", normalizarEmail(campos.email2) ?? "");
 
 		try {
 			await salvar.mutateAsync(c);
@@ -333,6 +344,33 @@ export default function FormCliente({ cliente, aoFechar, aoAbrirExistente, aoSal
 						aoMudar={(v) => set("telefone", v)}
 					/>
 				</Campo>
+
+				<div className="grid gap-4 sm:grid-cols-2">
+					<Campo rotulo="E-mail" erro={erros.email} dica="Opcional. Fica no cadastro do cliente.">
+						<Input
+							id={`${idBase}-email`}
+							type="email"
+							inputMode="email"
+							autoComplete="off"
+							value={campos.email}
+							onChange={(ev) => set("email", ev.target.value)}
+							placeholder="cliente@email.com"
+							aria-invalid={!!erros.email}
+						/>
+					</Campo>
+					<Campo rotulo="Segundo e-mail" erro={erros.email2} dica="Opcional (sócio, financeiro).">
+						<Input
+							id={`${idBase}-email2`}
+							type="email"
+							inputMode="email"
+							autoComplete="off"
+							value={campos.email2}
+							onChange={(ev) => set("email2", ev.target.value)}
+							placeholder="financeiro@email.com"
+							aria-invalid={!!erros.email2}
+						/>
+					</Campo>
+				</div>
 
 				{/* Aviso de duplicidade — logo abaixo dos campos que o disparam. */}
 				{duplicados.length > 0 && (

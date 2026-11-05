@@ -38,6 +38,7 @@ import {
   LEMBRETES_ENVIADOS_STAMP_KEY,
   PULL_INICIAL_OK_PREFIX,
   ULTIMO_PULL_KEY,
+  CLIENTE_EMAIL_FORA_PUSH_KEY,
 } from './storageKeys';
 import type {
   PmocPlano,
@@ -61,6 +62,7 @@ import { dataBrParaIsoSeguro } from '../utils/date';
 import { excecoesParaTexto, lerExcecoes } from '../utils/contratoRecorrente';
 import { atualizarDaNuvem, type ResultadoAtualizacao } from '../utils/agendaVisual';
 import { geoParaColunas, lerGeoDaLinha, mudancaDeEndereco } from '../utils/geoCliente';
+import { escolherEmailNoPull } from '../utils/emailsCliente';
 import { garantiaAteDaOS } from '../utils/garantiaServico';
 import { lerMateriais, materiaisParaTexto } from '../utils/materiaisOS';
 import { externaParaSqlite, lerExterna } from './verticais';
@@ -156,6 +158,9 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
     // Relógio de sync. NUNCA null: a coluna na nuvem é NOT NULL, e um objeto vindo
     // de snapshot antigo (backup pré-v3) não tem o campo — caímos em criadoEm.
     atualizado_em: c.atualizadoEm ?? c.criadoEm,
+    // E-mails: null = "não informado" (o aparelho é a verdade do que o prestador digitou).
+    email: c.email ?? null,
+    email2: c.email2 ?? null,
     ...geoParaRow(c),
   };
 }
@@ -169,6 +174,48 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
  */
 const COLUNAS_CLIENTE_GEO = ['lat', 'lon', 'ibge', 'geo_precisao'] as const;
 let clientesSemColunasGeo = false;
+
+/** Servidor sem a migration 20261106053000: o push reenvia sem `email`/`email2`. Isso não é sync do e-mail. */
+const COLUNAS_CLIENTE_EMAIL = ['email', 'email2'] as const;
+let clientesSemColunasEmail = false;
+
+async function lerIdsEmailForaDoPush(): Promise<Set<string>> {
+  try {
+    const bruto = await AsyncStorage.getItem(CLIENTE_EMAIL_FORA_PUSH_KEY);
+    if (!bruto) return new Set();
+    const lista = JSON.parse(bruto) as unknown;
+    if (!Array.isArray(lista)) return new Set();
+    return new Set(lista.filter((id): id is string => typeof id === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+/** O último push deste cliente subiu sem a coluna. Sobrevive a reiniciar o app. */
+async function emailFicouDeForaDoPush(id: string): Promise<boolean> {
+  return (await lerIdsEmailForaDoPush()).has(id);
+}
+
+async function marcarEmailForaDoPush(id: string): Promise<void> {
+  try {
+    const ids = await lerIdsEmailForaDoPush();
+    if (ids.has(id)) return;
+    ids.add(id);
+    await AsyncStorage.setItem(CLIENTE_EMAIL_FORA_PUSH_KEY, JSON.stringify([...ids]));
+  } catch {
+    // best-effort: sem a marca, um pull depois da migration pode apagar o e-mail local
+  }
+}
+
+async function esquecerEmailForaDoPush(id: string): Promise<void> {
+  try {
+    const ids = await lerIdsEmailForaDoPush();
+    if (!ids.delete(id)) return;
+    await AsyncStorage.setItem(CLIENTE_EMAIL_FORA_PUSH_KEY, JSON.stringify([...ids]));
+  } catch {
+    // best-effort
+  }
+}
 
 function geoParaRow(c: Cliente): Record<string, unknown> {
   if (clientesSemColunasGeo) return {};
@@ -493,8 +540,15 @@ function rowToCliente(row: any): Cliente {
     // Relógio remoto: é o que o localUpsert compara com o local para decidir se
     // esta linha da nuvem pode ou não sobrescrever a versão deste aparelho.
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined,
+    ...lerEmailDaLinhaNuvem(row),
     ...lerGeoDaLinhaNuvem(row),
   };
+}
+
+/** Nuvem sem a coluna = "não sei" (undefined), nunca "apagou": o upsert local preserva o e-mail do aparelho. */
+function lerEmailDaLinhaNuvem(row: any): Pick<Cliente, 'email' | 'email2'> {
+  if (row && typeof row === 'object' && !('email' in row)) clientesSemColunasEmail = true;
+  return { email: row?.email ?? undefined, email2: row?.email2 ?? undefined };
 }
 
 /** `select('*')` sem a coluna = servidor sem a migration de geo: liga o modo "preservar o local". */
@@ -1161,6 +1215,21 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       for (const c of COLUNAS_CLIENTE_GEO) delete (row as Record<string, unknown>)[c];
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
     }
+    if (error && table === 'clientes' && COLUNAS_CLIENTE_EMAIL.some((c) => erroDeColunaDesconhecidaDe(error, c))) {
+      // Servidor sem a migration de e-mail: reenvia sem as colunas. O relógio da
+      // nuvem avança, mas o e-mail ficou de fora — a marca impede o pull de
+      // tratar esse null como "a pessoa apagou". Vale para o próximo cliente
+      // da mesma sessão, não só para o primeiro.
+      const registro = row as Record<string, unknown>;
+      const temColunaEmail = COLUNAS_CLIENTE_EMAIL.some((c) => c in registro);
+      if (temColunaEmail) {
+        clientesSemColunasEmail = true;
+        for (const col of COLUNAS_CLIENTE_EMAIL) delete registro[col];
+        ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
+        const id = registro.id;
+        if (!error && typeof id === 'string') await marcarEmailForaDoPush(id);
+      }
+    }
     if (error && table === 'agendamentos' && !agendaSemColunaExterna && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration da visita externa: reenvia sem ela (ver COLUNA_AGENDA_EXTERNA).
       agendaSemColunaExterna = true;
@@ -1207,6 +1276,16 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
       agendaSemColunasEquipe = true;
       for (const c of COLUNAS_AGENDA_EQUIPE) delete (row as Record<string, unknown>)[c];
       ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
+    }
+    if (!error && table === 'clientes') {
+      const registro = row as Record<string, unknown>;
+      const id = registro.id;
+      // Subiu COM as colunas: a migration já está no servidor. Desliga a marca
+      // para o próximo pull aceitar o e-mail da nuvem (inclusive um null real).
+      if (typeof id === 'string' && COLUNAS_CLIENTE_EMAIL.some((c) => c in registro)) {
+        clientesSemColunasEmail = false;
+        await esquecerEmailForaDoPush(id);
+      }
     }
     if (error) {
       if (tabelaDocumentoNumerado(table)) {
@@ -1558,8 +1637,15 @@ async function localUpsertCliente(c: Cliente): Promise<void> {
   // local. Endereço diferente = o ponto local é de outro lugar e cai.
   let geo = geoParaColunas(c);
   const local = await db.getFirstAsync<any>(
-    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao FROM clientes WHERE id = ?', [c.id],
+    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao, email, email2 FROM clientes WHERE id = ?', [c.id],
   );
+  // E-mail ficou de fora do push (coluna ausente nesta sessão, ou a marca que
+  // sobrevive ao reinício): a nuvem vazia não ganha do aparelho. Nuvem com
+  // e-mail, ou sem a marca, segue o valor remoto.
+  const preservarLocal = clientesSemColunasEmail || await emailFicouDeForaDoPush(c.id);
+  const escolhido = escolherEmailNoPull(c, local, preservarLocal);
+  const email = escolhido.email;
+  const email2 = escolhido.email2;
   if (local) {
     const geoLocal = geoParaColunas(lerGeoDaLinha(local));
     const mudou = mudancaDeEndereco(local, c);
@@ -1574,12 +1660,12 @@ async function localUpsertCliente(c: Cliente): Promise<void> {
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
        (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em,
-        lat, lon, ibge, geo_precisao)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        lat, lon, ibge, geo_precisao, email, email2)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [c.id, c.nome, c.telefone ?? null, c.cpf ?? null, c.cnpj ?? null,
      c.endereco ?? null, c.complemento ?? null, c.estado ?? null,
      c.cidade ?? null, c.cep ?? null, c.criadoEm, c.excluidoEm ?? null,
-     c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao],
+     c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao, email, email2],
   );
 }
 
@@ -2713,6 +2799,7 @@ function rowToClienteLocal(r: any): Cliente {
     excluidoEm: r.excluido_em ?? undefined,
     // Idem para o relógio: sem ele o push mandaria atualizado_em=null (coluna NOT NULL).
     atualizadoEm: r.atualizado_em ?? r.criado_em,
+    email: r.email ?? undefined, email2: r.email2 ?? undefined,
     // Geo local sobe junto (o que o aparelho geocodificou e ainda não espelhou).
     ...lerGeoDaLinha(r),
   };
