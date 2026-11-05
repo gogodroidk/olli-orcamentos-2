@@ -21,7 +21,17 @@ assert.match(comparador, /Orçamento no campo, mesmo sem sinal/, 'comparador dev
 assert.match(comparador, /Cliente aprova e assina pelo link/, 'comparador deve explicar a aprovação real');
 assert.match(comparador, /IA ajuda a montar o orçamento por voz/, 'comparador deve descrever a IA sem prometer diagnóstico');
 assert.doesNotMatch(comparador, /PMOC pronto pra fiscalização|IA que diagnostica o defeito|Equipe no mapa em tempo real/, 'comparador não pode prometer PMOC, diagnóstico ou mapa em tempo real');
-assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'\]/, 'rotas utilitárias não devem entrar no sitemap');
+assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'(, '\/servicos\/')?\]/, 'rotas utilitárias não devem entrar no sitemap');
+const nav = ler('../web/src/data/navegacao.ts');
+const catalogo = ler('../web/src/pages/catalogo.astro');
+assert.doesNotMatch(nav, /\/servicos\//, 'o header não ocupa /servicos/ — essa rota é do segundo andar');
+assert.match(nav, /href: "\/catalogo\/"/, 'o catálogo do app fica em /catalogo/');
+assert.doesNotMatch(home, /href="\/servicos\/"/, 'a home não manda o catálogo para /servicos/');
+assert.match(home, /href="\/catalogo\/"/, 'a home aponta o catálogo para /catalogo/');
+assert.doesNotMatch(llms, /\/servicos\//, 'llms.txt não entrega /servicos/ como página do app');
+assert.match(llms, /\/catalogo\//, 'llms.txt aponta o catálogo do app');
+assert.match(catalogo, /\/catalogo\//, 'a página do catálogo usa a própria rota');
+assert.doesNotMatch(catalogo, /\/servicos\//, 'a página do catálogo não usa /servicos/');
 assert.match(robots, /Disallow: \/admin\//, 'robots deve evitar rastreio da área administrativa');
 assert.match(home, /https:\/\/play\.google\.com\/apps\/testing\/online\.olliorcamentos\.app/, 'CTA Android deve usar o link oficial de adesão exibido pelo Play Console');
 assert.match(home, /target="_blank"[\s\S]*?rel="noopener noreferrer"/, 'link externo da Play deve abrir com isolamento da aba');

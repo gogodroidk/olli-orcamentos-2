@@ -11,6 +11,7 @@ import {
   CORTE_GRATIS_DATA,
   FRASE_GRATIS,
   FRASE_GRATIS_CURTA,
+  GRATIS_CONDICAO,
   GRATIS_LINHA_ANUNCIO,
   PREVIEW_EMAIL_GRATIS,
   LIMITE_ENVIOS_GRATIS_MES,
@@ -29,7 +30,18 @@ const DEVE_USAR: Record<string, RegExp> = {
   'web/src/pages/eletricista.astro': /GRATIS_LINHA_ANUNCIO/,
   'src/screens/PlanosScreen.tsx': /gratis: CELULA_ORCAMENTOS_GRATIS/,
   'worker/src/emailLembretesTemplate.js': /preview: PREVIEW_EMAIL_GRATIS/,
+  // AEO (PR #262): Resposta curta, FAQ e CTA das /para/<ofício> e o llms.txt leem a regra do Grátis da fonte.
+  'web/src/pages/para/[oficio].astro': /GRATIS_CONDICAO[\s\S]*FRASE_GRATIS_CURTA[\s\S]*TRIAL_PRO_DIAS/,
+  'web/src/pages/llms.txt.ts': /GRATIS_CONDICAO[\s\S]*TRIAL_PRO_DIAS/,
 };
+for (const arq of ['web/src/pages/para/[oficio].astro', 'web/src/pages/llms.txt.ts']) {
+  const src = ler(arq);
+  // "permanente" e "14 dias" digitados à mão viram promessa sem fonte (CDC): a constante é a única origem.
+  assert.doesNotMatch(src.split('\n').filter((l) => !/^\s*(\*|\/\/)/.test(l)).join('\n'), /permanente|\b14 dias\b/i, `${arq}: 'permanente'/'14 dias' escritos à mão`);
+}
+assert.equal(GRATIS_CONDICAO, 'sem cartão e sem prazo');
+// a regra "sem cartão e sem cobrança automática" do trial tem fonte no texto de ativação do app
+assert.match(ler('src/services/ativacao.ts'), /Sem cartão e sem cobrança automática/, 'regra do trial sem cartão mudou: revisar FAQ e llms.txt do AEO');
 for (const [arq, re] of Object.entries(DEVE_USAR)) assert.match(ler(arq), re, `${arq} precisa ler a constante do corte`);
 
 const ESCRITOS_A_MAO = [
@@ -39,6 +51,8 @@ const ESCRITOS_A_MAO = [
   'web/src/pages/eletricista.astro',
   'web/src/pages/index.astro',
   'web/src/pages/planos.astro',
+  'web/src/pages/para/[oficio].astro',
+  'web/src/pages/llms.txt.ts',
 ];
 
 if (CORTE_GRATIS_DATA === null) {

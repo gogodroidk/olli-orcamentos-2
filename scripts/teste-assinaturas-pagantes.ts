@@ -43,7 +43,9 @@ function checar(nome: string, condicao: unknown, detalhe = ''): void {
 
 const AGORA = '2026-10-04T12:00:00Z';
 const AGORA_MS = Date.parse(AGORA);
-const MES = '2026-11-04T12:00:00Z';
+// Fim de período no FUTURO para os dois relógios: o JS usa AGORA fixo e a view SQL (PGlite) usa now() real.
+// Com data cravada, o teste quebrou em 04/11/2026 12:00 UTC (CI vermelha em todo PR).
+const MES = new Date(Math.max(AGORA_MS, Date.now()) + 30 * 86_400_000).toISOString();
 const ANO = '2027-10-04T12:00:00Z';
 
 type Linha = {

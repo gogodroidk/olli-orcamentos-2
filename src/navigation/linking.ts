@@ -83,6 +83,7 @@ export function criarLinkingConfig(
         EmitirRecibo: 'recibo',
         PrepararNota: 'nota-fiscal/:reciboId',
         MeuNegocio: 'meu-negocio',
+        IdentidadeUpsell: 'estudio-marca',
         Diagnostico: 'diagnostico',
         DiagnosticoIA: 'diagnostico-ia',
         OlliVoz: 'olli-voz',
@@ -102,6 +103,8 @@ export function criarLinkingConfig(
         EquipeAoVivo: 'equipe/ao-vivo',
         // Onda I2 — Mapa do dia (grátis: MapLibre + OpenFreeMap).
         MapaDia: 'mapa',
+        // D-1438 G19 — prospecção dos clientes da conta (sem API paga).
+        Prospeccao: 'prospeccao',
         Convite: 'convite/:token',
         // Onda 4 — Ordens de serviço (gestão + técnico). URL real /ordens.
         OrdemServico: 'ordens',
@@ -118,6 +121,7 @@ export function criarLinkingConfig(
 
         // ─── Frentes novas ──────────────────────────────────────────────
         Ajuda: 'ajuda',
+        Contador: 'contador',
         Privacidade: 'privacidade',
         Termos: 'termos',
         Lixeira: 'lixeira',

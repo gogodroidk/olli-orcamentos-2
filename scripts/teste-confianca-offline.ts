@@ -386,7 +386,10 @@ console.log('\n5) fiação nos pontos certos');
   checar('OS: selo por foto na grade', /<SeloFoto estado=/.test(os), true);
   checar('OS: SeloSync no detalhe e na lista', (os.match(/<SeloSync /g) ?? []).length >= 2, true);
   checar('OS: item do checklist com rascunho', /useRascunhoCampo\(chaveRascunho\(`os\.\$\{ordemId\}`, 'novo-item'\)\)/.test(os), true);
-  checar('OS: OS manual com rascunho nos 3 campos', (os.match(/useRascunhoCampo\(chaveRascunho\('os-nova'/g) ?? []).length, 3);
+  const formOs = ler('../src/components/os/FormularioDadosOS.tsx');
+  checar('OS: formulário com rascunho em cada campo digitado',
+    (formOs.match(/useRascunhoCampo\(escopo \? chaveRascunho\(escopo, '/g) ?? []).length >= 7, true);
+  checar('OS: criação manual ainda usa o rascunho os-nova', /rascunhoEscopo="os-nova"/.test(os), true);
   checar('OS: técnico sem id não vira "Nenhuma OS" (erro ≠ vazio)', /userId === null\) \{\s*setOrdensErro\(true\)/.test(os), true);
   checar('App: retomada da câmera no onReady reabre a OS',
     /retomarCapturaOSInterrompida\(\)\.then[\s\S]{0,200}navigate\('OrdemServico', \{ ordemId: retomada\.ordemId \}\)/.test(app), true);

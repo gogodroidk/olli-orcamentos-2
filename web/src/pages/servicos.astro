@@ -1,75 +1,204 @@
 ---
+/**
+ * /servicos — o "segundo andar" do OLLI: serviços com IA em 3 pacotes.
+ *
+ * Copy vem só de `data/servicos.ts`. Não é o produto de orçamentos: é a oferta de
+ * projeto sob contrato. Preço NÃO é fixo, então nenhum valor aparece e o schema do
+ * app (Pro/Empresa) fica de fora. Noindex até `PAGINA_PUBLICADA` virar true.
+ */
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
-import FaixaCta from "../components/site/FaixaCta.astro";
 import Layout from "../layouts/Layout.astro";
-import { APP_CADASTRO_URL, PASSOS } from "../data/conteudoSite";
+import {
+  AVISO_REGULADAS,
+  CONDICOES,
+  NAO_INCLUSO,
+  PACOTES,
+  PAGINA_PUBLICADA,
+  WHATSAPP_SERVICOS,
+  WHATSAPP_SERVICOS_LEGIVEL,
+  WHATSAPP_SERVICOS_MENSAGEM,
+} from "../data/servicos";
 
-const schemaBreadcrumb = {
-	"@context": "https://schema.org",
-	"@type": "BreadcrumbList",
-	itemListElement: [
-		{ "@type": "ListItem", position: 1, name: "OLLI", item: Astro.site?.origin },
-		{ "@type": "ListItem", position: 2, name: "Serviços", item: new URL("/servicos/", Astro.site ?? "https://olliorcamentos.online").href },
-	],
-};
+const zapUrl = (texto: string) => `https://wa.me/${WHATSAPP_SERVICOS}?text=${encodeURIComponent(texto)}`;
+const ZAP_GERAL = zapUrl(WHATSAPP_SERVICOS_MENSAGEM);
+const PEDIDO_URL = "https://diagnostico.olliorcamentos.online/servicos/pedido";
 ---
-
 <Layout
-	titulo="Serviços e produtos na OLLI — catálogo, OS e recibo"
-	descricao="O catálogo de serviços e produtos fica dentro do orçamento. Aprovado, vira ordem de serviço com checklist e assinatura, e depois recibo."
-	schemas={[schemaBreadcrumb]}
+  titulo="OLLI Serviços — site, atendimento no WhatsApp e sistema sob medida"
+  noindex={!PAGINA_PUBLICADA}
+  descricao="Três pacotes para o seu negócio de serviço: presença profissional, atendimento automático com IA e sistema sob medida. O valor sai na proposta, depois do diagnóstico."
+  ofertaDoApp={false}
+  telefoneContato={WHATSAPP_SERVICOS}
+  nomeDoSite="OLLI Serviços"
 >
-	<Header />
-	<main id="conteudo">
-		<section class="mx-auto max-w-3xl px-5 pb-6 pt-12 sm:px-6 md:pt-16">
-			<p class="text-sm text-muted"><a href="/" class="rodape-link">Início</a> <span aria-hidden="true">/</span> Serviços</p>
-			<span class="eyebrow mt-4">Serviços e produtos</span>
-			<h1 class="mt-4 max-w-[42rem] text-4xl leading-[1.08] tracking-tight text-ink sm:text-5xl">A tabela do serviço, dentro do orçamento.</h1>
-			<p class="mt-5 max-w-[42rem] text-lg leading-relaxed text-slate">
-				O plano Grátis já inclui catálogo de serviços e produtos, clientes e agenda, ordem de serviço com checklist, fotos e assinatura na tela, e o link para o cliente aprovar. Não é um segundo aplicativo.
-			</p>
-		</section>
+  <Header>
+    <a href="/" class="inline-flex min-h-11 items-center px-3 text-sm font-medium text-slate hover:text-ink">← Voltar pra home</a>
+  </Header>
 
-		<section class="mx-auto max-w-7xl px-5 py-10 sm:px-6">
-			<ol class="grid gap-5 md:grid-cols-3">
-				{PASSOS.map((p) => (
-					<li class="rounded-cartao border border-line bg-card p-6 shadow-e1">
-						<div class="text-sm font-bold text-brand-fg tnum">{p.n}</div>
-						<h2 class="mt-2 text-xl text-ink">{p.titulo}</h2>
-						<p class="mt-2 text-slate">{p.texto}</p>
-					</li>
-				))}
-			</ol>
-		</section>
+  <main id="conteudo">
+    <section class="mx-auto max-w-5xl px-6 pb-10 pt-14 md:pt-20">
+      <p class="text-sm font-semibold text-brand-fg">OLLI Serviços</p>
+      <h1 class="mt-3 max-w-3xl text-[clamp(2rem,5.5vw,3.4rem)] font-extrabold leading-[1.08] tracking-tight text-ink">
+        Seu negócio aparece, atende e se organiza.
+      </h1>
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-slate">
+        Três pacotes: do site ao atendimento no WhatsApp com IA e ao painel sob medida. Antes de qualquer valor, a gente estuda o seu negócio e propõe o que faz sentido para ele.
+      </p>
+      <div class="mt-7 flex flex-wrap items-center gap-3">
+        <a
+          href={ZAP_GERAL}
+          rel="noopener"
+          class="inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          Falar no WhatsApp
+        </a>
+        <a href="#diagnostico" class="inline-flex min-h-12 items-center px-3 text-base font-semibold text-ink underline underline-offset-4">
+          Ou preencher o formulário curto
+        </a>
+      </div>
+    </section>
 
-		<section class="faixa-recuo">
-			<div class="mx-auto grid max-w-7xl gap-8 px-5 py-16 sm:px-6 md:grid-cols-2 md:py-20">
-				<div>
-					<h2 class="text-3xl tracking-tight text-ink">O que entra no catálogo</h2>
-					<ul class="mt-5 space-y-3 text-slate">
-						<li class="flex gap-2"><span class="text-check">✓</span> Serviços e produtos com preço, para não digitar a mesma linha todo dia.</li>
-						<li class="flex gap-2"><span class="text-check">✓</span> Clientes e agenda no mesmo lugar.</li>
-						<li class="flex gap-2"><span class="text-check">✓</span> Ordem de serviço com checklist, fotos e assinatura do cliente na tela.</li>
-						<li class="flex gap-2"><span class="text-check">✓</span> Recibo e PDF com a sua marca.</li>
-					</ul>
-				</div>
-				<div class="rounded-cartao border border-line bg-card p-7 shadow-e1">
-					<h2 class="text-xl text-ink">O que muda por ofício</h2>
-					<p class="mt-3 leading-relaxed text-slate">
-						Climatização, elétrica, hidráulica, pintura, dedetização, jardinagem e os outros ofícios da lista usam o mesmo ciclo. O que muda são as calculadoras e os documentos que já estão prontos naquele ofício.
-					</p>
-					<a href="/para/" class="rodape-link mt-4 font-semibold text-brand-fg">Escolher o ofício</a>
-				</div>
-			</div>
-		</section>
+    <section class="mx-auto grid max-w-5xl gap-5 px-6 pb-14 md:grid-cols-3" aria-label="Pacotes">
+      {PACOTES.map((p, i) => (
+        <article class={`flex min-w-0 flex-col rounded-2xl border bg-card p-6 ${p.destaque ? "border-brand shadow-lg shadow-brand/10" : "border-line"}`}>
+          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Pacote {i + 1}</p>
+          <h2 class="mt-1 text-xl font-bold text-ink">{p.nome}</h2>
+          <p class="mt-3 text-xl font-extrabold text-ink">Valor sob medida</p>
+          <p class="mt-1 text-sm text-muted">Definido na proposta, depois do diagnóstico.</p>
+          <p class="mt-1 text-sm text-muted">Previsto: {p.prazoPrevistoDiasUteis} dias úteis · suporte de {p.suportePrevistoDias} dias</p>
+          <p class="mt-4 text-sm leading-relaxed text-slate">{p.paraQuem}</p>
+          <ul class="mt-4 space-y-2 text-sm leading-relaxed text-ink">
+            {p.inclui && <li class="font-semibold">Tudo do pacote “{p.inclui}”, mais:</li>}
+            {p.entrega.map((e) => (
+              <li class="flex gap-2"><span class="mt-0.5 text-check" aria-hidden="true">✓</span><span>{e}</span></li>
+            ))}
+          </ul>
+          <a
+            href={zapUrl(`${WHATSAPP_SERVICOS_MENSAGEM} Tenho interesse no pacote “${p.nome}”.`)}
+            rel="noopener"
+            class="mt-auto inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-5 py-3 text-center text-base font-semibold text-white transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            style="margin-top:1.5rem"
+          >
+            Falar sobre este pacote
+          </a>
+        </article>
+      ))}
+    </section>
 
-		<FaixaCta
-			titulo="Monte o primeiro serviço no Grátis."
-			texto="Sem cartão. O PDF do Grátis sai com uma marca discreta da OLLI, que some no Pro."
-			href={APP_CADASTRO_URL}
-			rotulo="Criar minha conta grátis"
-		/>
-	</main>
-	<Footer />
+    <section id="diagnostico" class="mx-auto max-w-2xl px-6 pb-14">
+      <h2 class="text-2xl font-bold text-ink">Pedir diagnóstico grátis</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate">
+        Quatro campos. A gente estuda o seu negócio com informações públicas (site, Google, redes) e responde no WhatsApp com um diagnóstico e uma proposta feita para o seu caso. Não há tabela fixa: o valor depende do que o seu negócio precisa. Prefere conversar direto? <a href={ZAP_GERAL} rel="noopener" class="font-semibold underline">Chame no WhatsApp {WHATSAPP_SERVICOS_LEGIVEL}</a>.
+      </p>
+      <form id="form-pedido" class="mt-6 space-y-4" data-url={PEDIDO_URL} novalidate>
+        <div>
+          <label for="p-negocio" class="block text-sm font-semibold text-ink">Nome do negócio</label>
+          <input id="p-negocio" name="negocio" required maxlength="120" autocomplete="organization" class="mt-1 min-h-12 w-full rounded-acao border border-line bg-card px-4 text-base text-ink" />
+        </div>
+        <div>
+          <label for="p-cidade" class="block text-sm font-semibold text-ink">Cidade</label>
+          <input id="p-cidade" name="cidade" required maxlength="80" autocomplete="address-level2" class="mt-1 min-h-12 w-full rounded-acao border border-line bg-card px-4 text-base text-ink" />
+        </div>
+        <div>
+          <label for="p-dor" class="block text-sm font-semibold text-ink">Qual é a sua maior dor hoje?</label>
+          <textarea id="p-dor" name="dor" required maxlength="600" rows="3" class="mt-1 w-full rounded-acao border border-line bg-card px-4 py-3 text-base text-ink"></textarea>
+        </div>
+        <div>
+          <label for="p-whatsapp" class="block text-sm font-semibold text-ink">WhatsApp (com DDD)</label>
+          <input id="p-whatsapp" name="whatsapp" required type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 98765-4321" class="mt-1 min-h-12 w-full rounded-acao border border-line bg-card px-4 text-base text-ink" />
+        </div>
+        <div aria-hidden="true" style="position:absolute;left:-9999px;height:0;overflow:hidden">
+          <label>Não preencha <input name="site_web" tabindex="-1" autocomplete="off" /></label>
+        </div>
+        <label class="flex gap-3 text-sm leading-relaxed text-slate">
+          <input id="p-aceite" name="aceite" type="checkbox" required class="mt-1 size-5 shrink-0" />
+          <span>
+            Autorizo a OLLI (OLLI Inteligência Digital Sistemas Ltda., CNPJ 65.361.266/0001-05) a usar esses dados e
+            informações públicas do meu negócio para preparar o diagnóstico e responder por WhatsApp. A resposta pode ser
+            feita por um assistente virtual (IA), e posso pedir uma pessoa. Guardamos o pedido por no máximo 180 dias se não
+            houver proposta. Para apagar meus dados ou parar de receber mensagens, respondo SAIR ou escrevo para o
+            contato da página. <a href="/legal/privacidade/" class="underline">Política de Privacidade</a>.
+          </span>
+        </label>
+        <p id="p-status" role="status" aria-live="polite" class="min-h-6 text-sm"></p>
+        <button type="submit" id="p-enviar" class="inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+          Pedir diagnóstico grátis
+        </button>
+      </form>
+    </section>
+
+    <section class="border-t border-line bg-card/60">
+      <div class="mx-auto grid max-w-5xl gap-10 px-6 py-14 md:grid-cols-2">
+        <div>
+          <h2 class="text-lg font-bold text-ink">Como funciona o valor</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-slate">
+            {CONDICOES.map((c) => <li>{c}</li>)}
+          </ul>
+        </div>
+        <div>
+          <h2 class="text-lg font-bold text-ink">O que não está incluso</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-slate">
+            {NAO_INCLUSO.map((c) => <li>{c}</li>)}
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-5xl px-6 py-12">
+      <p class="max-w-3xl text-sm leading-relaxed text-muted">{AVISO_REGULADAS}</p>
+    </section>
+  </main>
+  <Footer whatsapp={WHATSAPP_SERVICOS} whatsappLegivel={WHATSAPP_SERVICOS_LEGIVEL} marca="OLLI" />
+<script>
+  const form = document.getElementById("form-pedido") as HTMLFormElement | null;
+  const status = document.getElementById("p-status");
+  const botao = document.getElementById("p-enviar") as HTMLButtonElement | null;
+  function dizer(texto: string, erro: boolean) {
+    if (!status) return;
+    status.textContent = texto;
+    status.className = `min-h-6 text-sm ${erro ? "text-ambar-tinta" : "text-ink"}`;
+  }
+  const MENSAGENS: Record<string, string> = {
+    negocio_obrigatorio: "Informe o nome do negócio.",
+    cidade_obrigatoria: "Informe a cidade.",
+    dor_obrigatoria: "Conte em uma frase a sua maior dor.",
+    whatsapp_invalido: "WhatsApp inválido. Use DDD + número.",
+    aceite_obrigatorio: "Marque a autorização para continuar.",
+    muitas_requisicoes: "Muitas tentativas. Espere um minuto e tente de novo.",
+  };
+  form?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (!form || !botao) return;
+    const d = new FormData(form);
+    const corpo = {
+      negocio: String(d.get("negocio") ?? ""),
+      cidade: String(d.get("cidade") ?? ""),
+      dor: String(d.get("dor") ?? ""),
+      whatsapp: String(d.get("whatsapp") ?? ""),
+      site_web: String(d.get("site_web") ?? ""),
+      aceite: d.get("aceite") === "on",
+    };
+    botao.disabled = true;
+    dizer("Enviando…", false);
+    try {
+      const r = await fetch(form.dataset.url ?? "", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(corpo),
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.ok === true) {
+        form.reset();
+        dizer("Recebido! Vamos estudar o seu negócio e responder no WhatsApp informado.", false);
+      } else {
+        dizer(MENSAGENS[j?.erro as string] ?? "Não consegui enviar agora. O pedido NÃO foi enviado; tente de novo em alguns minutos ou chame no WhatsApp.", true);
+      }
+    } catch {
+      dizer("Sem conexão. O pedido NÃO foi enviado; tente de novo ou chame no WhatsApp.", true);
+    } finally {
+      botao.disabled = false;
+    }
+  });
+</script>
 </Layout>

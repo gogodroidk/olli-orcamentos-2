@@ -1,4 +1,10 @@
-import { createContext, type PropsWithChildren, useContext, useMemo, useState } from "react";
+import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
+import {
+	buscaSemParametroConvite,
+	extrairTokenConviteDaBusca,
+	guardarConvitePendente,
+	lerConvitePendente,
+} from "@convite-google";
 import { caminhoCallbackAuth, destinoDepoisDoLogin, lerIntencaoPlano, type IntencaoPlano } from "@/olli/plano-intent";
 
 export enum LoginStateEnum {
@@ -16,6 +22,10 @@ interface LoginStateContextType {
 	intencaoPlano: IntencaoPlano | null;
 	destinoPosLogin: string | null;
 	callbackAuthPath: string;
+	/** Token do convite de equipe guardado nesta aba. Vazio quando não há convite. */
+	conviteToken: string | null;
+	loginHintGoogle: string;
+	setLoginHintGoogle: (email: string) => void;
 }
 const LoginStateContext = createContext<LoginStateContextType>({
 	loginState: LoginStateEnum.LOGIN,
@@ -24,6 +34,9 @@ const LoginStateContext = createContext<LoginStateContextType>({
 	intencaoPlano: null,
 	destinoPosLogin: null,
 	callbackAuthPath: "/auth/login",
+	conviteToken: null,
+	loginHintGoogle: "",
+	setLoginHintGoogle: () => {},
 });
 
 export function useLoginStateContext() {
@@ -51,11 +64,31 @@ function estadoInicial(): LoginStateEnum {
 	return LoginStateEnum.LOGIN;
 }
 
+function conviteInicial(): string | null {
+	if (typeof window === "undefined") return null;
+	const daUrl = extrairTokenConviteDaBusca(window.location.search);
+	if (daUrl) {
+		guardarConvitePendente(window.sessionStorage, daUrl);
+		return daUrl;
+	}
+	const guardado = lerConvitePendente(window.sessionStorage);
+	return guardado || null;
+}
+
 export function LoginProvider({ children }: PropsWithChildren) {
 	const [loginState, setLoginState] = useState(estadoInicial);
 	const [intencaoPlano] = useState<IntencaoPlano | null>(() =>
 		typeof window === "undefined" ? null : lerIntencaoPlano(window.location.search),
 	);
+	const [conviteToken] = useState<string | null>(conviteInicial);
+	const [loginHintGoogle, setLoginHintGoogle] = useState("");
+
+	useEffect(() => {
+		if (!conviteToken || typeof window === "undefined") return;
+		const sem = buscaSemParametroConvite(window.location.search);
+		if (sem === (window.location.search || "")) return;
+		window.history.replaceState(window.history.state, "", `${window.location.pathname}${sem}${window.location.hash}`);
+	}, [conviteToken]);
 
 	function backToLogin() {
 		setLoginState(LoginStateEnum.LOGIN);
@@ -67,9 +100,12 @@ export function LoginProvider({ children }: PropsWithChildren) {
 		setLoginState,
 		backToLogin,
 		intencaoPlano,
-		destinoPosLogin: destinoDepoisDoLogin(intencaoPlano),
+		destinoPosLogin: conviteToken ? "/equipe/aceitar" : destinoDepoisDoLogin(intencaoPlano),
 		callbackAuthPath: caminhoCallbackAuth(intencaoPlano),
-	}), [loginState, intencaoPlano]);
+		conviteToken,
+		loginHintGoogle,
+		setLoginHintGoogle,
+	}), [loginState, intencaoPlano, conviteToken, loginHintGoogle]);
 
 	return <LoginStateContext.Provider value={value}>{children}</LoginStateContext.Provider>;
 }

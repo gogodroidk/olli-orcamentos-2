@@ -69,6 +69,8 @@ import { TRIAL_PRO_DIAS } from "@limites-comerciais";
 import { lerIntencaoPlano } from "@/olli/plano-intent";
 import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
 import { comecarTesteProComAviso, opcoesOfertaComercial } from "./useLembreteAssinatura";
+import { AudioIaPrototipo } from "./AudioIaPrototipo";
+import { planosAudioIaLigada } from "../../../../../src/services/planosAudioIa";
 
 /** Suporte — mesmo número do app (`EXPO_PUBLIC_WHATSAPP_SUPORTE`, src/config.ts). */
 const WHATSAPP_SUPORTE = (import.meta.env.VITE_WHATSAPP_SUPORTE as string | undefined) ?? "5511941727487";
@@ -392,6 +394,9 @@ export default function Planos() {
 				) : null}{" "}
 				Se precisar de ajuda, o WhatsApp continua disponível.
 			</p>
+
+			{/* D1438-G20: protótipo de áudio. Flag apagada = este bloco não monta. */}
+			{planosAudioIaLigada(import.meta.env.VITE_PLANOS_AUDIO_IA as string | undefined) ? <AudioIaPrototipo /> : null}
 		</div>
 	);
 }
@@ -516,7 +521,7 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 				}
 				acao={{
 					rotulo: "Resolver pagamento",
-					href: linkWhatsApp(`Olá! O pagamento do meu plano ${nome} no OLLI falhou e eu quero regularizar.`),
+					portal: true,
 				}}
 			/>
 		);
@@ -578,13 +583,16 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 				}
 				acao={{
 					rotulo: `Voltar para o ${nome}`,
-					href: linkWhatsApp(`Olá! Quero reativar o meu plano ${nome} no OLLI.`),
+					href: "#escolha-seu-plano",
+					externa: false,
 				}}
 			/>
 		);
 	}
 
 	// GRÁTIS de verdade (a tabela respondeu e não há assinatura).
+	// O pagamento mora nos cartões ("Assinar Pro" / Pix). A faixa só desce até eles.
+	// O WhatsApp continua no cartão, como ajuda, se o checkout falhar.
 	return (
 		<Faixa
 			tom="neutro"
@@ -592,7 +600,8 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 			texto={`O Grátis tem ${FRASE_GRATIS}. Sem prazo e sem cartão.`}
 			acao={{
 				rotulo: "Quero assinar o Pro",
-				href: linkWhatsApp("Olá! Quero assinar o plano Pro do OLLI."),
+				href: "#escolha-seu-plano",
+				externa: false,
 			}}
 		/>
 	);
@@ -644,7 +653,9 @@ function Faixa({
 	tom: "success" | "warning" | "neutro";
 	titulo: string;
 	texto: string;
-	acao?: { rotulo: string; href: string; discreta?: boolean };
+	acao?:
+		| { rotulo: string; href: string; discreta?: boolean; externa?: boolean }
+		| { rotulo: string; portal: true };
 }) {
 	const cores = {
 		success: { card: "border-success/30 bg-success/5", tile: "bg-success/10 text-success" },
@@ -664,10 +675,15 @@ function Faixa({
 						<p className="mt-0.5 max-w-2xl text-sm text-text-secondary">{texto}</p>
 					</div>
 				</div>
-				{acao ? (
+				{acao && "portal" in acao ? (
+					<BotaoPortalStripe className="shrink-0 self-start sm:self-auto" rotulo={acao.rotulo} />
+				) : acao ? (
 					<Button asChild variant={acao.discreta ? "outline" : "default"} className="shrink-0 self-start sm:self-auto">
-						<a href={acao.href} target="_blank" rel="noreferrer noopener">
-							<MessageCircle className="size-4" aria-hidden />
+						<a
+							href={acao.href}
+							{...(acao.externa === false ? {} : { target: "_blank", rel: "noreferrer noopener" })}
+						>
+							{acao.externa === false ? null : <MessageCircle className="size-4" aria-hidden />}
 							{acao.rotulo}
 						</a>
 					</Button>
@@ -693,13 +709,13 @@ function SeletorPeriodo({ periodo, aoMudar }: { periodo: PeriodoCobranca; aoMuda
 		>
 			<ToggleGroupItem
 				value="mensal"
-				className="h-11 flex-1 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-common-white data-[state=on]:shadow-sm sm:flex-none"
+				className="h-11 flex-1 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm sm:flex-none"
 			>
 				Mensal
 			</ToggleGroupItem>
 			<ToggleGroupItem
 				value="anual"
-				className="h-11 flex-1 gap-2 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-common-white data-[state=on]:shadow-sm sm:flex-none"
+				className="h-11 flex-1 gap-2 rounded-lg px-4 text-sm font-semibold text-text-secondary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm sm:flex-none"
 			>
 				Anual
 				<span className="rounded-full bg-success/20 px-1.5 py-0.5 text-[11px] font-bold text-success-darker dark:text-success-light">

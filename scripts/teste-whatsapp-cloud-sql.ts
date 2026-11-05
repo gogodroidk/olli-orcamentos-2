@@ -27,6 +27,7 @@ const ler = (c: string) => readFileSync(new URL(c, import.meta.url), 'utf8').spl
 const optout = ler('../supabase/migrations/20261006090000_whatsapp_nao_contatar.sql');
 const wa = ler('../supabase/migrations/20261007110000_whatsapp_cloud_multinumero.sql');
 const passagem = ler('../supabase/migrations/20261102180000_wa_passagem_humano.sql');
+const respostaIa = ler('../supabase/migrations/20261103200000_wa_resposta_ia.sql');
 
 const db = new PGlite();
 await db.exec(`
@@ -47,6 +48,8 @@ await db.exec(wa);
 await db.exec(wa); // idempotente
 await db.exec(passagem);
 await db.exec(passagem); // idempotente
+await db.exec(respostaIa);
+await db.exec(respostaIa); // idempotente: drop da fila + replace do registro
 checks++;
 
 const q = async (sql: string, params: unknown[] = []) => (await db.query(sql, params)).rows as any[];
@@ -66,7 +69,9 @@ const agoraUnix = () => String(Math.floor(Date.now() / 1000));
 const semino = await um('select ativo, marca from public.wa_numeros where phone_number_id=$1', [PID]);
 igual(semino, { ativo: false, marca: 'OLLI' }, 'o número da holding nasce cadastrado e DESLIGADO');
 igual((await autorizar(A, 'texto')).motivo, 'numero_inativo', 'número desligado recusa envio');
-igual((await entrada([{ id: 'wamid.X0001', telefone: A, tipo: 'text', texto: 'oi', ts: agoraUnix() }])).motivo, 'numero_inativo', 'número desligado não grava entrada');
+const desligado = await entrada([{ id: 'wamid.X0001', telefone: A, tipo: 'text', texto: 'oi', ts: agoraUnix() }]);
+igual(desligado.motivo, 'numero_inativo', 'número desligado não grava entrada');
+igual(desligado.respostas, [], 'número desligado não pede a frase da IA');
 igual(await um('select public.wa_numero_ativo($1,null) r', [PID]).then((x) => x.r), null, 'número desligado não resolve');
 await db.exec(`update public.wa_numeros set ativo = true where phone_number_id = '${PID}'`);
 igual((await um('select public.wa_numero_ativo(null,$1) r', ['olli'])).r?.phone_number_id, PID, 'marca resolve o número (sem diferenciar maiúscula)');
@@ -218,26 +223,39 @@ const linha = async (id: string, texto: string, tel = D) => {
 };
 const p1 = await linha('wamid.P03401', 'Consegue fazer por 20 reais por mês?');
 igual([p1.row.estado, p1.row.motivo, p1.r.humano], ['humano', 'preco', 1], 'gatilho 1 preço cai em humano e não responde pelo banco');
+igual(p1.r.respostas, [], 'preço não pede texto automático');
 const p2 = await linha('wamid.P03402', 'Me manda o contrato e a nota fiscal.', '5511900003333');
 igual([p2.row.estado, p2.row.motivo], ['humano', 'contrato'], 'gatilho 2 contrato');
+igual(p2.r.respostas, [], 'contrato não pede texto automático');
 const p3 = await linha('wamid.P03403', 'Vou no Procon. Isso foi um absurdo.', '5511900004444');
 igual([p3.row.estado, p3.row.motivo], ['humano', 'reclamacao'], 'gatilho 3 reclamação');
+igual(p3.r.respostas, [], 'reclamação não pede texto automático');
 const segredo = 'teste-falso-000';
 const p4 = await linha('wamid.P03404', `Segue a senha do meu banco: ${segredo}.`, '5511900005555');
 igual([p4.row.estado, p4.row.motivo], ['humano', 'dado'], 'gatilho 4 dado');
+igual(p4.r.respostas, [], 'dado não pede texto automático');
 ok(!JSON.stringify(p4.r).includes(segredo), 'o retorno do registro não repete o segredo');
 const p5 = await linha('wamid.P03405', 'Você é robô?', '5511900006666');
 igual([p5.row.estado, p5.row.motivo], ['humano', 'ia'], 'gatilho 5 marca ia; a frase fica no worker, não no banco');
+igual(p5.r.respostas, [{ telefone: '5511900006666' }], 'só o gatilho ia devolve o telefone, sem o texto');
+ok(!JSON.stringify(p5.r).includes('robô') && !JSON.stringify(p5.r).includes('sou uma IA'), 'o retorno não leva a frase nem o texto da pessoa');
+const p5dup = await linha('wamid.P03405', 'Você é robô?', '5511900006666');
+igual([p5dup.r.duplicadas, p5dup.r.respostas], [1, []], 'reenvio da Meta não pede a frase de novo');
 const p6a = await linha('wamid.P03406', 'qual o prazo da peça que ainda não existe?', '5511900007777');
 igual([p6a.row.estado, p6a.row.motivo], ['novo', null], 'gatilho 6: a primeira fica novo');
+igual(p6a.r.respostas, [], 'a primeira do gatilho 6 não pede texto');
 const p6b = await linha('wamid.P03407', 'então, qual é o prazo?', '5511900007777');
 igual([p6b.row.estado, p6b.row.motivo], ['humano', 'incerteza'], 'gatilho 6: a segunda para');
+igual(p6b.r.respostas, [], 'incerteza não pede texto automático');
 const pSair = await linha('wamid.P03408', 'SAIR. Vou no Procon.', '5511900008888');
 igual([pSair.row.estado, pSair.row.motivo, pSair.r.saiu], ['saiu', null, 1], 'SAIR ganha da reclamação');
+igual(pSair.r.respostas, [], 'SAIR não pede a frase da IA');
 const pCanc = await linha('wamid.P03409', 'Cancelar', '5511900009999');
 igual([pCanc.row.estado, pCanc.row.motivo, pCanc.r.saiu], ['novo', null, 0], 'Cancelar sozinho não é SAIR nem reclamação');
+igual(pCanc.r.respostas, [], 'Cancelar sozinho não pede texto automático');
 const idHumano = (await um("select id from public.wa_entrada where wa_message_id = 'wamid.P03401'")).id;
-ok((await q('select estado from public.wa_fila_entrada(200) where id = $1', [idHumano]))[0].estado === 'humano', 'humano aparece na fila');
+const filaHumano = (await q('select estado, motivo from public.wa_fila_entrada(200) where id = $1', [idHumano]))[0];
+ok(filaHumano.estado === 'humano' && filaHumano.motivo === 'preco', 'humano aparece na fila com o motivo preco');
 igual((await um('select public.wa_fila_atualizar($1, $2, $3) r', [idHumano, 'em_atendimento', 'Igor'])).r, true, 'humano passa para atendimento');
 
 // ─── segredos e fechamento das tabelas ────────────────────────────────────────

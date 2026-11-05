@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Alert, Platform, TextInput } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -12,13 +12,14 @@ import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { GuardaPapel } from '../components/GuardaPapel';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
-import { listarContratos, gerarVisitasAgora, lerStatusMotorContratos, type LeituraContratos } from '../services/contratos';
+import { listarContratos, gerarVisitasAgora, lerStatusMotorContratos, salvarContrato, type LeituraContratos } from '../services/contratos';
 import { getClientes, getEmpresa } from '../database/database';
 import { abrirWhatsApp } from '../utils/exportarDocumento';
 import { formatCurrency } from '../utils/currency';
 import {
-  MODO_COBRANCA_LABEL, SITUACAO_CONTRATO_LABEL, diaBR, fraseReceitaMensal, hojeNoBrasil, prepararCobrancaContrato,
-  proximasVisitas, resumirContratos, rotuloPeriodicidade, situacaoEfetiva,
+  FILTROS_LISTA_CONTRATO, MODO_COBRANCA_LABEL, SITUACAO_CONTRATO_LABEL, diaBR, fraseProrrogarContrato, fraseReceitaMensal,
+  hojeNoBrasil, prepararCobrancaContrato, proximasVisitas, prorrogarFim, resumirContratos, rotuloFimContrato,
+  rotuloPeriodicidade, situacaoEfetiva, filtrarListaContratos, ordenarListaContratos, type FiltroListaContrato,
 } from '../utils/contratoRecorrente';
 import { resumoDaGeracao } from '../utils/contratoRecorrenteGeracao';
 import { convitePrimeiroContrato, fraseMotorContratos, type StatusMotorContratos } from '../utils/contratosMotorStatus';
@@ -71,6 +72,9 @@ function ContratosConteudo() {
   const [refreshing, setRefreshing] = useState(false);
   const [gerando, setGerando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [busca, setBusca] = useState('');
+  const [filtro, setFiltro] = useState<FiltroListaContrato>('todos');
+  const [prorrogandoId, setProrrogandoId] = useState<string | null>(null);
   // null = ainda conferindo; o aviso só aparece com a resposta (ou o "não confirmei").
   const [motor, setMotor] = useState<StatusMotorContratos | null>(null);
 
@@ -85,6 +89,10 @@ function ContratosConteudo() {
   const contratos = leitura?.status === 'ok' ? leitura.contratos : [];
   const resumo = useMemo(() => resumirContratos(contratos), [contratos]);
   const hoje = hojeNoBrasil();
+  const lista = useMemo(
+    () => ordenarListaContratos(filtrarListaContratos(contratos, filtro, busca)),
+    [contratos, filtro, busca],
+  );
 
   async function gerarAgora() {
     setGerando(true);
@@ -96,6 +104,43 @@ function ContratosConteudo() {
       setAviso(e instanceof Error ? e.message : 'Não consegui gerar as visitas agora. Tente de novo.');
     } finally {
       setGerando(false);
+    }
+  }
+
+  function confirmar(titulo: string, frase: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (Platform.OS === 'web') {
+        resolve(typeof globalThis.confirm === 'function' ? globalThis.confirm(`${titulo}\n\n${frase}`) : false);
+        return;
+      }
+      Alert.alert(titulo, frase, [
+        { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Prorrogar', onPress: () => resolve(true) },
+      ]);
+    });
+  }
+
+  async function prorrogar(c: ContratoRecorrente) {
+    const proximo = prorrogarFim(c);
+    if (!proximo?.dataFim || !c.dataFim) return;
+    vibrar('selecao');
+    const frase = fraseProrrogarContrato(c.dataFim, proximo.dataFim);
+    if (!(await confirmar('Prorrogar 12 meses', frase))) return;
+    setProrrogandoId(c.id);
+    setAviso(null);
+    try {
+      const { geracao } = await salvarContrato(proximo);
+      const gerado = geracao ? resumoDaGeracao(geracao) : null;
+      setAviso(
+        gerado
+          ? `${gerado} Fim no OLLI: ${diaBR(proximo.dataFim)}.`
+          : `Fim atualizado para ${diaBR(proximo.dataFim)}. Não consegui gerar as visitas agora — tento de novo na próxima abertura.`,
+      );
+      await load();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : 'Não consegui prorrogar agora. Tente de novo.');
+    } finally {
+      setProrrogandoId(null);
     }
   }
 
@@ -135,6 +180,8 @@ function ContratosConteudo() {
     const situacao = situacaoEfetiva(c, hoje);
     const cor = corSituacao(cores, situacao);
     const proximas = proximasVisitas(c);
+    const fim = rotuloFimContrato(c);
+    const podeProrrogar = prorrogarFim(c) !== null;
     return (
       <AnimatedEntrance index={index}>
         <TouchableOpacity
@@ -176,6 +223,30 @@ function ContratosConteudo() {
               <MaterialCommunityIcons name="whatsapp" size={16} color={corCategoriaEmChip(cores.success, cores.surface)} />
               <Text style={[styles.cobrarTexto, { color: corCategoriaEmChip(cores.success, cores.surface) }]}>Cobrar</Text>
             </TouchableOpacity>
+          </View>
+          <View style={styles.acoes}>
+            {fim ? <Text style={styles.fim}>{fim}</Text> : <View style={{ flex: 1 }} />}
+            <TouchableOpacity
+              style={styles.acaoBtn}
+              onPress={() => nav.navigate('Contrato', { copiarDe: c.id })}
+              accessibilityRole="button"
+              accessibilityLabel={`Copiar contrato ${c.titulo}`}
+            >
+              <MaterialCommunityIcons name="content-copy" size={14} color={cores.accentLight} />
+              <Text style={styles.acaoTexto}>Copiar</Text>
+            </TouchableOpacity>
+            {podeProrrogar ? (
+              <TouchableOpacity
+                style={styles.acaoBtn}
+                onPress={() => { void prorrogar(c); }}
+                disabled={prorrogandoId === c.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Prorrogar contrato ${c.titulo} por 12 meses`}
+              >
+                <MaterialCommunityIcons name="calendar-plus" size={14} color={cores.accentLight} />
+                <Text style={styles.acaoTexto}>{prorrogandoId === c.id ? 'Salvando…' : 'Prorrogar 12 meses'}</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </TouchableOpacity>
       </AnimatedEntrance>
@@ -222,17 +293,49 @@ function ContratosConteudo() {
         />
       ) : (
         <FlatList
-          data={contratos}
+          data={lista}
           keyExtractor={(c) => c.id}
           renderItem={renderItem}
           contentContainerStyle={{ padding: Spacing.base, paddingBottom: Spacing.xxl, gap: 12 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={cores.accentLight} />}
           ListHeaderComponent={
             <View style={styles.resumo}>
+              <TextInput
+                value={busca}
+                onChangeText={setBusca}
+                placeholder="Buscar cliente, nome ou endereço"
+                placeholderTextColor={cores.onSurfaceMuted}
+                style={styles.busca}
+                autoCorrect={false}
+                autoCapitalize="none"
+                accessibilityLabel="Buscar contratos"
+                clearButtonMode="while-editing"
+              />
+              <View style={styles.filtros}>
+                {FILTROS_LISTA_CONTRATO.map((f) => {
+                  const ativo = filtro === f.id;
+                  return (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={[styles.filtro, ativo && styles.filtroAtivo]}
+                      onPress={() => setFiltro(f.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: ativo }}
+                      accessibilityLabel={`Filtrar: ${f.label}`}
+                    >
+                      <Text style={[styles.filtroTexto, ativo && styles.filtroTextoAtivo]}>{f.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
               <Text style={styles.resumoValor}>{fraseReceitaMensal(resumo)}</Text>
               <Text style={styles.resumoLinha}>
                 {resumo.ativos} {resumo.ativos === 1 ? 'contrato ativo' : 'contratos ativos'}
-                {resumo.terminandoEm30Dias ? ` · ${resumo.terminandoEm30Dias} terminando em 30 dias` : ''}
+                {resumo.terminandoEm30Dias ? (
+                  <Text onPress={() => setFiltro('terminando')} style={styles.linkResumo} accessibilityRole="link">
+                    {` · ${resumo.terminandoEm30Dias} terminando em 30 dias`}
+                  </Text>
+                ) : ''}
               </Text>
               <TouchableOpacity
                 style={[styles.gerarBtn, gerando && { opacity: 0.6 }]}
@@ -246,6 +349,15 @@ function ContratosConteudo() {
               {aviso ? <Text style={styles.aviso}>{aviso}</Text> : null}
               {motor ? <AvisoMotor status={motor} /> : null}
             </View>
+          }
+          ListEmptyComponent={
+            <EmptyState
+              icon="filter-variant-remove"
+              title="Nenhum contrato neste filtro"
+              subtitle={busca.trim() ? 'Nada combina com essa busca. Limpe o texto ou troque o filtro.' : 'Troque o filtro para ver os outros contratos.'}
+              actionLabel="Ver todos"
+              onAction={() => { setFiltro('todos'); setBusca(''); }}
+            />
           }
           showsVerticalScrollIndicator={false}
         />
@@ -301,8 +413,22 @@ const criarEstilos = (c: Cores) =>
       backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline,
       padding: Spacing.base, marginBottom: 4, gap: 4,
     },
+    busca: {
+      backgroundColor: c.surfaceVariant, color: c.onSurface, borderRadius: BorderRadius.md,
+      borderWidth: 1, borderColor: c.outline, paddingHorizontal: 12, paddingVertical: 10,
+      fontSize: 15, marginBottom: 8,
+    },
+    filtros: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+    filtro: {
+      paddingHorizontal: 10, paddingVertical: 6, borderRadius: BorderRadius.full,
+      borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface,
+    },
+    filtroAtivo: { borderColor: c.accentLight, backgroundColor: c.accentLight + '1F' },
+    filtroTexto: { fontSize: 12, fontWeight: '700', color: c.onSurfaceVariant },
+    filtroTextoAtivo: { color: c.accentLight },
     resumoValor: { fontSize: 20, fontWeight: '800', color: c.onSurface },
     resumoLinha: { fontSize: 13, color: c.onSurfaceVariant },
+    linkResumo: { fontSize: 13, fontWeight: '700', color: c.accentLight },
     gerarBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, alignSelf: 'flex-start', paddingVertical: 4 },
     gerarTexto: { fontSize: 13, fontWeight: '700', color: c.accentLight },
     aviso: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 4 },
@@ -334,6 +460,10 @@ const criarEstilos = (c: Cores) =>
       borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.success + '66',
     },
     cobrarTexto: { fontSize: 12, fontWeight: '800' },
+    acoes: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+    fim: { flex: 1, fontSize: 12, fontWeight: '700', color: c.onSurfaceVariant },
+    acaoBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
+    acaoTexto: { fontSize: 12, fontWeight: '700', color: c.accentLight },
   });
 
 /**

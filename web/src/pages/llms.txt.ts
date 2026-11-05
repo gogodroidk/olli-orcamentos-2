@@ -37,7 +37,8 @@ import {
 	reais,
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS } from "../data/recursos";
+import { FRASE_GRATIS, GRATIS_CONDICAO } from "../data/recursos";
+import { TRIAL_PRO_DIAS } from "../../../src/services/limitesComerciais";
 import { postsPublicados } from "./blog/_dados";
 
 const ORIGEM = "https://olliorcamentos.online";
@@ -48,7 +49,7 @@ const ORIGEM = "https://olliorcamentos.online";
  * três lugares" foi paga: o número mora num lugar só e todo o resto importa dele.
  */
 const PLANOS_LLM = [
-	{ nome: "Grátis", preco: reais(0), nota: `permanente, sem cartão, com ${FRASE_GRATIS}` },
+	{ nome: "Grátis", preco: reais(0), nota: `${GRATIS_CONDICAO}, com ${FRASE_GRATIS}` },
 	{
 		nome: "Pro",
 		preco: `${reais(PRECO_PRO.mensalCentavos)}/mês`,
@@ -89,7 +90,9 @@ export async function GET() {
 			n > 0
 				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, aterrada${n > 1 ? "s" : ""} em norma técnica.`
 				: "";
-		return `- [OLLI para ${profissao}](${ORIGEM}/para/${slug}/): ${DOR_POR_OFICIO[v.id]}${calculo}`;
+		const nomes = calculosDoOficio(v.id).map((c) => c.nome).join("; ");
+		const lista = nomes ? ` Ferramentas: ${nomes}.` : "";
+		return `- [OLLI para ${profissao}](${ORIGEM}/para/${slug}/): ${DOR_POR_OFICIO[v.id]}${calculo}${lista}`;
 	}).join("\n");
 
 	const planos = PLANOS_LLM.map(
@@ -131,7 +134,7 @@ ${quemSomos}
 
 ${planos}
 
-O plano anual sai mais barato que o mensal. O Grátis é permanente; depois do primeiro envio, o dono pode ativar um teste Pro opcional de 14 dias, sem cartão, sem cobrança automática e sem apagar dados ao terminar. ${NOTA_DOZE}
+O plano anual sai mais barato que o mensal. O Grátis é ${GRATIS_CONDICAO}; depois do primeiro envio, o dono pode ativar um teste Pro opcional de ${TRIAL_PRO_DIAS} dias, sem cartão, sem cobrança automática e sem apagar dados ao terminar. ${NOTA_DOZE}
 ${pagamento}
 Comparativo completo dos planos: ${ORIGEM}/planos/
 
@@ -169,7 +172,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 
 - [Site](${ORIGEM}/)
 - [Produto](${ORIGEM}/produto/)
-- [Serviços e produtos no app](${ORIGEM}/servicos/)
+- [Catálogo de serviços e produtos no app](${ORIGEM}/catalogo/)
 - [Planos e preços](${ORIGEM}/planos/)
 - [Como funciona](${ORIGEM}/como-funciona/)
 - [Sobre](${ORIGEM}/sobre/)
@@ -179,6 +182,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 - [Blog](${ORIGEM}/blog/)
 - [llms-full.txt (guias completos)](${ORIGEM}/llms-full.txt)
 - [Central de Ajuda](${ORIGEM}/ajuda/)
+- [Central de Ajuda para assistentes](${ORIGEM}/ajuda/llms.txt)
 - [Manifesto público para agentes](${ORIGEM}/agent-manifest.json)
 - [Termos de Uso](${ORIGEM}/legal/termos/)
 - [Política de Privacidade](${ORIGEM}/legal/privacidade/)

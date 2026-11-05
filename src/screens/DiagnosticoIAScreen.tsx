@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Linking,
+  View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -20,6 +20,10 @@ import { DiagnosticoIA, DiagnosticoResultado } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePlano } from '../hooks/usePlano';
+import {
+  resolverTipoEquipamento,
+  TIPOS_EQUIPAMENTO_DIAGNOSTICO,
+} from '../services/tiposEquipamentoDiagnostico';
 
 /** Depois de quantos segundos de loading o botão "Cancelar" aparece. */
 const SEGUNDOS_PARA_MOSTRAR_CANCELAR = 4;
@@ -41,14 +45,19 @@ function textoDoDiagnostico(d: DiagnosticoIA): string {
     lista('Causas mais comuns', d.causasComuns),
     lista('Peças suspeitas', d.pecasSuspeitas),
     lista('Não faça ainda', d.naoFacaAinda),
+    lista('Riscos', d.riscos ?? []),
+    lista('Ferramentas', d.ferramentas ?? []),
+    d.quandoParar ? `Quando parar:\n${d.quandoParar}` : '',
     d.mensagemCliente ? `Mensagem pro cliente:\n${d.mensagemCliente}` : '',
     d.sugestaoOrcamento ? `Sugestão de orçamento:\n${d.sugestaoOrcamento}` : '',
   ].filter(Boolean).join('\n\n');
 }
 
-/** O pedido do usuário, do jeito que ele digitou — nada além dos 4 campos do form. */
-function descreverPedido(p: { marca?: string; modelo?: string; codigo?: string; sintoma?: string }): string {
+/** O pedido do usuário, do jeito que ele escolheu — família, marca, código e sintoma. */
+function descreverPedido(p: { marca?: string; modelo?: string; codigo?: string; sintoma?: string; tipoEquipamento?: string }): string {
+  const familia = resolverTipoEquipamento(p.tipoEquipamento).label;
   return [
+    familia,
     [p.marca, p.modelo].filter(Boolean).join(' '),
     p.codigo ? `código ${p.codigo}` : '',
     p.sintoma ? `sintoma: ${p.sintoma}` : '',
@@ -65,6 +74,8 @@ export default function DiagnosticoIAScreen() {
   const styles = useEstilos(criarEstilos);
   const p = route.params ?? {};
 
+  const [tipoId, setTipoId] = useState(resolverTipoEquipamento(p.tipoEquipamento).id);
+  const tipo = resolverTipoEquipamento(tipoId);
   const [marca, setMarca] = useState(p.marca ?? '');
   const [modelo, setModelo] = useState(p.modelo ?? '');
   const [codigo, setCodigo] = useState(p.codigo ?? '');
@@ -121,6 +132,7 @@ export default function DiagnosticoIAScreen() {
       modelo: modelo.trim() || undefined,
       codigo: codigo.trim() || undefined,
       sintoma: sintoma.trim() || undefined,
+      tipoEquipamento: tipo.id,
     };
     try {
       const r = await diagnosticarCaso(alvo, controller.signal, { forcarOffline: iaNuvemEsgotada });
@@ -181,7 +193,7 @@ export default function DiagnosticoIAScreen() {
     const partes = [marca.trim(), modelo.trim()].filter(Boolean).join(' ');
     const ref = codigo.trim() ? `código ${codigo.trim()}` : sintoma.trim();
     const nome = [
-      'Diagnóstico e reparo',
+      `Diagnóstico e reparo de ${tipo.label.toLowerCase()}`,
       partes ? `— ${partes}` : '',
       ref ? `(${ref})` : '',
     ].filter(Boolean).join(' ').trim() || 'Serviço de diagnóstico e reparo';
@@ -198,12 +210,36 @@ export default function DiagnosticoIAScreen() {
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         {/* FORM */}
         <View style={styles.card}>
+          <Text style={styles.familiaLabel}>Que aparelho é</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.familiaRow}>
+            {TIPOS_EQUIPAMENTO_DIAGNOSTICO.map((item) => {
+              const ativo = item.id === tipo.id;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.familiaChip, ativo && styles.familiaChipAtivo]}
+                  onPress={() => { vibrar('selecao'); setTipoId(item.id); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: ativo }}
+                  accessibilityLabel={item.label}
+                >
+                  <MaterialCommunityIcons name={item.icon as keyof typeof MaterialCommunityIcons.glyphMap} size={16} color={ativo ? cores.accentLight : cores.onSurfaceVariant} />
+                  <Text style={[styles.familiaChipTxt, ativo && styles.familiaChipTxtAtivo]}>{item.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <Text style={styles.familiaNota}>
+            {tipo.usaBaseHvac
+              ? 'A base de códigos offline é desta família.'
+              : 'A base de códigos offline é só de ar-condicionado. Neste aparelho, a análise completa é da OLLI na nuvem.'}
+          </Text>
           <View style={styles.rowFields}>
-            <OlliInput label="Marca" value={marca} onChangeText={setMarca} placeholder="Ex: Fujitsu" containerStyle={{ flex: 1, marginRight: 10 }} />
-            <OlliInput label="Modelo" value={modelo} onChangeText={setModelo} placeholder="Ex: ASBG12" containerStyle={{ flex: 1 }} />
+            <OlliInput label="Marca" value={marca} onChangeText={setMarca} placeholder={`Ex: ${tipo.exemploMarca}`} containerStyle={{ flex: 1, marginRight: 10 }} />
+            <OlliInput label="Modelo" value={modelo} onChangeText={setModelo} placeholder={`Ex: ${tipo.exemploModelo}`} containerStyle={{ flex: 1 }} />
           </View>
           <OlliInput label="Código / display" value={codigo} onChangeText={setCodigo} placeholder='Ex: "EE:04" ou "3 piscadas"' autoCapitalize="characters" />
-          <OlliInput label="Sintoma" value={sintoma} onChangeText={setSintoma} placeholder="O que a máquina está fazendo?" multiline containerStyle={{ marginBottom: 4 }} />
+          <OlliInput label="Sintoma" value={sintoma} onChangeText={setSintoma} placeholder={tipo.exemplosSintoma[0] || 'O que o aparelho está fazendo?'} multiline containerStyle={{ marginBottom: 4 }} />
           <OlliButton
             label={loading ? 'Analisando…' : 'Pedir diagnóstico'}
             variant="gradient"
@@ -219,7 +255,7 @@ export default function DiagnosticoIAScreen() {
           <EstadoIA
             variante="carregando"
             titulo="A OLLI está pensando"
-            mensagem="Cruzando código, marca e a base…"
+            mensagem={tipo.usaBaseHvac ? 'Cruzando código, marca e a base…' : `Olhando ${tipo.label.toLowerCase()}, marca e sintoma…`}
             onDark
             onAcaoSecundaria={podeCancelar ? cancelarDiagnostico : undefined}
             acaoSecundariaLabel="Cancelar"
@@ -240,7 +276,11 @@ export default function DiagnosticoIAScreen() {
                     color={res!.fonte === 'base' ? cores.warning : cores.accentLight}
                   />
                   <Text style={[styles.originText, { color: res!.fonte === 'base' ? cores.warning : cores.accentLight }]}>
-                    {res!.fonte === 'base' ? 'Base de códigos' : res!.fonte === 'cache' ? 'Cache' : `OLLI Técnica${res!.modelo ? ` · ${res!.modelo}` : ''}`}
+                    {res!.fonte === 'base'
+                      ? (resolverTipoEquipamento(d.tipoEquipamento).usaBaseHvac ? 'Base de códigos' : 'Sem a nuvem · cuidados da família')
+                      : res!.fonte === 'cache'
+                        ? `Cache · ${d.rotuloEquipamento || tipo.label}`
+                        : `OLLI Técnica · ${d.rotuloEquipamento || tipo.label}${res!.modelo ? ` · ${res!.modelo}` : ''}`}
                   </Text>
                 </View>
                 <View style={[styles.confBadge, { backgroundColor: confColor(d.nivelConfianca, cores) + '22' }]}>
@@ -310,6 +350,18 @@ export default function DiagnosticoIAScreen() {
             <AnimatedEntrance index={5}>
               <ListSection icon="wrench-outline" title="Peças suspeitas" items={d.pecasSuspeitas} />
             </AnimatedEntrance>
+            <AnimatedEntrance index={5}>
+              <ListSection icon="toolbox-outline" title="Separar antes" items={d.ferramentas ?? []} />
+            </AnimatedEntrance>
+            <AnimatedEntrance index={5}>
+              <ListSection icon="alert-outline" title="Riscos" items={d.riscos ?? []} />
+            </AnimatedEntrance>
+
+            {!!d.quandoParar && (
+              <AnimatedEntrance index={6}>
+                <Block icon="hand-back-left-outline" title="Quando parar" text={d.quandoParar} />
+              </AnimatedEntrance>
+            )}
 
             {d.naoFacaAinda?.length > 0 && (
               <AnimatedEntrance index={6}>
@@ -416,6 +468,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   rowFields: { flexDirection: 'row' },
   card: { backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, borderWidth: 1, borderColor: c.outline, ...sombrasDe(c).sm },
+  familiaLabel: { fontSize: 12.5, fontWeight: '800', color: c.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
+  familiaRow: { gap: 8, paddingBottom: 8 },
+  familiaChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface },
+  familiaChipAtivo: { borderColor: c.accentLight, backgroundColor: 'rgba(127,233,245,0.10)' },
+  familiaChipTxt: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
+  familiaChipTxtAtivo: { color: c.accentLight },
+  familiaNota: { fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17, marginBottom: 12 },
 
   originRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18, marginBottom: 10 },
   originPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: BorderRadius.full, borderWidth: 1 },

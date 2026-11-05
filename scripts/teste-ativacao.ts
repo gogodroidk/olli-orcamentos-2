@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  ATRASO_ESQUELETO_MS,
   AVISO_EXEMPLO,
   EXEMPLOS_POR_VERTICAL,
   STATUS_JA_ENVIADO,
@@ -17,8 +18,10 @@ import {
   dataCurtaBr,
   exemploOrcamentoPara,
   fatosDaEmpresa,
+  fraseDoPrimeiroCliente,
   itensPrefillDoExemplo,
   mostrarCartaoPrimeiroOrcamento,
+  mostrarEsqueletoAtivacao,
   statusFoiEnviado,
   totalDoExemplo,
   verticalDoExemplo,
@@ -64,6 +67,25 @@ assert.match(AVISO_EXEMPLO, /exemplo/i);
 assert.match(AVISO_EXEMPLO, /troque/i);
 assert.match(AVISO_EXEMPLO, /não uma tabela de preços/i);
 assert.match(TITULO_PRIMEIRO_ORCAMENTO, /primeiro orçamento em 1 minuto/i);
+
+// Z-62: a frase do cartão mora numa função só. O gancho é quem pediu preço;
+// não afirma que a pessoa já tem cliente, não promete prazo novo nem preço de plano.
+const fraseRefri = fraseDoPrimeiroCliente(EXEMPLOS_POR_VERTICAL.refrigeracao.titulo.toLowerCase(), 'R$ 260,00');
+assert.equal(
+  fraseRefri,
+  'Preparamos um exemplo de higienização de ar-condicionado (R$ 260,00). Pense em quem te pediu preço esta semana: ponha o nome e os valores dele e envie.',
+);
+assert.match(fraseRefri, /quem te pediu preço esta semana/);
+assert.doesNotMatch(fraseRefri, /Troque o cliente e os valores/);
+assert.doesNotMatch(fraseRefri, /R\$ 39|R\$ 99|1 minuto/);
+
+// Z-112: o esqueleto só reserva o lugar de quem ainda espera e ainda não é maduro.
+assert.equal(ATRASO_ESQUELETO_MS, 100);
+assert.equal(mostrarEsqueletoAtivacao({ ehDono: true, erro: false, madura: false, aguardando: true }), true);
+assert.equal(mostrarEsqueletoAtivacao({ ehDono: false, erro: false, madura: false, aguardando: true }), false, 'papel desconhecido ou membro não vê esqueleto');
+assert.equal(mostrarEsqueletoAtivacao({ ehDono: true, erro: true, madura: false, aguardando: true }), false, 'erro e download que falhou não viram esqueleto eterno');
+assert.equal(mostrarEsqueletoAtivacao({ ehDono: true, erro: false, madura: true, aguardando: true }), false, 'conta madura não ganha convite falso');
+assert.equal(mostrarEsqueletoAtivacao({ ehDono: true, erro: false, madura: false, aguardando: false }), false, 'leitura pronta não fica em esqueleto');
 
 // Ofício: `verticais` explícitas vencem; senão o `segmento` legado; senão pergunta.
 assert.equal(verticalDoExemplo({ verticais: ['pintura'], segmento: 'eletrica' }), 'pintura');
@@ -215,11 +237,18 @@ assert.match(migration, new RegExp(`interval '${TRIAL_PRO_DIAS} days'`), 'servid
 
 const componenteApp = ler('../src/components/AtivacaoInicio.tsx');
 assert.match(componenteApp, /from '\.\.\/services\/ativacao'/, 'app usa a regra única');
+assert.match(componenteApp, /fraseDoPrimeiroCliente\(/, 'app usa a frase única do primeiro cliente');
+assert.doesNotMatch(componenteApp, /Troque o cliente e os valores/, 'app não guarda a frase velha');
 assert.match(componenteApp, /pode\('gerenciar_faturamento'\)/, 'só o dono vê a ativação no app');
-assert.match(componenteApp, /leitura\.estado !== 'pronto'\) return null/, 'app não desenha enquanto lê ou com erro');
+assert.match(componenteApp, /leitura\.estado === 'erro' \|\| download === 'falhou'/, 'erro de leitura ou download que falhou não desenha o convite');
+assert.match(componenteApp, /leitura\.estado !== 'pronto' \|\| download !== 'pronto'\) return null/, 'o convite só entra com a leitura e o download fechados');
 assert.match(componenteApp, /onSyncAplicado\(/, 'app relê a ativação quando o pull da nuvem grava (SQLite vazio no 1º login não é conta vazia)');
 assert.match(componenteApp, /useSyncInicial\(\)/, 'app espera o 1º download antes de afirmar "conta nova"');
-assert.match(componenteApp, /Baixando seus dados da nuvem/, 'enquanto baixa, esqueleto honesto no lugar do convite');
+assert.match(componenteApp, /mostrarEsqueletoAtivacao\(/, 'app usa a regra única do esqueleto');
+assert.match(componenteApp, /ATRASO_ESQUELETO_MS/, 'app espera 100 ms antes do esqueleto');
+assert.match(componenteApp, /Carregando o início/, 'leitor de tela anuncia a espera do cartão');
+assert.doesNotMatch(componenteApp, /Baixando seus dados da nuvem/, 'a frase de espera saiu do cartão');
+assert.doesNotMatch(componenteApp, /ActivityIndicator/, 'o cartão não usa spinner');
 assert.match(componenteApp, /totalOrcamentos: total \}/, 'app informa o total para a regra de conta madura');
 assert.doesNotMatch(componenteApp, /navigate\('Planos'|navigate\('Assinatura'/, 'regra das lojas: a ativação não leva a compra');
 assert.match(ler('../src/screens/HomeScreen.tsx'), /<AtivacaoInicio\b/, 'Início do celular mostra a ativação');
@@ -229,6 +258,10 @@ const novoOrc = ler('../src/screens/NovoOrcamentoScreen.tsx');
 assert.match(novoOrc, /exemploVertical/, 'editor do app reconhece o orçamento de exemplo');
 assert.match(novoOrc, /AVISO_EXEMPLO/, 'editor do app avisa que é exemplo');
 assert.match(novoOrc, /precoSugerido/, 'editor do app aceita o valor de referência');
+assert.match(novoOrc, /Carregando o orçamento/, 'editor anuncia a espera');
+assert.match(novoOrc, /OlliSkeleton/, 'editor espera no formato do miolo');
+assert.doesNotMatch(novoOrc, /Preparando o orçamento/, 'a frase do spinner saiu do editor');
+assert.doesNotMatch(novoOrc, /ActivityIndicator/, 'o editor não centra um spinner');
 
 const visualizar = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
 assert.match(visualizar, /avisoTrialAutomatico\(reserva, oferta\)/, 'app avisa o teste liberado com a regra única');
@@ -236,8 +269,18 @@ assert.match(visualizar, /const confirmou = await confirmarEnvioOrcamento/, 'só
 
 const cardPainel = ler('../webapp/src/pages/olli/inicio/AtivacaoCard.tsx');
 assert.match(cardPainel, /from "@ativacao"/, 'painel usa a regra única');
+assert.match(cardPainel, /fraseDoPrimeiroCliente\(/, 'painel usa a frase única do primeiro cliente');
+assert.doesNotMatch(cardPainel, /Troque o cliente e os valores/, 'painel não guarda a frase velha');
 assert.match(cardPainel, /ehDonoDaConta/, 'só o dono vê a ativação no painel');
 assert.match(cardPainel, /isSuccess/, 'painel respeita os 3 estados');
+assert.match(cardPainel, /isLoading: boolean/, 'o contrato da leitura do painel inclui carregando');
+assert.match(cardPainel, /isError: boolean/, 'o contrato da leitura do painel inclui erro');
+assert.match(cardPainel, /isLoading/, 'painel reserva o lugar enquanto a leitura carrega');
+assert.match(cardPainel, /isError/, 'erro no painel não vira esqueleto eterno');
+assert.match(cardPainel, /mostrarEsqueletoAtivacao\(/, 'painel usa a regra única do esqueleto');
+assert.match(cardPainel, /ATRASO_ESQUELETO_MS/, 'painel espera 100 ms antes do esqueleto');
+assert.match(cardPainel, /Carregando o início/, 'leitor de tela anuncia a espera do cartão no painel');
+assert.match(cardPainel, /motion-reduce:animate-none|@\/ui\/skeleton/, 'painel usa o esqueleto que já para com reduzir movimento');
 assert.match(ler('../webapp/src/pages/olli/inicio/index.tsx'), /<AtivacaoCard\b/, 'Início do painel mostra a ativação');
 const orcPainel = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
 assert.match(orcPainel, /avisoTrialAutomatico\(reserva, oferta\)/, 'painel avisa o teste liberado com a regra única');
