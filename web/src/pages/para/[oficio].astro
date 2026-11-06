@@ -240,7 +240,7 @@ const schemaFaq = {
 
 	<main id="conteudo">
 		{/* ══════════ HERO DO OFÍCIO ══════════ */}
-		<section class="mx-auto max-w-4xl px-6 pb-16 pt-14">
+		<section class="mx-auto flex max-w-4xl flex-col px-6 pb-16 pt-14">
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
 				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
 				<span aria-hidden="true" class="mx-1.5">/</span>
@@ -252,12 +252,13 @@ const schemaFaq = {
 				App de orçamento e ordem de serviço para <span class="brand-text">{profissao}</span>.
 			</h1>
 			{/* Resposta curta: 1º parágrafo após o H1, texto puro, citável por IA (teste de 48 h do OPS, 27/10). */}
-			<p id="resposta-curta" class="mt-5 max-w-2xl rounded-cartao border border-line bg-white px-5 py-4 text-base leading-relaxed text-ink">
+			<p id="resposta-curta" class="order-2 mt-5 max-w-2xl rounded-cartao border border-line bg-white px-5 py-4 text-base leading-relaxed text-ink lg:order-none">
 				<strong class="font-bold">Resposta curta:</strong> {respostaCurta}
 			</p>
-			<p class="mt-5 max-w-2xl text-lg leading-relaxed text-slate">{dor}</p>
+			<p class="order-2 mt-5 max-w-2xl text-lg leading-relaxed text-slate lg:order-none">{dor}</p>
 
-			<div class="mt-8 flex flex-col gap-3 sm:flex-row">
+			{/* No celular o aviso de cookies cobre o fim da primeira tela. O botão sobe para logo abaixo do título; no desktop a ordem do código volta. A resposta curta continua sendo o primeiro parágrafo no HTML. */}
+			<div class="order-1 mt-8 flex flex-col gap-3 sm:flex-row lg:order-none">
 				<a
 					href={APP_CADASTRO_URL}
 					class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
@@ -269,7 +270,7 @@ const schemaFaq = {
 					>Ver os planos</a
 				>
 			</div>
-			<div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
+			<div class="order-3 mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted lg:order-none">
 				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</span>
 				{/*
 					ERA "Funciona sem internet" — e era falso DUAS vezes nesta página.
