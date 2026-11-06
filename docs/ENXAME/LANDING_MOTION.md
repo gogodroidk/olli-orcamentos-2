@@ -359,32 +359,9 @@ Vale porque o movimento **carrega significado**: a linha crescendo *é* o progre
 
 Anima só o `<h2>` da seção, com `--olli-alcance-1`. Se depois de ver no ar o dono quiser os cards, a alternativa menos ruim é **opacity apenas, sem deslocamento** (`--olli-sobe-*` = 0): a página respira sem tremer. Esforço: **P**.
 
-### 6.6 Destaque IA — a barra de confiança que preenche
+### 6.6 Destaque IA — sem barra de porcentagem
 
-`index.astro:420-426`, a barra "confiança 82%". Hoje: `<div class="h-full rounded-full brand-gradient" style="width:82%">`.
-
-Este é o melhor candidato da página inteira: o preenchimento **conta a história do produto** (a IA calculando a confiança do diagnóstico) em vez de decorar.
-
-**Mas não animar `width`** — regra 6: reflow por frame, e some o benefício de compositor. A conversão certa:
-
-```html
-<!-- trilho: já tem overflow-hidden + rounded-full em :422 — ele clipa as pontas -->
-<div class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
-  <div class="olli-barra h-full w-full brand-gradient"></div>  <!-- w-full, não width:82% -->
-</div>
-```
-```css
-.olli-barra { transform: scaleX(0.82); transform-origin: left; }
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .olli-barra { animation: olli-barra linear both;
-                  animation-timeline: view(); animation-range: entry 10% cover var(--olli-alcance-3); }
-  }
-}
-@keyframes olli-barra { from { transform: scaleX(0); } to { transform: scaleX(0.82); } }
-```
-
-Detalhe que salva o visual: como o trilho **já** tem `overflow-hidden rounded-full`, o filho pode ser retangular e ainda assim aparecer com pontas arredondadas — sem a distorção de raio que `scaleX` normalmente causa. O estado base (`scaleX(0.82)`, fora dos guardas) garante que quem não anima vê os 82% corretos. Esforço: **P**.
+A barra "confiança 82%" e o exemplo "45/5 µF" saíram em 06/11/2026. A base (`assets/codigos_erro.json`, 698 códigos) grava a confiança em palavras: alta, média ou média/alta. O diagnóstico por sintoma lista peça suspeita e também não devolve porcentagem nem a medida da peça. Não repor a barra. O card da home mostra um código real da base (Daikin A6, confiança alta).
 
 ### 6.7 Planos — ⚠️ armadilha de transform
 

@@ -353,6 +353,11 @@ const main = ler('../webapp/src/main.tsx');
 const privacidade = ler('../src/content/legal/privacidade.ts');
 
 assert.match(layout, /<script src="\.\.\/scripts\/marketing\.ts"><\/script>/, 'Layout carrega o marketing da landing');
+assert.match(
+	ler('../web/src/pages/index.astro'),
+	/order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none/,
+	'no celular o botão do hero fica logo abaixo do título, fora do aviso de cookies',
+);
 assert.match(scriptLanding, /meta\[name="robots"\]\[content\*="noindex"\]/, 'páginas noindex ficam de fora');
 assert.match(scriptLanding, /rastrear\("Lead"/, 'Lead no clique de CTA de cadastro');
 assert.match(scriptLanding, /anexarAtribuicaoAoLink/, 'UTM propagado aos links do painel');
