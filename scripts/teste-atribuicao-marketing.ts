@@ -378,6 +378,12 @@ assert.match(
 	/h-\[calc\(100svh-var\(--olli-consent,0px\)\)\]/,
 	'o login cabe acima do aviso, sem cobrir Criar conta',
 );
+assert.match(registro, /space-y-2 md:space-y-4/, 'no celular o cadastro fica curto o bastante para o botão aparecer');
+assert.match(
+	ler('../webapp/src/pages/sys/login/index.tsx'),
+	/items-start justify-center md:items-center/,
+	'no celular o cartão começa no topo, sem empurrar Criar conta para baixo do aviso',
+);
 assert.doesNotMatch(consentimento, /scrollIntoView/, 'o aviso não rola a tela sozinho (no painel roda antes do React montar)');
 assert.match(consentimento, /removeEventListener\("resize", reservar\)/, 'fechar o aviso solta o listener de resize');
 assert.match(consentimento, /paddingAnterior/, 'fechar o banner devolve o espaço que a página já tinha');
