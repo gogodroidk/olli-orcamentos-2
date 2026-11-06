@@ -161,6 +161,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 - Não lê nem importa áudio do WhatsApp. Não há integração com o WhatsApp. Quem ouve
   o áudio do cliente é o prestador; a OLLI entra na hora de montar o orçamento.
 - Não emite nota fiscal.
+- Não emite ART nem substitui o responsável técnico. No PMOC, a OLLI organiza equipamentos, planos, ordens e histórico; a assinatura continua sendo da pessoa habilitada.
 - O aplicativo Android está em teste fechado na Google Play, restrito a testadores
   selecionados, e não há app para iPhone. Hoje o produto se usa pelo navegador, em
   ${ORIGEM.replace("olliorcamentos.online", "app.olliorcamentos.online")}, que exige internet. O uso sem

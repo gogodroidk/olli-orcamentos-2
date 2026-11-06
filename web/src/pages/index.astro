@@ -40,7 +40,7 @@ const recursos = [
 		icon: "clipboard-list",
 		titulo: "Ordem de serviço",
 		texto:
-			"Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.",
+			"Vire o orçamento em ordem de serviço com checklist por ofício e assinatura do cliente na tela.",
 	},
 	{
 		icon: "brain",
@@ -52,7 +52,7 @@ const recursos = [
 		icon: "calendar-check",
 		titulo: "PMOC (Lei 13.589)",
 		texto:
-			"Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.",
+			"Planos de manutenção, lembretes e o histórico de cada máquina. A ART continua sendo do responsável técnico.",
 	},
 	{
 		icon: "users",
@@ -63,7 +63,7 @@ const recursos = [
 		icon: "calculator",
 		titulo: "Calculadoras de ofício",
 		texto:
-			"BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.",
+			"BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, cada uma com a norma ou a fórmula daquele ofício.",
 	},
 	{
 		icon: "calendar",
@@ -101,7 +101,7 @@ const passos = [
 		n: "03",
 		titulo: "Envie e acompanhe",
 		texto:
-			"Compartilhe o link pelo WhatsApp. O cliente aprova, e você transforma o orçamento em OS e recibo, com tudo guardado.",
+			"Compartilhe o link pelo WhatsApp. O cliente aprova, e você transforma o orçamento em ordem de serviço e recibo, com tudo guardado.",
 	},
 ];
 
@@ -145,18 +145,18 @@ const faq = [
 		q: "Serve pra eletricista, encanador ou pintor?",
 		// A contagem (total e por ofício) era digitada à mão: a primeira calculadora
 		// nova no app faria esta resposta (e o FAQPage) mentir. Agora sai da fonte.
-		a: `Serve. A OLLI tem ${TOTAL_CALCULADORAS} calculadoras de campo divididas por ofício — ${CALCULADORAS_POR_OFICIO} — e mostra só as do seu. Ofício fora da lista continua usando orçamento, OS e recibo normalmente.`,
+		a: `Serve. A OLLI tem ${TOTAL_CALCULADORAS} calculadoras de campo divididas por ofício — ${CALCULADORAS_POR_OFICIO} — e mostra só as do seu. Ofício fora da lista continua usando orçamento, ordem de serviço e recibo normalmente.`,
 	},
 	{
 		q: "O que é PMOC e quem é obrigado a ter?",
-		a: "PMOC é o Plano de Manutenção, Operação e Controle exigido pela Lei 13.589/2018 de quem opera ambientes climatizados de uso coletivo. Na OLLI o PMOC é um módulo pronto: inventário dos equipamentos, etiqueta QR por máquina e as ordens de manutenção geradas na periodicidade certa.",
+		a: "PMOC é o Plano de Manutenção, Operação e Controle exigido pela Lei 13.589/2018 de quem opera ambientes climatizados de uso coletivo. Na OLLI você organiza equipamentos, planos, ordens e o histórico, com etiqueta QR por máquina. A OLLI não emite a ART: o número, quando existe, é informado pelo responsável técnico.",
 	},
 	{
 		q: "Funciona sem internet, no meio do serviço?",
 		// O offline é do APP Android (banco no próprio aparelho). O painel web é
 		// online-first — e é pra ele que todo CTA desta página leva. A resposta antiga
 		// ("Funciona.") virava FAQPage no Google prometendo o que o visitante não tem.
-		a: "Depende de onde você usa. No aplicativo Android (em teste fechado), orçamento, cliente e OS ficam guardados no próprio celular e sincronizam quando a rede volta. Pelo navegador — no celular ou no computador — a OLLI precisa de internet.",
+		a: "Depende de onde você usa. No aplicativo Android (em teste fechado), orçamento, cliente e ordem de serviço ficam guardados no próprio celular e sincronizam quando a rede volta. Pelo navegador — no celular ou no computador — a OLLI precisa de internet.",
 	},
 	// Pix só entra quando o worker confirmou no build que ele está ligado (data/pix.ts).
 	...(PIX_PLANO_LIGADO
@@ -377,8 +377,8 @@ const schemaFaq = {
         A OLLI se veste do seu serviço.
       </h2>
       <p class="mt-5 text-lg leading-relaxed text-slate">
-        São <strong class="text-ink">{TOTAL_CALCULADORAS} calculadoras de campo</strong> aterradas em norma e
-        fórmula real — e você só vê as do seu ofício. O resto some da tela.
+        São <strong class="text-ink">{TOTAL_CALCULADORAS} calculadoras de campo</strong>, cada uma com a norma ou a
+        fórmula daquele ofício — e você só vê as do seu. O resto some da tela.
       </p>
     </div>
 

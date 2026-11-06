@@ -55,7 +55,7 @@ function taglineDe(calculadoras: number, documentos: string[]): string {
   if (documentos.length) partes.push(documentos.join(' e '));
   if (calculadoras) partes.push(`${calculadoras} calculadora${calculadoras > 1 ? 's' : ''} de campo`);
   // Sem ferramenta especializada, o valor é o ciclo — que todo ofício tem.
-  return partes.length ? partes.join(' · ') : 'Orçamento, OS e recibo do jeito do seu serviço';
+  return partes.length ? partes.join(' · ') : 'Orçamento, ordem de serviço e recibo do jeito do seu serviço';
 }
 
 export const OFICIOS: OficioLanding[] = VERTICAIS.map((v) => {
@@ -86,7 +86,7 @@ export const OFICIO_GERAL: OficioLanding = {
   emoji: VERTICAL_GERAL.emoji,
   calculadoras: calculosDoOficio(VERTICAL_GERAL.id).length,
   documentos: [],
-  tagline: 'Não achou o seu? O ciclo é o mesmo: orçamento, OS e recibo pra qualquer serviço',
+  tagline: 'Não achou o seu? O ciclo é o mesmo: orçamento, ordem de serviço e recibo pra qualquer serviço',
 };
 
 /** Total REAL de calculadoras — a página não chuta número. */
