@@ -152,7 +152,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 - Orçamento com itens, fotos, desconto e link de aprovação para o cliente.
 - Ordem de serviço e recibo derivados do mesmo orçamento.
 - Diagnóstico com IA por código de erro e por sintoma (climatização).
-- PMOC e etiqueta QR de equipamento (climatização); certificado ANVISA (dedetização).
+- PMOC e etiqueta QR de equipamento (climatização). Na dedetização, o comprovante de controle de pragas traz os campos do art. 19 da RDC ANVISA 622/2022. A OLLI não emite certificado da ANVISA.
 - Agenda, catálogo de produtos e serviços, cadastro de clientes e de equipamentos.
 - Equipe com convite por link (plano Empresa).
 
