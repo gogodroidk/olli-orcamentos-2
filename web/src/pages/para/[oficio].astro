@@ -128,8 +128,8 @@ const ogImagem = OG_PROPRIO_POR_SLUG.has(slug) ? `/og/${slug}.png` : undefined;
  */
 const descricao =
 	calculos.length > 0
-		? `${dor} Grátis para começar: orçamento, OS e recibo no celular ou no computador, com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`
-		: `${dor} Grátis para começar: orçamento, OS e recibo no celular ou no computador, com a sua marca.`;
+		? `${dor} Grátis para começar: orçamento, ordem de serviço e recibo no celular ou no computador, com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`
+		: `${dor} Grátis para começar: orçamento, ordem de serviço e recibo no celular ou no computador, com a sua marca.`;
 
 /**
  * BreadcrumbList — o brief pede nas subpáginas. Ajuda o Google a entender a
@@ -193,7 +193,7 @@ const faqs = [
 		? [
 				{
 					q: `Quais calculadoras a OLLI tem para ${profissao}?`,
-					a: `${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo, cada uma aterrada em norma ou fórmula real e com o resultado virando item do orçamento: ${nomesCalc}.`,
+					a: `${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo, cada uma com a norma ou a fórmula daquele ofício e com o resultado virando item do orçamento: ${nomesCalc}.`,
 				},
 			]
 		: []),
@@ -248,8 +248,8 @@ const schemaFaq = {
 			</nav>
 
 			<span class="eyebrow mt-6 block"><Icone nome={ICONE_POR_OFICIO[oficio.id]} class="h-3.5 w-3.5" />{oficio.label}</span>
-			<h1 class="mt-4 text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
-				App de orçamento e OS<br class="hidden sm:inline" /> para <span class="brand-text">{profissao}</span>.
+			<h1 class="mt-4 text-balance text-[clamp(2rem,4.6vw,3.25rem)] font-extrabold leading-[1.08] tracking-tight text-ink">
+				App de orçamento e ordem de serviço para <span class="brand-text">{profissao}</span>.
 			</h1>
 			{/* Resposta curta: 1º parágrafo após o H1, texto puro, citável por IA (teste de 48 h do OPS, 27/10). */}
 			<p id="resposta-curta" class="mt-5 max-w-2xl rounded-cartao border border-line bg-white px-5 py-4 text-base leading-relaxed text-ink">
@@ -309,7 +309,7 @@ const schemaFaq = {
 						{calculos.length} ferramenta{calculos.length > 1 ? "s" : ""} de {profissao}, dentro do orçamento.
 					</h2>
 					<p class="mt-4 max-w-2xl text-slate">
-						Cada conta é aterrada em norma ou fórmula real, e o resultado vira item do orçamento com um toque —
+						Cada conta usa a norma ou a fórmula daquele ofício, e o resultado vira item do orçamento com um toque —
 						sem sair da OLLI e sem calculadora de terceiro.
 					</p>
 
@@ -360,7 +360,7 @@ const schemaFaq = {
 					<li class="rounded-cartao border border-line bg-white p-6">
 						<div class="text-sm font-extrabold text-brand-fg tnum">02</div>
 						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
-						<p class="mt-1.5 text-sm text-slate">Aprovou, virou OS: checklist, fotos e assinatura do cliente na tela.</p>
+						<p class="mt-1.5 text-sm text-slate">Aprovou, virou ordem de serviço: checklist, fotos e assinatura do cliente na tela.</p>
 					</li>
 					<li class="rounded-cartao border border-line bg-white p-6">
 						<div class="text-sm font-extrabold text-brand-fg tnum">03</div>

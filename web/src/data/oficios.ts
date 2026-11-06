@@ -179,9 +179,9 @@ export const PROFISSAO_POR_OFICIO: Record<VerticalId, string> = {
  * ferramenta que talvez não exista.
  */
 export const DOR_POR_OFICIO: Record<VerticalId, string> = {
-  refrigeracao: 'Orçamento na hora da visita, PMOC sem planilha e o histórico de cada máquina no QR.',
+  refrigeracao: 'Orçamento na hora da visita, o plano de manutenção organizado no celular e o histórico de cada máquina no QR. O responsável técnico continua sendo a pessoa.',
   eletrica: 'Orçamento de quadro, circuito e ponto — com o cálculo feito no celular, sem app de terceiro.',
-  hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a OS assinada na tela.',
+  hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a ordem de serviço assinada na tela.',
   pintura: 'Quantos litros, quantas demãos, quanto cobrar — e o orçamento sai pronto do mesmo lugar.',
   dedetizacao: 'Comprovante de controle de pragas com os campos da RDC 622, dosagem calculada e o lembrete da reaplicação.',
   caixa_dagua: "Certificado de limpeza com lacre e validade, e o lembrete da próxima limpeza no tempo certo.",

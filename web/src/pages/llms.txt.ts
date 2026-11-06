@@ -84,11 +84,10 @@ export async function GET() {
 		const slug = SLUG_POR_OFICIO[v.id];
 		const profissao = PROFISSAO_POR_OFICIO[v.id];
 		const n = calculosDoOficio(v.id).length;
-		// Sem calculadora (o "qualquer serviço"), a linha não fala de calculadora —
-		// antes saía "Inclui 0 ferramenta de cálculo do ofício, aterradas em norma".
+		// Sem calculadora (o "qualquer serviço"), a linha não fala de calculadora.
 		const calculo =
 			n > 0
-				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, aterrada${n > 1 ? "s" : ""} em norma técnica.`
+				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, com a norma ou a fórmula daquele ofício.`
 				: "";
 		const nomes = calculosDoOficio(v.id).map((c) => c.nome).join("; ");
 		const lista = nomes ? ` Ferramentas: ${nomes}.` : "";
