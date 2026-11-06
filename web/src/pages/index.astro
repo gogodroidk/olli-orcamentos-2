@@ -501,10 +501,8 @@ const schemaFaq = {
 
        Custo: zero. É a mesma pintura, com outra largura. */}
   <section class="zona-funda py-28 md:py-32">
-    {/* `overflow-clip`: este bloco e a trilha da barra abaixo sao ancestrais da
-        `.olli-barra`. Com `overflow-hidden` os dois viravam container de scroll
-        e a barra nascia com progresso travado em 1 — cheia, sem nunca encher.
-        Mesma troca, mesmo motivo do hero. */}
+    {/* `overflow-clip` e não `overflow-hidden`: o hidden virava container de
+        scroll e travava a animação da página. Mesma troca do hero. */}
     <div class="relative mx-auto max-w-7xl overflow-clip px-6">
       <div class="grid items-center gap-10 md:grid-cols-2">
         <div>
@@ -515,24 +513,13 @@ const schemaFaq = {
               para o SOL, não para o WCAG. O público lê esta página no celular em
               obra, e sob luz direta a régua que vale é luminância, não razão. */}
           <p class="mt-4 max-w-md text-white/78">
-            Descreva o sintoma ou informe o código de erro: a OLLI aponta o provável componente, a faixa da peça e um grau de confiança. São <strong class="text-white">698 códigos de erro</strong> de climatização e diagnóstico por sintoma — pra você chegar com a peça certa.
+            Informe o código ou descreva o sintoma. Nos <strong class="text-white">698 códigos de erro</strong> de climatização, a confiança vem em palavras: alta, média ou média/alta. No diagnóstico por sintoma, a peça entra como suspeita, sem porcentagem e sem a medida. Quem mede e troca é você.
           </p>
         </div>
         <div class="rounded-cartao bg-white/5 p-6 ring-1 ring-white/10">
-          <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Diagnóstico</div>
-          <p class="mt-3 text-sm text-white/80">Provável: <strong class="text-cyan">capacitor do compressor</strong> <span class="tnum">— 45/5 µF</span></p>
-          <div class="mt-3 flex items-center gap-3">
-            {/* width:82% virou scaleX(0.82) no CSS: animar `width` é reflow por
-                frame e perde o compositor. O filho é `w-full` e a escala faz os
-                82%; o trilho já tem overflow-hidden + rounded-full, então ele
-                clipa as pontas e o filho retangular ainda aparece arredondado —
-                sem a distorção de raio que scaleX normalmente causa.
-                O valor de base vive fora dos guardas: quem não anima vê 82%. */}
-            <div class="h-1.5 flex-1 overflow-clip rounded-full bg-white/10">
-              <div class="olli-barra h-full w-full brand-gradient"></div>
-            </div>
-            <span class="tnum text-xs text-white/78">confiança 82%</span>
-          </div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Exemplo da base</div>
+          <p class="mt-3 text-sm text-white/80">Daikin <span class="tnum">A6</span> · <strong class="text-cyan">falha no motor ventilador interno</strong></p>
+          <p class="mt-3 text-xs font-semibold uppercase tracking-wider text-white/78">Confiança alta</p>
         </div>
       </div>
     </div>
