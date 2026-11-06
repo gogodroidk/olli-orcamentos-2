@@ -358,6 +358,22 @@ assert.match(
 	/order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none/,
 	'no celular o botão do hero fica logo abaixo do título, fora do aviso de cookies',
 );
+const oficio = ler('../web/src/pages/para/[oficio].astro');
+assert.match(
+	oficio,
+	/order-1 mt-8 flex flex-col gap-3 sm:flex-row lg:order-none/,
+	'no celular o botão da página do ofício fica logo abaixo do título, fora do aviso de cookies',
+);
+assert.ok(
+	oficio.indexOf('id="resposta-curta"') < oficio.indexOf('Criar meu primeiro orçamento'),
+	'a resposta curta continua antes do botão no HTML',
+);
+assert.match(
+	oficio,
+	/Licença e a assinatura do responsável técnico continuam com você/,
+	'a página do ofício não promete a assinatura técnica',
+);
+assert.doesNotMatch(oficio, /papelada de /, 'a página do ofício não diz que a papelada está resolvida');
 assert.match(scriptLanding, /meta\[name="robots"\]\[content\*="noindex"\]/, 'páginas noindex ficam de fora');
 assert.match(scriptLanding, /rastrear\("Lead"/, 'Lead no clique de CTA de cadastro');
 assert.match(scriptLanding, /anexarAtribuicaoAoLink/, 'UTM propagado aos links do painel');
