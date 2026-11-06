@@ -353,11 +353,19 @@ const main = ler('../webapp/src/main.tsx');
 const privacidade = ler('../src/content/legal/privacidade.ts');
 
 assert.match(layout, /<script src="\.\.\/scripts\/marketing\.ts"><\/script>/, 'Layout carrega o marketing da landing');
+const home = ler('../web/src/pages/index.astro');
 assert.match(
-	ler('../web/src/pages/index.astro'),
+	home,
 	/order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none/,
 	'no celular o botão do hero fica logo abaixo do título, fora do aviso de cookies',
 );
+assert.match(home, /Daikin <span class="tnum">A6<\/span>/, 'o exemplo da home é o Daikin A6 da base');
+assert.match(home, /Confiança alta/, 'a confiança do card é palavra, como na base');
+assert.match(home, /A ART continua sendo do responsável técnico/, 'a home não promete emitir a ART');
+assert.doesNotMatch(home, /confiança 82%/, 'a home não mostra confiança em porcentagem');
+assert.doesNotMatch(home, /45\/5 µF/, 'a home não inventa a medida do capacitor');
+assert.doesNotMatch(home, /papelada da climatização resolvida/, 'a home não diz que a papelada da ART está resolvida');
+assert.doesNotMatch(home, /não é só nota fiscal/, 'a home não dá a entender que emite nota');
 const oficio = ler('../web/src/pages/para/[oficio].astro');
 assert.match(
 	oficio,
