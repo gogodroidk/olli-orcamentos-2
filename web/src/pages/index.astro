@@ -239,16 +239,18 @@ const schemaFaq = {
          recusa a encolher abaixo do próprio conteúdo. O mockup do painel tem
          conteúdo largo, então ele esticava a coluna (446px numa tela de 390px) e
          empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. */}
-    <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
-      <div class="min-w-0">
+    <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-8 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
+      <div class="min-w-0 flex flex-col">
         <span class="eyebrow"><span aria-hidden="true">●</span> Plataforma de orçamentos para qualquer negócio de serviço</span>
-        <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
+        <h1 class="mt-3 text-[clamp(1.85rem,6vw,4.6rem)] font-extrabold leading-[1.08] tracking-tight text-ink lg:mt-5 lg:leading-[1.02]">
           Troque o orçamento improvisado no WhatsApp por uma <span class="brand-text">plataforma com a sua marca.</span>
         </h1>
-        <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
+        <p class="order-2 mt-3 max-w-xl text-base leading-relaxed text-slate lg:order-none lg:mt-6 lg:text-lg">
           Crie <strong class="text-ink">orçamentos profissionais em minutos</strong>, personalize com a sua identidade e envie um link para o cliente aprovar — no celular ou computador, seja qual for o serviço que você vende.
         </p>
-        <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+        {/* No celular o aviso de cookies cobre o fim da primeira tela. O botão
+            sobe para logo abaixo do título; no desktop a ordem do código volta. */}
+        <div class="order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none lg:mt-8">
           <a href={APP_CADASTRO_URL} class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
             Criar meu primeiro orçamento — grátis
           </a>
@@ -256,7 +258,7 @@ const schemaFaq = {
             Ver como funciona
           </a>
         </div>
-        <div id="android-em-teste" class="mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1">
+        <div id="android-em-teste" class="order-3 mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1 lg:order-none">
           <p class="text-sm leading-relaxed text-slate">
             <strong class="text-ink">Aplicativo Android em teste fechado.</strong>
             A instalação pela Google Play está restrita a testadores selecionados. Se a sua conta ainda não foi incluída, use a OLLI pelo navegador. Não há aplicativo para iPhone/iOS nesta versão.
@@ -281,7 +283,7 @@ const schemaFaq = {
         </div>
         {/* Chips de ofício: a multi-verticalidade plantada acima da dobra, sem
              mexer no H1 (que já é agnóstico). Derivados de verticais.ts. */}
-        <div class="mt-7 flex flex-wrap gap-2">
+        <div class="order-3 mt-7 flex flex-wrap gap-2 lg:order-none">
           {OFICIOS.map((o) => (
             <a
               href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
@@ -291,7 +293,7 @@ const schemaFaq = {
             </a>
           ))}
         </div>
-        <div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
+        <div class="order-3 mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted lg:order-none">
           <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</span>
           <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem fidelidade</span>
           <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Celular + computador</span>
