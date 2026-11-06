@@ -46,7 +46,7 @@ const recursos = [
 		icon: "brain",
 		titulo: "IA que entende o defeito",
 		texto:
-			"Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.",
+			"Diagnóstico de climatização por sintoma ou código de erro.",
 	},
 	{
 		icon: "calendar-check",
@@ -136,6 +136,10 @@ const faq = [
 		// A comparação com o imposto mensal do MEI saiu: ele fica abaixo do preço do
 		// Empresa, então a frase era falsa para um dos dois planos que ela citava.
 		a: `Na OLLI: ${reais(0)} no plano Grátis, sem prazo pra acabar. O Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês e o Empresa ${reais(PRECO_EMPRESA.mensalCentavos)}/mês, com desconto no anual. O preço está nesta página, sem consultor no meio, e o Grátis não é teste de 7 dias.`,
+	},
+	{
+		q: "A OLLI emite nota fiscal?",
+		a: "Não. A OLLI não emite nota fiscal. No recibo, Preparar nota fiscal separa cliente, descrição, valor e município para você copiar no Emissor Nacional. Sem o número da NFS-e, a nota não foi emitida.",
 	},
 	{
 		q: "Existe app grátis de ordem de serviço?",
