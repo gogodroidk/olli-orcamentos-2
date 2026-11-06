@@ -372,6 +372,12 @@ assert.match(scriptLanding, /mostrarBannerConsentimento/, 'landing mostra o avis
 const consentimento = ler('../web/src/lib/consentimento.ts');
 assert.match(consentimento, /paddingBottom/, 'o banner reserva espaço: o Criar conta não fica debaixo do cartão');
 assert.match(consentimento, /scrollPaddingBottom/, 'o scroll para acima do cartão');
+assert.match(consentimento, /--olli-consent/, 'a altura do cartão vira variável para a tela encolher acima dele');
+assert.match(
+	ler('../webapp/src/pages/sys/login/index.tsx'),
+	/h-\[calc\(100svh-var\(--olli-consent,0px\)\)\]/,
+	'o login cabe acima do aviso, sem cobrir Criar conta',
+);
 assert.doesNotMatch(consentimento, /scrollIntoView/, 'o aviso não rola a tela sozinho (no painel roda antes do React montar)');
 assert.match(consentimento, /removeEventListener\("resize", reservar\)/, 'fechar o aviso solta o listener de resize');
 assert.match(consentimento, /paddingAnterior/, 'fechar o banner devolve o espaço que a página já tinha');

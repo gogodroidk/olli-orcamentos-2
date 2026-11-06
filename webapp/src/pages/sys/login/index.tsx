@@ -51,8 +51,8 @@ function LoginPage() {
 	}
 
 	return (
-		<div className="relative grid min-h-svh lg:grid-cols-2 bg-background">
-			<div className="flex flex-col gap-4 p-6 md:p-10">
+		<div className="relative grid h-[calc(100svh-var(--olli-consent,0px))] overflow-y-auto lg:grid-cols-2 bg-background">
+			<div className="flex flex-col gap-2 p-6 pt-3 md:gap-4 md:p-10">
 				<div className="flex justify-center gap-2 md:justify-start">
 					<div className="flex items-center gap-2 font-medium cursor-pointer">
 						<Logo size={28} />
