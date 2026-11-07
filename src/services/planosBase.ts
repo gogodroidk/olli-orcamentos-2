@@ -180,7 +180,7 @@ export function tituloRecurso(recurso: Recurso): string {
  * esta constante NO MESMO PR/dia do `update ... set corte = now()`, com ordem do Igor.
  * `scripts/teste-copy-corte-gratis.ts` trava a copy 'ilimitado' escrita à mão quando a data existe.
  */
-export const CORTE_GRATIS_DATA: string | null = null;
+export const CORTE_GRATIS_DATA: string | null = '2026-11-10';
 export const LIMITE_ENVIOS_GRATIS_MES = 5;
 
 /** `AAAA-MM-DD` → `dd/mm/aaaa`, sem passar por `Date` (fuso não muda o dia). */
