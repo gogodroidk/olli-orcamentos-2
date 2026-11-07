@@ -38,8 +38,7 @@ import {
   ROTULO_RECURSO,
   beneficioRecurso,
   frasePro,
-  planoBase,
-} from '../src/services/planosBase.ts';
+  planoBase, CORTE_ANTIGAS_DATA } from '../src/services/planosBase.ts';
 import {
   TEXTO_SELO_OLLI,
   URL_LANDING_OLLI,
@@ -72,7 +71,12 @@ console.log('\n1) tabela única de planos (planosBase.ts)');
   if (CORTE_GRATIS_DATA === null) {
     checar('Grátis começa por "Orçamentos ilimitados"', gratis.beneficios[0].startsWith('Orçamentos ilimitados'), true);
   } else {
-    checar('Grátis começa pela regra do corte (contas novas)', gratis.beneficios[0].startsWith('Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de'), true);
+    if (CORTE_ANTIGAS_DATA !== null) {
+      // D-1824: limite em todas as contas — a regra vale para todos, sem "contas novas".
+      checar('Grátis começa pela regra do limite (todas as contas)', gratis.beneficios[0].startsWith('Orçamentos: PDF, link e WhatsApp, até '), true);
+    } else {
+      checar('Grátis começa pela regra do corte (contas novas)', gratis.beneficios[0].startsWith('Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de'), true);
+    }
   }
   checar('Grátis diz o selo às claras', gratis.beneficios.includes(NOTA_SELO_GRATIS), true);
   checar('a nota cita o texto do selo da fonte', NOTA_SELO_GRATIS.includes(TEXTO_SELO_OLLI), true);

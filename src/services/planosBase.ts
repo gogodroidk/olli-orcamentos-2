@@ -202,7 +202,7 @@ function dataCorteBR(iso: string): string {
 /** Frase de orçamentos do Grátis, na versão certa para o estado do corte. */
 function fraseOrcamentosGratis(): string {
   if (CORTE_GRATIS_DATA === null) return 'orçamentos ilimitados (PDF, link e WhatsApp, sem cota mensal)';
-  if (LIMITE_EM_TODAS) return `orçamentos em PDF, link e WhatsApp (até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês)`;
+  if (LIMITE_EM_TODAS) return `orçamentos em PDF, link e WhatsApp (até ${LIMITE_ENVIOS_GRATIS_MES} por mês)`;
   const d = dataCorteBR(CORTE_GRATIS_DATA);
   return `orçamentos em PDF, link e WhatsApp (contas criadas a partir de ${d} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite)`;
 }
