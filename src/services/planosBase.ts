@@ -182,6 +182,15 @@ export function tituloRecurso(recurso: Recurso): string {
  */
 export const CORTE_GRATIS_DATA: string | null = '2026-11-10';
 export const LIMITE_ENVIOS_GRATIS_MES = 5;
+/**
+ * LIMITE EM TODAS AS CONTAS (ordem do Igor 07/11/2026, D-1824: "Limite em todos agora").
+ * Data ISO = dia em que o banco passou a limitar também as contas anteriores ao corte
+ * (`limite_gratis_config.corte_antigas` = esse dia 00:00 -03). Com ela, a copy deixa de falar em "contas novas":
+ * todo Grátis tem até LIMITE_ENVIOS_GRATIS_MES envios por mês. `null` = só contas novas (copy antiga).
+ * `scripts/corte-gratis-confere.ts` compara esta constante com o `corte_antigas` do banco.
+ */
+export const CORTE_ANTIGAS_DATA: string | null = '2026-11-07';
+const LIMITE_EM_TODAS = CORTE_ANTIGAS_DATA !== null;
 
 /** `AAAA-MM-DD` → `dd/mm/aaaa`, sem passar por `Date` (fuso não muda o dia). */
 function dataCorteBR(iso: string): string {
@@ -193,6 +202,7 @@ function dataCorteBR(iso: string): string {
 /** Frase de orçamentos do Grátis, na versão certa para o estado do corte. */
 function fraseOrcamentosGratis(): string {
   if (CORTE_GRATIS_DATA === null) return 'orçamentos ilimitados (PDF, link e WhatsApp, sem cota mensal)';
+  if (LIMITE_EM_TODAS) return `orçamentos em PDF, link e WhatsApp (até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês)`;
   const d = dataCorteBR(CORTE_GRATIS_DATA);
   return `orçamentos em PDF, link e WhatsApp (contas criadas a partir de ${d} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite)`;
 }
@@ -201,17 +211,21 @@ function fraseOrcamentosGratis(): string {
 export const FRASE_GRATIS_CURTA: string =
   CORTE_GRATIS_DATA === null
     ? 'orçamentos ilimitados'
-    : `até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas (contas anteriores seguem sem limite)`;
+    : LIMITE_EM_TODAS
+      ? `até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês`
+      : `até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas (contas anteriores seguem sem limite)`;
 
 /** Linha de anúncio/landing de página de oficio: "Grátis ..." sem cartão. */
 export const GRATIS_LINHA_ANUNCIO: string =
   CORTE_GRATIS_DATA === null
     ? 'Grátis com orçamentos ilimitados.'
-    : `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas.`;
+    : LIMITE_EM_TODAS
+      ? `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês.`
+      : `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas.`;
 
 /** Célula "Orçamentos" do Grátis na tabela comparativa (Pro e Empresa seguem 'Ilimitados'). */
 export const CELULA_ORCAMENTOS_GRATIS: string =
-  CORTE_GRATIS_DATA === null ? 'Ilimitados' : `${LIMITE_ENVIOS_GRATIS_MES}/mês (contas novas)`;
+  CORTE_GRATIS_DATA === null ? 'Ilimitados' : LIMITE_EM_TODAS ? `${LIMITE_ENVIOS_GRATIS_MES}/mês` : `${LIMITE_ENVIOS_GRATIS_MES}/mês (contas novas)`;
 
 /** Pré-visualização do e-mail de última chamada de ativação (neutra para as duas coortes). */
 export const PREVIEW_EMAIL_GRATIS: string =
@@ -230,7 +244,9 @@ export const GRATIS_CONDICAO = 'sem cartão e sem prazo';
 export const RECURSOS_GRATIS: readonly string[] = [
   CORTE_GRATIS_DATA === null
     ? 'Orçamentos ilimitados: PDF, link e WhatsApp, sem cota mensal'
-    : `Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de ${dataCorteBR(CORTE_GRATIS_DATA)} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite`,
+    : LIMITE_EM_TODAS
+      ? `Orçamentos: PDF, link e WhatsApp, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês`
+      : `Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de ${dataCorteBR(CORTE_GRATIS_DATA)} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite`,
   'Rascunhos, recibos, clientes e histórico sem limite',
   'Catálogo de serviços e produtos',
   'Clientes e agenda',
