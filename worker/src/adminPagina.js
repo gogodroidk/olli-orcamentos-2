@@ -22,10 +22,10 @@ const SYM = '<svg viewBox="0 0 64 64" width="100%" height="100%" aria-hidden="tr
 const CSS = String.raw`
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
- --brand:#0B6FCE;--brand2:#34C6D9;--brandInk:#fff;
- --bg:#FBF7F1;--surf:#FFFCF8;--surf2:#F3EBE0;--line:#E6D8C6;--line2:#D4C4AE;
- --ink:#2A241C;--mut:#5C5146;--mut2:#65584C;
- --ok:#087A52;--okbg:#E5F4EA;--warn:#8A5A08;--warnbg:#F8EED9;--dng:#B42318;--dngbg:#FDECEC;--info:#0B6FCE;--infobg:#E7F1FB;
+ --brand:#B84A0F;--brand2:#E07A3A;--brandInk:#FFFFFF;
+ --bg:#F7F5F2;--surf:#FFFFFF;--surf2:#F0EDE8;--line:#E4DFD8;--line2:#8C857E;
+ --ink:#1C1917;--mut:#57534E;--mut2:#6B6560;--navAct:#FDF1E8;
+ --ok:#166B45;--okbg:#E3F3EA;--warn:#8A5A00;--warnbg:#FBF0D9;--dng:#B42318;--dngbg:#FBE7E4;--info:#1D5FA8;--infobg:#E4EEF9;
  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;--s7:48px;
  --r1:12px;--r2:18px;--r3:24px;
  --sh1:0 1px 2px rgba(62,44,28,.04),0 10px 28px rgba(62,44,28,.06);--sh2:0 24px 48px rgba(62,44,28,.12);
@@ -34,14 +34,16 @@ const CSS = String.raw`
  color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
- --bg:#161310;--surf:#241F1A;--surf2:#1E1A16;--line:#3A332C;--line2:#4A4036;
- --ink:#F7F2EA;--mut:#E4D5C4;--mut2:#CDBBA6;
- --ok:#3DDBA0;--okbg:#143028;--warn:#F0C36A;--warnbg:#2E2616;--dng:#FF9B9B;--dngbg:#3A2222;--info:#7EB6F0;--infobg:#1C2A3A;
+ --brand:#F28C4B;--brand2:#FFB07A;--brandInk:#1A0E05;
+ --bg:#14110F;--surf:#1E1A17;--surf2:#18140F;--line:#2E2823;--line2:#6F665D;
+ --ink:#F5F1EC;--mut:#B5ADA4;--mut2:#8F877E;--navAct:#2A1B12;
+ --ok:#4FD08F;--okbg:#12281D;--warn:#F0B84D;--warnbg:#2B2210;--dng:#FF8A7A;--dngbg:#341816;--info:#7DB6F2;--infobg:#13243A;
  --sh1:0 1px 2px rgba(0,0,0,.2),0 10px 28px rgba(0,0,0,.18);--sh2:0 24px 48px rgba(0,0,0,.4);color-scheme:dark}}
 :root[data-theme="dark"]{
- --bg:#161310;--surf:#241F1A;--surf2:#1E1A16;--line:#3A332C;--line2:#4A4036;
- --ink:#F7F2EA;--mut:#E4D5C4;--mut2:#CDBBA6;
- --ok:#3DDBA0;--okbg:#143028;--warn:#F0C36A;--warnbg:#2E2616;--dng:#FF9B9B;--dngbg:#3A2222;--info:#7EB6F0;--infobg:#1C2A3A;
+ --brand:#F28C4B;--brand2:#FFB07A;--brandInk:#1A0E05;
+ --bg:#14110F;--surf:#1E1A17;--surf2:#18140F;--line:#2E2823;--line2:#6F665D;
+ --ink:#F5F1EC;--mut:#B5ADA4;--mut2:#8F877E;--navAct:#2A1B12;
+ --ok:#4FD08F;--okbg:#12281D;--warn:#F0B84D;--warnbg:#2B2210;--dng:#FF8A7A;--dngbg:#341816;--info:#7DB6F2;--infobg:#13243A;
  --sh1:0 1px 2px rgba(0,0,0,.2),0 10px 28px rgba(0,0,0,.18);--sh2:0 24px 48px rgba(0,0,0,.4);color-scheme:dark}
 html,body{background:var(--bg)}
 body{font-family:'Plus Jakarta Sans',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
@@ -63,7 +65,7 @@ a.btn{text-decoration:none}.btn:active{transform:scale(.97)}
 .btn.sec:hover{background:var(--surf2);filter:none}
 .btn.ghost{background:transparent;color:var(--mut)}
 .btn.ghost:hover{background:var(--surf2);color:var(--ink);filter:none}
-.btn.danger{background:var(--dng);color:#fff}
+.btn.danger{background:var(--dng);color:var(--brandInk)}
 .btn.dangerSec{background:var(--surf);border-color:var(--dng);color:var(--dng)}
 .btn.lg{min-height:44px;font-size:15px;width:100%}
 .btn.icon{width:36px;padding:0}
@@ -100,7 +102,7 @@ textarea.inp{min-height:84px;resize:vertical}
 .nav{display:flex;flex-direction:column;gap:2px}
 .nav button{display:flex;align-items:center;gap:var(--s3);width:100%;min-height:40px;padding:0 var(--s3);border:none;border-radius:var(--r1);background:transparent;color:var(--mut);font-weight:600;font-size:14px;cursor:pointer;text-align:left;transition:background var(--dur1) var(--ease),color var(--dur1) var(--ease)}
 .nav button:hover{background:var(--surf2);color:var(--ink)}
-.nav button[aria-current="page"]{background:var(--infobg);color:var(--info)}
+.nav button[aria-current="page"]{background:var(--navAct);color:var(--brand)}
 .nav .badgeN{margin-left:auto;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--warnbg);color:var(--warn);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
 .side .fim{margin-top:auto;padding-top:var(--s4);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:var(--s2)}
 .quem{padding:var(--s2);font-size:12.5px;color:var(--mut);overflow-wrap:anywhere}
@@ -149,6 +151,23 @@ button.kpi:active{transform:scale(.98)}
 .atencao .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--info)}
 .atencao .dot.warn{background:var(--warn)}.atencao .dot.dng{background:var(--dng)}.atencao .dot.ok{background:var(--ok)}
 .atencao .vai{margin-left:auto;color:var(--mut2);font-size:13px;white-space:nowrap}
+.alertaSaude{background:var(--dngbg);border:1px solid var(--dng);border-left-width:4px;border-radius:var(--r2);padding:var(--s3) var(--s4);margin-bottom:var(--s4);color:var(--ink)}
+.alertaSaude h3{color:var(--dng);font-size:14px;font-weight:800;display:flex;align-items:center;gap:var(--s2)}
+.alertaSaude p{font-size:13.5px;margin-top:var(--s1)}
+.alertaSaude .acoes{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s2)}
+.hojeGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--s3);align-items:start}
+.hojeCard{display:flex;flex-direction:column;overflow:hidden}
+.hojeCab{display:flex;align-items:center;gap:var(--s2);padding:var(--s3) var(--s4);border-bottom:1px solid var(--line)}
+.hojeCab h3{flex:1;font-size:14px;font-weight:800}
+.hojeCab .ico{color:var(--brand)}
+.hojeLin{display:flex;align-items:center;gap:var(--s3);width:100%;min-height:48px;padding:var(--s2) var(--s4);background:transparent;border:none;border-bottom:1px solid var(--line);text-align:left;cursor:pointer;font-size:13.5px}
+.hojeLin:hover{background:var(--surf2)}
+.hojeLin .q{min-width:0;flex:1}
+.hojeLin .q b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hojeLin .q span{display:block;color:var(--mut2);font-size:12px}
+.hojeLin .d{white-space:nowrap}
+.hojeVazio{padding:var(--s4);color:var(--mut);font-size:13.5px}
+.hojeRod{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s2);padding:var(--s3) var(--s4);font-size:12.5px;color:var(--mut)}
 .glossario{padding:var(--s4) var(--s5)}
 .glossario summary{cursor:pointer;font-weight:700;color:var(--mut)}
 .glossario dl{display:grid;grid-template-columns:minmax(140px,220px) 1fr;gap:var(--s2) var(--s4);margin-top:var(--s4);font-size:13px}
@@ -219,7 +238,7 @@ pre.stack{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;background:
 .gavRapido{display:flex;gap:var(--s2);flex-wrap:wrap;margin-top:var(--s4)}
 .abas{display:flex;gap:var(--s1);margin-top:var(--s4);overflow-x:auto;scrollbar-width:none}
 .abas button{min-height:40px;padding:0 var(--s3);border:none;background:transparent;color:var(--mut);font-weight:700;font-size:13.5px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap;transition:color var(--dur2) var(--ease),border-color var(--dur2) var(--ease)}
-.abas button[aria-selected="true"]{color:var(--info);border-bottom-color:var(--info)}
+.abas button[aria-selected="true"]{color:var(--brand);border-bottom-color:var(--brand)}
 .gavCorpo{flex:1;overflow-y:auto;padding:var(--s5)}
 .mini{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--s3);margin-bottom:var(--s5)}
 .mc{background:var(--surf);border:1px solid var(--line);border-radius:var(--r2);padding:var(--s3) var(--s4)}
@@ -391,6 +410,7 @@ function pode(cap){const p=ME&&ME.papel;if(!p)return false;if(cap==='detalhe')re
 function estado(tipo,titulo,texto){return el('div',{className:'estado'+(tipo==='erro'?' erro':'')},ico(tipo==='erro'?'alert':'info'),el('b',{},titulo),texto||'');}
 function carregando(n){const c=el('div',{className:'pad',role:'status'});c.append(el('span',{className:'sr'},'Carregando…'));for(let i=0;i<n;i++)c.append(el('div',{className:'skel',style:'width:'+(40+((i*37)%50))+'%;margin:12px 0'}));return c;}
 const ERROS={
+ hoje_sem_migration:'A leitura de "O que fazer hoje" ainda não está no banco (falta aplicar a migration).',
  mfa_necessario:'Confirme o código do autenticador para continuar.',
  mfa_recente_necessario:'Esta ação é irreversível: confirme o código do autenticador agora (Segurança → Confirmar código) e tente de novo.',
  sem_permissao:'Seu papel não permite esta ação.',
@@ -481,7 +501,7 @@ async function entrar(){
 }
 async function sair(esquecer){
  try{await sessaoPost('sessao/sair',{esquecerAparelho:!!esquecer});}catch{}
- USERS=null;MET=null;FB=null;TROCA=null;
+ USERS=null;MET=null;FB=null;TROCA=null;HOJE=null;
  telaLogin(esquecer?'Você saiu e este aparelho foi esquecido. O código será pedido na próxima entrada.':'Você saiu. Neste aparelho, a próxima entrada pede só a senha.');
 }
 async function carregarIdentidade(){
@@ -727,6 +747,7 @@ async function liberarDados(){
 async function recarregar(silencioso){
  const tarefas=[];
  if(pode('admin')){
+  tarefas.push(api('hoje').then(j=>{HOJE=j.hoje;HOJE_ERRO='';}).catch(e=>{if(e.status!==401){HOJE=null;HOJE_ERRO=mensagemErro(e);}}));
   tarefas.push(api('metrics').then(j=>{MET=j;}).catch(e=>{if(e.status!==401)MET={erro:mensagemErro(e)};}));
   tarefas.push(api('users').then(j=>{USERS=j.users||[];USERS_ERRO='';INTERNAS_OK=j.contasInternasLegiveis!==false;FONTES=j.fontes||{};}).catch(e=>{if(e.status!==401){USERS=null;USERS_ERRO=mensagemErro(e);}}));
  }
@@ -790,8 +811,81 @@ function kpi(o){
 }
 function secTit(t,extra){return el('div',{className:'secTit'},el('h2',{},t),extra?el('span',{className:'extra'},extra):null);}
 function irSegmento(seg){SEG=seg;PAG=0;BUSCA='';location.hash='usuarios';if(VIEW==='usuarios')renderUsuarios();}
+/* ── O que fazer hoje, números do mês e aviso de saúde (D-1859/D-1861) ── */
+let HOJE=null,HOJE_ERRO='',HOJE_ABERTO={};
+const HOJE_LINHAS=5;
+function abrirConta(id){const u=(USERS||[]).find(x=>x.id===id);if(u)abrirUsuario(u);else toast('Essa conta não está na lista carregada. Atualize e tente de novo.','err');}
+function faltam(s){const ms=Date.parse(s)-Date.now();if(!isFinite(ms))return '—';if(ms<=0)return 'acabou';if(ms<3600000)return 'em menos de 1 h';if(ms<DIA)return 'em '+Math.floor(ms/3600000)+' h';const d=Math.floor(ms/DIA);return 'em '+d+(d===1?' dia':' dias');}
+function hojeCard(o){
+ const c=el('div',{className:'card hojeCard'});
+ const b=o.bloco,ok=b&&b.estado==='ok';
+ c.append(el('div',{className:'hojeCab'},ico(o.ico),el('h3',{},o.titulo),ok?el('span',{className:'pill '+(b.total?o.tom:'')},fmtNum(b.total)):el('span',{className:'pill warn'},'indisponível')));
+ if(!ok){c.append(el('div',{className:'hojeVazio'},'Não consegui ler isto agora. Não é zero: é desconhecido. Atualize.'));return c;}
+ if(!b.itens.length){c.append(el('div',{className:'hojeVazio'},o.vazio));}
+ const aberto=!!HOJE_ABERTO[o.chave];
+ (aberto?b.itens:b.itens.slice(0,HOJE_LINHAS)).forEach(x=>{
+  const l=o.linha(x);
+  const q=el('span',{className:'q'},el('b',{},l[0]),el('span',{},l[1]));
+  const d=l[2]?el('span',{className:'d'},l[2]):null;
+  c.append(x.userId?el('button',{type:'button',className:'hojeLin',onclick:()=>abrirConta(x.userId),title:'Abrir a ficha desta conta'},q,d):el('div',{className:'hojeLin',style:'cursor:default'},q,d));
+ });
+ const resto=b.itens.length-HOJE_LINHAS;
+ const rod=[];
+ if(resto>0)rod.push(el('button',{type:'button',className:'btn ghost',style:'min-height:32px',onclick:()=>{HOJE_ABERTO[o.chave]=!aberto;renderGeral();}},aberto?'Mostrar menos':'Ver todas ('+fmtNum(b.itens.length)+')'));
+ if(b.cortado)rod.push(el('span',{},'Mostrando as '+fmtNum(b.itens.length)+' primeiras de '+fmtNum(b.total)+'.'));
+ if(o.rodape)rod.push(o.rodape(b));
+ if(rod.length)c.append(el('div',{className:'hojeRod'},rod));
+ return c;
+}
+function blocoAlertaSaude(box){
+ const s=HOJE&&HOJE.saude;if(!s)return;
+ const em=s.emailsFalhos24h,px=s.pixPagoSemPlano;
+ const problemas=[];
+ if(em&&em.estado==='ok'&&em.total>0){
+  const det=em.porTemplate.slice(0,3).map(t=>t.template+': '+t.n).join(' · ');
+  problemas.push(el('div',{},el('p',{},el('b',{},fmtNum(em.total)+(em.total===1?' e-mail automático falhou':' e-mails automáticos falharam')+' nas últimas 24 h. '),det),el('div',{className:'acoes'},el('button',{type:'button',className:'btn sec',onclick:()=>{location.hash='emails';}},ico('mail'),'Ver e-mails'))));
+ }
+ if(px&&px.estado==='ok'&&px.total>0){
+  const acoes=el('div',{className:'acoes'});
+  px.itens.filter(x=>x.userId).slice(0,3).forEach(x=>acoes.append(el('button',{type:'button',className:'btn sec',onclick:()=>abrirConta(x.userId)},'Abrir conta ('+rel(x.recebidoEm)+')')));
+  problemas.push(el('div',{},el('p',{},el('b',{},fmtNum(px.total)+(px.total===1?' Pix pago que não liberou o plano. ':' Pix pagos que não liberaram o plano. ')),'O cliente pagou e ficou sem o Pro: resolva antes de qualquer outra coisa.'),acoes));
+ }
+ if(problemas.length){
+  const a=el('div',{className:'alertaSaude',role:'alert'},el('h3',{},ico('alert'),'Problema real agora'));
+  problemas.forEach(p=>a.append(p));
+  box.append(a);
+ }
+ const cego=[];
+ if(!em||em.estado!=='ok')cego.push('falha de e-mail');
+ if(!px||px.estado!=='ok')cego.push('Pix pago sem plano');
+ if(cego.length)box.append(el('div',{className:'nota'},'Não consegui conferir: '+cego.join(' e ')+'. Isso não quer dizer que está tudo bem.'));
+}
+function blocoHoje(box){
+ if(!HOJE&&HOJE_ERRO){box.append(el('div',{className:'card',style:'margin-bottom:var(--s4)'},estado('erro','Não consegui carregar "O que fazer hoje".',HOJE_ERRO+' Nenhum valor foi zerado.')));return;}
+ if(!HOJE){box.append(el('div',{className:'card',style:'margin-bottom:var(--s4)'},carregando(3)));return;}
+ blocoAlertaSaude(box);
+ box.append(secTit('O que fazer hoje','dinheiro primeiro'));
+ const g=el('div',{className:'hojeGrid'});
+ g.append(hojeCard({chave:'pix',titulo:'Pix gerado e não pago (7 dias)',ico:'coin',tom:'warn',bloco:HOJE.pixPendentes,vazio:'Nenhum Pix esperando pagamento.',
+  linha:x=>[x.empresa||x.nome||'(sem nome)',(x.plano?'Plano '+x.plano+' · ':'')+'gerado '+rel(x.criadoEm),x.vencido?el('span',{className:'pill'},'venceu'):el('span',{className:'pill warn'},'aberto')]}));
+ g.append(hojeCard({chave:'limite',titulo:'Bateram o limite do Grátis no mês',ico:'trend',tom:'warn',bloco:HOJE.limiteGratis,vazio:'Ninguém bateu o limite neste mês.',
+  linha:x=>[x.empresa||x.nome||'(sem nome)',fmtNum(x.envios)+' envios no mês',null],
+  rodape:b=>el('span',{style:'display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)'},el('span',{},(b.corteAtivo?'Limite de '+fmtNum(b.limite)+' envios valendo.':'Limite de '+fmtNum(b.limite)+' ainda desligado: eles seguem enviando.')),el('button',{type:'button',className:'btn sec',style:'min-height:32px',onclick:()=>{location.hash='emails';}},ico('mail'),'Oferta por e-mail'))}));
+ g.append(hojeCard({chave:'testes',titulo:'Teste do Pro acaba em 3 dias',ico:'calendar',tom:'warn',bloco:HOJE.testesTerminando,vazio:'Nenhum teste termina nos próximos 3 dias.',
+  linha:x=>[x.empresa||x.nome||'(sem nome)','termina '+faltam(x.terminaEm),null]}));
+ box.append(g);
+ const m=HOJE.mes||{};
+ const kn=(l,i,v,fmt,dica,h)=>v===null||v===undefined?kpi({ico:i,l,v:'indisponível',h:'não consegui ler agora',tom:'warn',dica:'A leitura falhou: não é zero, é desconhecido. Atualize.'}):kpi({ico:i,l,v:fmt(v),h,dica});
+ box.append(secTit('Números do mês','mês de Brasília'));
+ box.append(el('div',{className:'kpis'},
+  kn('Entrou no mês','coin',m.entrouCentavos,v=>fmtBRL(v/100),'Pix do plano confirmado pela AbacatePay neste mês, sem contas internas. Pagamento por cartão (Stripe) e pela Play não entra nesta conta.','Pix confirmado (cartão e Play não entram)'),
+  kn('Pagam hoje','users',m.pagantes,fmtNum,'Assinaturas que pagam por gateway agora, sem teste, cortesia, plano liberado à mão e conta interna.','sem contar teste'),
+  kn('Testes que viraram pagantes','trend',m.testesViraramPagantes,fmtNum,'Testes do Pro marcados como convertidos neste mês.','no mês')
+ ));
+}
 function renderGeral(){
  const box=limpar($('v-geral'));
+ blocoHoje(box);
  if(!MET){box.append(el('div',{className:'card'},carregando(5)));return;}
  if(MET.erro){box.append(el('div',{className:'card'},estado('erro','Não consegui carregar os números.',MET.erro+' Nenhum valor foi zerado.')));return;}
  const m=MET,r=m.receita||{estado:'indisponivel'};

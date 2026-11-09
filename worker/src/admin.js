@@ -30,6 +30,7 @@
  *   POST /admin/api/user/nota?id=        → nota interna (linha `nota_interna` na trilha)
  *   GET  /admin/api/cnpj?cnpj=           → dados públicos da Receita (BrasilAPI → OpenCNPJ)
  *   POST /admin/api/export/registrar     → audita a exportação CSV antes do download
+ *   GET  /admin/api/hoje                 → "O que fazer hoje", números do mês e avisos de saúde (sem PII)
  *   GET  /admin/api/emails/resumo?dias=7 → saúde dos e-mails automáticos (sem PII)
  *   GET  /admin/api/emails/oferta-pro/candidatas → contas com uso e motivo da oferta do Pro (sem e-mail)
  *   POST /admin/api/emails/oferta-pro/enviar → ensaio ou envio da oferta do Pro (auditado antes)
@@ -82,6 +83,7 @@ import {
 } from './adminFerramentas.js';
 import { adminHtml } from './adminPagina.js';
 import { enviarOfertaPro, rotaCandidatasOfertaPro, rotaResumoEmails } from './adminEmails.js';
+import { rotaHoje } from './adminHoje.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -1171,6 +1173,10 @@ export async function handleAdmin(request, env, url) {
     }
     if (m === 'POST' && p === '/admin/api/export/registrar') {
       return exigir(user, 'admin', { aal2: true }) || registrarExport(env, user, body, { auditar });
+    }
+    // "O que fazer hoje" da Visão geral (D-1859/D-1861): leitura única, sem e-mail de cliente.
+    if (m === 'GET' && p === '/admin/api/hoje') {
+      return exigir(user, 'admin', { aal2: true }) || rotaHoje(env, { emailsExcluidos: emailsForaDoFunil(env) });
     }
     // Aba "E-mails" (D-1859): leitura e envio da oferta do Pro; só admin com aal2, envio auditado antes.
     if (m === 'GET' && p === '/admin/api/emails/resumo') {
