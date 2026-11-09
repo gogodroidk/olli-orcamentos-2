@@ -4,7 +4,8 @@
  * Mesmo caminho dos lembretes: outbox -> consumer (link de descadastro assinado + List-Unsubscribe) ->
  * Resend. Aqui só se DECIDE e se enfileira; nada é enviado daqui. Padrão = ENSAIO (não grava nada).
  * Ordem dos portões (cada conta recebe o primeiro motivo que a barra): conta_indisponivel, suprimido,
- * excluido (funil_exclusoes/conta interna), nao_e_gratis (pago OU teste Pro ativo), oferta_recente
+ * excluido (funil_exclusoes/conta interna), membro_equipe (convidado de outra organização), ja_assinou
+ * (assinatura ativa, atrasada ou cancelada), nao_e_gratis (pago OU teste Pro ativo), oferta_recente
  * (já recebeu `oferta_pro` nos últimos 30 dias). O banco repete os portões sob trava (enqueue_oferta_pro).
  * Saída só com contagens e user_id (nunca e-mail ou texto).
  */
@@ -13,6 +14,7 @@ import { OFERTA_PRO_LIMITES } from './emailLembretesTemplate.js';
 
 export const OFERTA_PRO_VERSION = '2026-11-08.v1';
 export const OFERTA_PRO_MAX_CONTAS = 50;
+export const OFERTA_PRO_MAX_BYTES = 5500;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Valida a lista: [{ userId, assunto, paragrafos[] }]. Falha fechado (lança) em qualquer item torto. */
@@ -28,7 +30,10 @@ export function validarOfertas(ofertas) {
     if (typeof assunto !== 'string' || assunto.trim().length < 5 || assunto.length > OFERTA_PRO_LIMITES.assunto || /[\r\n<>]/.test(assunto)) falha('assunto_invalido');
     if (!Array.isArray(paragrafos) || paragrafos.length < 1 || paragrafos.length > OFERTA_PRO_LIMITES.paragrafos
       || paragrafos.some((p) => typeof p !== 'string' || !p.trim() || p.length > OFERTA_PRO_LIMITES.paragrafo || /[<>]/.test(p))) falha('paragrafos_invalidos');
-    return Object.freeze({ userId, dados: { assunto: assunto.trim(), paragrafos: paragrafos.map((p) => p.trim()) } });
+    const dados = { assunto: assunto.trim(), paragrafos: paragrafos.map((p) => p.trim()) };
+    // O banco aceita até 6 KB em template_dados; acento ocupa 2 bytes, então a conta é em bytes, com folga.
+    if (new TextEncoder().encode(JSON.stringify(dados)).length > OFERTA_PRO_MAX_BYTES) falha('texto_grande_demais');
+    return Object.freeze({ userId, dados });
   });
 }
 
@@ -37,6 +42,8 @@ export function decidirOferta(fato, { agora = new Date() } = {}) {
   if (!fato || fato.existe !== true) return 'conta_indisponivel';
   if (fato.suprimido !== false) return 'suprimido';
   if (fato.excluido !== false) return 'excluido';
+  if (fato.membroEquipe !== false) return 'membro_equipe';
+  if (fato.jaAssinou !== false) return 'ja_assinou';
   if (fato.plano !== 'gratis') return 'nao_e_gratis';
   if (fato.ofertaRecenteEm) {
     const t = new Date(fato.ofertaRecenteEm).getTime();
@@ -70,13 +77,19 @@ export async function executarOfertaPro(env, ofertas, { enviar = false, fetchImp
   for (const o of lista) {
     let motivo = decidirOferta(fatos.get(o.userId), { agora });
     if (motivo === 'sairia' && enviar) {
-      const r = await chamarRpcServico(config, fetchImpl, 'enqueue_oferta_pro', {
-        p_user_id: o.userId,
-        p_template_dados: o.dados,
-        p_teto_diario: tetoDiario,
-        p_now: agora.toISOString(),
-      });
-      motivo = r && r.enfileirado === true ? 'enfileirado' : String(r?.motivo ?? 'resposta_invalida').replace(/[^a-z_]/g, '').slice(0, 40);
+      // Erro numa conta não derruba o relatório: as outras seguem e a saída diz quem falhou.
+      // Rodar de novo é seguro (o banco devolve duplicado/oferta_recente/recebeu_email_24h).
+      try {
+        const r = await chamarRpcServico(config, fetchImpl, 'enqueue_oferta_pro', {
+          p_user_id: o.userId,
+          p_template_dados: o.dados,
+          p_teto_diario: tetoDiario,
+          p_now: agora.toISOString(),
+        });
+        motivo = r && r.enfileirado === true ? 'enfileirado' : String(r?.motivo ?? 'resposta_invalida').replace(/[^a-z_0-9]/g, '').slice(0, 40);
+      } catch {
+        motivo = 'erro_rpc';
+      }
     }
     itens.push({ userId: o.userId, motivo });
   }

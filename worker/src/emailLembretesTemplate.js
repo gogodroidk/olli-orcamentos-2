@@ -351,7 +351,7 @@ function conteudoOfertaPro(dados, appUrl) {
     cta: { rotulo: 'Ver o plano Pro', href: urlCom(appUrl, '/planos') },
     depois: [],
     motivo: 'Você recebe este e-mail porque tem uma conta no OLLI.',
-    rotuloDescadastro: 'Parar de receber e-mails',
+    rotuloDescadastro: 'Parar de receber lembretes e ofertas',
   };
 }
 

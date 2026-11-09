@@ -13,7 +13,7 @@ import { renderizarEmailLembrete } from '../src/emailLembretesTemplate.js';
 
 const ID = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const AGORA = new Date('2026-11-09T12:00:00.000Z');
-const BOM = { existe: true, plano: 'gratis', suprimido: false, excluido: false, ofertaRecenteEm: null };
+const BOM = { existe: true, plano: 'gratis', suprimido: false, excluido: false, membroEquipe: false, jaAssinou: false, ofertaRecenteEm: null };
 const FATOS = {
   [ID(1)]: BOM,
   [ID(2)]: { ...BOM, suprimido: true },
@@ -22,6 +22,8 @@ const FATOS = {
   [ID(5)]: { ...BOM, ofertaRecenteEm: '2026-10-20T12:00:00.000Z' },
   [ID(6)]: { ...BOM, ofertaRecenteEm: '2026-09-01T12:00:00.000Z' }, // fora dos 30 dias: pode
   [ID(7)]: { existe: false },
+  [ID(8)]: { ...BOM, membroEquipe: true },
+  [ID(9)]: { ...BOM, jaAssinou: true }, // cobrança atrasada/cancelada: plano efetivo diz Grátis
 };
 const OFERTAS = Object.keys(FATOS).map((userId) => ({
   userId,
@@ -55,6 +57,9 @@ await caso('política: cada portão barra pelo motivo certo', () => {
   assert.equal(decidirOferta(FATOS[ID(5)], { agora: AGORA }), 'oferta_recente');
   assert.equal(decidirOferta(FATOS[ID(6)], { agora: AGORA }), 'sairia');
   assert.equal(decidirOferta(FATOS[ID(7)], { agora: AGORA }), 'conta_indisponivel');
+  assert.equal(decidirOferta(FATOS[ID(8)], { agora: AGORA }), 'membro_equipe');
+  assert.equal(decidirOferta(FATOS[ID(9)], { agora: AGORA }), 'ja_assinou');
+  assert.equal(decidirOferta({ ...BOM, jaAssinou: undefined }, { agora: AGORA }), 'ja_assinou', 'fato ausente = barra');
   assert.equal(decidirOferta({ ...BOM, suprimido: undefined }, { agora: AGORA }), 'suprimido', 'fato ausente = barra');
   assert.equal(decidirOferta({ ...BOM, plano: null }, { agora: AGORA }), 'nao_e_gratis');
 });
@@ -63,7 +68,7 @@ await caso('ensaio (padrão) lista quem sairia e NÃO enfileira', async () => {
   const { fn, chamadas } = fakeFetch();
   const r = await executarOfertaPro(ENV, OFERTAS, { fetchImpl: fn, now: () => AGORA });
   assert.equal(r.modo, 'ensaio');
-  assert.deepEqual(r.contagens, { sairia: 2, suprimido: 1, excluido: 1, nao_e_gratis: 1, oferta_recente: 1, conta_indisponivel: 1 });
+  assert.deepEqual(r.contagens, { sairia: 2, suprimido: 1, excluido: 1, nao_e_gratis: 1, oferta_recente: 1, conta_indisponivel: 1, membro_equipe: 1, ja_assinou: 1 });
   assert.equal(chamadas.filter((c) => c.rpc === 'enqueue_oferta_pro').length, 0);
 });
 
@@ -77,10 +82,24 @@ await caso('envio real enfileira só quem passou; suprimido/excluído/pago/repet
   assert.ok(!JSON.stringify(r).includes('@'), 'saída sem e-mail');
 });
 
+await caso('erro de RPC numa conta não derruba o relatório; as outras seguem', async () => {
+  const { fn } = fakeFetch();
+  const comFalha = async (url, init) => {
+    if (url.includes('/rpc/enqueue_oferta_pro') && JSON.parse(init.body).p_user_id === ID(1)) {
+      return new Response('{"message":"x"}', { status: 400, headers: { 'content-type': 'application/json' } });
+    }
+    return fn(url, init);
+  };
+  const r = await executarOfertaPro(ENV, OFERTAS, { enviar: true, fetchImpl: comFalha, now: () => AGORA });
+  assert.equal(r.contagens.erro_rpc, 1);
+  assert.equal(r.contagens.enfileirado, 1);
+});
+
 await caso('lista torta falha fechado (repetido, id ruim, HTML, vazio, grande)', () => {
   const um = OFERTAS[0];
   for (const lista of [[], [um, um], [{ ...um, userId: 'x' }], [{ ...um, assunto: 'a<b>cdef' }], [{ ...um, paragrafos: [] }],
-    [{ ...um, paragrafos: ['<script>'] }], Array.from({ length: 51 }, (_, i) => ({ ...um, userId: ID(100 + i) }))]) {
+    [{ ...um, paragrafos: ['<script>'] }], Array.from({ length: 51 }, (_, i) => ({ ...um, userId: ID(100 + i) })),
+    [{ ...um, paragrafos: Array.from({ length: 8 }, () => 'ã'.repeat(690)) }]]) {
     assert.throws(() => validarOfertas(lista));
   }
 });
@@ -98,7 +117,7 @@ await caso('template: assunto/corpo vêm dos dados, link de descadastro em HTML 
   assert.equal(e.subject, OFERTAS[0].assunto);
   assert.equal(e.purpose, 'oferta_pro');
   assert.equal(e.unsubscribeUrl, UNSUB);
-  assert.ok(e.html.includes(UNSUB.replaceAll('&', '&amp;')) && e.html.includes('Parar de receber e-mails</a>'));
+  assert.ok(e.html.includes(UNSUB.replaceAll('&', '&amp;')) && e.html.includes('Parar de receber lembretes e ofertas</a>'));
   assert.ok(e.text.includes(UNSUB) && e.text.includes('Você já criou 9 orçamentos'));
   assert.ok(!/utm_|pixel|track|<img[^>]*1px/i.test(e.html), 'sem rastreio');
   assert.equal((e.html.match(/<img\b/g) || []).length, 1, 'só o logo');
@@ -116,7 +135,7 @@ await caso('migration: só service_role, reconfere portões e catálogo inclui o
   assert.match(sql, /revoke all on function public\.enqueue_oferta_pro[^;]*from public, anon, authenticated;/);
   assert.match(sql, /grant execute on function public\.enqueue_oferta_pro[^;]*to service_role;/);
   assert.match(sql, /grant execute on function public\.fatos_oferta_pro[^;]*to service_role;/);
-  for (const m of ['suprimido', 'excluido', 'nao_e_gratis', 'oferta_recente']) assert.ok(sql.includes(`'${m}'`), m);
+  for (const m of ['suprimido', 'excluido', 'membro_equipe', 'ja_assinou', 'nao_e_gratis', 'oferta_recente', 'recebeu_email_24h']) assert.ok(sql.includes(`'${m}'`), m);
   assert.ok(sql.includes("'oferta_pro', 'oferta_pro.v1', 'oferta_pro'") || sql.includes("template = 'oferta_pro' and template_version = 'oferta_pro.v1'"));
   assert.ok(!/grant[^;]*\bto\s+(anon|authenticated|public)\b/i.test(sql), 'nenhum grant a anon/authenticated');
 });

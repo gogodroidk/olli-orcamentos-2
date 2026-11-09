@@ -1,6 +1,6 @@
 -- E-mail de OFERTA do plano Pro (template/purpose `oferta_pro`), 08/11/2026.
 -- Mesmo caminho dos lembretes: outbox + link de descadastro assinado (o consumer põe o List-Unsubscribe) +
--- supressão. NÃO envia nada sozinho: só enfileira para uma lista explícita de user_ids, via
+-- supressão. Nada sai sozinho: só enfileira para uma lista explícita de user_ids, via
 -- `worker/scripts/oferta-pro.mjs` (padrão = ensaio). Texto (assunto + parágrafos) chega por parâmetro e fica
 -- em `template_dados` (até 6 KB só para este template). NÃO APLICAR sem os gates (ci-local, revisão, staging).
 begin;
@@ -52,7 +52,10 @@ begin
      and u.deleted_at is null
      and (u.banned_until is null or u.banned_until <= p_now)
      and coalesce(u.is_anonymous, false) = false;
-  if v_email is null then
+  if v_email is null
+     or v_email !~* '^[^[:space:]<>@]+@[^[:space:]<>@]+\.[^[:space:]<>@]+$'
+     or pg_catalog.length(v_email) > 254
+  then
     return pg_catalog.jsonb_build_object('userId', p_user_id, 'existe', false);
   end if;
   begin
@@ -65,6 +68,19 @@ begin
     'existe', true,
     'plano', v_plano,
     'suprimido', exists (select 1 from public.email_supressoes s where s.user_id = p_user_id),
+    -- Membro convidado de outra organização: o plano é do dono, a oferta não é para ele.
+    'membroEquipe', not exists (select 1 from public.organizacoes o where o.owner_user_id = p_user_id)
+                    and exists (
+                      select 1 from public.organizacao_membros m
+                        join public.organizacoes o on o.id = m.org_id
+                       where m.user_id = p_user_id and m.ativo and o.owner_user_id <> p_user_id
+                    ),
+    -- Já teve assinatura de verdade (inclui cobrança atrasada/cancelada, que o plano efetivo mostra como Grátis).
+    'jaAssinou', exists (
+      select 1 from public.assinaturas a
+       where a.user_id = p_user_id
+         and a.status in ('active', 'trialing', 'past_due', 'unpaid', 'canceled')
+    ),
     'excluido', exists (select 1 from public.funil_exclusoes f where f.user_id = p_user_id or f.email = v_email)
                 or public.conta_interna(p_user_id),
     'ofertaRecenteEm', (
@@ -133,6 +149,12 @@ begin
   end if;
   if (v_fatos ->> 'excluido') = 'true' then
     return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'excluido');
+  end if;
+  if (v_fatos ->> 'membroEquipe') is distinct from 'false' then
+    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'membro_equipe');
+  end if;
+  if (v_fatos ->> 'jaAssinou') is distinct from 'false' then
+    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'ja_assinou');
   end if;
   if (v_fatos ->> 'plano') is distinct from 'gratis' then
     return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'nao_e_gratis');
