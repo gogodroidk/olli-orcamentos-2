@@ -81,17 +81,19 @@ A Play Store não tem campo de keywords separado — a indexação usa o texto d
 a descrição longa (seção 3) já repete termos como "orçamento", "recibo", "ordem de serviço",
 "eletricista", "técnico" e "HVAC" naturalmente.
 
-## 5. O que há de novo (release notes desta versão — v1.2.1 / versionCode 25)
+## 5. O que há de novo (release notes desta versão — v1.2.2 / versionCode definido pelo EAS, acima do 25)
 
 ```
-- Cadastro mais rápido: dá para montar o primeiro orçamento antes de completar os dados do negócio
-- Login com Google no Android mais confiável (sem falso "cancelado")
-- Início do técnico sem cobranças e valores da empresa: cada papel vê só o que pode
-- Sincronização mais segura: se a leitura da nuvem falhar, nada é apagado nem sobrescrito
-- Diluição da tinta acrílica corrigida (10–30%) nas ferramentas de pintura
+- Ordem de serviço: agora dá para editar depois de criada
+- Assistente com conversa em bolhas e histórico
+- Diagnóstico por IA para mais aparelhos: geladeira, TV, lavadora e outros
+- Agenda: exportar e assinar o calendário no celular (iCal)
+- Mapa dos clientes por região, com rota
+- Etiqueta adesiva dos equipamentos e central de documentos
+- Plano Grátis mostra quantos envios do mês você já usou
 - Correções de estabilidade
 ```
-Cada linha vem de um PR já mesclado: #143 (cadastro), #141 (login Google), #160 (Início por papel), #135/#146 (sync), #145 (diluição). Limite da Play: 500 caracteres por idioma (esta lista tem menos). Ajuste a lista a cada envio para refletir o que de fato mudou desde a versão anterior — puxe do `git log` e do `docs/EXECUTION_LOG.md` na hora de escrever a próxima.
+Cada linha vem de PR já mesclado desde a 1.2.1 (06/10): edição da OS (D1438-G05), chat (G08), diagnóstico (G11), iCal, mapa (G19), etiqueta 99×38 e central de documentos, contador 'X de 5 envios' (P0-09). Pix fica de fora: no app da Play o botão de Pix não aparece (lojaRegras). Limite da Play: 500 caracteres por idioma.
 
 ## 6. Categoria e classificação etária
 
