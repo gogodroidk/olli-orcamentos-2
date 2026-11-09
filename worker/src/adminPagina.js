@@ -659,20 +659,21 @@ async function carregarEmails(){
 }
 function desenharEmails(){
  const box=limpar($('v-emails'));
- const c1=el('div',{className:'card'},el('h3',{style:'font-size:16px;margin-bottom:4px'},'Saúde dos e-mails, últimos 7 dias'));
- if(!EMAILS)c1.append(estado('erro','Não consegui ler os e-mails.',EMAILS_ERRO));
- else if(!EMAILS.tipos.length)c1.append(estado('','Nenhum e-mail nos últimos 7 dias.',''));
+ const c1=el('div',{className:'card'},el('div',{className:'pad',style:'padding-bottom:var(--s2)'},el('h3',{style:'font-size:16px'},'Saúde dos e-mails, últimos 7 dias')));
+ if(!EMAILS)c1.append(el('div',{className:'pad'},estado('erro','Não consegui ler os e-mails.',EMAILS_ERRO)));
+ else if(!EMAILS.tipos.length)c1.append(el('div',{className:'pad'},estado('','Nenhum e-mail nos últimos 7 dias.','')));
  else{
   const t=el('table'),tb=el('tbody');
   t.append(el('thead',{},el('tr',{},el('th',{},'Tipo'),el('th',{className:'num'},'Enviados'),el('th',{className:'num'},'Na fila'),el('th',{className:'num'},'Falharam'))));
   EMAILS.tipos.forEach(x=>tb.append(el('tr',{},el('td',{},x.nome),el('td',{className:'num'},fmtNum(x.enviados)),el('td',{className:'num'},fmtNum(x.naFila)),el('td',{className:'num'},x.falhos?el('span',{className:'pill dng'},fmtNum(x.falhos)):'0'))));
   t.append(tb);c1.append(el('div',{className:'tblWrap'},t));
-  const s=EMAILS.supressoes;c1.append(el('div',{className:'mut',style:'margin-top:10px;font-size:13px'},'Descadastros: '+fmtNum(s.descadastro)+' · Devolvidos: '+fmtNum(s.hard_bounce)+' · Reclamações: '+fmtNum(s.complaint)));
+  const s=EMAILS.supressoes;c1.append(el('div',{className:'pad mut',style:'padding-top:var(--s3);font-size:13px'},'Descadastros: '+fmtNum(s.descadastro)+' · Devolvidos: '+fmtNum(s.hard_bounce)+' · Reclamações: '+fmtNum(s.complaint)));
  }
  box.append(c1);
- const c2=el('div',{className:'card',style:'margin-top:var(--s4)'},el('h3',{style:'font-size:16px;margin-bottom:4px'},'Oferta do Pro por e-mail'),el('p',{className:'mut',style:'margin:0 0 12px;font-size:13px'},'Contas que já criaram orçamento. Só recebe quem está no Grátis, sem teste ativo, sem descadastro e sem oferta nos últimos 30 dias. O ensaio não envia nada.'));
- if(!OFERTA){c2.append(estado('erro','Não consegui ler as contas.',OFERTA_ERRO));box.append(c2);return;}
- if(!OFERTA.length){c2.append(estado('','Nenhuma conta com orçamento ainda.',''));box.append(c2);return;}
+ const c2=el('div',{className:'card',style:'margin-top:var(--s4)'});
+ c2.append(el('div',{className:'pad',style:'padding-bottom:var(--s3)'},el('h3',{style:'font-size:16px;margin-bottom:4px'},'Oferta do Pro por e-mail'),el('p',{className:'mut',style:'margin:0;font-size:13px'},'Contas que já criaram orçamento. Só recebe quem está no Grátis, sem teste ativo, sem descadastro e sem oferta nos últimos 30 dias. O ensaio não envia nada.')));
+ if(!OFERTA){c2.append(el('div',{className:'pad'},estado('erro','Não consegui ler as contas.',OFERTA_ERRO)));box.append(c2);return;}
+ if(!OFERTA.length){c2.append(el('div',{className:'pad'},estado('','Nenhuma conta com orçamento ainda.','')));box.append(c2);return;}
  const podem=OFERTA.filter(c=>c.motivo==='sairia');
  const t=el('table'),tb=el('tbody');
  const todos=el('input',{type:'checkbox',ariaLabel:'Selecionar todas que podem receber',checked:podem.length>0&&podem.every(c=>OFERTA_SEL.has(c.userId)),disabled:!podem.length,onchange:e=>{if(e.target.checked)podem.forEach(c=>OFERTA_SEL.add(c.userId));else OFERTA_SEL.clear();desenharEmails();}});
@@ -683,9 +684,9 @@ function desenharEmails(){
   tb.append(el('tr',{},el('td',{},cb),el('td',{},el('b',{},c.empresa||c.nome||'(sem nome)'),c.empresa&&c.nome?el('div',{className:'mut',style:'font-size:12px'},c.nome):null),el('td',{className:'num'},fmtNum(c.orcamentos)),el('td',{className:'num hideSm'},fmtNum(c.enviosMes)+' / '+fmtNum(c.enviosTotal)),el('td',{className:'hideSm'},rel(c.ultimoUso)),el('td',{},pillMotivo(c.motivo))));
  });
  t.append(tb);c2.append(el('div',{className:'tblWrap'},t));
- if(OFERTA_CORTADO)c2.append(el('div',{className:'mut',style:'margin-top:8px;font-size:12px'},'Mostrando as '+fmtNum(OFERTA.length)+' contas com mais orçamentos.'));
+ if(OFERTA_CORTADO)c2.append(el('div',{className:'pad mut',style:'padding-bottom:0;font-size:12px'},'Mostrando as '+fmtNum(OFERTA.length)+' contas com mais orçamentos.'));
  const n=OFERTA_SEL.size;
- c2.append(el('div',{className:'barra',style:'margin-top:var(--s3);justify-content:flex-end;gap:var(--s2)'},
+ c2.append(el('div',{className:'pad barra',style:'justify-content:flex-end;gap:var(--s2)'},
   el('span',{className:'mut',style:'margin-right:auto;font-size:13px'},n+' selecionada(s) de '+podem.length+' que podem receber'),
   el('button',{type:'button',className:'btn sec',disabled:!n,onclick:()=>ensaiarOferta()},'Ensaiar'),
   el('button',{type:'button',className:'btn',disabled:!n,onclick:()=>enviarOferta()},ico('mail'),'Enviar…')));
@@ -699,7 +700,7 @@ async function ensaiarOferta(){
  Object.keys(cont).filter(k=>k!=='sairia').forEach(k=>corpo.append(el('p',{className:'mut'},(MOTIVO_OFERTA[k]||[k])[0]+': '+fmtNum(cont[k]))));
  const prim=(j.itens||[]).find(i=>i.motivo==='sairia');
  const tx=prim&&j.textos&&j.textos[prim.userId];
- if(tx){const prev=el('div',{className:'card',style:'margin-top:10px'},el('div',{className:'mut',style:'font-size:12px'},'Exemplo (primeira conta que sairia)'),el('b',{},tx.assunto));tx.paragrafos.forEach(p=>prev.append(el('p',{style:'margin:6px 0'},p)));prev.append(el('p',{className:'mut',style:'font-size:12px'},'O botão “Ver o plano Pro” e o link de descadastro entram sozinhos.'));corpo.append(prev);}
+ if(tx){const prev=el('div',{className:'card pad',style:'margin-top:10px'},el('div',{className:'mut',style:'font-size:12px'},'Exemplo (primeira conta que sairia)'),el('b',{},tx.assunto));tx.paragrafos.forEach(p=>prev.append(el('p',{style:'margin:6px 0'},p)));prev.append(el('p',{className:'mut',style:'font-size:12px'},'O botão “Ver o plano Pro” e o link de descadastro entram sozinhos.'));corpo.append(prev);}
  await dialogo({titulo:'Ensaio da oferta do Pro',conteudo:corpo,semConfirmar:true,cancelar:'Fechar',largo:true});
 }
 async function enviarOferta(){
