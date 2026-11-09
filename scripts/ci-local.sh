@@ -11,6 +11,7 @@
 #   CI_LOCAL_SEM_INSTALAR=1 bash scripts/ci-local.sh   # pula npm ci / pnpm i
 #
 # Jobs (nomes iguais aos do ci.yml): segredos, dependencias, app-gate, painel, landing, worker, lint.
+# O job lint inclui o gate de código limpo (MF-07): ruff, biome, pyright, semgrep, pre-commit.
 # Extra só local: sql-aviso (sqlfluff nas migrations alteradas; não reprova, mas só mostra VERDE se rodou e
 # não achou nada: achados = AVISO, sqlfluff ausente = NÃO RODOU).
 # Sai com código != 0 se QUALQUER job falhar. Um job que falha não impede os
@@ -210,7 +211,7 @@ job_worker() {
 
 job_lint() {
   instalar_raiz_uma_vez || return 1
-  passo "Lint sem erro novo" . npm run lint
+  passo "Gate de código limpo (ruff, biome, pyright, semgrep, pre-commit)" . bash scripts/gate-codigo-limpo.sh
 }
 
 job_sql_aviso() {

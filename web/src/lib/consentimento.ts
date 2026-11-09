@@ -218,8 +218,32 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 	const aceitar = botao("Aceitar", true);
 	acoes.append(recusar, aceitar);
 	banner.append(texto, acoes);
+	document.body.appendChild(banner);
 
-	const fechar = () => banner.remove();
+	// No celular o cartão cobria "Criar conta": o toque caía no aviso. A reserva
+	// deixa a página rolar, e --olli-consent encolhe a tela de entrada para o
+	// formulário caber acima do cartão sem rolar sozinho (isto roda antes do React).
+	// O scroll-padding impede que o foco por teclado pare debaixo dele (WCAG 2.4.11).
+	const paddingAnterior = document.body.style.paddingBottom;
+	const scrollAnterior = document.documentElement.style.scrollPaddingBottom;
+	const consentAnterior = document.documentElement.style.getPropertyValue("--olli-consent");
+	const reservar = () => {
+		const altura = banner.offsetHeight + 24;
+		document.body.style.paddingBottom = `${altura}px`;
+		document.documentElement.style.scrollPaddingBottom = `${altura}px`;
+		document.documentElement.style.setProperty("--olli-consent", `${altura}px`);
+	};
+	reservar();
+	window.addEventListener("resize", reservar);
+
+	const fechar = () => {
+		window.removeEventListener("resize", reservar);
+		document.body.style.paddingBottom = paddingAnterior;
+		document.documentElement.style.scrollPaddingBottom = scrollAnterior;
+		if (consentAnterior) document.documentElement.style.setProperty("--olli-consent", consentAnterior);
+		else document.documentElement.style.removeProperty("--olli-consent");
+		banner.remove();
+	};
 	recusar.addEventListener("click", () => {
 		gravarConsentimento("nao");
 		fechar();
@@ -233,6 +257,4 @@ export function mostrarBannerConsentimento(aoAceitar: () => void, linkPrivacidad
 			// Medição nunca derruba a página.
 		}
 	});
-
-	document.body.appendChild(banner);
 }

@@ -15,6 +15,7 @@ import {
   novaTentativaOAuth,
 } from './oauthRetorno';
 import { urlRecuperacaoSenha } from './acessoCodigo';
+import { queryParamsGoogleConvite } from './conviteGoogle';
 import { decidirSessaoNoBoot, erroDeRenovacaoEhDeRede, interpretarSessaoGuardada, type DecisaoSessao } from './sessaoOffline';
 import { criarFetchResiliente } from './refreshResiliente';
 import { registrarHoraDoServidor } from './relogioServidor';
@@ -313,21 +314,23 @@ const registrarFunilAuth = criarRegistroFunilAuth(
 // Tabs (a 2ª cancelaria a 1ª e o "cancelado" seria mentira). Sempre liberada no finally.
 let oauthNativoEmAndamento = false;
 
-export async function signInWithGoogle(): Promise<ResultadoOAuth> {
+export async function signInWithGoogle(opcoes?: { loginHint?: string | null }): Promise<ResultadoOAuth> {
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
   if (Platform.OS !== 'web') {
     if (oauthNativoEmAndamento) return 'em_andamento';
     oauthNativoEmAndamento = true;
     try {
-      return await signInWithGoogleCore();
+      return await signInWithGoogleCore(opcoes?.loginHint);
     } finally {
       oauthNativoEmAndamento = false;
     }
   }
-  return signInWithGoogleCore();
+  return signInWithGoogleCore(opcoes?.loginHint);
 }
 
-async function signInWithGoogleCore(): Promise<ResultadoOAuth> {
+async function signInWithGoogleCore(loginHint?: string | null): Promise<ResultadoOAuth> {
+  // Só o e-mail do convite, quando houver. Sem escopo de Gmail/Drive/contatos.
+  const queryParams = queryParamsGoogleConvite(loginHint);
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
   const plataforma = normalizarPlataforma(Platform.OS);
   const tentativa = novaTentativaOAuth();
@@ -337,7 +340,7 @@ async function signInWithGoogleCore(): Promise<ResultadoOAuth> {
     const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo },
+      options: { redirectTo, ...(queryParams ? { queryParams } : {}) },
     });
     if (error) {
       void registrarFunilAuth('oauth_erro', { plataforma, tentativa, motivo: classificarErroOAuth(error.code, error.message) });
@@ -358,7 +361,7 @@ async function signInWithGoogleCore(): Promise<ResultadoOAuth> {
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo, skipBrowserRedirect: true },
+    options: { redirectTo, skipBrowserRedirect: true, ...(queryParams ? { queryParams } : {}) },
   });
   if (error) falhar(classificarErroOAuth(error.code, error.message));
   if (!data?.url) falhar('desconhecido');

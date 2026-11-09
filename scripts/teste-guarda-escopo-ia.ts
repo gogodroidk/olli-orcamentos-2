@@ -27,6 +27,8 @@ import { GUARDA_ESCOPO_IA as GUARDA_DO_MODULO } from '../worker/src/guardaEscopo
 import { prepararPreviaAutopilot } from '../worker/src/iaAutopilot.js';
 // @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
 import { prepararPreviaImportacaoIa } from '../worker/src/iaImportacao.js';
+// @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
+import { prepararRascunhoPrecificacao } from '../worker/src/precificacaoIa.js';
 
 let falhas = 0;
 let passes = 0;
@@ -108,6 +110,21 @@ console.log('\n── Autopilot e importação por IA carregam a guarda (prompt 
   checar('Importação chamou o modelo', imp.chamadas.length, 1);
   checar('Importação: a guarda está no system enviado', imp.chamadas.some((c) => c.system.includes(GUARDA_ESCOPO_IA)), true);
   checar('Importação: diz o que fazer ao recusar ("itens": [])', imp.chamadas.some((c) => c.system.includes('"itens": []')), true);
+
+  const precoOff = espiao();
+  const off = await prepararRascunhoPrecificacao(JSON.stringify({ texto: '2 horas a 80 reais' }), {}, { gerarIA: precoOff.gerarIA, parseJsonLoose });
+  checar('Precificação IA desligada não chama o modelo', precoOff.chamadas.length, 0);
+  checar('Precificação IA desligada', off.ok === false && off.erro === 'desligada', true);
+
+  const preco = espiao();
+  await prepararRascunhoPrecificacao(
+    JSON.stringify({ texto: 'Limpeza de split, 2 horas, hora 80 reais' }),
+    { PRECIFICACAO_IA: 'on' },
+    { gerarIA: preco.gerarIA, parseJsonLoose },
+  );
+  checar('Precificação IA chamou o modelo', preco.chamadas.length, 1);
+  checar('Precificação IA: a guarda está no prompt enviado', preco.chamadas.some((c) => `${c.system}\n${c.user}`.includes(GUARDA_ESCOPO_IA)), true);
+  checar('Precificação IA: não devolve preço de venda', preco.chamadas.some((c) => /não devolva preço de venda/.test(`${c.system}\n${c.user}`)), true);
 }
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);

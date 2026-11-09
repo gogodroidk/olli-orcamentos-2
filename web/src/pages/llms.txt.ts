@@ -37,7 +37,8 @@ import {
 	reais,
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS } from "../data/recursos";
+import { FRASE_GRATIS, GRATIS_CONDICAO } from "../data/recursos";
+import { TRIAL_PRO_DIAS } from "../../../src/services/limitesComerciais";
 import { postsPublicados } from "./blog/_dados";
 
 const ORIGEM = "https://olliorcamentos.online";
@@ -48,7 +49,7 @@ const ORIGEM = "https://olliorcamentos.online";
  * três lugares" foi paga: o número mora num lugar só e todo o resto importa dele.
  */
 const PLANOS_LLM = [
-	{ nome: "Grátis", preco: reais(0), nota: `permanente, sem cartão, com ${FRASE_GRATIS}` },
+	{ nome: "Grátis", preco: reais(0), nota: `${GRATIS_CONDICAO}, com ${FRASE_GRATIS}` },
 	{
 		nome: "Pro",
 		preco: `${reais(PRECO_PRO.mensalCentavos)}/mês`,
@@ -83,13 +84,14 @@ export async function GET() {
 		const slug = SLUG_POR_OFICIO[v.id];
 		const profissao = PROFISSAO_POR_OFICIO[v.id];
 		const n = calculosDoOficio(v.id).length;
-		// Sem calculadora (o "qualquer serviço"), a linha não fala de calculadora —
-		// antes saía "Inclui 0 ferramenta de cálculo do ofício, aterradas em norma".
+		// Sem calculadora (o "qualquer serviço"), a linha não fala de calculadora.
 		const calculo =
 			n > 0
-				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, aterrada${n > 1 ? "s" : ""} em norma técnica.`
+				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, com a norma ou a fórmula daquele ofício.`
 				: "";
-		return `- [OLLI para ${profissao}](${ORIGEM}/para/${slug}/): ${DOR_POR_OFICIO[v.id]}${calculo}`;
+		const nomes = calculosDoOficio(v.id).map((c) => c.nome).join("; ");
+		const lista = nomes ? ` Ferramentas: ${nomes}.` : "";
+		return `- [OLLI para ${profissao}](${ORIGEM}/para/${slug}/): ${DOR_POR_OFICIO[v.id]}${calculo}${lista}`;
 	}).join("\n");
 
 	const planos = PLANOS_LLM.map(
@@ -131,7 +133,7 @@ ${quemSomos}
 
 ${planos}
 
-O plano anual sai mais barato que o mensal. O Grátis é permanente; depois do primeiro envio, o dono pode ativar um teste Pro opcional de 14 dias, sem cartão, sem cobrança automática e sem apagar dados ao terminar. ${NOTA_DOZE}
+O plano anual sai mais barato que o mensal. O Grátis é ${GRATIS_CONDICAO}; depois do primeiro envio, o dono pode ativar um teste Pro opcional de ${TRIAL_PRO_DIAS} dias, sem cartão, sem cobrança automática e sem apagar dados ao terminar. ${NOTA_DOZE}
 ${pagamento}
 Comparativo completo dos planos: ${ORIGEM}/planos/
 
@@ -150,7 +152,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 - Orçamento com itens, fotos, desconto e link de aprovação para o cliente.
 - Ordem de serviço e recibo derivados do mesmo orçamento.
 - Diagnóstico com IA por código de erro e por sintoma (climatização).
-- PMOC e etiqueta QR de equipamento (climatização); certificado ANVISA (dedetização).
+- PMOC e etiqueta QR de equipamento (climatização). Na dedetização, o comprovante de controle de pragas traz os campos do art. 19 da RDC ANVISA 622/2022. A OLLI não emite certificado da ANVISA.
 - Agenda, catálogo de produtos e serviços, cadastro de clientes e de equipamentos.
 - Equipe com convite por link (plano Empresa).
 
@@ -158,7 +160,8 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 
 - Não lê nem importa áudio do WhatsApp. Não há integração com o WhatsApp. Quem ouve
   o áudio do cliente é o prestador; a OLLI entra na hora de montar o orçamento.
-- Não emite nota fiscal.
+- Não emite nota fiscal. No recibo, Preparar nota fiscal só separa os dados para copiar no Emissor Nacional. Sem o número da NFS-e, a nota não foi emitida.
+- Não emite ART nem substitui o responsável técnico. No PMOC, a OLLI organiza equipamentos, planos, ordens e histórico; a assinatura continua sendo da pessoa habilitada.
 - O aplicativo Android está em teste fechado na Google Play, restrito a testadores
   selecionados, e não há app para iPhone. Hoje o produto se usa pelo navegador, em
   ${ORIGEM.replace("olliorcamentos.online", "app.olliorcamentos.online")}, que exige internet. O uso sem
@@ -173,6 +176,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 - [Blog](${ORIGEM}/blog/)
 - [llms-full.txt (guias completos)](${ORIGEM}/llms-full.txt)
 - [Central de Ajuda](${ORIGEM}/ajuda/)
+- [Central de Ajuda para assistentes](${ORIGEM}/ajuda/llms.txt)
 - [Manifesto público para agentes](${ORIGEM}/agent-manifest.json)
 - [Termos de Uso](${ORIGEM}/legal/termos/)
 - [Política de Privacidade](${ORIGEM}/legal/privacidade/)

@@ -58,4 +58,10 @@ ok('Central expõe catálogo de modelos para construir', /CATALOGO_DOCUMENTOS/.t
 ok('builder web oferece construtores de OS, PMOC e recibo', /ordem_servico/.test(webPage) && /pmoc/.test(webPage) && /recibo/.test(webPage));
 ok('builder salva envelope de blocos versionável', /schemaCode: "olli\.document\.blocks"/.test(webPage) && /blocos/.test(webPage));
 ok('mobile oferece catálogo de dez tipos em cards', /CATALOGO_DOCUMENTOS/.test(catalogoMobile) && /ordem_servico/.test(catalogoMobile) && /laudo/.test(catalogoMobile) && /catalogoGrid/.test(mobileDocumentos));
-console.log('PASSOU: 18 verificações');
+const painel = readFileSync(new URL('../src/components/documentos/PainelDocumentoCentral.tsx', import.meta.url), 'utf8');
+const acoes = readFileSync(new URL('../src/services/acoesCentralDocumentos.ts', import.meta.url), 'utf8');
+ok('central vê o orçamento e o contrato e imprime', /Ver orçamento/.test(mobileDocumentos) && /Ver contrato/.test(mobileDocumentos) && /Imprimir orçamento/.test(painel) && /Imprimir contrato/.test(painel) && /PdfPreviewModal/.test(painel));
+ok('central vê e edita as cláusulas no mesmo gerador do PDF', /Ver e editar cláusulas/.test(mobileDocumentos) && /EditorClausulasContrato/.test(painel) && /linhasDeClausulas/.test(painel));
+ok('contrato da biblioteca não abre mais a ficha no lugar do papel', /abrePainelVisual/.test(mobileDocumentos) && /abrePainelVisual/.test(acoes));
+ok('painel web mostra orçamento, contrato, cláusulas e impressão', /Ver orçamento ou contrato/.test(webPage) && /Ver contrato/.test(webPage) && /Editar cláusulas/.test(webPage) && /Imprimir/.test(readFileSync(new URL('../webapp/src/pages/olli/documentos/PreviaDocumento.tsx', import.meta.url), 'utf8')));
+console.log('PASSOU: 22 verificações');

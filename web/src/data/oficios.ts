@@ -55,7 +55,7 @@ function taglineDe(calculadoras: number, documentos: string[]): string {
   if (documentos.length) partes.push(documentos.join(' e '));
   if (calculadoras) partes.push(`${calculadoras} calculadora${calculadoras > 1 ? 's' : ''} de campo`);
   // Sem ferramenta especializada, o valor é o ciclo — que todo ofício tem.
-  return partes.length ? partes.join(' · ') : 'Orçamento, OS e recibo do jeito do seu serviço';
+  return partes.length ? partes.join(' · ') : 'Orçamento, ordem de serviço e recibo do jeito do seu serviço';
 }
 
 export const OFICIOS: OficioLanding[] = VERTICAIS.map((v) => {
@@ -86,7 +86,7 @@ export const OFICIO_GERAL: OficioLanding = {
   emoji: VERTICAL_GERAL.emoji,
   calculadoras: calculosDoOficio(VERTICAL_GERAL.id).length,
   documentos: [],
-  tagline: 'Não achou o seu? O ciclo é o mesmo: orçamento, OS e recibo pra qualquer serviço',
+  tagline: 'Não achou o seu? O ciclo é o mesmo: orçamento, ordem de serviço e recibo pra qualquer serviço',
 };
 
 /** Total REAL de calculadoras — a página não chuta número. */
@@ -179,9 +179,9 @@ export const PROFISSAO_POR_OFICIO: Record<VerticalId, string> = {
  * ferramenta que talvez não exista.
  */
 export const DOR_POR_OFICIO: Record<VerticalId, string> = {
-  refrigeracao: 'Orçamento na hora da visita, PMOC sem planilha e o histórico de cada máquina no QR.',
+  refrigeracao: 'Orçamento na hora da visita, o plano de manutenção organizado no celular e o histórico de cada máquina no QR. O responsável técnico continua sendo a pessoa.',
   eletrica: 'Orçamento de quadro, circuito e ponto — com o cálculo feito no celular, sem app de terceiro.',
-  hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a OS assinada na tela.',
+  hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a ordem de serviço assinada na tela.',
   pintura: 'Quantos litros, quantas demãos, quanto cobrar — e o orçamento sai pronto do mesmo lugar.',
   dedetizacao: 'Comprovante de controle de pragas com os campos da RDC 622, dosagem calculada e o lembrete da reaplicação.',
   caixa_dagua: "Certificado de limpeza com lacre e validade, e o lembrete da próxima limpeza no tempo certo.",
@@ -192,3 +192,25 @@ export const DOR_POR_OFICIO: Record<VerticalId, string> = {
   // (o llms.txt diz isso com todas as letras), e a frase dava a entender o contrário.
   geral: 'Do pedido do cliente ao recibo pago, sem planilha e sem depender de escritório.',
 };
+
+/**
+ * VARIANTES DE ANÚNCIO POR PALAVRA (P1-11, Bruno/SALES, D-1013): o técnico busca "ar-condicionado", "refrigeração",
+ * "hidráulica", "marido de aluguel", "manutenção" — não o nome da nossa vertical. Cada alias é uma página no ar (o anúncio
+ * aponta para ela) com o MESMO conteúdo da vertical real: nada de calculadora ou documento que o app não tenha.
+ * `canonical` aponta para a página de SEO do ofício e o alias fica fora do sitemap (ver `astro.config.mjs`), igual a
+ * /eletricista/ e /refrigeracao/. Ofício sem vertical dedicada (marido de aluguel, manutenção) usa a `geral`, que diz a verdade:
+ * atendido, só sem ferramenta especializada.
+ */
+export interface AliasPara {
+  slug: string;
+  id: VerticalId;
+  /** Como o visitante se chama (H1, title, FAQ). */
+  profissao: string;
+}
+export const ALIASES_PARA: readonly AliasPara[] = [
+  { slug: 'ar-condicionado', id: 'refrigeracao', profissao: 'ar-condicionado' },
+  { slug: 'refrigeracao', id: 'refrigeracao', profissao: 'refrigeração' },
+  { slug: 'hidraulica', id: 'hidraulica', profissao: 'hidráulica' },
+  { slug: 'marido-de-aluguel', id: 'geral', profissao: 'marido de aluguel' },
+  { slug: 'manutencao', id: 'geral', profissao: 'manutenção' },
+];

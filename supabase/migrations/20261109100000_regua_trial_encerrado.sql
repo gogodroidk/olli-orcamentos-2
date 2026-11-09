@@ -6,13 +6,17 @@
 -- apagaria a trava de conta interna), o patch troca/insere TRECHOS sobre o texto real (pg_get_functiondef) e FALHA EM
 -- VOZ ALTA se uma âncora não for encontrada. Idempotente: não repete se `trial_encerrado` já estiver na função.
 --
+-- Timestamp 20261109100000 (v2, 09/11/2026): roda DEPOIS de pix_vence_lembrete (20261026040000), oferta_pro_email e admin_emails,
+-- que também remendam essas funções; a âncora dos tipos não presume mais o ')' logo após 'trial_acabando' (o pix_vence acrescenta
+-- 'pix_vence' ali). O catálogo da email_outbox NÃO muda: trial_encerrado reaproveita lembrete_reengajamento.v1.
+--
 -- ORDEM OBRIGATÓRIA: esta migration ANTES do deploy do worker que escolhe `trial_encerrado` (sem ela, o enqueue antigo
 -- levanta 'lembrete_dados_invalidos' e a rodada aborta).
 do $patch_trial_encerrado$
 declare
   v_def  text;
   v_novo text;
-  v_ancora_tipos constant text := $a$v_tipo not in ('ativacao_ultima', 'parou', 'trial_acabando')$a$;
+  v_ancora_tipos constant text := $a$'ativacao_ultima', 'parou', 'trial_acabando'$a$;
   v_ancora_enq   constant text := $a$else -- trial_acabando$a$;
   v_ancora_lista constant text := $a$-- Reengajamento — teste do Pro terminando em 24–72 h.$a$;
   v_ramo_enq constant text := $r$elsif v_tipo = 'trial_encerrado' then
@@ -53,7 +57,7 @@ begin
     if position(v_ancora_tipos in v_def) = 0 then raise exception 'enqueue_ancora_tipos_nao_encontrada'; end if;
     if position(v_ancora_enq in v_def) = 0 then raise exception 'enqueue_ancora_trial_nao_encontrada'; end if;
     v_novo := replace(v_def, v_ancora_tipos,
-      $t$v_tipo not in ('ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado')$t$);
+      $t$'ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado'$t$);
     v_novo := replace(v_novo, v_ancora_enq, v_ramo_enq || v_ancora_enq);
     execute v_novo;
   end if;

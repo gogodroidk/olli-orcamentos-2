@@ -52,6 +52,12 @@ export const LEMBRETE_REENGAJAMENTO = Object.freeze({
   templateVersion: 'lembrete_reengajamento.v1',
   purpose: 'reengagement_reminder',
 });
+/** Oferta do plano Pro (08/11/2026): texto escrito por conta, enfileirado só por lista explícita (ofertaPro.js). */
+export const LEMBRETE_OFERTA_PRO = Object.freeze({
+  template: 'oferta_pro',
+  templateVersion: 'oferta_pro.v1',
+  purpose: 'oferta_pro',
+});
 export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado']);
 /**
  * Tipos de lembrete que a rodada pode enfileirar (sufixo de EMAIL_LEMBRETES_MODE, 07/10/2026):
@@ -71,6 +77,20 @@ export function lerTiposPermitidos(sufixo) {
   if (typeof sufixo !== 'string') return TIPOS_LEMBRETE;
   const lidos = sufixo.toLowerCase().split(',').map((t) => t.trim()).filter((t) => TIPOS_LEMBRETE.has(t));
   return Object.freeze(new Set(lidos));
+}
+
+/**
+ * Checagem do sufixo `nao_aberto` (Z-52). `production` sozinho devolve false:
+ * a régua do orçamento não aberto não mora no conjunto padrão. Só devolve true
+ * quando o MODE é production e o sufixo lista a palavra exata `nao_aberto`.
+ * Quem for chamar `listar_nao_abertos_email` tem de passar por aqui.
+ */
+export function sufixoLigaNaoAberto(modo) {
+  if (typeof modo !== 'string') return false;
+  const [base, ...resto] = modo.trim().toLowerCase().split(':');
+  if (base !== 'production' || resto.length === 0) return false;
+  const tipos = resto.join(':').split(',').map((t) => t.trim()).filter((t) => t.length > 0);
+  return tipos.includes('nao_aberto');
 }
 
 const PRIORIDADE = Object.freeze({

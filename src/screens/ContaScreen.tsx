@@ -43,7 +43,8 @@ import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { PRECO_PRO, reais } from '../services/precosPlanos';
 import { gerenciarAssinaturaNaPlay } from '../services/playBilling';
-import { adicionarFotoCamera, adicionarFotoGaleria, abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
+import { abrirConfiguracoesPermissao } from '../utils/fotosOrcamento';
+import { escolherFotoPerfil } from '../utils/escolherFotoPerfil';
 import { criarOrganizacao, aceitarConvite, extrairToken, listarMembros, PAPEL_LABEL, type Organizacao } from '../services/equipe';
 import { APP_VERSION, APP_VERSION_CODE } from '../config';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP, TEXTOS_LOJA, URL_EXCLUIR_CONTA_WEB } from '../config/loja';
@@ -240,6 +241,7 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'servicos', icon: 'wrench-outline', label: 'Catálogo de serviços', desc: 'Serviços e preços', color: c.primary, route: 'Servicos', ocultarTecnico: true },
     { key: 'produtos', icon: 'package-variant-closed', label: 'Produtos e peças', desc: 'Materiais, marcas e preços', color: c.primary, route: 'Produtos', ocultarTecnico: true },
     { key: 'clientes', icon: 'account-group-outline', label: 'Clientes', desc: 'Sua base de clientes', color: '#A78BFA', route: 'Clientes' },
+    { key: 'prospeccao', icon: 'map-marker-radius-outline', label: 'Prospecção', desc: 'Seus clientes no mapa, por raio', color: '#38BDF8', route: 'Prospeccao' },
     // Importar grava clientes, serviços e produtos: é de quem cuida do cadastro.
     { key: 'importar', icon: 'database-import-outline', label: TEXTO_CONVITE_IMPORTAR.titulo, desc: TEXTO_CONVITE_IMPORTAR.descricao, color: c.accentLight, route: 'Importar', ocultarTecnico: true },
     { key: 'contratos', icon: 'calendar-sync-outline', label: 'Contratos recorrentes', desc: 'Visitas e cobrança todo mês', color: c.success, route: 'Contratos', ocultarTecnico: true },
@@ -250,8 +252,9 @@ function criarFerramentas(c: Cores): Ferramenta[] {
     { key: 'calcOficio', icon: 'calculator-variant-outline', label: 'Calculadoras do ofício', desc: 'Cálculos técnicos do seu ramo', color: c.accentLight, route: 'FerramentasOficio', calcHub: true },
     { key: 'creditos', icon: 'lightning-bolt', label: 'Créditos', desc: TEXTOS_LOJA.creditosMenu, color: '#F7B23B', route: 'Creditos' },
     { key: 'recibo', icon: 'receipt', label: 'Recibos', desc: 'Emita recibos de pagamento', color: c.success, route: 'EmitirRecibo', ocultarTecnico: true },
+    { key: 'contador', icon: 'bank-outline', label: 'Contador e nota fiscal', desc: 'MEI, ME e NFS-e. A OLLI não emite a nota.', color: c.primary, route: 'Contador', ocultarTecnico: true },
     { key: 'negocio', icon: 'storefront-outline', label: 'Personalizar', desc: 'Seu negócio, logo e marca', color: '#F7B23B', route: 'MeuNegocio', ocultarTecnico: true },
-    { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual dos seus orçamentos', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
+    { key: 'modelos', icon: 'palette-swatch-outline', label: 'Modelos de documento', desc: 'O visual do PDF, com explicação e prévia de cada modelo', color: c.accentLight, route: 'ModelosDocumento', ocultarTecnico: true },
   ];
 }
 
@@ -703,34 +706,31 @@ export default function ContaScreen() {
   }
 
   /**
-   * Escolhe a foto de perfil (câmera ou galeria) reusando o pipeline de fotos
-   * (compressão + cópia persistente) e salva a URI em user_metadata.avatar_url.
-   * A foto de perfil é do USUÁRIO — a logo/identidade da empresa fica em Meu Negócio.
+   * Foto de perfil quadrada, em data URI pequeno, na conta (user_metadata.avatar_url).
+   * A logo da empresa continua em Meu Negócio. Caminho local do aparelho não entra.
    */
   async function handleEscolherFoto(fonte: 'camera' | 'galeria') {
     setShowFotoOpcoes(false);
     setSalvandoFoto(true);
     try {
-      const resultado = fonte === 'camera'
-        ? await adicionarFotoCamera([])
-        : await adicionarFotoGaleria([]);
-
-      if (resultado.erro === 'PERMISSAO_NEGADA_PERMANENTE') {
-        toast.erro('Libere o acesso nos ajustes do aparelho para escolher sua foto.', {
+      const resultado = await escolherFotoPerfil(fonte);
+      if (!resultado.ok && resultado.motivo === 'cancelado') return;
+      if (!resultado.ok && resultado.motivo === 'permissao') {
+        toast.erro(resultado.mensagem, {
           titulo: fonte === 'camera' ? 'Câmera bloqueada' : 'Fotos bloqueadas',
-          acao: { rotulo: 'Abrir ajustes', aoTocar: () => { void abrirConfiguracoesPermissao(); } },
+          ...(resultado.permanente
+            ? { acao: { rotulo: 'Abrir ajustes', aoTocar: () => { void abrirConfiguracoesPermissao(); } } }
+            : {}),
         });
         return;
       }
-      if (resultado.erro) {
-        toast.erro(resultado.erro);
+      if (!resultado.ok) {
+        toast.erro(resultado.mensagem);
         return;
       }
-      const uri = resultado.uris[0];
-      if (!uri) return; // usuário cancelou o picker
 
-      await salvarFotoPerfil(uri);
-      setUser(prev => (prev ? { ...prev, avatarUrl: uri } : prev));
+      await salvarFotoPerfil(resultado.dataUri);
+      setUser(prev => (prev ? { ...prev, avatarUrl: resultado.dataUri } : prev));
       setAvatarErro(false);
       vibrar('sucesso');
     } catch (e: any) {

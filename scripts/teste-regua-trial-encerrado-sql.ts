@@ -1,5 +1,5 @@
 /**
- * Régua `trial_encerrado` NO BANCO (migration 20261022120000) — Postgres real (PGlite).
+ * Régua `trial_encerrado` NO BANCO (migration 20261109100000) — Postgres real (PGlite).
  *
  *     node scripts/teste-regua-trial-encerrado-sql.ts
  *
@@ -22,7 +22,8 @@ const optout = ler('../supabase/migrations/20261006090000_whatsapp_nao_contatar.
 const t1 = ler('../supabase/migrations/20261007130000_medicao_primeiro_orcamento.sql');
 const contasInternas = ler('../supabase/migrations/20261007140000_contas_internas.sql');
 const regua = ler('../supabase/migrations/20261005090000_regua_reengajamento.sql');
-const patch = ler('../supabase/migrations/20261022120000_regua_trial_encerrado.sql');
+const pixVence = ler('../supabase/migrations/20261026040000_pix_vence_lembrete.sql');
+const patch = ler('../supabase/migrations/20261109100000_regua_trial_encerrado.sql');
 
 function funcaoDe(sql: string, nome: string): string {
   const m = new RegExp(`create or replace function public\\.${nome}\\([\\s\\S]*?\\n\\$function\\$;`).exec(sql);
@@ -74,6 +75,8 @@ await db.exec(t1);
 await db.exec(funcaoDe(regua, 'enqueue_lembrete_email'));
 await db.exec(funcaoDe(regua, 'listar_candidatos_lembrete_email'));
 await db.exec(contasInternas); // aplica os remendos de conta_interna sobre as funções
+// pix_vence (26/10) remenda a MESMA função e roda ANTES da migration nova: só o bloco do patch (sem as tabelas dele)
+await db.exec(/do \$patch\$[\s\S]*?\$patch\$;/.exec(pixVence)![0]);
 await db.exec(patch);
 await db.exec(patch); // idempotente
 checks++;
@@ -84,6 +87,7 @@ for (const f of defs) {
   const ganhou = f.proname === 'enqueue_lembrete_email' ? f.d.includes("'trial_encerrado'") : f.d.includes('teste do Pro que terminou');
   igual([f.proname, f.d.includes('public.conta_interna('), ganhou], [f.proname, true, true], `${f.proname}: mantém a trava de conta interna E ganhou o ramo do trial encerrado`);
 }
+igual(defs.find((f) => f.proname === 'enqueue_lembrete_email').d.includes("'pix_vence'"), true, 'enqueue: o ramo do pix_vence (migration anterior) sobrevive ao patch novo');
 igual((defs.find((f) => f.proname === 'listar_candidatos_lembrete_email').d.match(/teste do Pro que terminou/g) ?? []).length, 1, 'ramo da lista inserido UMA vez (patch idempotente)');
 
 const conta = async (email: string, tag: string) => {

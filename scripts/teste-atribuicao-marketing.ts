@@ -353,6 +353,35 @@ const main = ler('../webapp/src/main.tsx');
 const privacidade = ler('../src/content/legal/privacidade.ts');
 
 assert.match(layout, /<script src="\.\.\/scripts\/marketing\.ts"><\/script>/, 'Layout carrega o marketing da landing');
+const home = ler('../web/src/pages/index.astro');
+assert.match(
+	home,
+	/order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none/,
+	'no celular o botão do hero fica logo abaixo do título, fora do aviso de cookies',
+);
+assert.match(home, /Daikin <span class="tnum">A6<\/span>/, 'o exemplo da home é o Daikin A6 da base');
+assert.match(home, /Confiança alta/, 'a confiança do card é palavra, como na base');
+assert.match(home, /A ART continua sendo do responsável técnico/, 'a home não promete emitir a ART');
+assert.doesNotMatch(home, /confiança 82%/, 'a home não mostra confiança em porcentagem');
+assert.doesNotMatch(home, /45\/5 µF/, 'a home não inventa a medida do capacitor');
+assert.doesNotMatch(home, /papelada da climatização resolvida/, 'a home não diz que a papelada da ART está resolvida');
+assert.doesNotMatch(home, /não é só nota fiscal/, 'a home não dá a entender que emite nota');
+const oficio = ler('../web/src/pages/para/[oficio].astro');
+assert.match(
+	oficio,
+	/order-1 mt-8 flex flex-col gap-3 sm:flex-row lg:order-none/,
+	'no celular o botão da página do ofício fica logo abaixo do título, fora do aviso de cookies',
+);
+assert.ok(
+	oficio.indexOf('id="resposta-curta"') < oficio.indexOf('Criar meu primeiro orçamento'),
+	'a resposta curta continua antes do botão no HTML',
+);
+assert.match(
+	oficio,
+	/Licença e a assinatura do responsável técnico continuam com você/,
+	'a página do ofício não promete a assinatura técnica',
+);
+assert.doesNotMatch(oficio, /papelada de /, 'a página do ofício não diz que a papelada está resolvida');
 assert.match(scriptLanding, /meta\[name="robots"\]\[content\*="noindex"\]/, 'páginas noindex ficam de fora');
 assert.match(scriptLanding, /rastrear\("Lead"/, 'Lead no clique de CTA de cadastro');
 assert.match(scriptLanding, /anexarAtribuicaoAoLink/, 'UTM propagado aos links do painel');
@@ -369,6 +398,24 @@ for (const csp of [headersPainel, vercel]) {
 assert.match(registro, /\.\.\.origemUtmParaCadastro\(\)/, 'signUp envia origem_utm em options.data');
 assert.match(registro, /registrarCadastroConcluido\("email", data\.user\?\.id\)/, 'CompleteRegistration no cadastro por e-mail, com o id que deduplica');
 assert.match(scriptLanding, /mostrarBannerConsentimento/, 'landing mostra o aviso de cookies');
+const consentimento = ler('../web/src/lib/consentimento.ts');
+assert.match(consentimento, /paddingBottom/, 'o banner reserva espaço: o Criar conta não fica debaixo do cartão');
+assert.match(consentimento, /scrollPaddingBottom/, 'o scroll para acima do cartão');
+assert.match(consentimento, /--olli-consent/, 'a altura do cartão vira variável para a tela encolher acima dele');
+assert.match(
+	ler('../webapp/src/pages/sys/login/index.tsx'),
+	/h-\[calc\(100svh-var\(--olli-consent,0px\)\)\]/,
+	'o login cabe acima do aviso, sem cobrir Criar conta',
+);
+assert.match(registro, /space-y-2 md:space-y-4/, 'no celular o cadastro fica curto o bastante para o botão aparecer');
+assert.match(
+	ler('../webapp/src/pages/sys/login/index.tsx'),
+	/items-start justify-center md:items-center/,
+	'no celular o cartão começa no topo, sem empurrar Criar conta para baixo do aviso',
+);
+assert.doesNotMatch(consentimento, /scrollIntoView/, 'o aviso não rola a tela sozinho (no painel roda antes do React montar)');
+assert.match(consentimento, /removeEventListener\("resize", reservar\)/, 'fechar o aviso solta o listener de resize');
+assert.match(consentimento, /paddingAnterior/, 'fechar o banner devolve o espaço que a página já tinha');
 assert.match(registro, /identities\?\.length !== 0/, 'e-mail já cadastrado não vira conversão');
 assert.match(store, /registrarNovaContaSocial/, 'cadastro social grava a origem via updateUser');
 assert.match(main, /iniciarMarketing\(\);/, 'captura roda no boot do painel');
