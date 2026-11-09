@@ -14,7 +14,7 @@
 
 import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_OFERTA_PRO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
 import { COBRANCA_ID_RE } from './pixVencePolicy.js';
-import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
+import { PRECO_PRO, DESCONTO_ANUAL_ROTULO, reais } from '../../src/services/precosPlanos.ts';
 import { FRASE_GRATIS, PREVIEW_EMAIL_GRATIS, frasePro } from '../../src/services/planosBase.ts';
 
 export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-05.v3';
@@ -326,6 +326,28 @@ function conteudoReengajamento(dados, appUrl) {
       cta: { rotulo: 'Assinar o Pro', href: urlCom(appUrl, '/planos') },
       depois: ['Se preferir ficar no Grátis, não precisa fazer nada.'],
       motivo: 'Você recebe este aviso porque está testando o plano Pro da OLLI Orçamentos.',
+    };
+  }
+
+  if (dados.tipo === 'trial_encerrado') {
+    chavesExatas(dados, ['tipo', 'terminaEm'], 'dados_invalidos');
+    const termina = new Date(dados.terminaEm);
+    exigir(!Number.isNaN(termina.getTime()) && termina.toISOString() === dados.terminaEm, 'dados_invalidos');
+    const anual = reais(PRECO_PRO.anualCentavos);
+    const mensal = reais(PRECO_PRO.mensalCentavos);
+    return {
+      subject: 'Seus orçamentos continuam aqui',
+      preview: 'O teste do Pro terminou e seus dados continuam salvos.',
+      titulo: 'Seus orçamentos continuam aqui',
+      paragrafos: [
+        'Seu teste do Pro terminou e a conta voltou ao plano Grátis. Seus dados continuam salvos: orçamentos e clientes seguem aí.',
+        'Para continuar acompanhando propostas e retomando conversas no tempo certo, é só escolher o plano Pro.',
+        `Pro anual: ${anual} por ano (${DESCONTO_ANUAL_ROTULO} menos que o mensal, que é ${mensal}). Dá para pagar com Pix; o Pro volta assim que o pagamento é confirmado.`,
+      ],
+      passos: null,
+      cta: { rotulo: 'Ver planos', href: urlCom(appUrl, '/planos') },
+      depois: ['Se preferir não receber mais, use o link de descadastro abaixo.'],
+      motivo: 'Você recebe este aviso porque testou o plano Pro da OLLI Orçamentos.',
     };
   }
 

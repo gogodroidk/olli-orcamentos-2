@@ -119,6 +119,32 @@ caso('48 h para acabar → trial_acabando', () => {
   assert.equal(d.enfileirar, true);
   assert.deepEqual({ ...d.pedido.dados }, { tipo: 'trial_acabando', terminaEm: depois(48 * H) });
 });
+const encerrado = (horasDepois, extra = {}) => candidato({
+  orcamentos: 2,
+  confirmadoEm: antes(30 * D),
+  ultimoOrcamentoEm: antes(D),
+  oferta: { plano_efetivo: 'gratis', trial_estado: 'ended', trial_termina_em: antes(horasDepois * H) },
+  ...extra,
+});
+caso('teste acabou há 2 dias → trial_encerrado (1 por teste)', () => {
+  const d = decidirLembreteEmail(encerrado(48), OPTS);
+  assert.equal(d.enfileirar, true);
+  assert.deepEqual({ ...d.pedido.dados }, { tipo: 'trial_encerrado', terminaEm: antes(48 * H) });
+  assert.match(d.pedido.idempotencyKey, /:trial_encerrado:/);
+});
+caso('trial_encerrado: quem já paga (plano efetivo pro) NÃO recebe "voltou ao Grátis"', () => {
+  const pago = encerrado(48, { oferta: { plano_efetivo: 'pro', trial_estado: 'ended', trial_termina_em: antes(48 * H) } });
+  assert.notEqual(decidirLembreteEmail(pago, OPTS).motivo, 'reengajamento_trial_encerrado');
+  const semPlano = encerrado(48, { oferta: { plano_efetivo: null, trial_estado: 'ended', trial_termina_em: antes(48 * H) } });
+  assert.notEqual(decidirLembreteEmail(semPlano, OPTS).motivo, 'reengajamento_trial_encerrado');
+});
+caso('trial_encerrado: fora de 0–7 dias, não-dono e já enviado → nada', () => {
+  assert.notEqual(decidirLembreteEmail(encerrado(8 * 24), OPTS).motivo, 'reengajamento_trial_encerrado');
+  assert.equal(decidirLembreteEmail(encerrado(48, { donoDoTenant: false }), OPTS).enfileirar, false);
+  const chave = decidirLembreteEmail(encerrado(48), OPTS).pedido.idempotencyKey;
+  const c = encerrado(48, { historico: { reengajamento: [{ chave, tipo: 'trial_encerrado', em: antes(30 * H) }] } });
+  assert.equal(decidirLembreteEmail(c, OPTS).motivo, 'reengajamento_ja_enfileirado');
+});
 caso('12 h e 100 h → nada', () => {
   assert.equal(decidirLembreteEmail(trial(12), OPTS).enfileirar, false);
   assert.equal(decidirLembreteEmail(trial(100), OPTS).enfileirar, false);
@@ -195,6 +221,14 @@ caso('trial: preço e benefícios vêm de PRECO_PRO e frasePro()', () => {
   assert.ok(e.text.includes(`${pct}% a menos`));
   assert.equal(/12x|12 x|parcel/i.test(e.text), false);
   assert.ok(e.html.includes('/planos'));
+});
+caso('trial_encerrado: e-mail com preço da fonte, sem Pix embutido e sem dado do cliente', () => {
+  const e = render({ tipo: 'trial_encerrado', terminaEm: '2026-10-20T12:00:00.000Z' });
+  assert.match(e.text, /R\$\s?374,40/);
+  assert.match(e.text, /20%/);
+  assert.doesNotMatch(e.text, /na hora|nada foi apagado/i);
+  const erro = (fn) => { try { fn(); } catch (e) { return e.codigo; } return null; };
+  assert.equal(erro(() => render({ tipo: 'trial_encerrado', terminaEm: 'ontem' })), 'dados_invalidos');
 });
 caso('última chamada: frase do Grátis vem de FRASE_GRATIS', () => {
   assert.ok(render({ tipo: 'ativacao_ultima' }).text.includes(FRASE_GRATIS));

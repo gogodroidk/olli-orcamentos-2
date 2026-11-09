@@ -58,7 +58,7 @@ export const LEMBRETE_OFERTA_PRO = Object.freeze({
   templateVersion: 'oferta_pro.v1',
   purpose: 'oferta_pro',
 });
-export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando']);
+export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado']);
 /**
  * Tipos de lembrete que a rodada pode enfileirar (sufixo de EMAIL_LEMBRETES_MODE, 07/10/2026):
  * ativacao (conta nova sem 1º orçamento), assinatura (renovação/vencimento) e reengajamento
@@ -113,6 +113,7 @@ function tipoDoPedido(p) {
 }
 const DIA_MS = 24 * 60 * 60 * 1000;
 const ATIVACAO_ULTIMA_MAX_DIAS = 120;
+const TRIAL_ENCERRADO_MAX_DIAS = 7;
 
 /** Brasília não tem horário de verão desde 2019: UTC−3 fixo. */
 const OFFSET_BRASILIA_MS = -3 * 60 * 60 * 1000;
@@ -399,6 +400,22 @@ function decidirTrialAcabando(c, agora, historico) {
   });
 }
 
+/** Teste do Pro já terminou (0–7 dias): 1 aviso por teste, sem dado do cliente. */
+function decidirTrialEncerrado(c, agora, historico) {
+  // Quem JÁ PAGA depois do teste (Pix/Play/cartão) segue com a linha do teste 'active' e vencida:
+  // o plano efetivo é a verdade. Só 'gratis' recebe "voltou ao plano Grátis".
+  if (!c.donoDoTenant || !objeto(c.oferta) || c.oferta.trial_estado !== 'ended' || c.oferta.plano_efetivo !== 'gratis') return null;
+  const termina = data(c.oferta.trial_termina_em);
+  if (!termina) return null;
+  const horas = (agora.getTime() - termina.getTime()) / HORA_MS;
+  if (!(horas >= 0 && horas <= TRIAL_ENCERRADO_MAX_DIAS * 24)) return null;
+  const terminaEm = termina.toISOString();
+  return pedidoReengajamento(c, historico, `reengajamento:${c.userId}:trial_encerrado:${terminaEm}`, {
+    tipo: 'trial_encerrado',
+    terminaEm,
+  });
+}
+
 function decidirParou(c, agora, historico) {
   if (c.membroDeEquipe || !c.donoDoTenant) return decisao('parou_nao_e_dono');
   const ultimo = data(c.ultimoOrcamentoEm);
@@ -429,7 +446,7 @@ function recebeuNasUltimas24h(c, agora) {
 
 /**
  * No máximo UM pedido por conta por rodada, nesta ordem: cobrança de renovação,
- * ativação (D+3/D+7), teste do Pro acabando, última chamada de ativação e
+ * ativação (D+3/D+7), teste do Pro acabando, teste encerrado (até 7 dias), última chamada de ativação e
  * "orçou e parou". O primeiro que se aplica vence.
  */
 export function decidirLembreteEmail(candidato, { agora, precoProMensal, ativacaoMaxDias = 30 } = {}) {
@@ -449,6 +466,8 @@ export function decidirLembreteEmail(candidato, { agora, precoProMensal, ativaca
   if (cobranca.enfileirar || !historico) return cobranca;
   const trial = decidirTrialAcabando(candidato, agora, historico);
   if (trial) return trial;
+  const encerrado = decidirTrialEncerrado(candidato, agora, historico);
+  if (encerrado) return encerrado;
   return decidirParou(candidato, agora, historico);
 }
 
