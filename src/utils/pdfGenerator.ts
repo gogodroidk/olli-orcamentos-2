@@ -5,7 +5,7 @@ import { imagemParaDataUri } from './imagemDataUri';
 import { exportarHtmlComoPdf, safeFileName } from './exportarDocumento';
 import { escapeHtml } from './html';
 import { corMarcaNoPapel } from './coresMarca';
-import { DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
+import { ctaPrestadorPdfHtml, DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
 import { formatarNumeroExibicao } from './numeroDocumento';
 import {
   CAIXA_LOGO_CABECALHO,
@@ -592,7 +592,7 @@ export function gerarHtmlOrcamento(
 
   // Selo "Feito com OLLI" (Grátis ilimitado): discreto, clicável e com UTM. Sai
   // só quando removerMarca é falsy (Pro/Empresa removem). Marcação fixa/controlada.
-  const brandOlliHtml = removerMarca ? '' : `<div class="brand-olli">${seloOlliHtml('pdf_orcamento')}</div>`;
+  const brandOlliHtml = removerMarca ? '' : `<div class="brand-olli">${seloOlliHtml('pdf_orcamento')}${ctaPrestadorPdfHtml()}</div>`;
 
   // Escapa CADA parte antes de juntar com o <br/> (marcação fixa controlada).
   const clienteLinhas = [

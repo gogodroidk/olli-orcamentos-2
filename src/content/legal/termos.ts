@@ -11,12 +11,32 @@ import { ARTIGO_ARREPENDIMENTO, DIAS_ARREPENDIMENTO } from './arrependimento';
  */
 
 import type { LegalDoc } from './privacidade';
+import { CTA_PRESTADOR_NO_AR_EM } from '../../utils/marcaOlli';
+
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+/** `AAAA-MM-DD` → "27 de outubro de 2026", sem `Date` (fuso não muda o dia). */
+function diaExtenso(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) throw new Error(`data inválida nos Termos: ${iso}`);
+  return `${Number(m[3])} de ${MESES[Number(m[2]) - 1]} de ${m[1]}`;
+}
+
+/** Convite ao prestador no Grátis (parecer do Dr. Paulo 26/10): só entra com a data de ligar. */
+const PARAGRAFO_CTA_TERMOS: string | null =
+  CTA_PRESTADOR_NO_AR_EM === null
+    ? null
+    : 'No plano gratuito, o PDF, o recibo e o link do orçamento levam o selo "Feito com OLLI", e o PDF e o ' +
+      'link do orçamento levam também uma linha convidando quem recebe o orçamento a conhecer o OLLI; nos ' +
+      'planos Pro e Empresa, o selo e o convite não aparecem.';
+
+/** Desligado, fica a data já publicada na main (2/11, #265). Ligado, o dia do convite tem de ser esse ou depois. */
+const ATUALIZADO_EM = CTA_PRESTADOR_NO_AR_EM === null ? '2 de novembro de 2026' : diaExtenso(CTA_PRESTADOR_NO_AR_EM);
 
 export const TERMOS: LegalDoc = {
   titulo: 'Termos de Uso',
-  atualizadoEm: '2 de novembro de 2026',
+  atualizadoEm: ATUALIZADO_EM,
   aviso:
-    'Documento atualizado em 2 de novembro de 2026. Ao criar uma conta ou usar o OLLI, ' +
+    `Documento atualizado em ${ATUALIZADO_EM}. Ao criar uma conta ou usar o OLLI, ` +
     'você concorda com estes Termos e com a Política de Privacidade.',
   intro: [
     'Estes Termos regulam o uso do aplicativo OLLI, uma ferramenta de gestão para ' +
@@ -64,6 +84,7 @@ export const TERMOS: LegalDoc = {
         'O OLLI oferece um plano gratuito e planos pagos (Pro e Empresa) com recursos adicionais. ' +
           'Nos canais em que o checkout estiver explicitamente disponível, os planos pagos podem ser ' +
           'contratados nas modalidades mensal, anual ou em até 12 vezes, com pagamento processado pela Stripe.',
+        ...(PARAGRAFO_CTA_TERMOS === null ? [] : [PARAGRAFO_CTA_TERMOS]),
         'Quando o Pix estiver disponível no canal de contratação, os planos pagos também podem ser pagos ' +
           'por Pix, processado pela AbacatePay, por um período fechado de 1 mês ou de 12 meses. O pagamento ' +
           'por Pix não é assinatura e não se renova automaticamente: ao fim do período pago, a conta volta ' +
