@@ -55,7 +55,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if p_limite is null or p_limite < 1 or p_limite > 200
+  if p_limite is null or p_limite < 1 or p_limite > 500
      or (p_user_ids is not null
          and (pg_catalog.cardinality(p_user_ids) < 1 or pg_catalog.cardinality(p_user_ids) > 50))
   then

@@ -79,7 +79,9 @@ await caso('texto: só fatos da conta, preço e limite da fonte, passa no valida
   const t = textoOfertaPro(CANDIDATAS[ID(1)]);
   assert.equal(t.assunto, 'Bayit climatização: o plano Pro do OLLI não tem limite de envios');
   assert.equal(t.paragrafos[0], 'Olá, Marcos!');
-  assert.ok(t.paragrafos[1].startsWith('Você já criou 11 orçamentos no OLLI e enviou 2 ao cliente.'));
+  assert.ok(t.paragrafos[1].startsWith('Você já criou 11 orçamentos no OLLI. O plano Grátis'));
+  assert.ok(!/enviou/.test(JSON.stringify(t)), 'sem contagem de envios (a tabela da cota conta a menos)');
+  assert.ok(t.paragrafos[2].includes('toque em "Pagar com Pix"'), 'nome do botão da versão web');
   assert.ok(t.paragrafos[1].includes(`até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês`));
   assert.ok(t.paragrafos[1].includes(`(${reais(PRECO_PRO.mensalCentavos)}/mês)`));
   assert.ok(!/novembro|este mês você/i.test(JSON.stringify(t)), 'sem contagem do mês');
@@ -147,6 +149,7 @@ await caso('envio: sem auditoria nada sai; com auditoria só "sairia" vai para a
   assert.equal(status, 200);
   assert.equal(auditorias.length, 1);
   assert.equal(auditorias[0].acao, 'email_oferta_pro_enviar');
+  assert.deepEqual(auditorias[0].depois.userIds, [ID(1), ID(2), ID(3), ID(4)], 'auditoria diz quem foi selecionado');
   assert.deepEqual(chamadas.filter((c) => c.rpc === 'enqueue_oferta_pro').map((c) => c.body.p_user_id), [ID(1), ID(2)]);
   assert.deepEqual(j.contagens, { enfileirado: 2, nao_e_gratis: 1, suprimido: 1, sem_uso: 1 });
   assert.equal(j.textos, undefined, 'envio não devolve texto');

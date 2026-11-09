@@ -5,12 +5,13 @@
  *   descadastros/devoluções/reclamações.
  * - candidatasOfertaPro: contas com uso real e o motivo pelo qual a oferta do Pro sairia ou não (a mesma
  *   política de ofertaPro.js, aplicada sobre os fatos que o banco devolve agora).
- * - textoOfertaPro: texto padrão montado só com fatos da conta. Sem contagem do mês (muda até o envio) e sem
- *   preço digitado (vem de precosPlanos).
+ * - textoOfertaPro: texto padrão montado só com fatos da conta. Sem contagem do mês (muda até o envio), sem
+ *   contagem de envios (orcamento_envios_gratis só registra os envios da cota e contaria a menos) e sem preço
+ *   digitado (vem de precosPlanos).
  * - enviarOfertaPro: ensaio (padrão) ou envio pela outbox (executarOfertaPro). O envio grava auditoria ANTES
  *   de enfileirar; sem auditoria, nada sai.
  *
- * Nada aqui devolve o e-mail do cliente. As rotas (admin.js) exigem papel admin + aal2.
+ * Nada aqui devolve o e-mail do cliente (nome e empresa, sim: só para admin com aal2).
  */
 import { chamarRpcServico } from './emailRpc.js';
 import { decidirOferta, executarOfertaPro, OFERTA_PRO_MAX_CONTAS } from './ofertaPro.js';
@@ -18,7 +19,8 @@ import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 import { LIMITE_ENVIOS_GRATIS_MES } from '../../src/services/planosBase.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CANDIDATAS_MAX_BYTES = 256 * 1024;
+const CANDIDATAS_MAX_BYTES = 512 * 1024;
+export const CANDIDATAS_LIMITE_TELA = 300;
 
 export const EMAILS_TIPOS = Object.freeze({
   boas_vindas: 'Boas-vindas',
@@ -69,9 +71,7 @@ export function textoOfertaPro(c) {
   const empresa = textoLimpo(c?.empresa, 60);
   const preco = reais(PRECO_PRO.mensalCentavos);
   const orcamentos = inteiro(c?.orcamentos);
-  const enviados = inteiro(c?.enviosTotal);
   const uso = orcamentos === 1 ? 'Você já criou 1 orçamento no OLLI' : `Você já criou ${orcamentos} orçamentos no OLLI`;
-  const envio = enviados === 0 ? '' : enviados === 1 ? ' e enviou 1 ao cliente' : ` e enviou ${enviados} ao cliente`;
   const assunto = empresa
     ? `${empresa}: o plano Pro do OLLI não tem limite de envios`
     : 'O plano Pro do OLLI não tem limite de envios';
@@ -79,8 +79,8 @@ export function textoOfertaPro(c) {
     assunto: assunto.slice(0, 150),
     paragrafos: [
       nome ? `Olá, ${nome}!` : 'Olá!',
-      `${uso}${envio}. O plano Grátis permite até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês. O Pro (${preco}/mês) não tem esse limite e libera também orçamento sem o selo "Feito com OLLI", follow-up automático de orçamento sem resposta e link do orçamento com pagamento na hora.`,
-      `Para assinar com Pix: entre com a sua conta em app.olliorcamentos.online, abra Planos, escolha Pro e toque em "Pix — ${preco} (1 mês)". Pague pelo QR ou copia-e-cola. Vale por 1 mês, sem renovação automática.`,
+      `${uso}. O plano Grátis permite até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês. O Pro (${preco}/mês) não tem esse limite e libera também orçamento sem o selo "Feito com OLLI", follow-up automático de orçamento sem resposta e link do orçamento com pagamento na hora.`,
+      `Para assinar com Pix: entre com a sua conta em app.olliorcamentos.online, abra Planos, escolha Pro e toque em "Pagar com Pix". Pague pelo QR ou copia-e-cola. Vale por 1 mês, sem renovação automática.`,
       'Equipe OLLI',
     ],
   };
@@ -114,7 +114,7 @@ export async function candidatasOfertaPro(env, { userIds = null, limite = 100, f
     throw falha('lista_invalida');
   }
   const lim = Number(limite);
-  if (!Number.isInteger(lim) || lim < 1 || lim > 200) throw falha('limite_invalido');
+  if (!Number.isInteger(lim) || lim < 1 || lim > 500) throw falha('limite_invalido');
   const linhas = await chamarRpcServico(configDe(env), fetchImpl, 'admin_oferta_pro_candidatas', {
     p_user_ids: userIds,
     p_limite: lim,
@@ -171,7 +171,8 @@ export async function enviarOfertaPro(env, actor, body, { auditar, fetchImpl = f
     const auditoria = await auditar(env, actor, {
       acao: 'email_oferta_pro_enviar',
       motivo,
-      depois: { contas: ofertas.length, semUso: semUso.length },
+      // ids (sem e-mail) para saber depois quem recebeu, mesmo com a outbox expurgada
+      depois: { contas: ofertas.length, semUso: semUso.length, userIds: ofertas.map((o) => o.userId) },
       requestId: typeof body.requestId === 'string' && body.requestId.length >= 16 ? body.requestId.slice(0, 128) : crypto.randomUUID(),
     });
     if (!auditoria) return json({ ok: false, erro: 'auditoria_indisponivel' }, 503);
@@ -203,7 +204,9 @@ export async function rotaResumoEmails(env, url, opcoes = {}) {
 /** GET /admin/api/emails/oferta-pro/candidatas */
 export async function rotaCandidatasOfertaPro(env, opcoes = {}) {
   try {
-    return json({ ok: true, candidatas: await candidatasOfertaPro(env, { limite: 100, ...opcoes }) });
+    const limite = CANDIDATAS_LIMITE_TELA;
+    const candidatas = await candidatasOfertaPro(env, { limite, ...opcoes });
+    return json({ ok: true, candidatas, limite, cortado: candidatas.length >= limite });
   } catch (e) {
     return json({ ok: false, erro: e.codigo === 'supabase_nao_configurado' ? e.codigo : 'banco_indisponivel' }, 503);
   }

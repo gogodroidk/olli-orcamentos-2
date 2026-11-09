@@ -645,7 +645,7 @@ function irPara(id){
 }
 function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,emails:carregarEmails,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
 /* ── e-mails: saúde e oferta do Pro (D-1859) ── */
-let EMAILS=null,EMAILS_ERRO='',OFERTA=null,OFERTA_ERRO='',OFERTA_SEL=new Set();
+let EMAILS=null,EMAILS_ERRO='',OFERTA=null,OFERTA_ERRO='',OFERTA_CORTADO=false,OFERTA_SEL=new Set();
 const MOTIVO_OFERTA={sairia:['Pode receber','ok'],enfileirado:['Enfileirado','ok'],conta_indisponivel:['E-mail indisponível','dng'],suprimido:['Descadastrou','warn'],excluido:['Conta interna',''],membro_equipe:['Membro de equipe',''],ja_assinou:['Já assinou','warn'],nao_e_gratis:['Pro ou teste ativo','info'],oferta_recente:['Oferta há menos de 30 dias',''],recebeu_email_24h:['E-mail nas últimas 24 h',''],duplicado:['Já enfileirado hoje',''],teto_diario:['Teto do dia','warn'],erro_rpc:['Erro ao enfileirar','dng'],sem_uso:['Sem uso','']};
 function pillMotivo(m){const x=MOTIVO_OFERTA[m]||[m,''];return el('span',{className:'pill '+x[1]},x[0]);}
 async function carregarEmails(){
@@ -653,7 +653,7 @@ async function carregarEmails(){
  box.append(el('div',{className:'card'},carregando(4)));
  const [r1,r2]=await Promise.allSettled([api('emails/resumo?dias=7'),api('emails/oferta-pro/candidatas')]);
  if(r1.status==='fulfilled'){EMAILS=r1.value.resumo;EMAILS_ERRO='';}else{EMAILS=null;EMAILS_ERRO=mensagemErro(r1.reason);}
- if(r2.status==='fulfilled'){OFERTA=r2.value.candidatas||[];OFERTA_ERRO='';}else{OFERTA=null;OFERTA_ERRO=mensagemErro(r2.reason);}
+ if(r2.status==='fulfilled'){OFERTA=r2.value.candidatas||[];OFERTA_CORTADO=!!r2.value.cortado;OFERTA_ERRO='';}else{OFERTA=null;OFERTA_ERRO=mensagemErro(r2.reason);}
  OFERTA_SEL=new Set([...OFERTA_SEL].filter(id=>OFERTA&&OFERTA.some(c=>c.userId===id&&c.motivo==='sairia')));
  desenharEmails();
 }
@@ -676,13 +676,14 @@ function desenharEmails(){
  const podem=OFERTA.filter(c=>c.motivo==='sairia');
  const t=el('table'),tb=el('tbody');
  const todos=el('input',{type:'checkbox',ariaLabel:'Selecionar todas que podem receber',checked:podem.length>0&&podem.every(c=>OFERTA_SEL.has(c.userId)),disabled:!podem.length,onchange:e=>{if(e.target.checked)podem.forEach(c=>OFERTA_SEL.add(c.userId));else OFERTA_SEL.clear();desenharEmails();}});
- t.append(el('thead',{},el('tr',{},el('th',{},todos),el('th',{},'Conta'),el('th',{className:'num'},'Orçamentos'),el('th',{className:'num hideSm'},'Envios (mês / total)'),el('th',{className:'hideSm'},'Último uso'),el('th',{},'Situação'))));
+ t.append(el('thead',{},el('tr',{},el('th',{},todos),el('th',{},'Conta'),el('th',{className:'num'},'Orçamentos'),el('th',{className:'num hideSm'},'Envios no Grátis (mês / total)'),el('th',{className:'hideSm'},'Último uso'),el('th',{},'Situação'))));
  OFERTA.forEach(c=>{
   const pode=c.motivo==='sairia';
   const cb=el('input',{type:'checkbox',ariaLabel:'Selecionar '+(c.empresa||c.nome||'conta'),checked:OFERTA_SEL.has(c.userId),disabled:!pode,onchange:e=>{if(e.target.checked)OFERTA_SEL.add(c.userId);else OFERTA_SEL.delete(c.userId);desenharEmails();}});
   tb.append(el('tr',{},el('td',{},cb),el('td',{},el('b',{},c.empresa||c.nome||'(sem nome)'),c.empresa&&c.nome?el('div',{className:'mut',style:'font-size:12px'},c.nome):null),el('td',{className:'num'},fmtNum(c.orcamentos)),el('td',{className:'num hideSm'},fmtNum(c.enviosMes)+' / '+fmtNum(c.enviosTotal)),el('td',{className:'hideSm'},rel(c.ultimoUso)),el('td',{},pillMotivo(c.motivo))));
  });
  t.append(tb);c2.append(el('div',{className:'tblWrap'},t));
+ if(OFERTA_CORTADO)c2.append(el('div',{className:'mut',style:'margin-top:8px;font-size:12px'},'Mostrando as '+fmtNum(OFERTA.length)+' contas com mais orçamentos.'));
  const n=OFERTA_SEL.size;
  c2.append(el('div',{className:'barra',style:'margin-top:var(--s3);justify-content:flex-end;gap:var(--s2)'},
   el('span',{className:'mut',style:'margin-right:auto;font-size:13px'},n+' selecionada(s) de '+podem.length+' que podem receber'),
