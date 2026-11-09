@@ -28,7 +28,7 @@ const BRUTO = () => ({
     { userId: ID(1), plano: 'pro', criadoEm: '2026-11-09T10:00:00Z', venceEm: '2026-11-10T10:00:00Z', vencido: false, nome: 'Ana <b>', empresa: 'Frio Bom', email: 'vazou@x.com' },
     { userId: 'nao-e-uuid', plano: 'pro', criadoEm: '2026-11-09T10:00:00Z' },
   ] },
-  limiteGratis: { limite: 5, corteAtivo: false, total: 1, itens: [{ userId: ID(2), envios: 7, nome: 'Beto', empresa: '' }] },
+  limiteGratis: { limite: 5, corteAtivo: false, total: 1, itens: [{ userId: ID(2), envios: 7, nome: 'Beto', empresa: '', limitada: true }] },
   testesTerminando: { total: 1, itens: [{ userId: ID(3), terminaEm: '2026-11-12T10:00:00Z', nome: 'Caio', empresa: 'Clima' }] },
   mes: { entrouCentavos: 5990, pagantes: 3, testesViraramPagantes: 0 },
   saude: { emailsFalhos24h: { total: 2, porTemplate: [{ template: 'boas_vindas', n: 2 }] }, pixPagoSemPlano: { total: 0, itens: [] } },
@@ -51,6 +51,7 @@ await caso('normaliza: listas ok, linha sem uuid descartada, nome sem < >, e-mai
   assert.equal(h.pixPendentes.itens[0].nome, 'Ana b');
   assert.equal(h.limiteGratis.limite, 5);
   assert.equal(h.limiteGratis.corteAtivo, false);
+  assert.equal(h.limiteGratis.itens[0].limitada, true);
   assert.equal(h.testesTerminando.itens[0].userId, ID(3));
   assert.equal(h.mes.entrouCentavos, 5990);
   assert.ok(!JSON.stringify(h).includes('@'), 'nenhum e-mail na resposta');
@@ -120,7 +121,11 @@ await caso('migration: timestamp novo, SECURITY DEFINER, search_path vazio, só 
   assert.match(sql, /revoke all on function public\.admin_hoje\(text\[\]\) from public, anon, authenticated;/);
   assert.match(sql, /grant execute on function public\.admin_hoje\(text\[\]\) to service_role;/);
   assert.ok(!/grant[^;]*\bto\s+(anon|authenticated|public)\b/i.test(sql));
-  assert.ok(!/auth\.users|\.email\b|recipient/.test(sql), 'não lê e-mail de cliente');
+  assert.ok(!/\.email\b|recipient/.test(sql), 'não lê e-mail de cliente');
+  // auth.users só para a data de criação da conta (mesma regra do limite no banco, 20261024150000); nunca o e-mail
+  assert.equal((sql.match(/auth\.users/g) || []).length, 1, 'auth.users só no join da data de criação');
+  assert.match(sql, /left join auth\.users u on u\.id = v\.uid/);
+  assert.deepEqual([...new Set(sql.match(/\bu\.[a-z_]+/g))].sort(), ['u.created_at', 'u.id'], 'de auth.users só id e created_at');
   assert.match(sql, /date_trunc\('month', pg_catalog\.timezone\('UTC', pg_catalog\.now\(\)\)\)::date/, 'período do limite = mês UTC');
   assert.match(sql, /limite_gratis_config/);
   assert.match(sql, /e\.estado = 'confirmado'/);

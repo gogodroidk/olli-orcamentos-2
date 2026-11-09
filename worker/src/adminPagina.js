@@ -188,7 +188,7 @@ tbody tr.clic{cursor:pointer;transition:background var(--dur1)}
 tbody tr.clic:hover{background:var(--surf2)}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .conta{display:flex;align-items:center;gap:var(--s3);min-width:220px}
-.av{width:34px;height:34px;border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--brand2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0}
+.av{width:34px;height:34px;border-radius:10px;background:var(--brand);color:var(--brandInk);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0}
 .conta b{display:block;font-weight:700;overflow-wrap:anywhere}
 .conta span{font-size:12.5px;color:var(--mut2)}
 .pill{display:inline-flex;align-items:center;gap:4px;padding:2px var(--s2);border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;background:var(--surf2);color:var(--mut)}
@@ -869,7 +869,7 @@ function blocoHoje(box){
  g.append(hojeCard({chave:'pix',titulo:'Pix gerado e não pago (7 dias)',ico:'coin',tom:'warn',bloco:HOJE.pixPendentes,vazio:'Nenhum Pix esperando pagamento.',
   linha:x=>[x.empresa||x.nome||'(sem nome)',(x.plano?'Plano '+x.plano+' · ':'')+'gerado '+rel(x.criadoEm),x.vencido?el('span',{className:'pill'},'venceu'):el('span',{className:'pill warn'},'aberto')]}));
  g.append(hojeCard({chave:'limite',titulo:'Bateram o limite do Grátis no mês',ico:'trend',tom:'warn',bloco:HOJE.limiteGratis,vazio:'Ninguém bateu o limite neste mês.',
-  linha:x=>[x.empresa||x.nome||'(sem nome)',fmtNum(x.envios)+' envios no mês',null],
+  linha:x=>[x.empresa||x.nome||'(sem nome)',fmtNum(x.envios)+' envios no mês',x.limitada?el('span',{className:'pill warn'},'barrada'):el('span',{className:'pill'},'ainda envia')],
   rodape:b=>el('span',{style:'display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)'},el('span',{},(b.corteAtivo?'Limite de '+fmtNum(b.limite)+' envios valendo.':'Limite de '+fmtNum(b.limite)+' ainda desligado: eles seguem enviando.')),el('button',{type:'button',className:'btn sec',style:'min-height:32px',onclick:()=>{location.hash='emails';}},ico('mail'),'Oferta por e-mail'))}));
  g.append(hojeCard({chave:'testes',titulo:'Teste do Pro acaba em 3 dias',ico:'calendar',tom:'warn',bloco:HOJE.testesTerminando,vazio:'Nenhum teste termina nos próximos 3 dias.',
   linha:x=>[x.empresa||x.nome||'(sem nome)','termina '+faltam(x.terminaEm),null]}));

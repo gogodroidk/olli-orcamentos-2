@@ -24,6 +24,7 @@ declare
   v_periodo date := pg_catalog.date_trunc('month', pg_catalog.timezone('UTC', pg_catalog.now()))::date;
   v_limite integer;
   v_corte timestamptz;
+  v_corte_antigas timestamptz;
   v_pix jsonb;
   v_limite_lista jsonb;
   v_testes jsonb;
@@ -53,6 +54,8 @@ begin
                             and (p.event_id = c.event_id
                                  or (p.payload->>'user_id' = c.uid::text and p.recebido_em >= c.criado)))
          and public.receita_conta_interna(c.uid, p_emails_excluidos) is null
+         -- quem já tem assinatura paga não entra (não cobrar de novo quem já paga)
+         and not exists (select 1 from public.admin_assinaturas_pagantes(p_emails_excluidos) ap where ap.user_id = c.uid)
        order by c.uid, c.criado desc
     )
     select pg_catalog.jsonb_build_object(
@@ -70,8 +73,10 @@ begin
   end;
 
   -- (b) Contas que já bateram o limite do Grátis neste mês (envios confirmados >= limite) e não são Pro/teste ativo.
+  --     'limitada' segue a regra do banco (20261024150000): criada >= corte OU now() >= corte_antigas.
+  --     'corteAtivo' = alguma conta já pode ser barrada agora.
   begin
-    select c.limite, c.corte into v_limite, v_corte from public.limite_gratis_config c where c.id;
+    select c.limite, c.corte, c.corte_antigas into v_limite, v_corte, v_corte_antigas from public.limite_gratis_config c where c.id;
     if v_limite is null then
       v_limite_lista := null;
     else
@@ -82,18 +87,24 @@ begin
          group by e.owner_user_id, e.tenant_id
         having pg_catalog.count(*) >= v_limite
       ), bateu as (
-        select v.uid, pg_catalog.sum(v.n)::integer as n
+        select v.uid, pg_catalog.sum(v.n)::integer as n,
+               pg_catalog.bool_or(u.created_at is not null and (
+                 (v_corte is not null and u.created_at >= v_corte)
+                 or (v_corte_antigas is not null and v_agora >= v_corte_antigas))) as limitada
           from envios v
+          left join auth.users u on u.id = v.uid
          where public.plano_comercial_efetivo(v.uid, v.tenant_id, v_agora) not in ('pro', 'empresa')
            and public.receita_conta_interna(v.uid, p_emails_excluidos) is null
          group by v.uid
       )
       select pg_catalog.jsonb_build_object(
-               'limite', v_limite, 'corteAtivo', v_corte is not null,
+               'limite', v_limite,
+               'corteAtivo', (v_corte is not null and v_agora >= v_corte)
+                             or (v_corte_antigas is not null and v_agora >= v_corte_antigas),
                'total', (select pg_catalog.count(*) from bateu),
                'itens', coalesce((
                  select pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
-                          'userId', x.uid, 'envios', x.n,
+                          'userId', x.uid, 'envios', x.n, 'limitada', x.limitada,
                           'nome', (select pr.nome from public.profiles pr where pr.user_id = x.uid limit 1),
                           'empresa', (select og.nome from public.organizacoes og where og.owner_user_id = x.uid order by og.id limit 1)
                         ) order by x.n desc, x.uid)

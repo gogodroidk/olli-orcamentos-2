@@ -76,7 +76,7 @@ export function normalizarHoje(bruto) {
   const limiteGratis = lista(bruto.limiteGratis, (x) => {
     const p = pessoa(x);
     const envios = inteiro(x?.envios);
-    return p && envios !== null && { ...p, envios };
+    return p && envios !== null && { ...p, envios, limitada: x.limitada === true };
   }, (b) => ({ limite: inteiro(b.limite), corteAtivo: b.corteAtivo === true }));
   const testesTerminando = lista(bruto.testesTerminando, (x) => {
     const p = pessoa(x);
