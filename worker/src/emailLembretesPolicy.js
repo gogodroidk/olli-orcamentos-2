@@ -52,6 +52,12 @@ export const LEMBRETE_REENGAJAMENTO = Object.freeze({
   templateVersion: 'lembrete_reengajamento.v1',
   purpose: 'reengagement_reminder',
 });
+/** Oferta do plano Pro (08/11/2026): texto escrito por conta, enfileirado só por lista explícita (ofertaPro.js). */
+export const LEMBRETE_OFERTA_PRO = Object.freeze({
+  template: 'oferta_pro',
+  templateVersion: 'oferta_pro.v1',
+  purpose: 'oferta_pro',
+});
 export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando']);
 /**
  * Tipos de lembrete que a rodada pode enfileirar (sufixo de EMAIL_LEMBRETES_MODE, 07/10/2026):
