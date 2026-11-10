@@ -134,10 +134,10 @@ function RegisterForm() {
 				onFocusCapture={(e) => {
 					if (e.target instanceof HTMLInputElement) registrarEtapa("cadastro_iniciado");
 				}}
-				className="space-y-4"
+				className="space-y-2 md:space-y-4"
 			>
 				<div className="flex flex-col items-center gap-2 text-center">
-					<h1 className="text-2xl font-bold">{t("sys.login.signUpFormTitle")}</h1>
+					<h1 className="text-xl font-bold md:text-2xl">{t("sys.login.signUpFormTitle")}</h1>
 				</div>
 
 				{/* OAuth reduz a entrada a um clique — fora do navegador do Instagram/Facebook,

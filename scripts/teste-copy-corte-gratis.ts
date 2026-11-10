@@ -16,6 +16,7 @@ import {
   PREVIEW_EMAIL_GRATIS,
   LIMITE_ENVIOS_GRATIS_MES,
   RECURSOS_GRATIS,
+  CORTE_ANTIGAS_DATA,
 } from '../src/services/planosBase.ts';
 
 const ler = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -72,8 +73,14 @@ if (CORTE_GRATIS_DATA === null) {
   }
   for (const t of [FRASE_GRATIS, RECURSOS_GRATIS[0]]) {
     assert.doesNotMatch(t, PROIBIDO, `fonte única sem 'ilimitado' após o corte: ${t}`);
-    assert.ok(t.includes(br) && t.includes(`${LIMITE_ENVIOS_GRATIS_MES}`), `fonte única traz data e número: ${t}`);
-    assert.match(t, /anteriores seguem sem limite/, 'contas antigas: dito com honestidade');
+    if (CORTE_ANTIGAS_DATA !== null) {
+      // D-1824: limite em todas as contas — a copy diz o número para todos e não pode mais prometer "anteriores sem limite".
+      assert.ok(t.includes(`${LIMITE_ENVIOS_GRATIS_MES}`), `fonte única traz o número: ${t}`);
+      assert.doesNotMatch(t, /anteriores seguem sem limite|contas novas/, `limite em todas: sem 'contas novas'/'anteriores sem limite': ${t}`);
+    } else {
+      assert.ok(t.includes(br) && t.includes(`${LIMITE_ENVIOS_GRATIS_MES}`), `fonte única traz data e número: ${t}`);
+      assert.match(t, /anteriores seguem sem limite/, 'contas antigas: dito com honestidade');
+    }
   }
   for (const arq of ESCRITOS_A_MAO) {
     const achados = ler(arq).split('\n').map((l, i) => [i + 1, l] as const).filter(([, l]) => PROIBIDO.test(l));

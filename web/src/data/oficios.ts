@@ -55,7 +55,7 @@ function taglineDe(calculadoras: number, documentos: string[]): string {
   if (documentos.length) partes.push(documentos.join(' e '));
   if (calculadoras) partes.push(`${calculadoras} calculadora${calculadoras > 1 ? 's' : ''} de campo`);
   // Sem ferramenta especializada, o valor é o ciclo — que todo ofício tem.
-  return partes.length ? partes.join(' · ') : 'Orçamento, OS e recibo do jeito do seu serviço';
+  return partes.length ? partes.join(' · ') : 'Orçamento, ordem de serviço e recibo do jeito do seu serviço';
 }
 
 export const OFICIOS: OficioLanding[] = VERTICAIS.map((v) => {
@@ -86,7 +86,7 @@ export const OFICIO_GERAL: OficioLanding = {
   emoji: VERTICAL_GERAL.emoji,
   calculadoras: calculosDoOficio(VERTICAL_GERAL.id).length,
   documentos: [],
-  tagline: 'Não achou o seu? O ciclo é o mesmo: orçamento, OS e recibo pra qualquer serviço',
+  tagline: 'Não achou o seu? O ciclo é o mesmo: orçamento, ordem de serviço e recibo pra qualquer serviço',
 };
 
 /** Total REAL de calculadoras — a página não chuta número. */
@@ -179,9 +179,9 @@ export const PROFISSAO_POR_OFICIO: Record<VerticalId, string> = {
  * ferramenta que talvez não exista.
  */
 export const DOR_POR_OFICIO: Record<VerticalId, string> = {
-  refrigeracao: 'Orçamento na hora da visita, PMOC sem planilha e o histórico de cada máquina no QR.',
+  refrigeracao: 'Orçamento na hora da visita, o plano de manutenção organizado no celular e o histórico de cada máquina no QR. O responsável técnico continua sendo a pessoa.',
   eletrica: 'Orçamento de quadro, circuito e ponto — com o cálculo feito no celular, sem app de terceiro.',
-  hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a OS assinada na tela.',
+  hidraulica: 'Do vazamento ao recibo: orçamento com o material certo e a ordem de serviço assinada na tela.',
   pintura: 'Quantos litros, quantas demãos, quanto cobrar — e o orçamento sai pronto do mesmo lugar.',
   dedetizacao: 'Comprovante de controle de pragas com os campos da RDC 622, dosagem calculada e o lembrete da reaplicação.',
   caixa_dagua: "Certificado de limpeza com lacre e validade, e o lembrete da próxima limpeza no tempo certo.",
