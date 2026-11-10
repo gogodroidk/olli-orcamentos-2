@@ -2,3 +2,6 @@
 *.sh text eol=lf
 # Hooks versionados (sem extensão) também precisam de LF: bash falha com CR no fim da linha.
 .githooks/* text eol=lf
+
+# Migrations SQL sempre com LF no checkout (core.autocrlf=true no Windows gravava \r nas funcoes e quebrava remendos por ancora).
+*.sql text eol=lf
