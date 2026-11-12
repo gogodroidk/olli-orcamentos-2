@@ -1,8 +1,8 @@
 /**
- * Texto do PIX AUTOMÁTICO (assinatura recorrente no Pix — AbacatePay). UMA fonte para o app e para o painel web.
+ * Texto do PIX AUTOMÁTICO (assinatura recorrente no Pix). UMA fonte para o app e para o painel web.
  *
  * Direito do consumidor (CDC art. 6º III e 31): antes de pagar, a pessoa lê o preço, que a cobrança se repete
- * sozinha todo mês e COMO cancelar. Só afirmamos o que o servidor faz de verdade (worker/src/abacatePixAutomatico.js):
+ * sozinha todo mês e COMO cancelar. Só afirmamos o que o servidor faz de verdade (módulo do Pix Automático no worker):
  *  - o 1º débito é na hora e os seguintes são mensais, no valor fixo da autorização;
  *  - cancelar (pelo OLLI ou no app do banco) para as cobranças e o Pro segue até o fim do período já pago;
  *  - débito recusado pelo banco encerra a assinatura (sem tentar de novo) e o Pro acaba no fim do período pago.

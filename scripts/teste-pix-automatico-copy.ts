@@ -48,7 +48,7 @@ const dlg = ler('webapp/src/pages/olli/planos/PixAutomatico.tsx');
 ok('painel: diálogo mostra o acordo antes de autorizar', dlg.includes('textoAcordoPixAutomatico(valor)') && dlg.includes('Autorizar'));
 const pix = ler('webapp/src/pages/olli/planos/pix.ts');
 ok('painel: só `pixAutomatico === true` liga (falha = sem botão)', pix.includes('data.pixAutomatico === true'));
-const svc = ler('src/services/pixAutomatico.ts');
+const svc = ler('src/services/pixPlano.ts');
 ok('app: só `pixAutomatico === true` liga', svc.includes('d?.pixAutomatico === true'));
 
 const w = ler('worker/src/abacate.js');

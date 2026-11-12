@@ -44,9 +44,11 @@ import { track, Eventos } from '../services/analytics';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { PlanosAudioIaCard } from '../components/PlanosAudioIaCard';
 import { planosAudioIaLigada } from '../services/planosAudioIa';
-import { chavePixPlano, checarPixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
+import {
+  cancelarPixAutomatico, chavePixPlano, checarPixAutomatico, checarPixPlano, criarPixAutomatico, criarPixPlano, estadoPixAutomatico,
+  pixAutomaticoDisponivel, pixPlanoDisponivel, type CobrancaPixPlano, type EstadoPixAutomatico,
+} from '../services/pixPlano';
 import { buscarPixPendente, esquecerPixPendente, guardarPixPendente } from '../services/pixPendente';
-import { cancelarPixAutomatico, checarPixAutomatico, criarPixAutomatico, estadoPixAutomatico, pixAutomaticoDisponivel, type EstadoPixAutomatico } from '../services/pixAutomatico';
 import { ROTULO_CANCELAR_PIX_AUTOMATICO, ROTULO_PIX_AUTOMATICO, TEXTO_PIX_AUTOMATICO_ATIVO, textoAcordoPixAutomatico, textoCurtoPixAutomatico } from '../content/pixAutomatico';
 import { textoValidadePix } from '../utils/pixValidade';
 import {

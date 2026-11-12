@@ -1,9 +1,9 @@
 /**
- * PIX AUTOMÁTICO no painel — confirmação (preço, "todo mês", como cancelar), autorização na página da
- * AbacatePay e acompanhamento até o SERVIDOR liberar o Pro; mais o cartão "renova sozinho / cancelar".
+ * PIX AUTOMÁTICO no painel — confirmação (preço, "todo mês", como cancelar), autorização na página de
+ * pagamento e acompanhamento até o SERVIDOR liberar o Pro; mais o cartão "renova sozinho / cancelar".
  *
- * O painel nunca "acha" que ativou: só `ativa:true` vindo de `/abacate/assinatura/status` conta (o worker já liberou).
- * Desligado por padrão: quem monta este diálogo só o faz com `/abacate/config` → `pixAutomatico:true` (ver `pix.ts`).
+ * O painel nunca "acha" que ativou: só `ativa:true` vindo do status da assinatura no worker conta (ele já liberou o plano).
+ * Desligado por padrão: quem monta este diálogo só o faz com o worker confirmando `pixAutomatico:true` (ver `pix.ts`).
  * Texto único com o app: `src/content/pixAutomatico.ts` (testado em scripts/teste-pix-automatico-copy.ts).
  */
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw } from "lucide-react";
@@ -109,7 +109,7 @@ export function DialogPixAutomatico({ aoFechar, aoAtivo }: { aoFechar: () => voi
 				{fase === "aguardando" && (
 					<div className="space-y-3" aria-live="polite">
 						<p className="text-sm text-text-secondary">
-							Abrimos a página da AbacatePay em outra aba: leia o QR Code no app do seu banco e autorize. O primeiro débito é na hora. O
+							Abrimos a página de pagamento em outra aba: leia o QR Code no app do seu banco e autorize. O primeiro débito é na hora. O
 							QR vale 1 hora.
 						</p>
 						<div className="flex items-center gap-2 text-sm text-text-secondary">
