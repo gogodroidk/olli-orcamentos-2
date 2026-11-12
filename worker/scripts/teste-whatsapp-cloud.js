@@ -7,7 +7,7 @@
  * (409/429) e a Meta NÃO é chamada quando recusado · resultado da Meta é gravado · LOG sem dado pessoal.
  */
 import assert from 'node:assert/strict';
-import { FRASE_IA } from '../src/passagemHumano.js';
+import { FRASE_BOAS_VINDAS, FRASE_IA } from '../src/passagemHumano.js';
 import {
   handleWhatsappAprovar,
   handleWhatsappEnviar,
@@ -470,6 +470,53 @@ try {
     assert.equal(r.status, 200);
     assert.equal((await r.json()).respostas_ia, 5);
     assert.equal(m.chamadas.filter((c) => c.url.includes('graph.facebook.com')).length, 5);
+  });
+
+  // ─── Boas-vindas no primeiro contato (CQ-WA-ROBO-GRATIS) ─────────
+  await caso('POST: tipo boas_vindas manda a frase de boas-vindas (IA + SAIR), sem texto da pessoa', async () => {
+    assert.match(FRASE_BOAS_VINDAS, /sou uma IA/);
+    assert.match(FRASE_BOAS_VINDAS, /SAIR/);
+    const textoPessoa = 'Oi, quero orçamento de ar';
+    const m = mundo({ rpcs: {
+      ...RPC_FRASE,
+      wa_registrar_entradas: () => ({ registradas: 1, duplicadas: 0, saiu: 0, humano: 0, ignoradas: 0,
+        respostas: [{ telefone: TEL, tipo: 'boas_vindas' }] }),
+    } });
+    const p = mensagensMeta({ itens: { messages: [{ id: 'wamid.BV1', from: TEL, type: 'text', timestamp: '1790000000', text: { body: textoPessoa } }] } });
+    const r = await postWebhook(m, p);
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).respostas_ia, 1);
+    const g = m.chamadas.filter((c) => c.url.includes('graph.facebook.com'));
+    assert.equal(g.length, 1);
+    assert.equal(g[0].corpo.text.body, FRASE_BOAS_VINDAS);
+    assert.equal(JSON.stringify(g[0].corpo).includes(textoPessoa), false);
+  });
+
+  await caso('POST: tipo ia explícito manda FRASE_IA; tipo desconhecido não manda nada', async () => {
+    const m = mundo({ rpcs: {
+      ...RPC_FRASE,
+      wa_registrar_entradas: () => ({ registradas: 2, duplicadas: 0, saiu: 0, humano: 1, ignoradas: 0,
+        respostas: [{ telefone: TEL, tipo: 'ia' }, { telefone: TEL, tipo: 'promocao' }] }),
+    } });
+    const p = mensagensMeta({ itens: { messages: [{ id: 'wamid.BV2', from: TEL, type: 'text', timestamp: '1790000000', text: { body: 'é robô?' } }] } });
+    const r = await postWebhook(m, p);
+    assert.equal((await r.json()).respostas_ia, 1);
+    const g = m.chamadas.filter((c) => c.url.includes('graph.facebook.com'));
+    assert.equal(g.length, 1);
+    assert.equal(g[0].corpo.text.body, FRASE_IA);
+  });
+
+  await caso('POST: boas_vindas bloqueada pelo banco (fora da janela/SAIR) não chama a Meta', async () => {
+    const m = mundo({ rpcs: {
+      ...RPC_FRASE,
+      wa_autorizar_envio: () => ({ pode: false, motivo: 'fora_janela' }),
+      wa_registrar_entradas: () => ({ registradas: 1, duplicadas: 0, saiu: 0, humano: 0, ignoradas: 0,
+        respostas: [{ telefone: TEL, tipo: 'boas_vindas' }] }),
+    } });
+    const p = mensagensMeta({ itens: { messages: [{ id: 'wamid.BV3', from: TEL, type: 'text', timestamp: '1790000000', text: { body: 'oi' } }] } });
+    const r = await postWebhook(m, p);
+    assert.equal((await r.json()).respostas_ia, 0);
+    assert.equal(m.chamadas.filter((c) => c.url.includes('graph.facebook.com')).length, 0);
   });
 
   // ─── LOG sem dado pessoal ──────────────────────────────────────
