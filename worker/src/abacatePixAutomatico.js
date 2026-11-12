@@ -16,7 +16,8 @@
  * `ABACATE_PIX_AUTOMATICO=true` + `ABACATE_PA_PRODUTO_PRO_MENSAL=prod_…` (produto MONTHLY de R$ 39,00 criado
  * na AbacatePay). Sem os dois (ou sem a chave) `/abacate/config` diz `pixAutomatico:false`, o app não oferece
  * o botão e a criação responde 503. A AbacatePay ainda precisa liberar Pix Automático na loja (suporte).
- * Cancelar e tratar webhook NÃO dependem da flag: assinatura que existe tem de poder terminar.
+ * Cancelar e tratar webhook NÃO dependem da flag: assinatura que existe tem de poder terminar. Sem a CHAVE da AbacatePay
+ * `/cancelar` encerra só localmente (e avisa); `/status` exige a chave (503).
  *
  * ═══ SEM MIGRATION ═══
  * O cadastro vive em `webhook_events` (mesmo padrão do consumo do Pix avulso):
@@ -56,6 +57,8 @@ export const GRACA_MS = 2 * 864e5;
 const ANCORA_MAX_ATRAS_MS = 7 * 864e5;
 const ANCORA_MAX_FRENTE_MS = 3600e3;
 /** Se o Pro já vale por mais que isto, não vendemos assinatura em cima (o 1º débito é imediato: pagaria em dobro). */
+/** Falha mais de 10 dias antes do fim do ciclo pago = de um ciclo já superado por um pagamento posterior. */
+const FALHA_ANTIGA_MS = 10 * 864e5;
 const PRO_ATIVO_BLOQUEIA_MS = 5 * 864e5;
 
 const RE_ID = /^[A-Za-z0-9_-]{6,80}$/;
@@ -150,11 +153,11 @@ export function fimDoCicloPago(sub, ancoraMs, agora = Date.now()) {
  * Pro até `fimMs + folga`. Preserva nível maior e vigência maior já existentes (nunca encurta) e NÃO toca em
  * `stripe_subscription_id` (quem tem cartão na Stripe continua com ele). `{ ok, motivo? }`.
  */
-async function concederAte(env, userId, fimMs) {
+async function concederAte(env, userId, fimMs, graca = GRACA_MS) {
   const atual = await getAssinatura(env, userId);
   if (atual && atual.error) return { ok: false, motivo: 'indisponivel' };
   let plano = PLANO_PIX[PLANO_PA].plano;
-  const nossa = fimMs + GRACA_MS;
+  const nossa = fimMs + graca;
   let vigencia = nossa;
   if (atual) {
     const fimAtual = Date.parse(atual.current_period_end);
@@ -267,6 +270,17 @@ async function sincronizar(env, h, { userId, checkoutId, subId, pagoEmCandidatas
   if (!previo.ok) return { estado: 'indisponivel' };
   const antes = (previo.linha && previo.linha.payload) || {};
   if (!previo.linha) {
+    // Duas assinaturas ativas = duas cobranças mensais. A 2ª (checkout pago em paralelo) é cancelada e NÃO concede.
+    const outras = await buscarEventos(env, ORIGEM_PA_SUB, { user_id: userId, estado: 'ativa' }, 5);
+    if (!outras.ok) return { estado: 'indisponivel' };
+    if (outras.linhas.some((l) => l.event_id !== subId)) {
+      if ((await cancelarNaAbacate(env, h, subId)) !== 'ok') return { estado: 'indisponivel', motivo: 'cancelar_falhou' };
+      const claimDup = await reivindicarEvento(env, { origem: ORIGEM_PA_SUB, eventId: subId, tipo: 'assinatura_pix_automatico', payload: payloadSub({ user_id: userId, plano: PLANO_PA, checkout: sub.checkoutId || checkoutId, estado: 'encerrada', motivo: 'duplicada_cancelada' }) });
+      if (!claimDup.ok) return { estado: 'indisponivel', motivo: 'registro_nao_gravou' };
+      if (!(await gravarSub(env, subId, { user_id: userId, plano: PLANO_PA, checkout: sub.checkoutId || checkoutId, estado: 'encerrada', motivo: 'duplicada_cancelada' }))) return { estado: 'indisponivel', motivo: 'registro_nao_gravou' };
+      console.error('[olli-abacate-pa] 2ª assinatura ativa da mesma conta — cancelada, sem conceder');
+      return { estado: 'duplicada' };
+    }
     const claim = await reivindicarEvento(env, { origem: ORIGEM_PA_SUB, eventId: subId, tipo: 'assinatura_pix_automatico', payload: payloadSub({ user_id: userId, plano: PLANO_PA, checkout: sub.checkoutId || checkoutId, estado: 'ativa' }) });
     if (!claim.ok) return { estado: 'indisponivel' };
   }
@@ -276,7 +290,8 @@ async function sincronizar(env, h, { userId, checkoutId, subId, pagoEmCandidatas
   if (fim === null) return { estado: 'sem_ancora' };
   const pagoAte = Math.max(fim, Number(antes.pago_ate) || 0);
 
-  const c = await concederAte(env, userId, pagoAte);
+  // Cancelada depois de paga: concede só o ciclo pago, SEM folga (nunca mais será renovada nem aparada).
+  const c = await concederAte(env, userId, pagoAte, ativa ? GRACA_MS : 0);
   if (!c.ok) return { estado: 'indisponivel', motivo: c.motivo };
   const gravou = await gravarSub(env, subId, {
     user_id: userId,
@@ -344,6 +359,7 @@ export async function processarEventoAssinatura(env, evt, h) {
     if (r.estado === 'indisponivel') return indisponivel(r.motivo || 'indisponivel');
     if (r.estado === 'liberado') return { http: 200, corpo: { ok: true, estado: 'liberado' }, resultado: 'ok', motivo: tipo === 'subscription.completed' ? 'assinatura_ativa' : 'renovada' };
     if (r.estado === 'cancelada') return ignorado('assinatura_cancelada');
+    if (r.estado === 'duplicada') return { http: 200, corpo: { ok: true, estado: 'duplicada' }, resultado: 'erro', motivo: 'assinatura_duplicada_cancelada' };
     if (r.estado === 'sem_ancora') return { http: 200, corpo: { ok: true }, resultado: 'erro', motivo: 'sem_data_do_pagamento' };
     return { http: 200, corpo: { ok: true }, resultado: 'erro', motivo: `invalida_${r.motivo || 'assinatura'}` };
   }
@@ -355,7 +371,16 @@ export async function processarEventoAssinatura(env, evt, h) {
   if (tipo === 'subscription.payment_failed') {
     // O banco recusou o débito. Não há retentativa no Pix: cancelamos aqui (revoga a autorização) e o Pro
     // termina no fim do ciclo já pago.
-    if ((await cancelarNaAbacate(env, h, subId)) !== 'ok') return indisponivel('cancelar_falhou');
+    // A ordem de entrega não é garantida: um payment_failed ATRASADO, depois de um ciclo já pago, não derruba quem paga.
+    const leitura = await chamar(env, h, `/subscriptions/get?id=${encodeURIComponent(subId)}`);
+    const naoExiste = !leitura.ok && (leitura.status === 404 || /not found/i.test(leitura.erro || ''));
+    if (!leitura.ok && !naoExiste) return indisponivel('leitura_falhou');
+    const falhouEm = Date.parse((d.payment && (d.payment.createdAt || d.payment.updatedAt)) || '');
+    const apiFim = leitura.ok ? Date.parse(leitura.data.currentPeriodEnd) : NaN;
+    const pagoAteMax = Math.max(Number(payload.pago_ate) || 0, Number.isFinite(apiFim) ? apiFim : 0);
+    if (Number.isFinite(falhouEm) && pagoAteMax - falhouEm > FALHA_ANTIGA_MS) return ignorado('falha_antiga_ciclo_posterior_pago');
+    const jaCancelada = leitura.ok && leitura.data.status === 'CANCELLED';
+    if (!jaCancelada && !naoExiste && (await cancelarNaAbacate(env, h, subId)) !== 'ok') return indisponivel('cancelar_falhou');
     return encerrar(env, h, subId, payload, `pagamento_recusado${rejeicao(d.rejectCode) ? `:${rejeicao(d.rejectCode)}` : ''}`);
   }
   // subscription.cancelled: já cancelada na AbacatePay (cliente no banco/portal, ou a loja).
@@ -482,18 +507,23 @@ async function cancelar(request, env, h) {
   const { json } = h;
   const user = await h.getUser(request, env);
   if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
-  if (h.modoAbacate(env) === 'desligado') return json({ ok: false, erro: 'pix_desligado' }, 503);
   if (!(await rateOkSensivel(env, env.ABACATE_RL, `pacancel:${user.id}`))) return json({ ok: false, erro: 'muitas_requisicoes' }, 429);
 
-  const ativa = await assinaturaAtivaDaConta(env, user.id);
-  if (!ativa.ok) return json({ ok: false, erro: 'falha_cancelar' }, 502);
-  if (!ativa.linha) return json({ ok: false, erro: 'sem_assinatura' }, 404);
-  const subId = ativa.linha.event_id;
-  if ((await cancelarNaAbacate(env, h, subId)) !== 'ok') return json({ ok: false, erro: 'falha_cancelar' }, 502);
-  const r = await encerrar(env, h, subId, { ...ativa.linha.payload, user_id: user.id }, 'cancelada_pelo_cliente_no_olli');
-  if (r.http !== 200) return json({ ok: false, erro: 'falha_cancelar' }, 502);
-  const pago = Number(ativa.linha.payload && ativa.linha.payload.pago_ate);
-  return json({ ok: true, ate: Number.isFinite(pago) && pago > Date.now() ? new Date(pago).toISOString() : null });
+  const ativas = await buscarEventos(env, ORIGEM_PA_SUB, { user_id: user.id, estado: 'ativa' }, 10);
+  if (!ativas.ok) return json({ ok: false, erro: 'falha_cancelar' }, 502);
+  if (!ativas.linhas.length) return json({ ok: false, erro: 'sem_assinatura' }, 404);
+  // Sem chave da AbacatePay no ambiente não dá para revogar lá: encerra SÓ localmente e DIZ isso (canceladoNaAbacate:false).
+  const semChave = h.modoAbacate(env) === 'desligado';
+  if (semChave) console.error('[olli-abacate-pa] cancelar sem chave da AbacatePay — encerrado só localmente');
+  let ate = 0;
+  // TODAS as ativas (um bug de duplicidade não pode deixar uma cobrando).
+  for (const linha of ativas.linhas) {
+    if (!semChave && (await cancelarNaAbacate(env, h, linha.event_id)) !== 'ok') return json({ ok: false, erro: 'falha_cancelar' }, 502);
+    const r = await encerrar(env, h, linha.event_id, { ...linha.payload, user_id: user.id }, 'cancelada_pelo_cliente_no_olli');
+    if (r.http !== 200) return json({ ok: false, erro: 'falha_cancelar' }, 502);
+    ate = Math.max(ate, Number(linha.payload && linha.payload.pago_ate) || 0);
+  }
+  return json({ ok: true, canceladoNaAbacate: !semChave, ate: ate > Date.now() ? new Date(ate).toISOString() : null });
 }
 
 /**
@@ -503,14 +533,16 @@ async function cancelar(request, env, h) {
  */
 export async function cancelarPixAutomaticoDoUsuario(env, userId, h) {
   if (h.modoAbacate(env) === 'desligado') return 'ok';
+  // Com a flag desligada nunca vendemos assinatura: consulta que falha NÃO pode travar a exclusão de ninguém.
+  const ligado = pixAutomaticoLigado(env, h);
   const ativas = await buscarEventos(env, ORIGEM_PA_SUB, { user_id: userId, estado: 'ativa' }, 10);
-  if (!ativas.ok) return 'falha';
+  if (!ativas.ok) return ligado ? 'falha' : 'ok';
   for (const linha of ativas.linhas) {
     if ((await cancelarNaAbacate(env, h, linha.event_id)) !== 'ok') return 'falha';
     if (!(await gravarSub(env, linha.event_id, { ...linha.payload, estado: 'encerrada', motivo: 'conta_excluida' }))) return 'falha';
   }
   const abertos = await buscarEventos(env, ORIGEM_PA, { user_id: userId }, 20);
-  if (!abertos.ok) return 'falha';
+  if (!abertos.ok) return ligado ? 'falha' : 'ok';
   for (const linha of abertos.linhas) {
     // Melhor esforço: checkout já pago/excluído devolve erro e não impede nada (a assinatura dele, se existe, já foi cancelada acima).
     await chamar(env, h, '/subscriptions/checkouts/delete', { method: 'POST', body: JSON.stringify({ id: linha.event_id }) });

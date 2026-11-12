@@ -54,7 +54,7 @@ const baseEnv = () => ({
 const envLigado = () => ({ ...baseEnv(), ABACATE_PIX_AUTOMATICO: 'true', ABACATE_PA_PRODUTO_PRO_MENSAL: PRODUTO });
 
 // ── estado dos falsos ────────────────────────────────────────
-const db = { eventos: new Map(), assinaturas: new Map(), upserts: 0 };
+const db = { eventos: new Map(), assinaturas: new Map(), upserts: 0, buscaFora: false };
 const abacate = { produto: null, subs: new Map(), checkouts: new Map(), chamadas: [], fora: false, cancelaFalha: false, seq: 0 };
 let corposGravados = [];
 let logs = [];
@@ -64,6 +64,7 @@ function reset() {
   db.eventos = new Map();
   db.assinaturas = new Map();
   db.upserts = 0;
+  db.buscaFora = false;
   abacate.produto = { id: PRODUTO, price: 3900, cycle: 'MONTHLY', status: 'ACTIVE' };
   abacate.subs = new Map();
   abacate.checkouts = new Map();
@@ -149,6 +150,7 @@ globalThis.fetch = async (entrada, init = {}) => {
         const l = db.eventos.get(`${origem}|${eventId}`);
         return resp(200, l ? [{ event_id: l.event_id, status: l.status, payload: l.payload, recebido_em: l.recebido_em }] : []);
       }
+      if (db.buscaFora) return resp(500, {});
       const f = filtroPayload(url);
       const linhas = [...db.eventos.values()].filter((l) => l.origem === origem && Object.entries(f).every(([k, v]) => l.payload?.[k] === v));
       return resp(200, linhas.map((l) => ({ event_id: l.event_id, status: l.status, payload: l.payload, recebido_em: l.recebido_em })));
@@ -345,7 +347,7 @@ checar('Pro vale só até o fim do ciclo pago (sem a folga)', [assin().plano, as
 checar('cadastro: encerrada, motivo com o código do banco', [subReg().status, subReg().payload.estado, subReg().payload.motivo], ['processado', 'encerrada', 'pagamento_recusado:AM04']);
 checar('estado da conta: não ativa', (await rota(env, 'GET', '/abacate/assinatura/estado')).corpo.ativa, false);
 const upsAntes7 = db.upserts;
-r = await hook(env, evento('log_f2', 'subscription.payment_failed', { checkoutId: c3.id, extra: { rejectCode: 'AM04' } }));
+r = await hook(env, evento('log_f2', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: c3.id, extra: { rejectCode: 'AM04' } }));
 checar('falha repetida: ignorada (já encerrada), sem nova escrita', [r.status, trilha('log_f2').payload.motivo, db.upserts], [200, 'ja_encerrada', upsAntes7]);
 
 console.log('\n7b) payment_failed com o ciclo pago JÁ vencido: volta ao grátis agora');
@@ -354,7 +356,7 @@ const c3b = await criarCheckout(env);
 pagar(c3b.id);
 await hook(env, evento('log_g0', 'subscription.completed', { checkoutId: c3b.id }));
 subReg().payload.pago_ate = Date.now() - 3600e3; // o ciclo pago acabou há 1 h (a folga ainda segura o acesso)
-await hook(env, evento('log_g1', 'subscription.payment_failed', { checkoutId: c3b.id, extra: { rejectCode: 'AM04' } }));
+await hook(env, evento('log_g1', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: c3b.id, extra: { rejectCode: 'AM04' } }));
 checar('status canceled e fim ~agora', [assin().status, perto(ms(assin().current_period_end), Date.now(), 5000)], ['canceled', true]);
 
 console.log('\n7c) payment_failed NÃO encurta vigência vinda de outra fonte (Pix avulso mais longo)');
@@ -365,7 +367,7 @@ const longo = new Date(Date.now() + 200 * DIA).toISOString();
 db.assinaturas.set(USER, { user_id: USER, plano: 'pro', status: 'active', current_period_end: new Date(Date.now() + 1 * DIA).toISOString() });
 await hook(env, evento('log_h0', 'subscription.completed', { checkoutId: c3c.id }));
 db.assinaturas.set(USER, { ...assin(), current_period_end: longo }); // outra fonte estende depois
-await hook(env, evento('log_h1', 'subscription.payment_failed', { checkoutId: c3c.id, extra: { rejectCode: 'AM04' } }));
+await hook(env, evento('log_h1', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: c3c.id, extra: { rejectCode: 'AM04' } }));
 checar('vigência de outra fonte intacta', assin().current_period_end, longo);
 
 console.log('\n7d) cancelamento na API falha: 503 e o reenvio conclui');
@@ -374,11 +376,11 @@ const c3d = await criarCheckout(env);
 pagar(c3d.id);
 await hook(env, evento('log_i0', 'subscription.completed', { checkoutId: c3d.id }));
 abacate.cancelaFalha = true;
-r = await hook(env, evento('log_i1', 'subscription.payment_failed', { checkoutId: c3d.id, extra: { rejectCode: 'AM04' } }));
+r = await hook(env, evento('log_i1', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: c3d.id, extra: { rejectCode: 'AM04' } }));
 checar('503 + trilha falhou', [r.status, trilha('log_i1').status, trilha('log_i1').erro], [503, 'falhou', 'cancelar_falhou']);
 checar('assinatura segue ativa no cadastro', subReg().payload.estado, 'ativa');
 abacate.cancelaFalha = false;
-r = await hook(env, evento('log_i1', 'subscription.payment_failed', { checkoutId: c3d.id, extra: { rejectCode: 'AM04' } }));
+r = await hook(env, evento('log_i1', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: c3d.id, extra: { rejectCode: 'AM04' } }));
 checar('reenvio: 200 e encerrada', [r.status, subReg().payload.estado], [200, 'encerrada']);
 
 console.log('\n8) subscription.cancelled: cliente cancelou no banco — não cancela de novo, acesso até o fim do ciclo pago');
@@ -466,7 +468,7 @@ r = await hook(env, evento('log_s1', 'subscription.completed', { checkoutId: c7.
 checar('401 e nada gravado na trilha', [r.status, trilha('log_s1')], [401, undefined]);
 await hook(env, evento('log_s2', 'subscription.completed', { checkoutId: c7.id }));
 const semFlag = baseEnv();
-r = await hook(semFlag, evento('log_s3', 'subscription.payment_failed', { checkoutId: c7.id, extra: { rejectCode: 'AM04' } }));
+r = await hook(semFlag, evento('log_s3', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: c7.id, extra: { rejectCode: 'AM04' } }));
 checar('flag desligada: payment_failed ainda cancela e encerra', [r.status, subReg().payload.estado], [200, 'encerrada']);
 
 console.log('\n13) Cancelar pelo app (POST /abacate/assinatura/cancelar)');
@@ -532,6 +534,72 @@ checar('pula candidata ruim e usa a próxima', ancoraDoPagamento(['lixo', null, 
 checar('fim do ciclo: currentPeriodEnd plausível vence', fimDoCicloPago({ currentPeriodEnd: '2027-01-09T12:00:00Z' }, agora, agora), Date.parse('2027-01-09T12:00:00Z'));
 checar('fim do ciclo: currentPeriodEnd absurdo (2099) é ignorado', fimDoCicloPago({ currentPeriodEnd: '2099-01-01T00:00:00Z' }, agora, agora), (() => { const d = new Date(agora); d.setMonth(d.getMonth() + 1); return d.getTime(); })());
 checar('fim do ciclo: sem âncora e sem data = null', fimDoCicloPago({}, null, agora), null);
+
+console.log('\n18) DUPLICIDADE: 2 checkouts pagos = só 1 assinatura ativa (a 2ª é cancelada, sem conceder)');
+reset();
+const dA = await criarCheckout(env);
+// o 2º checkout só pode ser criado "em paralelo": o bloqueio de criação já barra o 2º, então registra à mão
+db.eventos.set('abacate_pa|bill_PARALELO1', { origem: 'abacate_pa', event_id: 'bill_PARALELO1', payload: { user_id: USER, plano: 'pro_mensal', external_id: 'x' }, status: 'recebido' });
+pagar(dA.id, { subId: 'subs_AAA111' });
+pagar('bill_PARALELO1', { subId: 'subs_BBB222' });
+await hook(env, evento('log_dup1', 'subscription.completed', { subId: 'subs_AAA111', checkoutId: dA.id }));
+const fimDup = assin().current_period_end;
+r = await hook(env, evento('log_dup2', 'subscription.completed', { subId: 'subs_BBB222', checkoutId: 'bill_PARALELO1' }));
+checar('2ª cancelada na AbacatePay, 200, trilha erro visível', [r.status, abacate.subs.get('subs_BBB222').status, trilha('log_dup2').payload.motivo], [200, 'CANCELLED', 'assinatura_duplicada_cancelada']);
+checar('1ª segue ativa e vigência intacta', [abacate.subs.get('subs_AAA111').status, subReg('subs_AAA111').payload.estado, assin().current_period_end], ['ACTIVE', 'ativa', fimDup]);
+checar('2ª registrada como encerrada (duplicada)', [subReg('subs_BBB222').payload.estado, subReg('subs_BBB222').payload.motivo], ['encerrada', 'duplicada_cancelada']);
+// /cancelar percorre TODAS as ativas
+db.eventos.set('abacate_pa_sub|subs_CCC333', { origem: 'abacate_pa_sub', event_id: 'subs_CCC333', status: 'recebido', payload: { user_id: USER, plano: 'pro_mensal', checkout: 'bill_X', estado: 'ativa', pago_ate: Date.now() + 5 * DIA, concedido_ate: null } });
+abacate.subs.set('subs_CCC333', { id: 'subs_CCC333', status: 'ACTIVE' });
+r = await rota(env, 'POST', '/abacate/assinatura/cancelar');
+checar('cancelar: TODAS as ativas canceladas', [r.status, abacate.subs.get('subs_AAA111').status, abacate.subs.get('subs_CCC333').status, subReg('subs_CCC333').payload.estado], [200, 'CANCELLED', 'CANCELLED', 'encerrada']);
+
+console.log('\n19) payment_failed ATRASADO (depois de um ciclo já pago) não cancela quem paga');
+reset();
+const cS = await criarCheckout(env);
+const subS = pagar(cS.id, { currentPeriodEnd: new Date(Date.now() + 5 * DIA).toISOString() });
+await hook(env, evento('log_s0', 'subscription.completed', { checkoutId: cS.id }));
+subS.currentPeriodEnd = new Date(Date.now() + 33 * DIA).toISOString();
+await hook(env, evento('log_s1', 'subscription.renewed', { checkoutId: cS.id }));
+const cancelsS = abacate.chamadas.filter((x) => x.endsWith('/cancel')).length;
+r = await hook(env, evento('log_s2', 'subscription.payment_failed', { checkoutId: cS.id, payment: { status: 'FAILED', createdAt: new Date(Date.now() - 2 * DIA).toISOString() }, extra: { rejectCode: 'AM04' } }));
+checar('ignorada: não cancelou, assinatura ativa, Pro mantido', [r.status, trilha('log_s2').payload.motivo, abacate.chamadas.filter((x) => x.endsWith('/cancel')).length, subReg().payload.estado, subS.status], [200, 'falha_antiga_ciclo_posterior_pago', cancelsS, 'ativa', 'ACTIVE']);
+r = await hook(env, evento('log_s3', 'subscription.payment_failed', { checkoutId: cS.id, payment: { status: 'FAILED', createdAt: new Date(Date.now() + 33 * DIA - 3600e3).toISOString() }, extra: { rejectCode: 'AM04' } }));
+checar('falha do ciclo atual (perto do fim do ciclo pago): cancela', [r.status, subS.status, subReg().payload.estado], [200, 'CANCELLED', 'encerrada']);
+reset();
+const cT = await criarCheckout(env);
+const subT = pagar(cT.id);
+await hook(env, evento('log_t0', 'subscription.completed', { checkoutId: cT.id }));
+abacate.fora = true;
+r = await hook(env, evento('log_t1', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: cT.id, extra: { rejectCode: 'AM04' } }));
+checar('não consegui ler a assinatura: 503 (reenvia), nada encerrado', [r.status, subReg().payload.estado], [503, 'ativa']);
+abacate.fora = false;
+subT.status = 'CANCELLED';
+const cancelsT = abacate.chamadas.filter((x) => x.endsWith('/cancel')).length;
+await hook(env, evento('log_t1', 'subscription.payment_failed', { payment: { status: 'FAILED' }, checkoutId: cT.id, extra: { rejectCode: 'AM04' } }));
+checar('já cancelada na AbacatePay: encerra sem cancelar de novo', [subReg().payload.estado, abacate.chamadas.filter((x) => x.endsWith('/cancel')).length], ['encerrada', cancelsT]);
+
+console.log('\n20) renewed ATRASADO de assinatura CANCELADA: ciclo pago SEM folga');
+reset();
+const cU = await criarCheckout(env);
+pagar(cU.id, { status: 'CANCELLED' });
+await hook(env, evento('log_u1', 'subscription.renewed', { checkoutId: cU.id, payment: { status: 'PAID', updatedAt: new Date().toISOString() } }));
+checar('concedido = pago_ate (sem os 2 dias)', [subReg().payload.estado, subReg().payload.concedido_ate === subReg().payload.pago_ate, ms(assin().current_period_end) === subReg().payload.pago_ate], ['encerrada', true, true]);
+
+console.log('\n21) Exclusão de conta com a flag DESLIGADA e a consulta falhando: não trava; com a flag ligada: fail-closed');
+reset();
+db.buscaFora = true;
+checar('flag desligada + consulta fora: ok', await cancelarPixAutomaticoDoUsuario(baseEnv(), USER, h), 'ok');
+checar('flag ligada + consulta fora: falha', await cancelarPixAutomaticoDoUsuario(env, USER, h), 'falha');
+
+console.log('\n22) Cancelar com a CHAVE da AbacatePay desligada: encerra só localmente e diz isso');
+reset();
+const cV = await criarCheckout(env);
+pagar(cV.id, { currentPeriodEnd: new Date(Date.now() + 9 * DIA).toISOString() });
+await hook(env, evento('log_v0', 'subscription.completed', { checkoutId: cV.id }));
+const chamadasV = abacate.chamadas.length;
+r = await rota({ ...envLigado(), ABACATEPAY_API_KEY: '' }, 'POST', '/abacate/assinatura/cancelar');
+checar('200 canceladoNaAbacate:false, encerrada local, sem chamar a API', [r.status, r.corpo.canceladoNaAbacate, subReg().payload.estado, abacate.chamadas.length], [200, false, 'encerrada', chamadasV]);
 
 console.log('\n17) Segredo e dado do cliente nunca no banco nem no log');
 const tudo = corposGravados.join('\n') + logs.join('\n');
