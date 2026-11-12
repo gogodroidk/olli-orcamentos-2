@@ -1,0 +1,32 @@
+---
+/** Hub de /quanto-cobrar/: lista as páginas da série (links internos para o rastreador e para o leitor). */
+import Layout from "../../layouts/Layout.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import { AVISO_FAIXA, PAGINAS_QC } from "../../data/quantoCobrar";
+
+const titulo = "Quanto cobrar por serviço de ar-condicionado em 2026";
+const descricao =
+	"Faixas de preço de instalação, limpeza de split e PMOC em 2026, com fonte e data em cada número, para conferir o seu orçamento antes de enviar.";
+---
+
+<Layout titulo={titulo} descricao={descricao} ofertaDoApp={false}>
+	<Header>
+		<a href="/" class="text-sm font-semibold text-ink hover:text-brand-fg">← Início</a>
+	</Header>
+	<main id="conteudo" class="mx-auto max-w-4xl px-6 pb-16 pt-14">
+		<h1 class="text-balance text-[clamp(2rem,4.6vw,3.25rem)] font-extrabold leading-[1.08] tracking-tight text-ink">{titulo}</h1>
+		<p class="mt-5 max-w-2xl text-lg leading-relaxed text-slate">{AVISO_FAIXA}</p>
+		<ul class="mt-8 space-y-4">
+			{
+				PAGINAS_QC.map((p) => (
+					<li class="rounded-cartao border border-line bg-white px-5 py-4">
+						<a href={`/quanto-cobrar/${p.slug}/`} class="text-lg font-bold text-brand-fg underline">{p.h1}</a>
+						<p class="mt-1 text-sm text-slate">{p.descricao}</p>
+					</li>
+				))
+			}
+		</ul>
+	</main>
+	<Footer />
+</Layout>
