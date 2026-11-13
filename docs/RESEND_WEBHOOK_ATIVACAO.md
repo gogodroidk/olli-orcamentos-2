@@ -1,20 +1,40 @@
-# Resend webhook — ativação (supressão de bounce/reclamação)
+# Webhook do Resend: ativação (bounce/reclamação suprimem o e-mail)
 
-Estado no código (main): tudo já implementado, só falta ligar no painel/segredo.
+Estado do código: **pronto em `main`**. Falta só ativar (segredo + painel). Nada aqui é feito pelo código.
 
-- Rota: `POST /resend/webhook` (`worker/src/resendWebhook.js`), assinatura Svix verificada antes de qualquer parse; sem `RESEND_WEBHOOK_SECRET` responde 503.
-- Idempotência por `svix-id` em `webhook_events`; nenhuma PII do envelope é gravada.
-- Supressão: `email.bounced` (só `Permanent`), `email.complained` e `email.suppressed` chamam a RPC `registrar_supressao_email_por_provider`, que grava em `email_supressoes` e cancela itens pendentes da `email_outbox`.
-- Envio: o enfileiramento da régua devolve `suprimido` se a conta está em `email_supressoes`.
-- Teste: `cd worker && npm run test:resend-webhook`.
+## O que já existe
 
-## Passo a passo (ação do Igor)
+| Peça | Onde |
+| --- | --- |
+| Rota `POST /resend/webhook` (verifica assinatura Svix, 5 min de tolerância, 256 KiB, idempotente por `svix-id`) | `worker/src/resendWebhook.js`, rota em `worker/src/index.js` |
+| Supressão: bounce **Permanent**, `complained` e `suppressed` viram supressão da conta | `motivoSupressaoResend` + RPC `registrar_supressao_email_por_provider` |
+| Tabela `public.email_supressoes` (só `user_id`, sem endereço) e as RPCs | `supabase/migrations/20260929200000_email_producao_lembretes.sql` |
+| Régua consulta a supressão: seleção de candidatos (`not exists ... email_supressoes`) e trava no envio por conta | mesma migration, linhas ~343 e ~580 |
+| Supressão cancela e-mails pendentes na outbox (`suprimido_antes_do_envio`) | `registrar_supressao_email` |
+| Testes | `npm --prefix worker run test:resend-webhook` (já dentro de `npm test`) |
 
-1. **Migration** `supabase/migrations/20260929200000_email_producao_lembretes.sql` precisa estar aplicada no banco (cria `email_supressoes` e as RPCs). Conferir: `select to_regclass('public.email_supressoes');`.
-2. **Painel Resend** → Webhooks → Add endpoint. URL: `https://<host-do-worker>/resend/webhook` (a rota de produção do worker; `workers_dev` ou domínio próprio). Eventos: `email.bounced`, `email.complained`, `email.suppressed` (mínimo); opcionais `email.delivered`, `email.delivery_delayed`, `email.failed`.
-3. Copiar o *Signing secret* (`whsec_...`) do endpoint.
-4. **Segredo** no worker (sem ecoar): `npx wrangler secret put RESEND_WEBHOOK_SECRET` e colar o valor.
-5. Resend → endpoint → *Send test event*. Esperado: HTTP 200 `{"ok":true}`; repetir o mesmo evento devolve `duplicado:true`.
-6. Conferir: `select tipo,status,count(*) from webhook_events where origem='resend' group by 1,2;`
+Bounce temporário (`Transient`) **não** suprime: só permanente e reclamação.
 
-Nada disso foi executado pelo agente (sem deploy, sem migration, sem painel, sem segredo).
+## Passo a passo para ativar (ordem importa)
+
+1. **Migration**: confirmar que `20260929200000_email_producao_lembretes.sql` está aplicada no Supabase de produção
+   (`select to_regclass('public.email_supressoes');` deve retornar a tabela, e
+   `select proname from pg_proc where proname = 'registrar_supressao_email_por_provider';` deve retornar 1 linha).
+   Se não estiver, aplicar pelo fluxo normal de migrations.
+2. **Painel Resend, Webhooks, Add Endpoint**:
+   - URL: `https://diagnostico.olliorcamentos.online/resend/webhook`
+   - Eventos: `email.bounced`, `email.complained`, `email.suppressed` (mínimo). Opcional: `email.delivered`, `email.delivery_delayed`, `email.failed` para trilha de auditoria.
+3. Copiar o **Signing Secret** do endpoint (`whsec_...`).
+4. **Segredo no Worker** (sem colar em chat/log):
+   `cd worker && npx wrangler secret put RESEND_WEBHOOK_SECRET` e colar o `whsec_...` no prompt.
+5. **Conferir**: no painel Resend, enviar o evento de teste do endpoint. Resposta esperada `200 {"ok":true,...}`.
+   Sem o segredo o Worker responde `503 webhook_nao_configurado`; assinatura errada, `400 assinatura_invalida`.
+6. Reenviar eventos que falharam antes (Resend guarda tentativas): o handler é idempotente.
+
+Obs.: `GET https://diagnostico.olliorcamentos.online/resend/webhook` responde `405` (rota no ar). Em `olliorcamentos.online/resend/webhook` dá 404, porque o Worker está nos custom domains `diagnostico.` e `link.`.
+
+## Como saber que funcionou
+
+- `select motivo, origem, count(*) from public.email_supressoes group by 1,2;` mostra linhas com `origem = 'resend_webhook'` depois de um bounce/reclamação real.
+- Tabela de eventos de webhook (`webhookEvents`) com `origem = 'resend'` e `status = 'processado'`.
+- Se vier `falhou`, o Resend reenvia sozinho (500).
