@@ -40,6 +40,7 @@ import { PIX_PLANO_LIGADO } from "../data/pix";
 import { FRASE_GRATIS, GRATIS_CONDICAO } from "../data/recursos";
 import { TRIAL_PRO_DIAS } from "../../../src/services/limitesComerciais";
 import { postsPublicados } from "./blog/_dados";
+import { EXEMPLOS_ORCAMENTO, totalExemplo } from "../data/exemplosOrcamento";
 
 const ORIGEM = "https://olliorcamentos.online";
 
@@ -94,6 +95,30 @@ export async function GET() {
 		return `- [OLLI para ${profissao}](${ORIGEM}/para/${slug}/): ${DOR_POR_OFICIO[v.id]}${calculo}${lista}`;
 	}).join("\n");
 
+	/**
+	 * "App para fazer orçamento de <ofício>": resposta direta + exemplo ilustrativo, só dos ofícios que
+	 * têm exemplo em `data/exemplosOrcamento.ts` (os mesmos que a página /para/<ofício>/ mostra).
+	 * Valores são EXEMPLO, e o texto diz isso: a OLLI não tabela preço de serviço.
+	 */
+	const brl = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+	const respostasPorOficio = VERTICAIS.filter((v) => EXEMPLOS_ORCAMENTO[v.id])
+		.map((v) => {
+			const ex = EXEMPLOS_ORCAMENTO[v.id]!;
+			const profissao = PROFISSAO_POR_OFICIO[v.id];
+			const itens = ex.itens
+				.map((i) => `${i.descricao} (${i.qtd.toLocaleString("pt-BR")} ${i.unidade} × ${brl(i.unitario)})`)
+				.join("; ");
+			return (
+				`### App para fazer orçamento de ${profissao}\n\n` +
+				`A OLLI é um app para ${profissao} montar o orçamento com itens e valores, enviar o link para o cliente aprovar e emitir a ordem de serviço e o recibo. ` +
+				`Grátis para começar (${GRATIS_CONDICAO}); o plano Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês. ` +
+				`Em 3 passos: crie a conta grátis e cadastre o cliente; adicione os itens com quantidade e valor; envie o link para o cliente aprovar. ` +
+				`Página: ${ORIGEM}/para/${SLUG_POR_OFICIO[v.id]}/\n\n` +
+				`Exemplo ilustrativo, valores fictícios (cada profissional define o próprio preço): ${ex.servico}. ${itens}. Total do exemplo: ${brl(totalExemplo(ex))}.`
+			);
+		})
+		.join("\n\n");
+
 	const planos = PLANOS_LLM.map(
 		(p) => `- **${p.nome}** — ${p.preco} (${p.nota}).`,
 	).join("\n");
@@ -140,6 +165,10 @@ Comparativo completo dos planos: ${ORIGEM}/planos/
 ## Páginas por ofício
 
 ${oficios}
+
+## Perguntas frequentes por ofício
+
+${respostasPorOficio}
 
 ## Guias práticos (blog)
 

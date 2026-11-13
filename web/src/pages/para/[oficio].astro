@@ -23,6 +23,7 @@ import Footer from "../../components/Footer.astro";
 import Header from "../../components/Header.astro";
 import Icone from "../../components/Icone.astro";
 import ExemploOrcamento from "../../components/ExemploOrcamento.astro";
+import RespostaDireta from "../../components/RespostaDireta.astro";
 import { calculosDoOficio } from "../../../../src/services/calculosOficio";
 import { VERTICAIS, VERTICAL_GERAL } from "../../../../src/services/verticais";
 import {
@@ -44,7 +45,6 @@ import { TRIAL_PRO_DIAS } from "../../../../src/services/limitesComerciais";
 const APP_URL = "https://app.olliorcamentos.online";
 // CC-01: todos os CTAs desta página são de CADASTRO — abrem a conta direto
 // (o painel lê ?modo=cadastro) em vez de cair na tela de login.
-const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
 
 /**
  * MDI → ícone lucide (componente `<Icone nome={...} />`). `calculosDoOficio()`
@@ -99,6 +99,9 @@ export function getStaticPaths() {
 }
 
 const { id, alias } = Astro.props;
+// utm_content marca a página de ofício; a origem (utm_source=chatgpt.com etc.) é anexada no clique por
+// scripts/marketing.ts, que só acrescenta o que o link ainda não tem — nada aqui sobrescreve a origem.
+const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro&utm_content=${encodeURIComponent(`para-${SLUG_POR_OFICIO[id]}`)}`;
 const oficio = id === "geral" ? OFICIO_GERAL : OFICIOS.find((o) => o.id === id)!;
 const profissao = alias?.profissao ?? PROFISSAO_POR_OFICIO[id];
 const dor = DOR_POR_OFICIO[id];
@@ -204,6 +207,14 @@ const faqs = [
 		a: `${c.descricao} Base técnica: ${c.base} Na OLLI você preenche os campos e o resultado vira item do orçamento com um toque.`,
 	})),
 	{
+		q: `Como fazer orçamento de ${profissao} no celular?`,
+		a: `Na OLLI são 3 passos: crie a conta grátis e cadastre o cliente, adicione os itens do serviço com quantidade e valor, e envie o link para o cliente aprovar. Aprovado, o orçamento vira ordem de serviço e depois recibo. Funciona no navegador do celular, sem instalar nada.`,
+	},
+	{
+		q: `Quanto custa o app de orçamento para ${profissao}?`,
+		a: `O plano Grátis custa ${reais(0)}, ${GRATIS_CONDICAO}. O plano Pro é ${reais(PRECO_PRO.mensalCentavos)}/mês por usuário e o Empresa é ${reais(PRECO_EMPRESA.mensalCentavos)}/mês, com equipe e permissões. Você só paga se contratar um plano pago.`,
+	},
+	{
 		q: `A OLLI serve pra ${profissao} autônomo?`,
 		a: `Serve. É feita pro prestador que fecha e executa o serviço sozinho: orçamento no celular, link pro cliente aprovar e recibo no fim. O plano Pro é ${reais(PRECO_PRO.mensalCentavos)}/mês. O plano Empresa (${reais(PRECO_EMPRESA.mensalCentavos)}/mês), com equipe e permissões, entra só quando você tem uma equipe.`,
 	},
@@ -287,6 +298,9 @@ const schemaFaq = {
 				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Grátis sem prazo</span>
 			</div>
 		</section>
+
+		{/* ══════════ RESPOSTA DIRETA: "app para fazer orçamento de <ofício>" ══════════ */}
+		<RespostaDireta oficioId={id} profissao={profissao} calculadoras={calculos.length} cadastroUrl={APP_CADASTRO_URL} />
 
 		{/* ══════════ EXEMPLO REAL (do calcular() da própria ferramenta) ══════════ */}
 		<ExemploOrcamento calculos={calculos} profissao={profissao} cadastroUrl={APP_CADASTRO_URL} />
