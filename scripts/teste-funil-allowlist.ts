@@ -25,5 +25,5 @@ assert.deepEqual(faltando, [], `eventos do painel fora da allowlist de ${ultima}
 for (const e of ['planos_visto', 'plano_pagar_clicado']) assert.ok(permitidos.has(e), `${e} medido`);
 const planos = readFileSync(new URL('webapp/src/pages/olli/planos/index.tsx', raiz), 'utf8');
 assert.match(planos, /registrarEtapaAtivacao\("planos_visto"\)/, 'tela de Planos registra a visita');
-assert.equal((planos.match(/registrarEtapaAtivacao\("plano_pagar_clicado"\)/g) || []).length, 2, 'cartão e Pix registram o clique');
+assert.equal((planos.match(/registrarEtapaAtivacao\("plano_pagar_clicado"\)/g) || []).length, 3, 'cartão, Pix e Pix Automático registram o clique');
 console.log(`teste-funil-allowlist: OK (${eventosPainel.length} eventos, allowlist de ${ultima})`);

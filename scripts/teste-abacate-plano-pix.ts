@@ -187,7 +187,7 @@ checar('chave real = producao', modoAbacate(envProd), 'producao');
   reset();
   const envDev = envCom({ ABACATEPAY_API_KEY: 'abc_dev_x' });
   const c = await chamar(envDev, 'GET', '/abacate/config');
-  checar('/config diz desligado', c.corpo, { ok: true, pix: false, modo: 'desligado' });
+  checar('/config diz desligado', c.corpo, { ok: true, pix: false, modo: 'desligado', pixAutomatico: false });
   const p = await chamar(envDev, 'POST', '/abacate/plano/pix', { jwt: 'jwt-user', corpo: { plano: 'pro_mensal' } });
   checar('criar com chave dev em produção = 503 pix_desligado', [p.status, p.corpo?.erro], [503, 'pix_desligado']);
   checar('...sem nenhuma chamada à AbacatePay', chamadasAbacate, 0);

@@ -59,6 +59,7 @@ import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
 import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
+import { handlePixAutomatico, pixAutomaticoLigado, processarEventoAssinatura } from './abacatePixAutomatico.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
 const ORIGEM_CONSUMO = 'abacate';
@@ -74,14 +75,22 @@ const ORIGEM_WEBHOOK = 'abacatepay';
 /** id de evento da AbacatePay (`log_…`) aceito como chave; fora disso, hash do corpo. */
 const EVENTO_ID_RE = /^[A-Za-z0-9_-]{1,120}$/;
 
-const ABACATE_API = 'https://api.abacatepay.com/v2';
+export const ABACATE_API = 'https://api.abacatepay.com/v2';
 
 export const ABACATE_ROUTES = new Set([
   '/abacate/config',
   '/abacate/plano/pix',
   '/abacate/status',
   '/abacate/webhook',
+  // Pix Automático (assinatura recorrente) — abacatePixAutomatico.js. Atrás da flag ABACATE_PIX_AUTOMATICO.
+  '/abacate/assinatura/pix',
+  '/abacate/assinatura/status',
+  '/abacate/assinatura/estado',
+  '/abacate/assinatura/cancelar',
 ]);
+
+/** O que o módulo do Pix Automático usa daqui (passado por parâmetro: sem import circular). */
+const PA = { json, getUser, modoAbacate, api: ABACATE_API };
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -333,7 +342,9 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
 // ─── GET /abacate/config ─────────────────────────────────────
 function config(env) {
   const modo = modoAbacate(env);
-  return json({ ok: true, pix: modo !== 'desligado', modo });
+  // `pixAutomatico`: chave própria (flag + produto + modo), DESLIGADA por padrão. O app só oferece
+  // "renova sozinho" quando isto é true; o Pix avulso (`pix`) não depende dela.
+  return json({ ok: true, pix: modo !== 'desligado', modo, pixAutomatico: pixAutomaticoLigado(env, PA) });
 }
 
 // ─── POST /abacate/plano/pix ─────────────────────────────────
@@ -492,6 +503,11 @@ async function processarWebhook(env, evt) {
     return registrarEstorno(env, evt);
   }
 
+  // Pix Automático (assinatura recorrente): eventos subscription.* têm o seu próprio tratamento.
+  if (typeof evt.event === 'string' && evt.event.startsWith('subscription.')) {
+    return processarEventoAssinatura(env, evt, PA);
+  }
+
   // Só o Pix direto pago interessa. Qualquer outro evento: 200 sem ação.
   if (evt.event !== 'transparent.completed') {
     return { http: 200, corpo: { ok: true }, resultado: 'ignorado', motivo: 'evento_nao_tratado' };
@@ -606,6 +622,7 @@ export async function handleAbacate(request, env, url) {
   if (p === '/abacate/plano/pix' && request.method === 'POST') return criarPixPlano(request, env);
   if (p === '/abacate/status' && request.method === 'GET') return checarStatus(request, env, url);
   if (p === '/abacate/webhook' && request.method === 'POST') return webhook(request, env, url);
+  if (p.startsWith('/abacate/assinatura/')) return ABACATE_ROUTES.has(p) ? handlePixAutomatico(request, env, url, PA) : json({ erro: 'nao_encontrado' }, 404);
 
   if (ABACATE_ROUTES.has(p)) return json({ erro: 'metodo_nao_suportado' }, 405);
   return json({ erro: 'nao_encontrado' }, 404);
