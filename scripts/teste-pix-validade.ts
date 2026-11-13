@@ -58,7 +58,7 @@ ok('botão "Pagar depois" existe e chama aoFechar', /label="Pagar depois"[^>]*on
   const planos = readFileSync(new URL('../src/screens/PlanosScreen.tsx', import.meta.url), 'utf8');
   const cartao = planos.slice(planos.indexOf('{pixPendente && !cobrancaPix ? ('), planos.indexOf('{contextoGate ? ('));
   ok('Planos: cartão "Ver código" reabre a cobrança guardada e não cria cobrança', /onPress=\{\(\) => setCobrancaPix\(pixPendente\)\}/.test(cartao) && !/criarPixPlano/.test(cartao));
-  const leitura = planos.slice(planos.indexOf('const carregarPixPendente = useCallback'), planos.indexOf('useFocusEffect('));
+  const leitura = planos.slice(planos.indexOf('const lerPixPendente = useCallback'), planos.indexOf('useFocusEffect('));
   ok('Planos: na leitura, Pix pago some do aparelho e resposta velha é ignorada', /if \(st\?\.pago\) \{\s*await esquecerPixPendente\(\)/.test(leitura) && /if \(!valeAinda\(\)\) return;\s*if \(st\?\.pago\)/.test(leitura));
   const pagar = planos.slice(planos.indexOf('async function pagarComPix'), planos.indexOf('const aoPixPago'));
   ok('Planos: Pix do mesmo plano já esperando é reaberto antes de criar outro', pagar.indexOf('pixPendente.plano.id === chave') > -1 && pagar.indexOf('pixPendente.plano.id === chave') < pagar.indexOf('criarPixPlano('));

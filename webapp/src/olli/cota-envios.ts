@@ -8,6 +8,9 @@ import {
 	type ReservaEnvioOrcamento,
 	type EstadoOfertaComercial,
 	type InicioTrialPro,
+	PARAM_PIX_NO_LIMITE,
+	VALOR_PIX_NO_LIMITE,
+	rotuloAssinarProNoLimite,
 } from "@limites-comerciais";
 
 /**
@@ -40,8 +43,16 @@ export function avisoLimiteEnvios(reserva: ReservaEnvioOrcamento): { titulo: str
   const teto = reserva.limiteEnvios ?? 5;
   return {
     titulo: "Limite do mês atingido",
-    mensagem: `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, veja os planos.`,
+    mensagem: `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, assine o Pro e pague por Pix.`,
   };
+}
+
+/** Rota da tela de Planos que já abre o Pix do Pro mensal (ver `PARAM_PIX_NO_LIMITE`). */
+export const ROTA_PIX_PRO_NO_LIMITE = `/planos?${PARAM_PIX_NO_LIMITE}=${VALOR_PIX_NO_LIMITE}`;
+
+/** Ação do toast do limite: "Assinar o Pro — R$ 39/mês" -> Pix do Pro, em 1 clique. */
+export function acaoAssinarProNoLimite(ir: (rota: string) => void): { label: string; onClick: () => void } {
+	return { label: rotuloAssinarProNoLimite(), onClick: () => ir(ROTA_PIX_PRO_NO_LIMITE) };
 }
 
 export async function obterEstadoOfertaComercial(): Promise<EstadoOfertaComercial | null> {

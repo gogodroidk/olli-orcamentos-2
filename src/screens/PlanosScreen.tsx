@@ -342,6 +342,7 @@ export default function PlanosScreen() {
   const [pixPendente, setPixPendente] = useState<CobrancaPixPlano | null>(null);
   // Geração da leitura do Pix guardado: resposta velha (lida antes de pagar) não traz o cartão de volta.
   const geracaoPixPendente = useRef(0);
+  const [pixPendenteLido, setPixPendenteLido] = useState(false);
   const [pixEmAndamento, setPixEmAndamento] = useState<PlanoId | null>(null);
   // Pix Automático (renova sozinho): DESLIGADO por padrão no servidor. O botão só aparece quando o worker confirma.
   const [pixAutoLigado, setPixAutoLigado] = useState(false);
@@ -412,7 +413,7 @@ export default function PlanosScreen() {
   }, []);
 
   /** Lê o Pix guardado; se o servidor já viu o pagamento, some (e o plano é relido). Falha = sem cartão. */
-  const carregarPixPendente = useCallback(async () => {
+  const lerPixPendente = useCallback(async () => {
     const geracao = ++geracaoPixPendente.current;
     const valeAinda = () => geracao === geracaoPixPendente.current;
     const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
@@ -429,6 +430,13 @@ export default function PlanosScreen() {
     }
     setPixPendente(c);
   }, [carregarPlano]);
+  const carregarPixPendente = useCallback(async () => {
+    try {
+      await lerPixPendente();
+    } finally {
+      setPixPendenteLido(true);
+    }
+  }, [lerPixPendente]);
 
   const carregarPixAuto = useCallback(async () => {
     if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
@@ -482,12 +490,13 @@ export default function PlanosScreen() {
   // pagou precisa conseguir registrar a compra (o worker aceita com a venda off).
   const restaurarSemVenda = VENDA_PELA_PLAY && molduraPlay === false;
   const nomePlanoAtual = planoAtualId === 'empresa' ? 'Empresa' : planoAtualId === 'pro' ? 'Pro' : 'Grátis';
-  const contextoGate = route.params?.origem === 'gate'
-    && Object.prototype.hasOwnProperty.call(RECURSO_LABEL, route.params.recurso)
-    && (route.params.plano === 'pro' || route.params.plano === 'empresa')
+  const paramsGate = route.params && 'origem' in route.params ? route.params : null;
+  const contextoGate = paramsGate?.origem === 'gate'
+    && Object.prototype.hasOwnProperty.call(RECURSO_LABEL, paramsGate.recurso)
+    && (paramsGate.plano === 'pro' || paramsGate.plano === 'empresa')
       ? {
-          recurso: RECURSO_LABEL[route.params.recurso],
-          plano: route.params.plano === 'empresa' ? 'Empresa' : 'Pro',
+          recurso: RECURSO_LABEL[paramsGate.recurso],
+          plano: paramsGate.plano === 'empresa' ? 'Empresa' : 'Pro',
         }
       : null;
 
@@ -650,6 +659,19 @@ export default function PlanosScreen() {
       setPixEmAndamento(null);
     }
   }
+
+  // Veio do limite do Grátis (`pix: 'pro'`): gera o Pix do Pro mensal sozinho, uma vez, assim que
+  // tudo estiver confirmado (Pix ligado, plano lido, Pix pendente lido). Pix desligado = só a tela.
+  const pixDoLimiteFeito = useRef(false);
+  const pedePixDoLimite = !!route.params && 'pix' in route.params && route.params.pix === 'pro';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dispara uma vez (ref), quando os 4 sinais confirmam
+  useEffect(() => {
+    if (!pedePixDoLimite || pixDoLimiteFeito.current) return;
+    if (!pixLigado || !acoesPlanoDisponiveis || carregandoPlano || !pixPendenteLido) return;
+    pixDoLimiteFeito.current = true;
+    const pro = planos.find((x) => x.id === 'pro');
+    if (pro && !pro.atual && periodo === 'mensal') void pagarComPix(pro);
+  }, [pedePixDoLimite, pixLigado, acoesPlanoDisponiveis, carregandoPlano, pixPendenteLido, periodo]);
 
   // Pix Automático: só o Pro mensal. A confirmação mostra preço, que renova sozinho e como cancelar ANTES de abrir o banco.
   async function pagarComPixAutomatico(p: Plano) {

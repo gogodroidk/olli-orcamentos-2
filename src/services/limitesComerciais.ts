@@ -1,4 +1,5 @@
 import type { PlanoId } from './entitlements';
+import { PRECO_PRO, reais } from './precosPlanos.ts';
 
 /**
  * CONTRATO COMERCIAL DO ENVIO DE ORÇAMENTOS — fonte única.
@@ -324,4 +325,15 @@ export function avisoAntigas(oferta: EstadoOfertaComercial | null, limite: numbe
     dataBR,
     texto: `A partir de ${dataBR} o Grátis passa a permitir até ${limite} envios por mês. ${usou}`,
   };
+}
+
+/**
+ * Oferta do Pro NO MOMENTO em que o Grátis bate o limite do mês. O botão leva direto ao
+ * Pix do Pro mensal (`PARAM_PIX_NO_LIMITE=pro` na tela de Planos; app e painel). Preço
+ * vem da tabela única (`precosPlanos`), nunca escrito aqui; sem desconto nem urgência.
+ */
+export const PARAM_PIX_NO_LIMITE = 'pix';
+export const VALOR_PIX_NO_LIMITE = 'pro';
+export function rotuloAssinarProNoLimite(): string {
+  return `Assinar o Pro — ${reais(PRECO_PRO.mensalCentavos)}/mês`;
 }

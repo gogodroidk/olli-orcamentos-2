@@ -98,7 +98,8 @@ import { ContadorEnvios } from '../components/ContadorEnvios';
 import { avisoTrialAutomatico } from '../services/ativacao';
 import { avisar } from './desktop/dialogo';
 import { recarregarPlanoGlobal } from '../hooks/usePlano';
-import type { CanalEnvioOrcamento, ReservaEnvioOrcamento } from '../services/limitesComerciais';
+import { rotuloAssinarProNoLimite, type CanalEnvioOrcamento, type ReservaEnvioOrcamento } from '../services/limitesComerciais';
+import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
 import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
 import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
@@ -416,9 +417,20 @@ export default function VisualizarOrcamentoScreen() {
     // Só o ENVIO para; o orçamento fica salvo e editável. Sem a palavra "bloqueado".
     if (!reserva.permitido) {
       const teto = reserva.limiteEnvios ?? 5;
+      // Loja que não permite compra externa (Play): sem oferta de Pix, só o aviso.
+      const podeOferecerPix = COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA;
+      const base = `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês;`;
       toast.info(
-        `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, veja os planos na tela Conta.`,
-        { titulo: 'Limite do mês atingido' },
+        podeOferecerPix
+          ? `${base} para enviar mais agora, assine o Pro e pague por Pix.`
+          : `${base} para enviar mais agora, veja os planos na tela Conta.`,
+        {
+          titulo: 'Limite do mês atingido',
+          // Em 1 toque: abre a tela de Planos já gerando o Pix do Pro mensal.
+          ...(podeOferecerPix
+            ? { acao: { rotulo: rotuloAssinarProNoLimite(), aoTocar: () => nav.navigate('Planos', { pix: 'pro' }) } }
+            : {}),
+        },
       );
       return null;
     }
