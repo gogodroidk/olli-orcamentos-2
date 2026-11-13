@@ -1,0 +1,69 @@
+---
+/**
+ * IdentificacaoEmpresa.astro — bloco de identificação do fornecedor (Decreto
+ * 7.962/2013, art. 2º, I e II). Único lugar que formata razão social + CNPJ +
+ * canais; Footer e PlanosPrecos (home #planos e /planos) usam este componente.
+ *
+ * Dados SÓ de `data/empresa.ts`. Sem identidade publicável (gate), não renderiza.
+ * Endereço NÃO é exibido: ordem D-0126 do dono (sem endereço residencial no site)
+ * até existir endereço comercial aprovado.
+ *
+ * `variante`:
+ *   'bloco'  — duas linhas (razão/CNPJ/consulta + WhatsApp/e-mail). Rodapé completo e planos.
+ *   'linha'  — uma linha corrida, para o rodapé minimal das páginas de conversão.
+ */
+import {
+	EMPRESA,
+	emailContatoPublicavel,
+	identidadePublicavel,
+} from "../data/empresa";
+
+interface Props {
+	variante?: "bloco" | "linha";
+	class?: string;
+	/** Só dígitos, com DDI. Padrão: WhatsApp do app. */
+	whatsapp?: string;
+	whatsappLegivel?: string;
+}
+const {
+	variante = "bloco",
+	class: classe = "",
+	whatsapp = EMPRESA.whatsapp,
+	whatsappLegivel = EMPRESA.whatsappLegivel,
+} = Astro.props;
+
+/** Consulta pública do CNPJ. O número continua no texto, para copiar e colar. */
+const CONSULTA_CNPJ =
+	"https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp";
+
+const empresa = identidadePublicavel();
+const emailContato = emailContatoPublicavel();
+const whatsappUrl = `https://wa.me/${whatsapp}`;
+// text-slate: 7.17:1 sobre bg-paper (muted dá 4.50:1, no fio do AA).
+const link = "inline-flex min-h-11 items-center underline-offset-2 transition hover:text-brand-fg hover:underline";
+---
+
+{empresa && variante === "bloco" && (
+  <address class={`text-xs not-italic leading-relaxed text-slate ${classe}`} data-identificacao-empresa>
+    <span class="font-semibold">{empresa.razaoSocial}</span>
+    <span> · CNPJ {empresa.cnpj}</span>
+    <span> · </span>
+    <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class={link}>Conferir na Receita Federal</a>
+    <br />
+    <a href={whatsappUrl} class={link}>WhatsApp {whatsappLegivel}</a>
+    {emailContato && (
+      <>
+        <span> · </span>
+        <a href={`mailto:${emailContato}`} class={link}>{emailContato}</a>
+      </>
+    )}
+  </address>
+)}
+
+{empresa && variante === "linha" && (
+  <div class={`flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs text-slate sm:justify-start ${classe}`} data-identificacao-empresa>
+    <span class="font-semibold">{empresa.razaoSocial}</span>
+    <span>CNPJ {empresa.cnpj}</span>
+    <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class={`${link} min-w-11 justify-center`}>Conferir na Receita Federal</a>
+  </div>
+)}
