@@ -27,7 +27,7 @@
  */
 import { lerCorpoLimitado } from './bodyLimit.js';
 import { chamarRpcServico } from './emailRpc.js';
-import { FRASE_IA } from './passagemHumano.js';
+import { FRASE_BOAS_VINDAS, FRASE_IA } from './passagemHumano.js';
 
 export const WHATSAPP_CLOUD_VERSION = '2026-10-07.v1';
 export const GRAPH_VERSAO = 'v23.0';
@@ -204,7 +204,9 @@ function telefonesDaResposta(registro) {
   const validos = [];
   for (const item of registro.respostas) {
     const tel = typeof item?.telefone === 'string' ? item.telefone : '';
-    if (TEL_RESPOSTA.test(tel)) validos.push(tel);
+    // Sem tipo (banco antigo) = frase de IA. Tipo desconhecido = nada automático.
+    const tipo = item?.tipo === undefined || item?.tipo === 'ia' ? 'ia' : item?.tipo === 'boas_vindas' ? 'boas_vindas' : null;
+    if (TEL_RESPOSTA.test(tel) && tipo) validos.push({ tel, tipo });
   }
   return {
     telefones: validos.slice(0, MAX_RESPOSTAS_IA),
@@ -212,7 +214,7 @@ function telefonesDaResposta(registro) {
   };
 }
 
-async function enviarFraseIa(config, fetchImpl, phoneNumberId, telefone) {
+async function enviarFraseIa(config, fetchImpl, phoneNumberId, telefone, tipo = 'ia') {
   const decisao = await chamarRpcServico(config, fetchImpl, 'wa_autorizar_envio', {
     p_phone_number_id: phoneNumberId,
     p_telefone: telefone,
@@ -245,7 +247,7 @@ async function enviarFraseIa(config, fetchImpl, phoneNumberId, telefone) {
     recipient_type: 'individual',
     to: destino,
     type: 'text',
-    text: { body: FRASE_IA, preview_url: false },
+    text: { body: tipo === 'boas_vindas' ? FRASE_BOAS_VINDAS : FRASE_IA, preview_url: false },
   };
   let r;
   try {
@@ -269,7 +271,7 @@ async function enviarFraseIa(config, fetchImpl, phoneNumberId, telefone) {
     return false;
   }
   await concluir(waId, null);
-  log('whatsapp_resposta_ia', { resultado: 'enviado' });
+  log('whatsapp_resposta_ia', { resultado: 'enviado', tipo });
   return true;
 }
 
@@ -278,9 +280,9 @@ async function responderIaSeHouver(config, fetchImpl, phoneNumberId, registro) {
   const { telefones, cortadas } = telefonesDaResposta(registro);
   if (cortadas > 0) log('whatsapp_resposta_ia', { resultado: 'cortado', restantes: cortadas });
   let enviadas = 0;
-  for (const tel of telefones) {
+  for (const { tel, tipo } of telefones) {
     try {
-      if (await enviarFraseIa(config, fetchImpl, phoneNumberId, tel)) enviadas += 1;
+      if (await enviarFraseIa(config, fetchImpl, phoneNumberId, tel, tipo)) enviadas += 1;
     } catch (erro) {
       log('whatsapp_resposta_ia', { resultado: 'falhou', motivo: String(erro?.codigo || 'erro').slice(0, 40) });
     }
