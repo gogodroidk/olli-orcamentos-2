@@ -1,0 +1,12 @@
+[Unit]
+Description=Olha a fila de prospecção da OLLI Serviços (seg–sáb, 9h–18h). O script decide se manda.
+
+[Timer]
+# A cada minuto na janela. O script não manda de noite, no domingo, nem fora do teto.
+OnCalendar=Mon..Sat 09..17:*:00
+AccuracySec=30s
+Persistent=false
+Unit=prospeccao-zap.service
+
+[Install]
+WantedBy=timers.target
