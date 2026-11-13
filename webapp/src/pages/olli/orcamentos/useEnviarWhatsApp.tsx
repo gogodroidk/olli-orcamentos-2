@@ -19,9 +19,10 @@ import { avisoTrialAutomatico } from "@ativacao";
 import type { ReservaEnvioOrcamento } from "@limites-comerciais";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import { avisoLimiteEnvios, cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
+import { acaoAssinarProNoLimite, avisoLimiteEnvios, cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
 import { linkWhatsApp } from "@/olli/linkWhatsApp";
 import { publicarLinkOrcamento } from "@/olli/publicarLink";
@@ -44,6 +45,7 @@ interface Pendente {
 
 export function useEnviarWhatsApp() {
 	const qc = useQueryClient();
+	const navigate = useNavigate();
 	const exigirCadastro = usePortaDoCadastro();
 	const marcarEnviado = useMarcarEnviado();
 	const [pendente, setPendente] = useState<Pendente | null>(null);
@@ -75,7 +77,12 @@ export function useEnviarWhatsApp() {
 				if (!reserva.permitido) {
 					// P0-09: limite do Grátis em conta nova — só o envio para, o orçamento fica salvo.
 					const aviso = avisoLimiteEnvios(reserva);
-					toast.info(aviso.titulo, { description: aviso.mensagem, position: "top-center", duration: 12_000 });
+					toast.info(aviso.titulo, {
+						description: aviso.mensagem,
+						position: "top-center",
+						duration: 12_000,
+						action: acaoAssinarProNoLimite((rota) => navigate(rota)),
+					});
 					return;
 				}
 				let url: string | null = null;
@@ -97,7 +104,7 @@ export function useEnviarWhatsApp() {
 				setPreparando(null);
 			}
 		},
-		[exigirCadastro, preparando],
+		[exigirCadastro, navigate, preparando],
 	);
 
 	const cancelar = useCallback(async () => {

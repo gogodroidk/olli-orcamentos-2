@@ -186,6 +186,9 @@ export type RootStackParamList = {
     origem: 'gate';
     recurso: Recurso;
     plano: 'pro' | 'empresa';
+  } | {
+    // Bateu o limite do Grátis: abre já gerando o Pix do Pro mensal.
+    pix: 'pro';
   } | undefined;
   // Crédito de troca ("Vim de outro app"): pedido com comprovante, conferido à mão.
   VimDeOutroApp: undefined;

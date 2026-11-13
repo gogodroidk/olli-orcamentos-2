@@ -69,6 +69,7 @@ import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
 import { urlGerenciarNaPlay } from "@play-billing-regras";
 import { TRIAL_PRO_DIAS } from "@limites-comerciais";
 import { lerIntencaoPlano } from "@/olli/plano-intent";
+import { PARAM_PIX_NO_LIMITE, VALOR_PIX_NO_LIMITE } from "@limites-comerciais";
 import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
 import { comecarTesteProComAviso, opcoesOfertaComercial } from "./useLembreteAssinatura";
 import { AudioIaPrototipo } from "./AudioIaPrototipo";
@@ -233,6 +234,20 @@ export default function Planos() {
 		if (planoParaRenovarPix && pixLigado) setPixAberto({ plano: planoParaRenovarPix, periodo: "mensal" });
 		else irParaCatalogo();
 	}
+
+	// `?pix=pro` (limite do Grátis): abre o Pix do Pro mensal assim que o Pix estiver confirmado
+	// como ligado. Uma vez só; o parâmetro sai da URL. Pix desligado = só a tela de planos.
+	const [pedidoPixLimite, setPedidoPixLimite] = useState(
+		() => new URLSearchParams(window.location.search).get(PARAM_PIX_NO_LIMITE) === VALOR_PIX_NO_LIMITE,
+	);
+	useEffect(() => {
+		if (!pedidoPixLimite || !pixLigado) return;
+		setPedidoPixLimite(false);
+		setPixAberto({ plano: "pro", periodo: "mensal" });
+		const url = new URL(window.location.href);
+		url.searchParams.delete(PARAM_PIX_NO_LIMITE);
+		window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+	}, [pedidoPixLimite, pixLigado]);
 
 	// `?renovar=pix` (vindo do lembrete de outra tela): abre o Pix do plano atual assim
 	// que assinatura e Pix estiverem confirmados. Uma vez só — e o parâmetro sai da URL

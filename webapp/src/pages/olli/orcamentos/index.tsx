@@ -41,7 +41,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useLocation, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { lazyComRetry } from "@/components/lazy/carregar-chunk";
 import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
@@ -56,6 +56,7 @@ import {
 	confirmarEnvioOrcamento,
 	obterEstadoOfertaComercial,
 	reservarEnvioOrcamento,
+	acaoAssinarProNoLimite,
 	avisoLimiteEnvios,
 } from "@/olli/cota-envios";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
@@ -331,6 +332,7 @@ export default function OrcamentosPage() {
 	// aprovação" chegam como aprovado,convertido (ver `paramStatus` em
 	// pages/olli/inicio/financeiro.ts). São os MESMOS slugs de `StatusOrcamento`, então
 	// não há nome pra traduzir — só filtrar fora um valor torto que não exista no funil.
+	const navigate = useNavigate();
 	const [searchParams, setSearchParams] = useSearchParams();
 	// `?novo=1` e `?cliente=<nome>` chegam de outras telas (WelcomeHeader, ações de
 	// contexto do cliente) — ver o efeito logo após `abrirNovo`, mais abaixo.
@@ -529,7 +531,7 @@ export default function OrcamentosPage() {
 			if (!reserva.permitido) {
 				// P0-09: só o ENVIO para; o orçamento fica salvo. Falha de registro nunca cai aqui.
 				const aviso = avisoLimiteEnvios(reserva);
-				throw new Error(`${aviso.titulo}. ${aviso.mensagem}`);
+				throw Object.assign(new Error(`${aviso.titulo}. ${aviso.mensagem}`), { limiteGratis: true });
 			}
 			try {
 				const marca = await resolverMarcaDoDocumento(qc);
@@ -581,7 +583,20 @@ export default function OrcamentosPage() {
 					? `Abri a janela de impressão. ${aviso}`
 					: "Abri a janela de impressão — escolha “Salvar como PDF”.";
 			},
-			error: (erro) => (erro as Error).message || "Não consegui gerar o PDF agora. Tente de novo.",
+			error: (erro) => {
+				const mensagem = (erro as Error).message || "Não consegui gerar o PDF agora. Tente de novo.";
+				if (!(erro as { limiteGratis?: boolean }).limiteGratis) return mensagem;
+				// Limite do Grátis: o aviso leva o Pix do Pro a 1 clique (sonner 1.x: o erro da promise é só nó React).
+				const assinar = acaoAssinarProNoLimite((rota) => navigate(rota));
+				return (
+					<span>
+						{mensagem}{" "}
+						<button type="button" className="font-semibold underline" onClick={assinar.onClick}>
+							{assinar.label}
+						</button>
+					</span>
+				);
+			},
 		});
 		// O PDF é o arquivo do PRESTADOR: gerar não é enviar. Se o orçamento ainda é rascunho, pergunta
 		// (com o caminho certo à mão) em vez de deixá-lo parado para sempre.
