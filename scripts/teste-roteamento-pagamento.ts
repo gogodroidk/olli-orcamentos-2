@@ -125,6 +125,10 @@ const ALVOS: Alvo[] = [
     rotulo: 'APP (src/)',
     dir: 'src',
     esperadas: [
+      '/abacate/assinatura/cancelar',
+      '/abacate/assinatura/estado',
+      '/abacate/assinatura/pix',
+      '/abacate/assinatura/status',
       '/abacate/config',
       '/abacate/plano/pix',
       '/abacate/status',
@@ -156,6 +160,9 @@ const ALVOS: Alvo[] = [
 		rotulo: 'PAINEL (webapp/src/)',
 		dir: 'webapp/src',
 		esperadas: [
+			'/abacate/assinatura/cancelar',
+			'/abacate/assinatura/estado',
+			'/abacate/assinatura/pix',
 			'/abacate/config',
 			'/abacate/plano/pix',
 			'/abacate/status',
