@@ -1,0 +1,6 @@
+base.json
+*.log
+ativacao-estado.json
+ativacao-freio.json
+ativacao-parou.jsonl
+ativacao.lock
