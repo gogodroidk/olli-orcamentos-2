@@ -25,6 +25,7 @@ export type TipoLembrete =
   | 'renovar_pix'
   | 'plano_vencido'
   | 'trial_acabando'
+  | 'trial_encerrado'
   | 'trial_disponivel'
   | 'assinar';
 
@@ -167,6 +168,25 @@ export function lembreteAssinatura(e: EntradaLembrete): Lembrete | null {
   }
 
   if (oferta.planoEfetivo !== 'gratis') return null;
+
+  // 3b) Teste do Pro que acabou há até 14 dias: dizer que acabou (antes ficava só o
+  // "assinar" genérico, ou nada se a conta não enviou orçamento no mês). Só com a data
+  // de término conhecida; sem ela cai nos avisos abaixo, como sempre foi.
+  if (oferta.trialEstado === 'ended') {
+    const diasDesdeFim = diasAte(oferta.trialTerminaEm, agora);
+    if (diasDesdeFim !== null && diasDesdeFim <= 0 && diasDesdeFim >= -14) {
+      return {
+        id: `trial_encerrado:${oferta.trialTerminaEm}`,
+        tipo: 'trial_encerrado',
+        urgencia: 'atencao',
+        titulo: 'Seu teste do Pro terminou',
+        texto: `Seus dados continuam salvos. Assine por ${e.precoProMensal}/mês — dá para pagar com Pix — e volte ao Pro: ${frasePro()}.`,
+        cta: { rotulo: 'Assinar o Pro', acao: 'planos' },
+        ctaSecundario: null,
+        dispensavelPorHoras: 24,
+      };
+    }
+  }
 
   const mes = mesDe(agora);
   const usados = oferta.enviosUsados;
