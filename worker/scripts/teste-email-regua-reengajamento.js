@@ -222,6 +222,15 @@ caso('trial: preço e benefícios vêm de PRECO_PRO e frasePro()', () => {
   assert.equal(/12x|12 x|parcel/i.test(e.text), false);
   assert.ok(e.html.includes('/planos'));
 });
+caso('não aberto: avisa o prestador, sem token do link, com descadastro', () => {
+  const erro = (fn) => { try { fn(); } catch (e) { return e.codigo; } return null; };
+  const e = render({ tipo: 'nao_aberto', token: 'fixture-um', enviadoEm: '2026-10-23T15:00:00.000Z' });
+  assert.ok(e.text.includes('ainda não abriu'));
+  assert.ok(e.text.includes(UNSUB));
+  assert.equal(e.text.includes('fixture-um'), false);
+  assert.equal(erro(() => render({ tipo: 'nao_aberto', token: 'x', enviadoEm: '2026-10-23T15:00:00.000Z' })), 'dados_invalidos');
+  assert.equal(erro(() => render({ tipo: 'nao_aberto', token: 'fixture-um', enviadoEm: 'ontem' })), 'dados_invalidos');
+});
 caso('trial_encerrado: e-mail com preço da fonte, sem Pix embutido e sem dado do cliente', () => {
   const e = render({ tipo: 'trial_encerrado', terminaEm: '2026-10-20T12:00:00.000Z' });
   assert.match(e.text, /R\$\s?374,40/);

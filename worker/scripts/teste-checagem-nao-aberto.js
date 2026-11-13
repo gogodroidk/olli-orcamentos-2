@@ -1,16 +1,14 @@
 /**
- * Checagem antes de ligar o sufixo `nao_aberto` (Z-52). Não envia e-mail.
+ * Checagem da régua `nao_aberto` (Z-52 / #247). Não envia e-mail.
  *
  *     node scripts/teste-checagem-nao-aberto.js   (de dentro de worker/)
  *
- * Prova, neste build (a lista ainda não está na main):
+ * Prova, com a lista nesta branch e a palavra fora do wrangler:
  *   - `production` sem sufixo NÃO pede `listar_nao_abertos_email`;
- *   - o sufixo com a palavra também NÃO pede a lista: marca `nao_aberto_bloqueado`;
- *   - `nao_aberto` não está em TIPOS_LEMBRETE, então `production` sozinho não a inclui.
- *
- * O dia em que a lista entrar (PR #247), este arquivo troca o "não chama" do
- * sufixo pelo par: sem sufixo não chama; com `nao_aberto` chama. Não apague
- * o par e não deixe a chamada fora de `sufixoLigaNaoAberto`.
+ *   - o sufixo vivo de hoje, sem a palavra, também não pede;
+ *   - o sufixo com a palavra exata chama a lista, e a chamada passa por
+ *     `sufixoLigaNaoAberto` (não marca `nao_aberto_bloqueado`);
+ *   - off, staging e palavra parecida não chamam.
  */
 import assert from 'node:assert/strict';
 import { processarLembretesEmail } from '../src/emailLembretesJob.js';
@@ -56,18 +54,19 @@ function fetchFalso() {
     calls.push({ rpc, body: JSON.parse(init.body) });
     if (rpc === 'listar_candidatos_lembrete_email') return Response.json([]);
     if (rpc === 'listar_pix_vence_email') return Response.json([]);
+    if (rpc === 'listar_nao_abertos_email') return Response.json([]);
     if (rpc === 'enqueue_lembrete_email') return Response.json({ enfileirado: true, motivo: 'enfileirado' });
     throw new Error(`url_inesperada:${rpc}`);
   };
   return { calls, fetchImpl };
 }
 
-await caso('a palavra nao_aberto não está no conjunto padrão', () => {
-  assert.equal(TIPOS_LEMBRETE.has('nao_aberto'), false);
-  assert.equal(lerTiposPermitidos(undefined).has('nao_aberto'), false);
+await caso('nao_aberto é tipo conhecido e o sufixo vivo de hoje não o inclui', () => {
+  assert.equal(TIPOS_LEMBRETE.has('nao_aberto'), true);
   assert.equal(lerTiposPermitidos(SUFIXO_VIVO).has('nao_aberto'), false);
-  // Sufixo desconhecido não liga tipo nenhum (fail-closed), inclusive esta palavra.
-  assert.equal(lerTiposPermitidos('nao_aberto').size, 0);
+  assert.equal(lerTiposPermitidos('nao_aberto').has('nao_aberto'), true);
+  assert.equal(lerTiposPermitidos('nao_abertos').has('nao_aberto'), false);
+  assert.equal(lerTiposPermitidos('nao-aberto').size, 0);
 });
 
 await caso('sufixoLigaNaoAberto só com production e a palavra exata', () => {
@@ -117,13 +116,14 @@ await caso('sufixo vivo de hoje, sem a palavra, não chama a lista', async () =>
   assert.equal(f.calls.some((c) => c.rpc === 'listar_pix_vence_email'), true);
 });
 
-await caso('sufixo com nao_aberto marca bloqueio e não chama a lista', async () => {
+await caso('sufixo com nao_aberto chama a lista e não marca bloqueio', async () => {
   for (const modo of ['production:nao_aberto', `production:${SUFIXO_COM_PALAVRA}`, 'production:NAO_ABERTO']) {
     const { f, r } = await rodada(modo);
     assert.equal(r.motivo, 'ok', modo);
-    assert.equal(r.decisoes.nao_aberto_bloqueado, 1, modo);
+    assert.equal(r.decisoes.nao_aberto_bloqueado, undefined, modo);
     assert.equal(r.enfileirados, 0, modo);
-    naoPediuLista(f);
+    assert.equal(f.calls.some((c) => c.rpc === 'listar_nao_abertos_email'), true, modo);
+    assert.equal(f.calls.some((c) => c.body?.p_template_dados?.tipo === 'nao_aberto'), false, modo);
   }
 });
 
