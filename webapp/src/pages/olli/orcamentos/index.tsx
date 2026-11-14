@@ -20,7 +20,22 @@
  * Apagar de verdade faria o celular ressuscitar a linha no próximo sync.
  */
 
-import { avisoTrialAutomatico } from "@ativacao";
+import {
+	AVISO_EXEMPLO,
+	TITULO_PRIMEIRO_ORCAMENTO,
+	ativaPrimeiroOrcamentoLigada,
+	decidirVazioOrcamentos,
+	fraseDoPrimeiroCliente,
+	avisoTrialAutomatico,
+	exemploOrcamentoPara,
+	itensPrefillDoExemplo,
+	totalDoExemplo,
+	verticalDoExemplo,
+} from "@ativacao";
+import { VERTICAIS, VERTICAL_GERAL, type VerticalId } from "@verticais";
+import { lembrarOficioEscolhido } from "@/olli/oficioEscolhido";
+import { ehDonoDaConta } from "@/olli/papel";
+import { useContextoDeEscrita } from "@/olli/mutacoes";
 import type { Cliente, Empresa, Orcamento, StatusOrcamento } from "@dominio";
 import { STATUS_LABELS } from "@dominio";
 import { useQueryClient } from "@tanstack/react-query";
@@ -39,7 +54,9 @@ import {
 	RotateCw,
 	Search,
 	Trash2,
+	Zap,
 } from "lucide-react";
+import { formatBRL } from "@/pages/olli/inicio/helpers";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -386,6 +403,29 @@ export default function OrcamentosPage() {
 	/* ─────────────────────────────────  Ações  ───────────────────────────────── */
 
 	const abrirNovo = () => setEditor({ orc: novoOrcamentoVazio(empresa), ehNovo: true });
+
+	// Lista vazia guiada (CQ-ATIVA-1O-ORCAMENTO): atrás da chave VITE_ATIVA_1O_ORCAMENTO (desligada),
+	// só dono, só sem filtro e só com a consulta CONFIRMADA em zero (regra em src/services/ativacao.ts).
+	const contextoEscrita = useContextoDeEscrita();
+	const vazioGuiado = decidirVazioOrcamentos({
+		ligado:
+			ativaPrimeiroOrcamentoLigada(import.meta.env.VITE_ATIVA_1O_ORCAMENTO) &&
+			contextoEscrita.isSuccess &&
+			ehDonoDaConta(contextoEscrita.data?.papel),
+		filtrado: !!busca || filtroStatus !== "todos" || !!statusDaUrl,
+		totalConfirmado: !isLoading && !isError && data ? data.length : null,
+		vertical: verticalDoExemplo(empresa),
+	});
+	const abrirExemploVazio = (v: VerticalId) => {
+		const ex = exemploOrcamentoPara(v);
+		if (!ex) return;
+		lembrarOficioEscolhido(v);
+		setEditor({
+			orc: orcamentoComItensPrefill(novoOrcamentoVazio(empresa), itensPrefillDoExemplo(ex)),
+			ehNovo: true,
+			exemplo: true,
+		});
+	};
 
 	/**
 	 * Chegada com intenção pronta, vinda de OUTRA tela:
@@ -769,6 +809,50 @@ export default function OrcamentosPage() {
 					<Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
 						<RotateCw className={cn("mr-2 size-4", isFetching && "animate-spin")} />
 						Tentar de novo
+					</Button>
+				</Card>
+			) : linhas.length === 0 && vazioGuiado.tipo !== "padrao" ? (
+				<Card className="flex flex-col items-center gap-4 p-10 text-center">
+					<div className="flex size-14 items-center justify-center rounded-2xl bg-bg-neutral">
+						<Zap className="size-7 text-primary" />
+					</div>
+					<p className="text-base font-semibold text-text-primary">{TITULO_PRIMEIRO_ORCAMENTO}</p>
+					{vazioGuiado.tipo === "exemplo" ? (
+						<>
+							<p className="mx-auto max-w-sm text-sm text-text-secondary">
+								{fraseDoPrimeiroCliente(
+									vazioGuiado.exemplo.titulo.toLowerCase(),
+									formatBRL(totalDoExemplo(vazioGuiado.exemplo)),
+								)}
+							</p>
+							<Button onClick={() => abrirExemploVazio(vazioGuiado.vertical)}>Abrir orçamento de exemplo</Button>
+							<p className="mx-auto max-w-sm text-xs leading-snug text-text-secondary">{AVISO_EXEMPLO}</p>
+						</>
+					) : (
+						<>
+							<p className="mx-auto max-w-sm text-sm text-text-secondary">
+								Qual é o seu ofício? Com um toque, preparamos um orçamento de exemplo do seu serviço.
+							</p>
+							<fieldset>
+								<legend className="sr-only">Escolha o seu ofício</legend>
+								<div className="flex flex-wrap justify-center gap-2">
+									{[...VERTICAIS, VERTICAL_GERAL].map((o) => (
+										<button
+											key={o.id}
+											type="button"
+											onClick={() => abrirExemploVazio(o.id)}
+											className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+										>
+											<span aria-hidden="true">{o.emoji}</span>
+											{o.id === VERTICAL_GERAL.id ? "Outro serviço" : o.label}
+										</button>
+									))}
+								</div>
+							</fieldset>
+						</>
+					)}
+					<Button variant="ghost" onClick={abrirNovo}>
+						Prefiro começar do zero
 					</Button>
 				</Card>
 			) : linhas.length === 0 ? (

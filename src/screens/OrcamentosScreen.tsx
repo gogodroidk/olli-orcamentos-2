@@ -13,6 +13,10 @@ import { OlliCard } from '../components/OlliCard';
 import { GradientHeader } from '../components/GradientHeader';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmptyState } from '../components/EmptyState';
+import { VazioPrimeiroOrcamento } from '../components/VazioPrimeiroOrcamento';
+import { ATIVA_1O_ORCAMENTO } from '../config';
+import { decidirVazioOrcamentos, verticalDoExemplo } from '../services/ativacao';
+import { useSyncInicial } from '../hooks/useSyncInicial';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
@@ -297,6 +301,15 @@ export default function OrcamentosScreen() {
   // resposta. Sem o plano (ou sem leitura) o card fica como sempre foi — a lista
   // não vende nem afirma nada; o "Disponível no Pro" mora no detalhe.
   const { estado: estadoTermometroPlano } = useRecursoPlano('termometro_orcamento');
+  // Lista vazia guiada (CQ-ATIVA-1O-ORCAMENTO): só dono, só com a chave ligada, só sem filtro
+  // e só depois que o download inicial confirmou o zero (regra em services/ativacao.ts).
+  const { estado: downloadInicial } = useSyncInicial();
+  const vazioGuiado = decidirVazioOrcamentos({
+    ligado: ATIVA_1O_ORCAMENTO && !carregandoPapel && podePapel('gerenciar_faturamento'),
+    filtrado: !!query || statusFilter !== 'todos' || !!clienteId,
+    totalConfirmado: downloadInicial === 'pronto' ? itens.length : null,
+    vertical: verticalDoExemplo(empresa),
+  });
   const termometroLiberado = estadoTermometroPlano === 'liberado';
   const termometro = useTermometro(termometroLiberado);
 
@@ -794,6 +807,7 @@ export default function OrcamentosScreen() {
             ) : null
           }
           ListEmptyComponent={
+            vazioGuiado.tipo !== 'padrao' ? <VazioPrimeiroOrcamento decisao={vazioGuiado} /> :
             <EmptyState
               icon="file-document-outline"
               title="Nenhum orçamento"

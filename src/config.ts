@@ -9,6 +9,7 @@ declare const process: {
     EXPO_PUBLIC_WHATSAPP_SUPORTE?: string;
     EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID?: string;
     EXPO_PUBLIC_MAPS_KEY?: string;
+    EXPO_PUBLIC_ATIVA_1O_ORCAMENTO?: string;
   };
 };
 
@@ -103,3 +104,9 @@ export const APP_VERSION_CODE: number | null = (() => {
  *  abrir a página de assinaturas da Play Store direto no OLLI. */
 export const ANDROID_PACKAGE: string =
   (appJson as { expo?: { android?: { package?: string } } }).expo?.android?.package ?? '';
+
+/** Lista de Orçamentos vazia guiada (exemplo de 1 toque). DESLIGADA por padrão; ligar = decisão do Igor. */
+export const ATIVA_1O_ORCAMENTO: boolean = (() => {
+  const v = (process.env.EXPO_PUBLIC_ATIVA_1O_ORCAMENTO ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+})();
