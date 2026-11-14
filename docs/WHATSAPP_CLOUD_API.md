@@ -1,5 +1,9 @@
 # WhatsApp Cloud API — multi-número (worker `olli-diagnostico`)
 
+> Preço: a seção CUSTO mais abaixo descreve a regra lida em 07/10/2026. Desde 01/10/2026 a Meta cobra a mensagem de serviço depois de 1.000 grátis por número no mês, e cobra utilidade também dentro da janela de 24 h. A conta vigente da Central está em `src/services/atendimentoCusto.ts`, travada por `scripts/teste-atendimento-custo.ts`. Não use o "grátis" desta página para orçar esse produto.
+
+
+
 Código: `worker/src/whatsappCloud.js` · regras de envio: `supabase/migrations/20261007110000_whatsapp_cloud_multinumero.sql`
 · testes: `worker/scripts/teste-whatsapp-cloud.js` (18) e `scripts/teste-whatsapp-cloud-sql.ts` (66, Postgres real).
 Opt-out já existente: `docs/WHATSAPP_NAO_CONTATAR.md` (`whatsapp_nao_contatar`).
