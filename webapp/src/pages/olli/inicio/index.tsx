@@ -1,5 +1,5 @@
 import type { Empresa } from "@dominio";
-import { Banknote, Percent, Send, Wallet } from "lucide-react";
+import { Banknote, FileOutput, Percent, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { LembreteAssinaturaFaixa } from "@/pages/olli/planos/LembreteAssinaturaFaixa";
@@ -23,6 +23,16 @@ import { RadarDinheiroCard } from "./RadarDinheiroCard";
 import { RecentOrcamentosCard } from "./RecentOrcamentosCard";
 import { StatusDonutCard } from "./StatusDonutCard";
 import { WelcomeHeader } from "./WelcomeHeader";
+
+/**
+ * Cor do tile de cada KPI. Só tokens da paleta em `theme/tokens/color.ts`
+ * (primary, warning, success, primary.darker). O neon solto (#2BE39A, #8B5CF6,
+ * #F59E0B) saía do azul-marinho e fazia os cartões parecerem de outro produto.
+ */
+const COR_EM_JOGO = "#0B6FCE";
+const COR_A_RECEBER = "#D98008";
+const COR_RECEBIDO = "#1FA971";
+const COR_TAXA = "#08356A";
 
 /** "2026-09" no fuso do aparelho — o mesmo recorte de `calcularRecebidoNoMes`. */
 function chaveDoMes(ref: Date = new Date()): string {
@@ -172,8 +182,8 @@ export default function Inicio() {
 					}
 					aviso={avisoSemValor(emJogo?.semValor)}
 					to={`/orcamentos?status=${paramStatus(STATUS_EM_JOGO)}`}
-					Icon={Send}
-					color="#0B6FCE"
+					Icon={FileOutput}
+					color={COR_EM_JOGO}
 					isLoading={orcQ.isLoading}
 					isError={orcQ.isError}
 					onRetry={() => orcQ.refetch()}
@@ -192,7 +202,7 @@ export default function Inicio() {
 					aviso={avisoSemValor(aReceber?.semValor)}
 					to={`/orcamentos?status=${paramStatus(STATUS_A_RECEBER)}`}
 					Icon={Wallet}
-					color="#F59E0B"
+					color={COR_A_RECEBER}
 					isLoading={orcQ.isLoading || recQ.isLoading || osQ.isLoading}
 					isError={orcQ.isError || recQ.isError || osQ.isError}
 					onRetry={recarregarTudo}
@@ -209,7 +219,7 @@ export default function Inicio() {
 					aviso={avisoRecebido(recebido?.semData, recebido?.semValor)}
 					to="/recibos"
 					Icon={Banknote}
-					color="#2BE39A"
+					color={COR_RECEBIDO}
 					isLoading={recQ.isLoading}
 					isError={recQ.isError}
 					onRetry={() => recQ.refetch()}
@@ -230,7 +240,7 @@ export default function Inicio() {
 					}
 					to={`/orcamentos?status=${paramStatus(STATUS_A_RECEBER)}`}
 					Icon={Percent}
-					color="#8B5CF6"
+					color={COR_TAXA}
 					isLoading={orcQ.isLoading}
 					isError={orcQ.isError}
 					onRetry={() => orcQ.refetch()}

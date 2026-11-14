@@ -1,6 +1,6 @@
+import { Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useBoolean } from "react-use";
-import { Icon } from "@/components/icon";
 import useLocale from "@/locales/use-locale";
 import { useRouter } from "@/routes/hooks";
 import { Badge } from "@/ui/badge";
@@ -110,9 +110,8 @@ const SearchBar = () => {
 
 	return (
 		<>
-			{/* O ic-search.svg é currentColor e o variant ghost não define cor de texto:
-			    a lupa herdava o preto padrão do navegador e ficava em 1,27:1 sobre o
-			    fundo `bg-action-selected` do escuro. Com o token vai a 16,57:1. */}
+			{/* A lupa é currentColor. O variant ghost não define cor de texto: sem o
+			    token ela herdava o preto do navegador (1,27:1 no escuro). Com ele, 16,57:1. */}
 			<Button
 				variant="ghost"
 				className="bg-action-selected px-2 rounded-lg min-h-[44px] text-text-primary"
@@ -121,12 +120,12 @@ const SearchBar = () => {
 				aria-label={`Buscar (${isMac ? "Cmd" : "Ctrl"}+K)`}
 			>
 				<div className="flex items-center justify-center gap-4">
-					<Icon icon="local:ic-search" size="20" />
+					<Search className="size-5" strokeWidth={2} aria-hidden="true" />
 					{/* Azul CHEIO, não `bg-primary/80`: medido no navegador, o branco sobre o azul
 					    a 80% (composto sobre o botão cinza da busca) dava 3,64:1 — reprova nos
 					    4,5:1 da WCAG para texto pequeno. Sem a transparência vai a 5,02:1. */}
 					<kbd className="flex items-center justify-center rounded-md bg-primary text-primary-foreground px-1.5 py-0.5 text-sm font-semibold">
-						{isMac ? <Icon icon="qlementine-icons:key-cmd-16" /> : <span>Ctrl</span>}
+						{isMac ? <span aria-hidden="true">⌘</span> : <span>Ctrl</span>}
 						<span>K</span>
 					</kbd>
 				</div>

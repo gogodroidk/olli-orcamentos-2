@@ -1,4 +1,4 @@
-import { Bot } from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import { AssistenteConversa } from "@/layouts/components/assistente-global";
 import { Card } from "@/ui/card";
 
@@ -8,7 +8,7 @@ export default function AssistentePage() {
 			<header>
 				<div className="flex items-center gap-2.5">
 					<div className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
-						<Bot className="size-5" />
+						<MessageSquareText className="size-5" strokeWidth={2} />
 					</div>
 					<div>
 						<h1 className="text-2xl font-bold text-text-primary">Assistente OLLI</h1>

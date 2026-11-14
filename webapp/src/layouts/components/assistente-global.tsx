@@ -10,7 +10,6 @@ import {
 import { avaliarPedidoIa, type ModoPedidoIa } from "@ia-segura";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-	Bot,
 	CheckCircle2,
 	FilePlus2,
 	History,
@@ -639,7 +638,7 @@ export function AssistenteConversa({
 									className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"
 									aria-hidden="true"
 								>
-									<Bot className="size-4" />
+									<MessageSquareText className="size-4" />
 								</div>
 								<div className="min-w-0 flex-1">
 									{emRevelacao ? (
@@ -673,7 +672,7 @@ export function AssistenteConversa({
 								className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"
 								aria-hidden="true"
 							>
-								<Bot className="size-4" />
+								<MessageSquareText className="size-4" />
 							</div>
 							<div className="flex items-center gap-2 pt-1.5">
 								<Loader2 className="size-4 animate-spin text-primary motion-reduce:animate-none" />A OLLI está pensando…
@@ -889,7 +888,7 @@ export default function AssistenteGlobal() {
 					aria-label="Abrir assistente OLLI IA"
 				>
 					<span className="relative">
-						<Bot className="size-5" />
+						<MessageSquareText className="size-5" />
 						<span
 							className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-success ring-2 ring-background"
 							aria-hidden="true"
@@ -901,7 +900,7 @@ export default function AssistenteGlobal() {
 			<SheetContent className="w-[min(100vw,460px)] gap-0 p-0 sm:max-w-[460px]">
 				<SheetHeader className="border-b border-border px-5 py-4 pr-14">
 					<SheetTitle className="flex items-center gap-2">
-						<Bot className="size-5 text-primary" /> Assistente OLLI
+						<MessageSquareText className="size-5 text-primary" /> Assistente OLLI
 					</SheetTitle>
 					<SheetDescription>Ajuda prática para atender, organizar e orçar.</SheetDescription>
 				</SheetHeader>

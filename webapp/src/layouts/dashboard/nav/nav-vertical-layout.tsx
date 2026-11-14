@@ -1,4 +1,4 @@
-import { Icon } from "@/components/icon";
+import { ArrowLeftToLine, ArrowRightToLine } from "lucide-react";
 import Logo from "@/components/logo";
 import { NavMini, NavVertical } from "@/components/nav";
 import type { NavProps } from "@/components/nav/types";
@@ -73,9 +73,9 @@ export function NavVerticalLayout({ data, className }: Props) {
 					className="h-7 w-7 absolute right-0 translate-x-1/2 text-text-primary"
 				>
 					{themeLayout === ThemeLayout.Mini ? (
-						<Icon icon="lucide:arrow-right-to-line" size={12} />
+						<ArrowRightToLine className="size-3" strokeWidth={2} aria-hidden="true" />
 					) : (
-						<Icon icon="lucide:arrow-left-to-line" size={12} />
+						<ArrowLeftToLine className="size-3" strokeWidth={2} aria-hidden="true" />
 					)}
 				</Button>
 			</div>

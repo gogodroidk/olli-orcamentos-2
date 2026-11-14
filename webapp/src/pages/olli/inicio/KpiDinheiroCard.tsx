@@ -53,7 +53,7 @@ export function KpiDinheiroCard(props: KpiDinheiroProps) {
 			className="grid size-11 shrink-0 place-items-center rounded-xl border"
 			style={{ backgroundColor: `${color}1A`, color, borderColor: `${color}33` }}
 		>
-			<Icon className="size-5" strokeWidth={2.2} />
+			<Icon className="size-5" strokeWidth={2} />
 		</span>
 	);
 

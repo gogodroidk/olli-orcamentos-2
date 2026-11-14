@@ -1,6 +1,6 @@
+import { Menu } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router";
-import { Icon } from "@/components/icon";
 import Logo from "@/components/logo";
 import { NavVertical } from "@/components/nav";
 import type { NavProps } from "@/components/nav/types";
@@ -30,41 +30,41 @@ export function NavMobileLayout({ data }: NavProps) {
 
 	return (
 		<>
-		<Sheet modal={false} open={open} onOpenChange={setOpen}>
-			<SheetTrigger asChild>
-				{/* ic-menu.svg é currentColor; sem cor no ghost o "sanduíche" herdava
-				    preto (1,11:1 no escuro). Token = 18,94:1. 44px de alvo de toque. */}
-				<Button
-					variant="ghost"
-					size="icon"
-					className="min-h-[44px] min-w-[44px] text-text-primary"
-					aria-label="Abrir menu"
-				>
-					<Icon icon="local:ic-menu" size={24} />
-				</Button>
-			</SheetTrigger>
-			<SheetContent side="left" className="[&>button]:hidden px-2 w-[280px] flex flex-col">
-				<div className="flex gap-2 px-2 h-[var(--layout-header-height)] items-center shrink-0">
-					<Logo />
-					<span className="text-xl font-bold text-text-primary">{GLOBAL_CONFIG.appName}</span>
-				</div>
-				{/* O <nav> vive AQUI (e não dentro do NavVertical, que é <div> por já
+			<Sheet modal={false} open={open} onOpenChange={setOpen}>
+				<SheetTrigger asChild>
+					{/* Sem cor no ghost o menu herdava preto (1,11:1 no escuro). Token = 18,94:1.
+				    44px de alvo de toque. */}
+					<Button
+						variant="ghost"
+						size="icon"
+						className="min-h-[44px] min-w-[44px] text-text-primary"
+						aria-label="Abrir menu"
+					>
+						<Menu className="size-5" strokeWidth={2} aria-hidden="true" />
+					</Button>
+				</SheetTrigger>
+				<SheetContent side="left" className="[&>button]:hidden px-2 w-[280px] flex flex-col">
+					<div className="flex gap-2 px-2 h-[var(--layout-header-height)] items-center shrink-0">
+						<Logo />
+						<span className="text-xl font-bold text-text-primary">{GLOBAL_CONFIG.appName}</span>
+					</div>
+					{/* O <nav> vive AQUI (e não dentro do NavVertical, que é <div> por já
 				    morar dentro de um <nav> nos layouts de desktop) — na gaveta ele é
 				    o único marco de navegação da tela, e precisa de nome. */}
-				<ScrollArea className="flex-1 min-h-0">
-					<nav aria-label="Menu principal">
-						<NavVertical data={data} />
-					</nav>
-				</ScrollArea>
-				{/* SAIR no rodapé do menu: no celular é aqui que o usuário procura sair,
+					<ScrollArea className="flex-1 min-h-0">
+						<nav aria-label="Menu principal">
+							<NavVertical data={data} />
+						</nav>
+					</ScrollArea>
+					{/* SAIR no rodapé do menu: no celular é aqui que o usuário procura sair,
 				    não atrás do avatar do cabeçalho. Mesma ação e mesma confirmação do
 				    menu da conta — um só caminho de código (ver components/sair.tsx). */}
-				<div className="shrink-0 border-t px-2 py-3">
-					<SairBotao onSolicitar={pedirParaSair} />
-				</div>
-			</SheetContent>
-		</Sheet>
-		<ConfirmarSairDialog open={confirmandoSair} onOpenChange={setConfirmandoSair} />
+					<div className="shrink-0 border-t px-2 py-3">
+						<SairBotao onSolicitar={pedirParaSair} />
+					</div>
+				</SheetContent>
+			</Sheet>
+			<ConfirmarSairDialog open={confirmandoSair} onOpenChange={setConfirmandoSair} />
 		</>
 	);
 }

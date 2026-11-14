@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import Icon from "@/components/icon/icon";
 import useLocale from "@/locales/use-locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/ui/tooltip";
@@ -42,8 +43,9 @@ export function NavItem(item: NavItemProps) {
 
 			{/* Arrow */}
 			{hasChild && (
-				<Icon
-					icon="eva:arrow-ios-forward-fill"
+				<ChevronRight
+					strokeWidth={2}
+					aria-hidden="true"
 					style={{
 						...navItemStyles.arrow,
 						transform: open ? "rotate(90deg)" : "rotate(0deg)",

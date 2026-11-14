@@ -1,3 +1,4 @@
+import { ChevronRight, Info } from "lucide-react";
 import Icon from "@/components/icon/icon";
 import useLocale from "@/locales/use-locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/ui/tooltip";
@@ -15,7 +16,7 @@ export const NavRootItem = (item: NavItemProps) => {
 				<TooltipProvider>
 					<Tooltip>
 						<TooltipTrigger>
-							<Icon icon="solar:info-circle-linear" size={16} className="absolute left-1 top-2" />
+							<Info className="absolute left-1 top-2 size-4" strokeWidth={2} aria-hidden="true" />
 						</TooltipTrigger>
 						<TooltipContent side="right">{t(item.caption)}</TooltipContent>
 					</Tooltip>
@@ -29,7 +30,12 @@ export const NavRootItem = (item: NavItemProps) => {
 
 			{/* Arrow */}
 			{item.hasChild && (
-				<Icon icon="eva:arrow-ios-forward-fill" className="absolute right-1 top-2" style={navItemStyles.arrow} />
+				<ChevronRight
+					className="absolute right-1 top-2 size-4"
+					strokeWidth={2}
+					style={navItemStyles.arrow}
+					aria-hidden="true"
+				/>
 			)}
 
 			{/* Title */}
