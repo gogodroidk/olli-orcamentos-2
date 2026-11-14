@@ -1,0 +1,10 @@
+[Unit]
+Description=Resumo dos interessados da OLLI Serviços para o Igor
+Documentation=file:///home/igor/wt/grok-GZ-AGENCIA-3-INTERESSADOS-DEMO/ops/agencia-interessados/LEIA.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/igor/chatwoot-central/campanhas/interessados
+ExecStart=/home/igor/.local/bin/node /home/igor/chatwoot-central/campanhas/interessados/resumir.mjs
+Environment=TZ=America/Sao_Paulo
+Nice=10
