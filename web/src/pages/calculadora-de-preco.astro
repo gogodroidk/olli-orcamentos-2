@@ -1,0 +1,293 @@
+---
+/**
+ * /calculadora-de-preco/ — "Calculadora de preço de serviço" (técnico de ar, eletricista, encanador).
+ * Página estática, sem backend: a conta roda no navegador com os números que a PESSOA digita.
+ * Nenhum preço de mercado é publicado aqui (nada de valor sem fonte); a página ensina a fórmula
+ * e cita só a regra do CDC art. 40, que tem link. CTA leva ao cadastro grátis com UTM.
+ */
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Layout from "../layouts/Layout.astro";
+
+const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
+const APP_CADASTRO = "https://app.olliorcamentos.online/auth/login?modo=cadastro";
+const cta = `${APP_CADASTRO}&utm_source=organico&utm_medium=seo&utm_campaign=calculadora-preco`;
+const CDC_URL = "https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm";
+
+const titulo = "Calculadora de preço de serviço: monte o orçamento";
+const descricao =
+	"Calcule o preço do seu serviço (ar-condicionado, elétrica, hidráulica) com mão de obra, material, deslocamento, imposto e lucro. Gera o texto do orçamento.";
+
+const faq = [
+	{
+		q: "Como calcular o preço de um serviço?",
+		a: "Some o que o serviço custa de verdade: horas de trabalho vezes o valor da sua hora, material, deslocamento. Depois acrescente imposto e lucro sobre o preço final. A calculadora faz essa conta: o preço sai do custo dividido por (1 menos imposto e lucro em %).",
+	},
+	{
+		q: "Como descubro o valor da minha hora?",
+		a: "Divida quanto você precisa ganhar por mês pelas horas que realmente consegue cobrar no mês. Você nunca cobra todas as horas: parte vai para deslocamento, orçamento e agenda. Use a mini-conta da calculadora.",
+	},
+	{
+		q: "Esta calculadora diz quanto o mercado cobra?",
+		a: "Não. Ela usa só os números que você digita e não publica preço de mercado. É a sua conta de custo e lucro, não uma tabela oficial.",
+	},
+	{
+		q: "O orçamento precisa detalhar mão de obra e material?",
+		a: "O Código de Defesa do Consumidor (art. 40) diz que o fornecedor deve entregar orçamento prévio discriminando valor da mão de obra, dos materiais e equipamentos, condições de pagamento e prazos. A calculadora já separa esses itens no texto.",
+	},
+];
+
+const schemas = [
+	{
+		"@context": "https://schema.org",
+		"@type": "WebApplication",
+		name: "Calculadora de preço de serviço",
+		url: `${ORIGEM}/calculadora-de-preco/`,
+		applicationCategory: "BusinessApplication",
+		operatingSystem: "Qualquer (navegador)",
+		inLanguage: "pt-BR",
+		description: descricao,
+		isAccessibleForFree: true,
+		offers: { "@type": "Offer", price: "0", priceCurrency: "BRL" },
+	},
+	{
+		"@context": "https://schema.org",
+		"@type": "BreadcrumbList",
+		itemListElement: [
+			{ "@type": "ListItem", position: 1, name: "OLLI", item: `${ORIGEM}/` },
+			{ "@type": "ListItem", position: 2, name: "Calculadora de preço", item: `${ORIGEM}/calculadora-de-preco/` },
+		],
+	},
+	{
+		"@context": "https://schema.org",
+		"@type": "FAQPage",
+		mainEntity: faq.map((f) => ({
+			"@type": "Question",
+			name: f.q,
+			acceptedAnswer: { "@type": "Answer", text: f.a },
+		})),
+	},
+];
+
+const campo =
+	"mt-1 block min-h-11 w-full rounded-lg border border-line bg-card px-3 text-base text-ink placeholder:text-muted focus:border-brand-fg focus:outline-2 focus:outline-brand-fg";
+const rotulo = "block text-sm font-semibold text-ink";
+---
+<Layout titulo={titulo} descricao={descricao} schemas={schemas} ofertaDoApp={false}>
+  <Header>
+    <a href="/" class="inline-flex min-h-11 items-center px-3 text-sm font-medium text-slate hover:text-ink">← Voltar pra home</a>
+  </Header>
+
+  <main>
+    <section class="mx-auto max-w-5xl px-6 pb-6 pt-12 md:pt-16">
+      <p class="text-sm font-semibold text-brand-fg">Ferramenta grátis</p>
+      <h1 class="mt-3 max-w-3xl text-[clamp(2rem,5.5vw,3.2rem)] font-extrabold leading-[1.08] tracking-tight text-ink">
+        Calculadora de preço de serviço
+      </h1>
+      <p class="mt-4 max-w-2xl text-lg leading-relaxed text-slate">
+        Para técnico de ar-condicionado, eletricista e encanador. Digite o seu custo e o seu lucro: sai o preço e o texto do orçamento, pronto para colar no WhatsApp.
+      </p>
+    </section>
+
+    <section class="mx-auto grid max-w-5xl gap-6 px-6 pb-10 md:grid-cols-2" id="calc">
+      <form id="form" class="rounded-2xl border border-line bg-card p-5 md:p-6" novalidate>
+        <h2 class="text-lg font-bold text-ink">Seus números</h2>
+        <div class="mt-4 grid gap-4">
+          <div>
+            <label class={rotulo} for="servico">Serviço (aparece no orçamento)</label>
+            <input class={campo} id="servico" type="text" placeholder="Ex.: instalação de split 12.000 BTU" autocomplete="off" />
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class={rotulo} for="horas">Horas de trabalho</label>
+              <input class={campo} id="horas" type="number" inputmode="decimal" min="0" step="0.5" placeholder="0" />
+            </div>
+            <div>
+              <label class={rotulo} for="vhora">Valor da sua hora (R$)</label>
+              <input class={campo} id="vhora" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0,00" />
+            </div>
+          </div>
+          <details class="rounded-lg border border-line bg-paper/50 px-3 py-2">
+            <summary class="min-h-11 cursor-pointer py-2 text-sm font-semibold text-brand-fg">Não sei o valor da minha hora</summary>
+            <div class="grid grid-cols-2 gap-3 pb-2">
+              <div>
+                <label class="block text-sm text-slate" for="meta">Quero ganhar por mês (R$)</label>
+                <input class={campo} id="meta" type="number" inputmode="decimal" min="0" step="1" placeholder="0" />
+              </div>
+              <div>
+                <label class="block text-sm text-slate" for="hmes">Horas que consigo cobrar no mês</label>
+                <input class={campo} id="hmes" type="number" inputmode="decimal" min="0" step="1" placeholder="0" />
+              </div>
+              <p class="col-span-2 text-sm text-slate" id="sugestao" aria-live="polite">Preencha os dois campos para ver o valor da hora.</p>
+              <button type="button" id="usar-hora" class="col-span-2 min-h-11 rounded-lg border border-brand-fg px-3 text-sm font-semibold text-brand-fg hover:bg-tint" hidden>Usar esse valor</button>
+            </div>
+          </details>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class={rotulo} for="material">Material (R$)</label>
+              <input class={campo} id="material" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0,00" />
+            </div>
+            <div>
+              <label class={rotulo} for="desloc">Deslocamento (R$)</label>
+              <input class={campo} id="desloc" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0,00" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class={rotulo} for="imposto">Imposto sobre o preço (%)</label>
+              <input class={campo} id="imposto" type="number" inputmode="decimal" min="0" max="99" step="0.1" placeholder="0" />
+            </div>
+            <div>
+              <label class={rotulo} for="lucro">Lucro sobre o preço (%)</label>
+              <input class={campo} id="lucro" type="number" inputmode="decimal" min="0" max="99" step="0.1" placeholder="0" />
+            </div>
+          </div>
+          <button type="button" id="exemplo" class="min-h-11 self-start rounded-lg px-1 text-sm font-medium text-slate underline underline-offset-4 hover:text-ink">
+            Preencher com um exemplo (números inventados, só para ver como funciona)
+          </button>
+        </div>
+      </form>
+
+      <div class="rounded-2xl border border-line bg-card p-5 md:p-6" aria-live="polite">
+        <h2 class="text-lg font-bold text-ink">Seu orçamento</h2>
+        <dl class="mt-4 grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-base">
+          <dt class="text-slate">Mão de obra</dt><dd class="text-right font-medium text-ink" id="r-mo">R$ 0,00</dd>
+          <dt class="text-slate">Material</dt><dd class="text-right font-medium text-ink" id="r-mat">R$ 0,00</dd>
+          <dt class="text-slate">Deslocamento</dt><dd class="text-right font-medium text-ink" id="r-des">R$ 0,00</dd>
+          <dt class="border-t border-line pt-2 text-slate">Custo total</dt><dd class="border-t border-line pt-2 text-right font-medium text-ink" id="r-custo">R$ 0,00</dd>
+          <dt class="text-slate">Imposto</dt><dd class="text-right text-ink" id="r-imp">R$ 0,00</dd>
+          <dt class="text-slate">Lucro</dt><dd class="text-right text-ink" id="r-luc">R$ 0,00</dd>
+          <dt class="border-t border-line pt-3 text-lg font-bold text-ink">Preço a cobrar</dt>
+          <dd class="border-t border-line pt-3 text-right text-2xl font-extrabold text-brand-fg" id="r-preco">R$ 0,00</dd>
+        </dl>
+        <p class="mt-3 hidden text-sm font-medium text-ambar-tinta" id="erro" role="alert"></p>
+        <label class={`${rotulo} mt-5`} for="texto">Texto para enviar ao cliente</label>
+        <textarea id="texto" readonly rows="9" class={`${campo} py-2 font-mono text-sm`}></textarea>
+        <div class="mt-3 flex flex-wrap gap-3">
+          <button type="button" id="copiar" class="min-h-11 rounded-lg bg-brand px-4 text-base font-semibold text-white hover:bg-brand-strong">Copiar texto</button>
+          <span class="inline-flex min-h-11 items-center text-sm text-check" id="copiado" role="status"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-5xl px-6 pb-10">
+      <div class="rounded-2xl bg-brand-ink p-6 text-white md:p-8">
+        <h2 class="text-2xl font-bold">Gostou da conta? Deixe o orçamento com cara de profissional.</h2>
+        <p class="mt-2 max-w-2xl text-white/85">
+          Crie a conta grátis na OLLI e envie o orçamento em PDF, com a sua marca, direto pelo WhatsApp. Sem cartão.
+        </p>
+        <a href={cta} class="mt-5 inline-flex min-h-11 items-center rounded-lg bg-white px-5 font-semibold text-brand-ink hover:bg-tint" data-cta="calculadora-preco">
+          Criar conta grátis
+        </a>
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-3xl px-6 pb-14">
+      <h2 class="text-2xl font-bold text-ink">Como a conta funciona</h2>
+      <p class="mt-3 leading-relaxed text-slate">
+        Custo = horas × valor da hora + material + deslocamento. Preço = custo ÷ (1 − imposto% − lucro%). O imposto e o lucro entram sobre o preço de venda, não sobre o custo: por isso a conta divide, em vez de multiplicar. Se imposto e lucro somarem 100% ou mais, a conta não fecha, e a calculadora avisa.
+      </p>
+      <p class="mt-3 leading-relaxed text-slate">
+        Esta calculadora não traz preço de mercado nem tabela oficial: usa só os números que você digita. O resultado é uma estimativa sua, não garantia de ganho. Confira o seu enquadramento de imposto com o seu contador.
+      </p>
+      <h2 class="mt-10 text-2xl font-bold text-ink">Perguntas frequentes</h2>
+      <div class="mt-4 divide-y divide-line">
+        {faq.map((f) => (
+          <div class="py-4">
+            <h3 class="font-semibold text-ink">{f.q}</h3>
+            <p class="mt-1 leading-relaxed text-slate">{f.a}</p>
+          </div>
+        ))}
+      </div>
+      <h2 class="mt-10 text-lg font-bold text-ink">Fontes</h2>
+      <ul class="mt-2 list-disc pl-5 text-sm text-slate">
+        <li><a class="text-brand-fg underline" href={CDC_URL} rel="noopener">Lei 8.078/1990 (Código de Defesa do Consumidor), art. 40 — orçamento prévio</a>, Planalto.</li>
+      </ul>
+    </section>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+  const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
+  const num = (id: string) => {
+    const v = parseFloat($(id).value.replace(",", "."));
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  };
+  const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const set = (id: string, t: string) => {
+    (document.getElementById(id) as HTMLElement).textContent = t;
+  };
+  const arred = (n: number) => Math.round(n * 100) / 100;
+
+  function calcular() {
+    const mo = arred(num("horas") * num("vhora"));
+    const mat = num("material");
+    const des = num("desloc");
+    const custo = arred(mo + mat + des);
+    const impP = num("imposto");
+    const lucP = num("lucro");
+    const erro = document.getElementById("erro") as HTMLElement;
+    const soma = impP + lucP;
+    if (soma >= 100) {
+      erro.textContent = "Imposto + lucro somam 100% ou mais: a conta não fecha. Reduza um dos dois.";
+      erro.classList.remove("hidden");
+      return;
+    }
+    erro.classList.add("hidden");
+    const preco = arred(custo / (1 - soma / 100));
+    const imp = arred((preco * impP) / 100);
+    const luc = arred(preco - custo - imp);
+    set("r-mo", brl(mo));
+    set("r-mat", brl(mat));
+    set("r-des", brl(des));
+    set("r-custo", brl(custo));
+    set("r-imp", brl(imp));
+    set("r-luc", brl(luc));
+    set("r-preco", brl(preco));
+    const nome = $("servico").value.trim() || "Serviço";
+    const linhas = [`ORÇAMENTO — ${nome}`, ""];
+    linhas.push(`Mão de obra: ${brl(mo)}`);
+    linhas.push(`Materiais: ${brl(mat)}`);
+    if (des > 0) linhas.push(`Deslocamento: ${brl(des)}`);
+    linhas.push("", `TOTAL: ${brl(preco)}`, "", "Condições de pagamento e prazo: a combinar.", "Validade deste orçamento: 10 dias.");
+    ($("texto") as unknown as HTMLTextAreaElement).value = preco > 0 ? linhas.join("\n") : "";
+  }
+
+  function sugerir() {
+    const m = num("meta");
+    const h = num("hmes");
+    const btn = document.getElementById("usar-hora") as HTMLElement;
+    if (m > 0 && h > 0) {
+      set("sugestao", `Sua hora: ${brl(arred(m / h))}. Esse valor só cobre o que você quer ganhar, sem material nem imposto.`);
+      btn.hidden = false;
+    } else {
+      set("sugestao", "Preencha os dois campos para ver o valor da hora.");
+      btn.hidden = true;
+    }
+  }
+
+  for (const id of ["servico", "horas", "vhora", "material", "desloc", "imposto", "lucro"]) $(id).addEventListener("input", calcular);
+  for (const id of ["meta", "hmes"]) $(id).addEventListener("input", sugerir);
+  document.getElementById("usar-hora")!.addEventListener("click", () => {
+    $("vhora").value = String(arred(num("meta") / num("hmes")));
+    calcular();
+  });
+  document.getElementById("exemplo")!.addEventListener("click", () => {
+    const ex: Record<string, string> = { servico: "Serviço de exemplo", horas: "3", vhora: "50", material: "100", desloc: "30", imposto: "6", lucro: "20" };
+    for (const [k, v] of Object.entries(ex)) $(k).value = v;
+    calcular();
+  });
+  document.getElementById("copiar")!.addEventListener("click", async () => {
+    const t = ($("texto") as unknown as HTMLTextAreaElement).value;
+    if (!t) return set("copiado", "Preencha a calculadora primeiro.");
+    try {
+      await navigator.clipboard.writeText(t);
+      set("copiado", "Copiado!");
+    } catch {
+      ($("texto") as unknown as HTMLTextAreaElement).select();
+      set("copiado", "Selecione e copie o texto acima.");
+    }
+  });
+  calcular();
+</script>
