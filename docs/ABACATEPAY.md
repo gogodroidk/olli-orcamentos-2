@@ -437,3 +437,29 @@ Roda 1×/dia às 11:23 UTC (08:23 BRT) dentro do cron do Play (`3,23,43`), só l
 - `pago_sem_credito`: PAID no provedor há mais de 15 min **sem** linha `webhook_events` (`origem='abacate'`, `status='processado'`) — cliente pagou e o plano pode não ter ligado.
 Resultado: 1 linha/dia em `webhook_events` (`origem='alarme_pix'`, `event_id`=AAAA-MM-DD; `processado`=ok, `falhou`=alerta/indisponível, códigos em `erro`). Consulta: `select event_id,status,erro,payload from webhook_events where origem='alarme_pix' order by recebido_em desc;`. Não há push: quem lê é o checklist diário do FIN.
 Limite conhecido: lê até 100 cobranças PAID por execução (uma página); a divergência inversa (assinatura ativa por Pix sem cobrança paga) não é checada — `assinaturas` não guarda o provedor.
+
+
+---
+
+## Pix Automático (assinatura recorrente, Pro mensal) — flag DESLIGADA
+
+Código: `worker/src/abacatePixAutomatico.js` (webhook `subscription.*` entra por `processarEventoAssinatura` em `abacate.js`). Testes:
+`worker/scripts/teste-abacate-recorrente.js` (`npm run test:abacate-recorrente` no worker) e `scripts/teste-pix-automatico-copy.ts`.
+
+**Como funciona.** `POST /abacate/assinatura/pix` cria um checkout de assinatura (`POST /v2/subscriptions/create`, `methods:["PIX"]`, 1 item
+= o produto `ABACATE_PA_PRODUTO_PRO_MENSAL`) e devolve a `url` da página da AbacatePay, onde o cliente lê o QR da autorização (vale 1 h) no
+app do banco e paga o 1º mês na hora. O app/painel abre a página e pergunta `GET /abacate/assinatura/status?checkout=` até o servidor liberar.
+
+**Cadastro sem migration.** `webhook_events`: origem `abacate_pa` (event_id = `bill_…` criado por nós, payload com o dono) e `abacate_pa_sub`
+(event_id = `subs_…`; payload `{user_id, checkout, estado, pago_ate, concedido_ate, motivo}`; status `recebido` = ativa, `processado` = encerrada).
+
+**Eventos** (mesmo `?webhookSecret=` do Pix avulso; o corpo não é confiado — quem concede é a leitura `GET /v2/subscriptions/get`):
+`completed`/`renewed` → Pro até o fim do ciclo pago + 2 dias de folga; `payment_failed` → `POST /v2/subscriptions/cancel` + Pro até o fim do ciclo
+já pago (no Pix a AbacatePay não cancela sozinha e `retryPolicy` não vale); `cancelled` (inclusive `pix_automatic_authorization_refused`) → mesmo fim.
+`checkout.completed` de assinatura é ignorado (um evento só libera). `trial_started`/`plan_changed` não existem no Pix Automático.
+
+**Como ligar (dia em que a AbacatePay liberar):**
+1. Na AbacatePay (produção), criar o produto de assinatura: `POST /v2/products/create` `{ "externalId":"olli-pro-mensal","name":"OLLI Pro","price":3900,"currency":"BRL","cycle":"MONTHLY" }` (ou pelo dashboard). Anotar o `prod_…`.
+2. No webhook v2 do dashboard (mesma URL `/abacate/webhook?webhookSecret=…`), marcar também `subscription.completed`, `subscription.renewed`, `subscription.payment_failed`, `subscription.cancelled`.
+3. `worker/wrangler.jsonc` (vars): `ABACATE_PA_PRODUTO_PRO_MENSAL` = o `prod_…` e `ABACATE_PIX_AUTOMATICO` = `"true"` (opcional: `ABACATE_PA_RETORNO_URL`, página `https://…` para onde o cliente volta; padrão `/stripe/sucesso`).
+4. Deploy do worker. Conferir `GET /abacate/config` → `"pixAutomatico": true`. Desligar = voltar a flag para `"false"` (cancelar e webhook continuam funcionando).
