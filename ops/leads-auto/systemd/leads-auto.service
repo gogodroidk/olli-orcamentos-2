@@ -1,0 +1,11 @@
+[Unit]
+Description=OLLI Serviços — caçador semanal de leads (não envia mensagem)
+Documentation=file:///home/igor/wt/grok-GZ-LEADS-AUTO/ops/leads-auto/LEIA.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/igor/wt/grok-GZ-LEADS-AUTO
+ExecStart=/home/igor/.local/bin/node /home/igor/wt/grok-GZ-LEADS-AUTO/ops/leads-auto/cacador.mjs --teto 30 --orcamento 220 --intervalo-ms 2500 --anexar
+Environment=TZ=America/Sao_Paulo
+Nice=15
+TimeoutStartSec=2400

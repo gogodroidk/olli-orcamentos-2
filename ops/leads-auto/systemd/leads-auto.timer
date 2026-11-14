@@ -1,0 +1,12 @@
+[Unit]
+Description=Segunda 07:10 — enche a lista da OLLI Serviços. Não envia mensagem. Não liga sozinho.
+
+[Timer]
+OnCalendar=Mon *-*-* 07:10:00
+Timezone=America/Sao_Paulo
+AccuracySec=15min
+Persistent=false
+Unit=leads-auto.service
+
+[Install]
+WantedBy=timers.target
