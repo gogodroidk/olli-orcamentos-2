@@ -267,6 +267,9 @@ export default function Planos() {
 							<p className="mt-1 text-sm text-text-secondary">
 								Confira recursos, preço, renovação e cancelamento abaixo. Nenhuma cobrança começa sem seu clique e a confirmação final no checkout seguro.
 							</p>
+							<Button size="sm" className="mt-3 min-h-[44px]" onClick={irParaCatalogo}>
+								Ver o {nomeDoPlano(intencao.plano)} e pagar
+							</Button>
 						</div>
 					</div>
 				</Card>

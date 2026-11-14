@@ -36,11 +36,14 @@ import { TRIAL_PRO_DIAS } from "../../../src/services/entitlements";
 import { FRASE_GRATIS_CURTA, planoBase } from "../data/recursos";
 
 // O app (painel) mora em outro subdomínio. CTA de assinatura abre o cadastro
-// direto (?modo=cadastro), Empresa fala no WhatsApp de vendas.
+// direto (?modo=cadastro) já com o plano escolhido. Pro e Empresa têm checkout
+// próprio no app; o WhatsApp de vendas fica como alternativa embaixo do Empresa.
 const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
 const APP_PRO_MENSAL_URL = `${APP_CADASTRO_URL}&plano=pro&periodo=mensal`;
 const APP_PRO_ANUAL_URL = `${APP_CADASTRO_URL}&plano=pro&periodo=anual`;
+const APP_EMPRESA_MENSAL_URL = `${APP_CADASTRO_URL}&plano=empresa&periodo=mensal`;
+const APP_EMPRESA_ANUAL_URL = `${APP_CADASTRO_URL}&plano=empresa&periodo=anual`;
 const WHATSAPP_URL = "https://wa.me/5511941727487";
 
 // Preços nos dois períodos — já mastigados por precoNoPeriodo (valor/sufixo/nota).
@@ -97,6 +100,8 @@ interface Cartao {
 	cta: string;
 	href: string;
 	hrefAnual?: string;
+	/** Link secundário (texto) abaixo do botão — hoje só o WhatsApp do Empresa. */
+	alternativa?: { texto: string; href: string };
 	primary: boolean;
 	doze?: typeof doze;
 }
@@ -133,8 +138,10 @@ const cartoes: Cartao[] = [
 		mensal: empresaMensal,
 		anual: empresaAnual,
 		bullets: bulletsEmpresa,
-		cta: "Falar com a gente",
-		href: WHATSAPP_URL,
+		cta: "Assinar o Empresa",
+		href: APP_EMPRESA_MENSAL_URL,
+		hrefAnual: APP_EMPRESA_ANUAL_URL,
+		alternativa: { texto: "Prefere tirar dúvidas antes? Fale com a gente no WhatsApp", href: WHATSAPP_URL },
 		primary: false,
 	},
 ];
@@ -218,6 +225,9 @@ const cartoes: Cartao[] = [
 						rel={p.href === WHATSAPP_URL ? "noopener" : undefined}
 						class={`mt-7 block rounded-acao px-6 py-3 text-center text-sm font-semibold transition ${p.primary ? "bg-brand text-white hover:bg-brand-strong" : "border border-line text-ink hover:border-brand hover:text-brand-fg"}`}
 					>{p.cta}</a>
+				)}
+				{p.alternativa && (
+					<a href={p.alternativa.href} target="_blank" rel="noopener" class="mt-3 block text-center text-xs font-medium text-slate underline-offset-2 hover:text-brand-fg hover:underline">{p.alternativa.texto}</a>
 				)}
 			</div>
 		))}
