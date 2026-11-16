@@ -68,6 +68,9 @@ function iniciar(): void {
 			const link = alvo.closest("a[href]");
 			if (link instanceof HTMLAnchorElement && ehCtaDeCadastro(link)) {
 				rastrear("Lead", { content_category: "cadastro", content_name: window.location.pathname });
+			} else if (link instanceof HTMLAnchorElement && link.hasAttribute("download") && /\.pdf$/i.test(link.pathname)) {
+				// Download de isca em PDF (ex.: /modelo-orcamento-ar-condicionado/): mede o pedido, separado do cadastro.
+				rastrear("Lead", { content_category: "modelo-pdf", content_name: link.pathname });
 			}
 		},
 		{ capture: true },
