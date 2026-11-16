@@ -320,6 +320,7 @@ const BODY = String.raw`
    <section class="view hidden" id="v-usuarios" data-view="usuarios"></section>
    <section class="view hidden" id="v-organizacoes" data-view="organizacoes"></section>
    <section class="view hidden" id="v-funil" data-view="funil"></section>
+   <section class="view hidden" id="v-emails" data-view="emails"></section>
    <section class="view hidden" id="v-troca" data-view="troca"></section>
    <section class="view hidden" id="v-suporte" data-view="suporte"></section>
    <section class="view hidden" id="v-auditoria" data-view="auditoria"></section>
@@ -407,6 +408,9 @@ const ERROS={
  dias_invalidos:'Use entre 1 e 365 dias.',
  vigencia_invalida:'Vigência inválida.',
  owner_bootstrap_protegido:'O e-mail raiz não pode ser alterado por aqui.',
+ lista_invalida:'A seleção de contas é inválida (até 50, sem repetir).',
+ confirmacao_divergente:'A quantidade digitada não bate com a seleção.',
+ banco_indisponivel:'O banco não respondeu. Tente de novo em instantes.',
  auditoria_indisponivel:'A trilha de auditoria não respondeu. Nada foi registrado.',
  origem_invalida:'Pedido recusado por segurança (origem diferente do painel).',
  cnpj_invalido:'CNPJ precisa ter 14 números.',
@@ -613,6 +617,7 @@ const NAV=[
  {id:'usuarios',rot:'Usuários',ico:'users',sub:'Todas as contas. Clique numa linha para abrir a ficha completa e as ferramentas.',cap:'admin'},
  {id:'organizacoes',rot:'Organizações',ico:'users',sub:'Marque uma organização inteira como interna (equipe, teste) — com prévia, confirmação e desfazer. Internas ficam fora de todos os números.',cap:'admin'},
  {id:'funil',rot:'Funil',ico:'funnel',sub:'Do cadastro ao pagamento, por semana de cadastro.',cap:'admin'},
+ {id:'emails',rot:'E-mails',ico:'mail',sub:'Saúde dos e-mails automáticos e oferta do Pro para quem já usa o OLLI.',cap:'admin'},
  {id:'troca',rot:'Crédito de troca',ico:'gift',sub:'Quem veio de outro app e pediu meses de Pro grátis.',cap:'financeiro'},
  {id:'suporte',rot:'Suporte',ico:'chat',sub:'Mensagens, sugestões, denúncias e erros enviados pelo app.',cap:'suporte'},
  {id:'auditoria',rot:'Auditoria',ico:'list',sub:'Tudo o que foi feito neste painel. Não pode ser alterado nem apagado.',cap:'admin'},
@@ -638,7 +643,78 @@ function irPara(id){
  renderView();
  window.scrollTo(0,0);
 }
-function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
+function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,emails:carregarEmails,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
+/* ── e-mails: saúde e oferta do Pro (D-1859) ── */
+let EMAILS=null,EMAILS_ERRO='',OFERTA=null,OFERTA_ERRO='',OFERTA_CORTADO=false,OFERTA_SEL=new Set();
+const MOTIVO_OFERTA={sairia:['Pode receber','ok'],enfileirado:['Enfileirado','ok'],conta_indisponivel:['E-mail indisponível','dng'],suprimido:['Descadastrou','warn'],excluido:['Conta interna',''],membro_equipe:['Membro de equipe',''],ja_assinou:['Já assinou','warn'],nao_e_gratis:['Pro ou teste ativo','info'],oferta_recente:['Oferta há menos de 30 dias',''],recebeu_email_24h:['E-mail nas últimas 24 h',''],duplicado:['Já enfileirado hoje',''],teto_diario:['Teto do dia','warn'],erro_rpc:['Erro ao enfileirar','dng'],sem_uso:['Sem uso','']};
+function pillMotivo(m){const x=MOTIVO_OFERTA[m]||[m,''];return el('span',{className:'pill '+x[1]},x[0]);}
+async function carregarEmails(){
+ const box=limpar($('v-emails'));
+ box.append(el('div',{className:'card'},carregando(4)));
+ const [r1,r2]=await Promise.allSettled([api('emails/resumo?dias=7'),api('emails/oferta-pro/candidatas')]);
+ if(r1.status==='fulfilled'){EMAILS=r1.value.resumo;EMAILS_ERRO='';}else{EMAILS=null;EMAILS_ERRO=mensagemErro(r1.reason);}
+ if(r2.status==='fulfilled'){OFERTA=r2.value.candidatas||[];OFERTA_CORTADO=!!r2.value.cortado;OFERTA_ERRO='';}else{OFERTA=null;OFERTA_ERRO=mensagemErro(r2.reason);}
+ OFERTA_SEL=new Set([...OFERTA_SEL].filter(id=>OFERTA&&OFERTA.some(c=>c.userId===id&&c.motivo==='sairia')));
+ desenharEmails();
+}
+function desenharEmails(){
+ const box=limpar($('v-emails'));
+ const c1=el('div',{className:'card'},el('div',{className:'pad',style:'padding-bottom:var(--s2)'},el('h3',{style:'font-size:16px'},'Saúde dos e-mails, últimos 7 dias')));
+ if(!EMAILS)c1.append(el('div',{className:'pad'},estado('erro','Não consegui ler os e-mails.',EMAILS_ERRO)));
+ else if(!EMAILS.tipos.length)c1.append(el('div',{className:'pad'},estado('','Nenhum e-mail nos últimos 7 dias.','')));
+ else{
+  const t=el('table'),tb=el('tbody');
+  t.append(el('thead',{},el('tr',{},el('th',{},'Tipo'),el('th',{className:'num'},'Enviados'),el('th',{className:'num'},'Na fila'),el('th',{className:'num'},'Falharam'))));
+  EMAILS.tipos.forEach(x=>tb.append(el('tr',{},el('td',{},x.nome),el('td',{className:'num'},fmtNum(x.enviados)),el('td',{className:'num'},fmtNum(x.naFila)),el('td',{className:'num'},x.falhos?el('span',{className:'pill dng'},fmtNum(x.falhos)):'0'))));
+  t.append(tb);c1.append(el('div',{className:'tblWrap'},t));
+  const s=EMAILS.supressoes;c1.append(el('div',{className:'pad mut',style:'padding-top:var(--s3);font-size:13px'},'Descadastros: '+fmtNum(s.descadastro)+' · Devolvidos: '+fmtNum(s.hard_bounce)+' · Reclamações: '+fmtNum(s.complaint)));
+ }
+ box.append(c1);
+ const c2=el('div',{className:'card',style:'margin-top:var(--s4)'});
+ c2.append(el('div',{className:'pad',style:'padding-bottom:var(--s3)'},el('h3',{style:'font-size:16px;margin-bottom:4px'},'Oferta do Pro por e-mail'),el('p',{className:'mut',style:'margin:0;font-size:13px'},'Contas que já criaram orçamento. Só recebe quem está no Grátis, sem teste ativo, sem descadastro e sem oferta nos últimos 30 dias. O ensaio não envia nada.')));
+ if(!OFERTA){c2.append(el('div',{className:'pad'},estado('erro','Não consegui ler as contas.',OFERTA_ERRO)));box.append(c2);return;}
+ if(!OFERTA.length){c2.append(el('div',{className:'pad'},estado('','Nenhuma conta com orçamento ainda.','')));box.append(c2);return;}
+ const podem=OFERTA.filter(c=>c.motivo==='sairia');
+ const t=el('table'),tb=el('tbody');
+ const todos=el('input',{type:'checkbox',ariaLabel:'Selecionar todas que podem receber',checked:podem.length>0&&podem.every(c=>OFERTA_SEL.has(c.userId)),disabled:!podem.length,onchange:e=>{if(e.target.checked)podem.forEach(c=>OFERTA_SEL.add(c.userId));else OFERTA_SEL.clear();desenharEmails();}});
+ t.append(el('thead',{},el('tr',{},el('th',{},todos),el('th',{},'Conta'),el('th',{className:'num'},'Orçamentos'),el('th',{className:'num hideSm'},'Envios no Grátis (mês / total)'),el('th',{className:'hideSm'},'Último uso'),el('th',{},'Situação'))));
+ OFERTA.forEach(c=>{
+  const pode=c.motivo==='sairia';
+  const cb=el('input',{type:'checkbox',ariaLabel:'Selecionar '+(c.empresa||c.nome||'conta'),checked:OFERTA_SEL.has(c.userId),disabled:!pode,onchange:e=>{if(e.target.checked)OFERTA_SEL.add(c.userId);else OFERTA_SEL.delete(c.userId);desenharEmails();}});
+  tb.append(el('tr',{},el('td',{},cb),el('td',{},el('b',{},c.empresa||c.nome||'(sem nome)'),c.empresa&&c.nome?el('div',{className:'mut',style:'font-size:12px'},c.nome):null),el('td',{className:'num'},fmtNum(c.orcamentos)),el('td',{className:'num hideSm'},fmtNum(c.enviosMes)+' / '+fmtNum(c.enviosTotal)),el('td',{className:'hideSm'},rel(c.ultimoUso)),el('td',{},pillMotivo(c.motivo))));
+ });
+ t.append(tb);c2.append(el('div',{className:'tblWrap'},t));
+ if(OFERTA_CORTADO)c2.append(el('div',{className:'pad mut',style:'padding-bottom:0;font-size:12px'},'Mostrando as '+fmtNum(OFERTA.length)+' contas com mais orçamentos.'));
+ const n=OFERTA_SEL.size;
+ c2.append(el('div',{className:'pad barra',style:'justify-content:flex-end;gap:var(--s2)'},
+  el('span',{className:'mut',style:'margin-right:auto;font-size:13px'},n+' selecionada(s) de '+podem.length+' que podem receber'),
+  el('button',{type:'button',className:'btn sec',disabled:!n,onclick:()=>ensaiarOferta()},'Ensaiar'),
+  el('button',{type:'button',className:'btn',disabled:!n,onclick:()=>enviarOferta()},ico('mail'),'Enviar…')));
+ box.append(c2);
+}
+async function ensaiarOferta(){
+ const ids=[...OFERTA_SEL];if(!ids.length)return;
+ let j;try{j=await api('emails/oferta-pro/enviar',{method:'POST',body:JSON.stringify({userIds:ids,enviar:false})});}catch(e){toast(mensagemErro(e),'err');return;}
+ const cont=j.contagens||{};
+ const corpo=el('div',{className:'txt'},el('p',{},el('b',{},fmtNum(cont.sairia||0)+' de '+fmtNum(j.total)+' sairiam agora.')));
+ Object.keys(cont).filter(k=>k!=='sairia').forEach(k=>corpo.append(el('p',{className:'mut'},(MOTIVO_OFERTA[k]||[k])[0]+': '+fmtNum(cont[k]))));
+ const prim=(j.itens||[]).find(i=>i.motivo==='sairia');
+ const tx=prim&&j.textos&&j.textos[prim.userId];
+ if(tx){const prev=el('div',{className:'card pad',style:'margin-top:10px'},el('div',{className:'mut',style:'font-size:12px'},'Exemplo (primeira conta que sairia)'),el('b',{},tx.assunto));tx.paragrafos.forEach(p=>prev.append(el('p',{style:'margin:6px 0'},p)));prev.append(el('p',{className:'mut',style:'font-size:12px'},'O botão “Ver o plano Pro” e o link de descadastro entram sozinhos.'));corpo.append(prev);}
+ await dialogo({titulo:'Ensaio da oferta do Pro',conteudo:corpo,semConfirmar:true,cancelar:'Fechar',largo:true});
+}
+async function enviarOferta(){
+ const ids=[...OFERTA_SEL];if(!ids.length)return;
+ const corpo=el('div',{className:'txt'},el('p',{},'Vai enfileirar a oferta do Pro para ',el('b',{},String(ids.length)+' conta(s)'),'. O banco confere cada conta de novo na hora e barra quem não pode receber. Sai pela fila de e-mails, com link de descadastro.'));
+ const v=await dialogo({titulo:'Enviar a oferta do Pro',conteudo:corpo,campos:[Object.assign({},MOTIVO,{max:200})],digitar:String(ids.length),confirmar:'Enviar para '+ids.length+' conta(s)',largo:true});
+ if(!v)return;
+ try{
+  const j=await api('emails/oferta-pro/enviar',{method:'POST',body:JSON.stringify({userIds:ids,enviar:true,confirmar:ids.length,motivo:v.motivo.slice(0,200),requestId:crypto.randomUUID()})});
+  const c=j.contagens||{},ok=c.enfileirado||0,barrados=(j.total||0)-ok;
+  toast(fmtNum(ok)+' enfileirado(s)'+(barrados>0?' · '+fmtNum(barrados)+' barrado(s) na conferência':'')+'.');
+  OFERTA_SEL.clear();carregarEmails();
+ }catch(e){toast(mensagemErro(e),'err');}
+}
 function abrirMenu(){$('side').classList.add('on');$('scrim').classList.add('on');}
 function fecharMenu(){$('side').classList.remove('on');$('scrim').classList.remove('on');}
 

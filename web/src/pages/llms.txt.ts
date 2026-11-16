@@ -84,11 +84,10 @@ export async function GET() {
 		const slug = SLUG_POR_OFICIO[v.id];
 		const profissao = PROFISSAO_POR_OFICIO[v.id];
 		const n = calculosDoOficio(v.id).length;
-		// Sem calculadora (o "qualquer serviço"), a linha não fala de calculadora —
-		// antes saía "Inclui 0 ferramenta de cálculo do ofício, aterradas em norma".
+		// Sem calculadora (o "qualquer serviço"), a linha não fala de calculadora.
 		const calculo =
 			n > 0
-				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, aterrada${n > 1 ? "s" : ""} em norma técnica.`
+				? ` Inclui ${n} ferramenta${n > 1 ? "s" : ""} de cálculo do ofício, com a norma ou a fórmula daquele ofício.`
 				: "";
 		const nomes = calculosDoOficio(v.id).map((c) => c.nome).join("; ");
 		const lista = nomes ? ` Ferramentas: ${nomes}.` : "";
@@ -153,7 +152,7 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 - Orçamento com itens, fotos, desconto e link de aprovação para o cliente.
 - Ordem de serviço e recibo derivados do mesmo orçamento.
 - Diagnóstico com IA por código de erro e por sintoma (climatização).
-- PMOC e etiqueta QR de equipamento (climatização); certificado ANVISA (dedetização).
+- PMOC e etiqueta QR de equipamento (climatização). Na dedetização, o comprovante de controle de pragas traz os campos do art. 19 da RDC ANVISA 622/2022. A OLLI não emite certificado da ANVISA.
 - Agenda, catálogo de produtos e serviços, cadastro de clientes e de equipamentos.
 - Equipe com convite por link (plano Empresa).
 
@@ -161,7 +160,8 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
 
 - Não lê nem importa áudio do WhatsApp. Não há integração com o WhatsApp. Quem ouve
   o áudio do cliente é o prestador; a OLLI entra na hora de montar o orçamento.
-- Não emite nota fiscal.
+- Não emite nota fiscal. No recibo, Preparar nota fiscal só separa os dados para copiar no Emissor Nacional. Sem o número da NFS-e, a nota não foi emitida.
+- Não emite ART nem substitui o responsável técnico. No PMOC, a OLLI organiza equipamentos, planos, ordens e histórico; a assinatura continua sendo da pessoa habilitada.
 - O aplicativo Android está em teste fechado na Google Play, restrito a testadores
   selecionados, e não há app para iPhone. Hoje o produto se usa pelo navegador, em
   ${ORIGEM.replace("olliorcamentos.online", "app.olliorcamentos.online")}, que exige internet. O uso sem

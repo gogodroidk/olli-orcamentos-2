@@ -30,6 +30,7 @@ import {
   type Recurso,
 } from '../src/services/entitlements.ts';
 import {
+  CORTE_GRATIS_DATA,
   FRASE_GRATIS,
   NOTA_SELO_GRATIS,
   PLANOS_BASE,
@@ -37,8 +38,7 @@ import {
   ROTULO_RECURSO,
   beneficioRecurso,
   frasePro,
-  planoBase,
-} from '../src/services/planosBase.ts';
+  planoBase, CORTE_ANTIGAS_DATA } from '../src/services/planosBase.ts';
 import {
   TEXTO_SELO_OLLI,
   URL_LANDING_OLLI,
@@ -67,11 +67,25 @@ const semComentarios = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace
 console.log('\n1) tabela única de planos (planosBase.ts)');
 {
   const gratis = planoBase('gratis');
-  checar('Grátis começa por "Orçamentos ilimitados"', gratis.beneficios[0].startsWith('Orçamentos ilimitados'), true);
+  // O 1º item do Grátis segue o estado do corte (P0-09): ilimitado com o corte desligado; a regra das contas novas com ele ligado.
+  if (CORTE_GRATIS_DATA === null) {
+    checar('Grátis começa por "Orçamentos ilimitados"', gratis.beneficios[0].startsWith('Orçamentos ilimitados'), true);
+  } else {
+    if (CORTE_ANTIGAS_DATA !== null) {
+      // D-1824: limite em todas as contas — a regra vale para todos, sem "contas novas".
+      checar('Grátis começa pela regra do limite (todas as contas)', gratis.beneficios[0].startsWith('Orçamentos: PDF, link e WhatsApp, até '), true);
+    } else {
+      checar('Grátis começa pela regra do corte (contas novas)', gratis.beneficios[0].startsWith('Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de'), true);
+    }
+  }
   checar('Grátis diz o selo às claras', gratis.beneficios.includes(NOTA_SELO_GRATIS), true);
   checar('a nota cita o texto do selo da fonte', NOTA_SELO_GRATIS.includes(TEXTO_SELO_OLLI), true);
   checar('nenhum plano fala em "até N orçamentos"', PLANOS_BASE.some((p) => p.beneficios.some((b) => /até \d+ orçamentos|\d+ orçamentos (enviados|por mês)/i.test(b))), false);
-  checar('FRASE_GRATIS = ilimitados + selo', /ilimitados/.test(FRASE_GRATIS) && FRASE_GRATIS.includes(TEXTO_SELO_OLLI), true);
+  if (CORTE_GRATIS_DATA === null) {
+    checar('FRASE_GRATIS = ilimitados + selo', /ilimitados/.test(FRASE_GRATIS) && FRASE_GRATIS.includes(TEXTO_SELO_OLLI), true);
+  } else {
+    checar('FRASE_GRATIS = regra do corte + selo', /até \d+ por mês/.test(FRASE_GRATIS) && !/ilimitados/.test(FRASE_GRATIS) && FRASE_GRATIS.includes(TEXTO_SELO_OLLI), true);
+  }
   checar('alma do Grátis não tem item pago', RECURSOS_GRATIS.some((t) => /selo|follow-up|PMOC|equipe/i.test(t)), false);
 
   const pro = planoBase('pro');

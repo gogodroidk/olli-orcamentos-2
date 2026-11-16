@@ -159,3 +159,48 @@ export async function marcarEvento(env, { origem, eventId, status, erro, payload
     return false;
   }
 }
+
+/**
+ * Lê UMA linha de `webhook_events` (origem + event_id), com o payload.
+ * `{ ok:true, linha }` (linha null = não existe) ou `{ ok:false }` = não deu para saber.
+ * Serve de cadastro para quem usa esta tabela como registro (Pix Automático): "não sei" nunca vira "não existe".
+ */
+export async function lerEvento(env, origem, eventId) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY || !origem || !eventId) return { ok: false };
+  try {
+    const url =
+      `${env.SUPABASE_URL}/rest/v1/webhook_events` +
+      `?origem=eq.${encodeURIComponent(origem)}&event_id=eq.${encodeURIComponent(String(eventId))}` +
+      `&select=event_id,status,payload,recebido_em&limit=1`;
+    const r = await fetch(url, { headers: sbHeaders(env, { Accept: 'application/json' }) });
+    if (!r.ok) return { ok: false };
+    const linhas = await r.json();
+    if (!Array.isArray(linhas)) return { ok: false };
+    return { ok: true, linha: linhas.length ? linhas[0] : null };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
+ * Busca linhas de uma origem filtrando por campos do payload (`payload->>campo = valor`).
+ * `{ ok:true, linhas }` ou `{ ok:false }`. Só os campos pedidos entram no filtro (nome e valor codificados).
+ */
+export async function buscarEventos(env, origem, filtros = {}, limite = 10) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY || !origem) return { ok: false };
+  try {
+    const partes = [`origem=eq.${encodeURIComponent(origem)}`];
+    for (const [campo, valor] of Object.entries(filtros)) {
+      partes.push(`${encodeURIComponent(`payload->>${campo}`)}=eq.${encodeURIComponent(String(valor))}`);
+    }
+    partes.push('select=event_id,status,payload,recebido_em', `limit=${Math.max(1, Math.min(50, limite | 0))}`);
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/webhook_events?${partes.join('&')}`, {
+      headers: sbHeaders(env, { Accept: 'application/json' }),
+    });
+    if (!r.ok) return { ok: false };
+    const linhas = await r.json();
+    return Array.isArray(linhas) ? { ok: true, linhas } : { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}

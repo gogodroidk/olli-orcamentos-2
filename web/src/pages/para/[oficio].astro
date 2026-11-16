@@ -128,8 +128,8 @@ const ogImagem = OG_PROPRIO_POR_SLUG.has(slug) ? `/og/${slug}.png` : undefined;
  */
 const descricao =
 	calculos.length > 0
-		? `${dor} Grátis para começar: orçamento, OS e recibo no celular ou no computador, com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`
-		: `${dor} Grátis para começar: orçamento, OS e recibo no celular ou no computador, com a sua marca.`;
+		? `${dor} Grátis para começar: orçamento, ordem de serviço e recibo no celular ou no computador, com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`
+		: `${dor} Grátis para começar: orçamento, ordem de serviço e recibo no celular ou no computador, com a sua marca.`;
 
 /**
  * BreadcrumbList — o brief pede nas subpáginas. Ajuda o Google a entender a
@@ -193,7 +193,7 @@ const faqs = [
 		? [
 				{
 					q: `Quais calculadoras a OLLI tem para ${profissao}?`,
-					a: `${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo, cada uma aterrada em norma ou fórmula real e com o resultado virando item do orçamento: ${nomesCalc}.`,
+					a: `${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo, cada uma com a norma ou a fórmula daquele ofício e com o resultado virando item do orçamento: ${nomesCalc}.`,
 				},
 			]
 		: []),
@@ -234,7 +234,7 @@ const schemaFaq = {
 
 	<main id="conteudo">
 		{/* ══════════ HERO DO OFÍCIO ══════════ */}
-		<section class="mx-auto max-w-4xl px-6 pb-16 pt-14">
+		<section class="mx-auto flex max-w-4xl flex-col px-6 pb-16 pt-14">
 			<nav aria-label="Você está aqui" class="text-sm text-muted">
 				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
 				<span aria-hidden="true" class="mx-1.5">/</span>
@@ -242,16 +242,17 @@ const schemaFaq = {
 			</nav>
 
 			<span class="eyebrow mt-6 block"><Icone nome={ICONE_POR_OFICIO[oficio.id]} class="h-3.5 w-3.5" />{oficio.label}</span>
-			<h1 class="mt-4 text-[clamp(2.2rem,5vw,3.6rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
-				App de orçamento e OS<br class="hidden sm:inline" /> para <span class="brand-text">{profissao}</span>.
+			<h1 class="mt-4 text-balance text-[clamp(2rem,4.6vw,3.25rem)] font-extrabold leading-[1.08] tracking-tight text-ink">
+				App de orçamento e ordem de serviço para <span class="brand-text">{profissao}</span>.
 			</h1>
 			{/* Resposta curta: 1º parágrafo após o H1, texto puro, citável por IA (teste de 48 h do OPS, 27/10). */}
-			<p id="resposta-curta" class="mt-5 max-w-2xl rounded-cartao border border-line bg-white px-5 py-4 text-base leading-relaxed text-ink">
+			<p id="resposta-curta" class="order-2 mt-5 max-w-2xl rounded-cartao border border-line bg-white px-5 py-4 text-base leading-relaxed text-ink lg:order-none">
 				<strong class="font-bold">Resposta curta:</strong> {respostaCurta}
 			</p>
-			<p class="mt-5 max-w-2xl text-lg leading-relaxed text-slate">{dor}</p>
+			<p class="order-2 mt-5 max-w-2xl text-lg leading-relaxed text-slate lg:order-none">{dor}</p>
 
-			<div class="mt-8 flex flex-col gap-3 sm:flex-row">
+			{/* No celular o aviso de cookies cobre o fim da primeira tela. O botão sobe para logo abaixo do título; no desktop a ordem do código volta. A resposta curta continua sendo o primeiro parágrafo no HTML. */}
+			<div class="order-1 mt-8 flex flex-col gap-3 sm:flex-row lg:order-none">
 				<a
 					href={APP_CADASTRO_URL}
 					class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
@@ -263,7 +264,7 @@ const schemaFaq = {
 					>Ver os planos</a
 				>
 			</div>
-			<div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
+			<div class="order-3 mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted lg:order-none">
 				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</span>
 				{/*
 					ERA "Funciona sem internet" — e era falso DUAS vezes nesta página.
@@ -303,7 +304,7 @@ const schemaFaq = {
 						{calculos.length} ferramenta{calculos.length > 1 ? "s" : ""} de {profissao}, dentro do orçamento.
 					</h2>
 					<p class="mt-4 max-w-2xl text-slate">
-						Cada conta é aterrada em norma ou fórmula real, e o resultado vira item do orçamento com um toque —
+						Cada conta usa a norma ou a fórmula daquele ofício, e o resultado vira item do orçamento com um toque —
 						sem sair da OLLI e sem calculadora de terceiro.
 					</p>
 
@@ -327,8 +328,11 @@ const schemaFaq = {
 		{oficio.documentos.length > 0 && (
 			<section class="mx-auto max-w-4xl px-6 py-20">
 				<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
-					A papelada de {profissao}, resolvida.
+					Os documentos de {profissao} que a OLLI monta.
 				</h2>
+				<p class="mt-4 max-w-2xl text-slate">
+					A lista é esta. Licença e a assinatura do responsável técnico continuam com você.
+				</p>
 				<ul class="mt-8 flex flex-wrap gap-3">
 					{oficio.documentos.map((d) => (
 						<li class="rounded-full border border-line bg-card px-4 py-2 text-sm font-medium text-slate">
@@ -354,7 +358,7 @@ const schemaFaq = {
 					<li class="rounded-cartao border border-line bg-card p-6">
 						<div class="text-sm font-extrabold text-brand-fg tnum">02</div>
 						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
-						<p class="mt-1.5 text-sm text-slate">Aprovou, virou OS: checklist, fotos e assinatura do cliente na tela.</p>
+						<p class="mt-1.5 text-sm text-slate">Aprovou, virou ordem de serviço: checklist, fotos e assinatura do cliente na tela.</p>
 					</li>
 					<li class="rounded-cartao border border-line bg-card p-6">
 						<div class="text-sm font-extrabold text-brand-fg tnum">03</div>

@@ -51,8 +51,8 @@ function LoginPage() {
 	}
 
 	return (
-		<div className="relative grid min-h-svh lg:grid-cols-2 bg-background">
-			<div className="flex flex-col gap-4 p-6 md:p-10">
+		<div className="relative grid h-[calc(100svh-var(--olli-consent,0px))] overflow-y-auto lg:grid-cols-2 bg-background">
+			<div className="flex flex-col gap-1 p-4 pt-2 md:gap-4 md:p-10">
 				<div className="flex justify-center gap-2 md:justify-start">
 					<div className="flex items-center gap-2 font-medium cursor-pointer">
 						<Logo size={28} />
@@ -61,8 +61,8 @@ function LoginPage() {
 				</div>
 				{/* Landmark `<main>`: o formulário é o conteúdo principal da página (leitor
 				    de tela pula direto para cá; Lighthouse cobra a ausência). */}
-				<main className="flex flex-1 items-center justify-center">
-					<div className="w-full max-w-xs rounded-2xl bg-card p-6 shadow-card">
+				<main className="flex flex-1 items-start justify-center md:items-center">
+					<div className="w-full max-w-xs rounded-2xl bg-card p-4 shadow-card md:p-6">
 						<LoginProvider>
 							<LoginForm />
 							<RegisterForm />
