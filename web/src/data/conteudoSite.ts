@@ -28,12 +28,12 @@ export const RECURSOS = [
 	{
 		icon: "brain",
 		titulo: "IA que entende o defeito",
-		texto: "Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.",
+		texto: "Diagnóstico de climatização por sintoma ou código de erro.",
 	},
 	{
 		icon: "calendar-check",
 		titulo: "PMOC (Lei 13.589)",
-		texto: "Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.",
+		texto: "Planos de manutenção, lembretes e o histórico de cada máquina. A ART continua sendo do responsável técnico.",
 	},
 	{
 		icon: "users",
@@ -43,7 +43,7 @@ export const RECURSOS = [
 	{
 		icon: "calculator",
 		titulo: "Calculadoras de ofício",
-		texto: "BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.",
+		texto: "BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, cada uma com a norma ou a fórmula daquele ofício.",
 	},
 	{
 		icon: "calendar",
@@ -103,6 +103,10 @@ export function faqProduto() {
 			a: `Na OLLI: ${reais(0)} no plano Grátis, sem prazo pra acabar. O Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês e o Empresa ${reais(PRECO_EMPRESA.mensalCentavos)}/mês, com desconto no anual. O preço está na página de preços, sem consultor no meio, e o Grátis não é teste de 7 dias.`,
 		},
 		{
+			q: "A OLLI emite nota fiscal?",
+			a: "Não. A OLLI não emite nota fiscal. No recibo, Preparar nota fiscal separa cliente, descrição, valor e município para você copiar no Emissor Nacional. Sem o número da NFS-e, a nota não foi emitida.",
+		},
+		{
 			q: "Existe app grátis de ordem de serviço?",
 			a: "Sim — o plano Grátis da OLLI faz ordem de serviço sem limite, com checklist, fotos e assinatura do cliente na tela. Não é teste de 7 dias: é grátis sem prazo, sem cartão e sem fidelidade. O PDF do Grátis sai com uma marca discreta da OLLI, que some no Pro.",
 		},
@@ -112,7 +116,7 @@ export function faqProduto() {
 		},
 		{
 			q: "O que é PMOC e quem é obrigado a ter?",
-			a: "PMOC é o Plano de Manutenção, Operação e Controle exigido pela Lei 13.589/2018 de quem opera ambientes climatizados de uso coletivo. Na OLLI o PMOC é um módulo pronto: inventário dos equipamentos, etiqueta QR por máquina e as ordens de manutenção geradas na periodicidade certa.",
+			a: "PMOC é o Plano de Manutenção, Operação e Controle exigido pela Lei 13.589/2018 de quem opera ambientes climatizados de uso coletivo. Na OLLI você organiza equipamentos, planos, ordens e o histórico, com etiqueta QR por máquina. A OLLI não emite a ART: o número, quando existe, é informado pelo responsável técnico.",
 		},
 		{
 			q: "Funciona sem internet, no meio do serviço?",
