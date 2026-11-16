@@ -44,24 +44,25 @@ const precos = [
 			</div>
 
 			<div class="mx-auto grid max-w-7xl items-center gap-10 px-5 pb-16 pt-10 sm:px-6 md:gap-14 md:pb-24 md:pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-20">
-				<div class="min-w-0">
+				<div class="flex min-w-0 flex-col">
 					<span class="eyebrow"><span aria-hidden="true">●</span> Plataforma de orçamentos para qualquer negócio de serviço</span>
 					<h1 class="mt-4 max-w-[42rem] text-4xl leading-[1.08] tracking-tight text-ink sm:text-5xl lg:text-6xl">
 						Troque o orçamento improvisado no WhatsApp por uma <span class="brand-text">plataforma com a sua marca.</span>
 					</h1>
-					<p class="mt-5 max-w-[42rem] text-lg leading-relaxed text-slate">
+					{/* No celular o aviso de cookies cobre o fim da primeira tela. O botão sobe para logo abaixo do título; no desktop a ordem do código volta. */}
+					<p class="order-2 mt-5 max-w-[42rem] text-lg leading-relaxed text-slate lg:order-none">
 						Crie <strong class="text-ink">orçamentos profissionais em minutos</strong>, personalize com a sua identidade e envie um link para o cliente aprovar — no celular ou computador, seja qual for o serviço que você vende.
 					</p>
-					<div class="mt-8 flex flex-col gap-3 sm:flex-row">
+					<div class="order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none">
 						<a href={APP_CADASTRO_URL} class="btn btn-primario w-full sm:w-auto">Criar meu primeiro orçamento — grátis</a>
 						<a href="/como-funciona/" class="btn btn-secundario w-full sm:w-auto">Ver como funciona</a>
 					</div>
-					<ul class="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate">
+					<ul class="order-3 mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate lg:order-none">
 						<li class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</li>
 						<li class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem fidelidade</li>
 						<li class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Celular + computador</li>
 					</ul>
-					<div id="android-em-teste" class="mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1">
+					<div id="android-em-teste" class="order-3 mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1 lg:order-none">
 						<p class="text-sm leading-relaxed text-slate">
 							<strong class="text-ink">Aplicativo Android em teste fechado.</strong>
 							A instalação pela Google Play está restrita a testadores selecionados. Se a sua conta ainda não foi incluída, use a OLLI pelo navegador. Não há aplicativo para iPhone/iOS nesta versão.
