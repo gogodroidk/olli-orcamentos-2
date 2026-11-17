@@ -40,6 +40,12 @@ export function traduzirErroAuth(e: unknown): AuthErrorMensagem {
       texto: 'Confira os dados. Se acabou de criar a conta, confirme o e-mail antes de entrar.',
     };
   }
+  if ((e as { code?: string } | null)?.code === 'captcha_indisponivel' || /captcha/i.test(msg)) {
+    return {
+      titulo: 'Confirmação de segurança',
+      texto: 'Não deu para confirmar que você é uma pessoa. Verifique a internet e tente de novo.',
+    };
+  }
   if (/invalid.*email|email.*invalid/i.test(msg)) {
     return {
       titulo: 'E-mail inválido',

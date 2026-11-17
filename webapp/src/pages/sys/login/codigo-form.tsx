@@ -2,6 +2,7 @@ import { TAMANHO_CODIGO, TEXTO_CODIGO_ENVIADO, TEXTO_CONTA_GOOGLE } from "@acess
 import { useNavigate } from "react-router";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { supabase } from "@/lib/supabase";
+import { obterTokenCaptcha, opcoesCaptcha } from "@/lib/captcha";
 import { Button } from "@/ui/button";
 import { ReturnButton } from "./components/ReturnButton";
 import { TrilhoCodigo } from "./components/TrilhoCodigo";
@@ -26,8 +27,16 @@ function CodigoForm() {
 	const trilho = useAcessoCodigo({
 		textoEnviado: TEXTO_CODIGO_ENVIADO,
 		pedir: async (email) => {
-			const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
-			return { error };
+			try {
+				const captchaToken = await obterTokenCaptcha();
+				const { error } = await supabase.auth.signInWithOtp({
+					email,
+					options: { shouldCreateUser: false, ...opcoesCaptcha(captchaToken) },
+				});
+				return { error };
+			} catch (error) {
+				return { error };
+			}
 		},
 		conferir: async (email, codigo) => {
 			const { data, error } = await supabase.auth.verifyOtp({ email, token: codigo, type: "email" });

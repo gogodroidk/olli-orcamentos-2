@@ -2,6 +2,7 @@ import { CAMINHO_NOVA_SENHA, TAMANHO_CODIGO, TEXTO_RECUPERACAO_ENVIADA, urlRecup
 import { useNavigate } from "react-router";
 import { Icon } from "@/components/icon";
 import { supabase } from "@/lib/supabase";
+import { obterTokenCaptcha, opcoesCaptcha } from "@/lib/captcha";
 import { ReturnButton } from "./components/ReturnButton";
 import { TrilhoCodigo } from "./components/TrilhoCodigo";
 import { LoginStateEnum, useLoginStateContext } from "./providers/login-provider";
@@ -25,8 +26,16 @@ function ResetForm() {
 	const trilho = useAcessoCodigo({
 		textoEnviado: TEXTO_RECUPERACAO_ENVIADA,
 		pedir: async (email) => {
-			const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: urlRecuperacaoSenha() });
-			return { error };
+			try {
+				const captchaToken = await obterTokenCaptcha();
+				const { error } = await supabase.auth.resetPasswordForEmail(email, {
+					redirectTo: urlRecuperacaoSenha(),
+					...opcoesCaptcha(captchaToken),
+				});
+				return { error };
+			} catch (error) {
+				return { error };
+			}
 		},
 		conferir: async (email, codigo) => {
 			const { data, error } = await supabase.auth.verifyOtp({ email, token: codigo, type: "recovery" });

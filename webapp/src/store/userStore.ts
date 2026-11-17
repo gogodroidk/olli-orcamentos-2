@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { UserInfo, UserToken } from "#/entity";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
+import { obterTokenCaptcha, opcoesCaptcha } from "@/lib/captcha";
 import { esquecerValoresVistos } from "@/components/animate/memoria-visto";
 import { registrarNovaContaSocial } from "@/lib/marketing";
 import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint";
@@ -115,6 +116,9 @@ export function mapAuthErrorMessage(err: unknown): string {
 		case "validation_failed":
 		case "bad_json":
 			return "E-mail inválido.";
+		case "captcha_failed":
+		case "captcha_indisponivel":
+			return "Não deu para confirmar que você é uma pessoa. Tente de novo em instantes.";
 		case "signup_disabled":
 			return "Cadastro por e-mail está desativado no momento.";
 		default:
@@ -173,9 +177,11 @@ export const useSignIn = () => {
 	 */
 	const signIn = async (data: SignInReq) => {
 		try {
+			const captchaToken = await obterTokenCaptcha();
 			const { data: res, error } = await supabase.auth.signInWithPassword({
 				email: data.username.trim(),
 				password: data.password,
+				options: opcoesCaptcha(captchaToken),
 			});
 			if (error) throw error;
 			const session = res.session;

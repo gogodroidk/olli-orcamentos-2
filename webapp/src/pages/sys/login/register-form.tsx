@@ -10,6 +10,7 @@ import { GLOBAL_CONFIG } from "@/global-config";
 import { origemUtmParaCadastro, registrarCadastroConcluido } from "@/lib/marketing";
 import { navegadorInAppAtual } from "@/lib/navegadorInApp";
 import { registrarFunilAuth, supabase } from "@/lib/supabase";
+import { obterTokenCaptcha, opcoesCaptcha } from "@/lib/captcha";
 import { mapAuthErrorMessage } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/ui/form";
@@ -85,10 +86,12 @@ function RegisterForm() {
 		setLoading(true);
 		try {
 			const phone = telefoneE164Brasil(values.phone);
+			const captchaToken = await obterTokenCaptcha();
 			const { data, error } = await supabase.auth.signUp({
 				email: values.email.trim(),
 				password: values.password,
 				options: {
+					...opcoesCaptcha(captchaToken),
 					emailRedirectTo: `${window.location.origin}${callbackAuthPath}`,
 					data: {
 						full_name: values.name.trim(),
