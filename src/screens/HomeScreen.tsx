@@ -85,7 +85,7 @@ import { PedidosQrAvisoInicio } from '../components/equipamento/PedidosQrAvisoIn
 import { RecursoPlanoChip, useRecursoPlano } from '../components/RecursoPlano';
 import { deveConvidarImportar } from '../utils/conviteImportar';
 import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton, curvas } from '../components/motion';
-import { UI_V2_NAV } from '../services/uiFlags';
+import { uiV2Nav } from '../services/uiFlags';
 import { toast } from '../components/feedback';
 import { ClimaDoDia } from '../components/rua/ClimaDoDia';
 import { RadarTempoCard } from '../components/rua/RadarTempoCard';
@@ -908,7 +908,7 @@ export default function HomeScreen() {
         </Aparecer>
 
         {/* v1.3 (ui_v2_nav): Hoje deixa de ser aba e vira esta seção do Início. */}
-        {UI_V2_NAV && (
+        {uiV2Nav() && (
           <Aparecer indice={2}>
             <PressableAnimado
               style={styles.hojeSecao}

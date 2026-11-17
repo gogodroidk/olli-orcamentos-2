@@ -45,6 +45,30 @@ function janelaAtual(): JanelaWeb | null {
 
 export const UI_V2_NAV: boolean = resolverUiV2Nav(process.env.EXPO_PUBLIC_UI_V2_NAV, janelaAtual());
 
+// ─── Chave remota (CQ-APP-13-B) ───────────────────────────────────────────
+// O build LIGA; o servidor só pode DESLIGAR, sem versão nova na loja. Fonte: o
+// mesmo `GET /app/versao-minima` do Worker (campo `ui_v2_nav`, var
+// `APP_UI_V2_NAV=0`). A resposta é guardada e vale a partir do PRÓXIMO boot (a
+// navegação não troca de forma com o app aberto). Rede/servidor fora = mantém o
+// último valor conhecido; nunca liga o que o build não ligou.
+let desligadaRemotamente = false;
+
+/** Valor efetivo da flag: build/web E não desligada pelo servidor. */
+export function uiV2Nav(): boolean {
+  return UI_V2_NAV && !desligadaRemotamente;
+}
+
+/** Regra pura da resposta do Worker: só `ui_v2_nav: false` explícito desliga. */
+export function chaveRemotaDesliga(resposta: unknown): boolean | null {
+  if (!resposta || typeof resposta !== 'object') return null;
+  const v = (resposta as { ui_v2_nav?: unknown }).ui_v2_nav;
+  return typeof v === 'boolean' ? !v : null;
+}
+
+export function aplicarChaveRemotaSalva(salvo: string | null): void {
+  desligadaRemotamente = salvo === 'desligada';
+}
+
 export type AbaMobile = 'Home' | 'OrcamentosLista' | 'Orcar' | 'Agenda' | 'Hoje' | 'Conta';
 
 /**

@@ -18,7 +18,7 @@ import { vibrar } from '../utils/haptico';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
 import { SidebarNav } from '../components/web/SidebarNav';
 import type { Recurso } from '../services/entitlements';
-import { UI_V2_NAV, rotuloAbaMobile } from '../services/uiFlags';
+import { uiV2Nav, rotuloAbaMobile } from '../services/uiFlags';
 import type { VerticalId } from '../services/verticais';
 
 // Screens
@@ -519,7 +519,7 @@ function TabNavigator() {
       : HomeComAvisoCadastro;
 
   // v1.3: flag ui_v2_nav só muda o CELULAR aqui (o desktop muda na SidebarNav).
-  const navV2 = UI_V2_NAV && !ehDesktop;
+  const navV2 = uiV2Nav() && !ehDesktop;
   const abaAgenda = (
     <Tab.Screen
       name="Agenda"
@@ -809,7 +809,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
       {/* v1.3 (ui_v2_nav): Hoje deixa de ser aba e abre a partir do Início. */}
-      {UI_V2_NAV && <Stack.Screen name="HojeDia" component={HojeScreen} />}
+      {uiV2Nav() && <Stack.Screen name="HojeDia" component={HojeScreen} />}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
       {/* Onda I3 — confirmação de véspera e garantia que se cuida sozinha. */}
       <Stack.Screen name="ConfirmarVisitas" component={ConfirmarVisitasCentro} />

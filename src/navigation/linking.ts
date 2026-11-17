@@ -1,5 +1,5 @@
 import * as Linking from 'expo-linking';
-import { UI_V2_NAV } from '../services/uiFlags';
+import { uiV2Nav } from '../services/uiFlags';
 import type { LinkingOptions } from '@react-navigation/native';
 import type { RootStackParamList } from './AppNavigator';
 
@@ -42,8 +42,8 @@ export function criarLinkingConfig(
             // 'hoje' só no mobile — no desktop a aba Hoje não monta.
             // Com ui_v2_nav, Hoje deixa de ser aba (vira a tela HojeDia, abaixo)
             // e Orçamentos vira aba do celular.
-            ...(ehDesktop || UI_V2_NAV ? {} : { Hoje: 'hoje' }),
-            ...(!ehDesktop && UI_V2_NAV ? { OrcamentosLista: 'orcamentos' } : {}),
+            ...(ehDesktop || uiV2Nav() ? {} : { Hoje: 'hoje' }),
+            ...(!ehDesktop && uiV2Nav() ? { OrcamentosLista: 'orcamentos' } : {}),
             Conta: 'conta',
             // 'Orcar' é um stub (botão central) — sem path próprio.
             // No desktop, as 4 telas de conteúdo são abas DENTRO do shell (com a
@@ -63,7 +63,7 @@ export function criarLinkingConfig(
 
         // ─── Capas / porta ───────────────────────────────────────────────
         Entrar: 'entrar',
-        ...(UI_V2_NAV && !ehDesktop ? { HojeDia: 'hoje' } : {}),
+        ...(uiV2Nav() && !ehDesktop ? { HojeDia: 'hoje' } : {}),
         Onboarding: 'onboarding',
 
         // ─── Orçamentos (stack raiz) ─────────────────────────────────────
@@ -80,7 +80,7 @@ export function criarLinkingConfig(
           : {
               // Com ui_v2_nav o path 'orcamentos' é da aba (acima); a tela de
               // stack segue existindo para quem navega por nome.
-              ...(UI_V2_NAV ? {} : { Orcamentos: 'orcamentos' }),
+              ...(uiV2Nav() ? {} : { Orcamentos: 'orcamentos' }),
               Clientes: 'clientes',
             }),
 

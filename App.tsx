@@ -55,6 +55,8 @@ import type { RootStackParamList } from './src/navigation/AppNavigator';
 import * as Sentry from '@sentry/react-native';
 import { limparBreadcrumbSentry, limparEventoSentry } from './src/services/sentryScrub';
 import { capturarExcecao, conectarSentry } from './src/services/sentryCaptura';
+import { atualizarChaveRemotaUi, carregarChaveRemotaUi } from './src/services/chaveRemotaUi';
+import { DIAGNOSTICO_URL } from './src/config';
 
 /**
  * Sentry — crash reporting. Roda no import, ANTES de qualquer render, para pegar
@@ -401,6 +403,10 @@ function AppConteudo() {
     // indeterminada, mostra retry e NÃO exibe o formulário nem grava empresa.
     (async () => {
       let haviaSessao = false;
+      // Chave remota da v1.3: lê o último valor ANTES de montar a navegação e
+      // pergunta ao servidor (em segundo plano) para o próximo boot.
+      await carregarChaveRemotaUi();
+      void atualizarChaveRemotaUi(DIAGNOSTICO_URL);
       try {
         const session = await sessaoAtiva();
         haviaSessao = !!session;

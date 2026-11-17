@@ -73,8 +73,29 @@ const limites = readFileSync(new URL('../src/services/limitesComerciais.ts', imp
 ok('limitesComerciais não chama o Grátis de ilimitado', !/ilimitad/i.test(limites));
 ok('limitesComerciais cita os 5 envios/mês', /5 ORÇAMENTOS ENVIADOS POR MÊS/.test(limites));
 const nav = readFileSync(new URL('../src/navigation/AppNavigator.tsx', import.meta.url), 'utf8');
-ok('navegador: Hoje só vira tela com a flag', /UI_V2_NAV && <Stack\.Screen name="HojeDia"/.test(nav));
+ok('navegador: Hoje só vira tela com a flag', /uiV2Nav\(\) && <Stack\.Screen name="HojeDia"/.test(nav));
 ok('navegador: aba Hoje some só com a flag', /!ehDesktop && !navV2 && \(/.test(nav));
 
 if (falhas) { console.error(`\n${falhas} falha(s)`); process.exit(1); }
 console.log('\nTudo certo.');
+
+// ─── CQ-APP-13-B: chave remota (servidor só DESLIGA, sem versão nova) ─────
+{
+  const { chaveRemotaDesliga, aplicarChaveRemotaSalva, uiV2Nav, UI_V2_NAV } = await import('../src/services/uiFlags.ts');
+  const { chaveUiV2Nav } = await import('../worker/src/versaoMinima.js');
+  const assert = (await import('node:assert/strict')).default;
+  assert.equal(chaveUiV2Nav({}), true, 'sem var = build decide');
+  assert.equal(chaveUiV2Nav({ APP_UI_V2_NAV: '0' }), false, 'APP_UI_V2_NAV=0 desliga');
+  assert.equal(chaveUiV2Nav({ APP_UI_V2_NAV: ' 1 ' }), true);
+  assert.equal(chaveRemotaDesliga({ ok: true, android: 0, ui_v2_nav: false }), true);
+  assert.equal(chaveRemotaDesliga({ ok: true, android: 0, ui_v2_nav: true }), false);
+  assert.equal(chaveRemotaDesliga({ ok: true, android: 0 }), null, 'Worker antigo = não mexe');
+  assert.equal(chaveRemotaDesliga(null), null);
+  aplicarChaveRemotaSalva('desligada');
+  assert.equal(uiV2Nav(), false, 'desligada remotamente vence o build');
+  aplicarChaveRemotaSalva('ligada');
+  assert.equal(uiV2Nav(), UI_V2_NAV, 'ligada remotamente = valor do build (nunca liga sozinho)');
+  aplicarChaveRemotaSalva(null);
+  assert.equal(uiV2Nav(), UI_V2_NAV);
+  console.log('  ✓ chave remota: APP_UI_V2_NAV=0 no Worker desliga a v1.3 no próximo boot, sem versão nova');
+}

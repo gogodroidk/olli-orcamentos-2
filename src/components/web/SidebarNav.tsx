@@ -12,7 +12,7 @@ import { usePlano } from '../../hooks/usePlano';
 import { useVerticais } from '../../hooks/useVerticais';
 import type { Recurso } from '../../services/planos';
 import { PressableWebState } from './pressableWebState';
-import { UI_V2_NAV, dividirSidebar } from '../../services/uiFlags';
+import { uiV2Nav, dividirSidebar } from '../../services/uiFlags';
 
 /**
  * Barra lateral fixa do shell desktop — substitui a tab bar inferior quando
@@ -153,7 +153,7 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
     });
   }, [tipo, papel, pode, mostraHvac]);
 
-  const grupos = useMemo(() => dividirSidebar(itensVisiveis, UI_V2_NAV), [itensVisiveis]);
+  const grupos = useMemo(() => dividirSidebar(itensVisiveis, uiV2Nav()), [itensVisiveis]);
   const maisVisivel = maisAberto || grupos.mais.some((i) => i.rota === rotaAtiva);
 
   function irPara(item: ItemMenu, trancado: boolean) {

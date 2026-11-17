@@ -1,5 +1,5 @@
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
-import { GRUPOS_ORCAMENTOS, UI_V2_NAV, statusDoGrupo, type GrupoOrcamentos } from '../services/uiFlags';
+import { GRUPOS_ORCAMENTOS, uiV2Nav, statusDoGrupo, type GrupoOrcamentos } from '../services/uiFlags';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
@@ -695,7 +695,7 @@ export default function OrcamentosScreen() {
       <View>
         <FlatList
           horizontal
-          data={UI_V2_NAV ? FILTROS_V2 : STATUS_FILTERS}
+          data={uiV2Nav() ? FILTROS_V2 : STATUS_FILTERS}
           keyExtractor={i => i.key}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: Spacing.base, paddingVertical: 8, gap: 8 }}

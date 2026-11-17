@@ -17,7 +17,7 @@ import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 import { RootStackParamList, TabParamList } from '../../navigation/AppNavigator';
 import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../../types';
-import { GRUPOS_ORCAMENTOS, UI_V2_NAV, statusDoGrupo, type GrupoOrcamentos } from '../../services/uiFlags';
+import { GRUPOS_ORCAMENTOS, uiV2Nav, statusDoGrupo, type GrupoOrcamentos } from '../../services/uiFlags';
 import { getStatusFinanceiro } from '../../services/pagamentos';
 import { FinanceiroBadge } from '../../components/FinanceiroBadge';
 
@@ -203,7 +203,7 @@ export default function OrcamentosDesktopScreen() {
             onPress={() => setRecorteInicial(undefined)}
           />
         )}
-        {(UI_V2_NAV ? FILTROS_V2 : FILTROS_STATUS).map((f) => (
+        {(uiV2Nav() ? FILTROS_V2 : FILTROS_STATUS).map((f) => (
           <Chip
             key={f.chave}
             label={f.label}
