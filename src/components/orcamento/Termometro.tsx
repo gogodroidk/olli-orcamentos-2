@@ -226,7 +226,7 @@ const criarEstilos = (c: Cores) =>
       borderWidth: 1,
       marginTop: 4,
     },
-    chipTxt: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
+    chipTxt: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
     topo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     selo: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
     temperatura: { fontSize: 20, fontWeight: '800', letterSpacing: -0.2 },
@@ -273,7 +273,7 @@ const criarEstilos = (c: Cores) =>
       borderColor: c.outline,
     },
     botaoSecundarioTxt: { color: c.onSurface, fontSize: 13.5, fontWeight: '700' },
-    nota: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: Spacing.md, lineHeight: 16 },
+    nota: { fontSize: 13, color: c.onSurfaceVariant, marginTop: Spacing.md, lineHeight: 17 },
     aviso: {
       flexDirection: 'row',
       alignItems: 'center',

@@ -286,7 +286,7 @@ export default function AjudaScreen() {
             autoCorrect={false}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Limpar a busca" onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           )}
@@ -521,7 +521,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Modal do artigo
   modal: { flex: 1, backgroundColor: c.background },
   modalHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, paddingVertical: Spacing.base, paddingTop: 56, backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.outline },
-  modalCategoria: { fontSize: 11.5, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
+  modalCategoria: { fontSize: 13, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
   modalTitle: { fontSize: 19, fontWeight: '800', color: c.onSurface, marginTop: 2 },
   modalResumo: { fontSize: 14.5, color: c.onSurfaceVariant, lineHeight: 20, marginBottom: 6 },
 
@@ -531,7 +531,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   passoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   // Azul fixo (base da marca padrão, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   passoNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(11,111,206,0.20)', alignItems: 'center', justifyContent: 'center', marginTop: 1 },
-  passoNumText: { fontSize: 11.5, fontWeight: '800', color: c.accentLight },
+  passoNumText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   passoText: { flex: 1, fontSize: 14, color: c.onSurface, lineHeight: 20 },
 
   // Aviso: tom fixo de warning do handoff cockpit; próximo de `warningLight` mas

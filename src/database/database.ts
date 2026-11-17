@@ -1386,6 +1386,8 @@ export async function getOrcamentosDatasCriacao(): Promise<string[]> {
 export interface FiltroOrcamentos {
   clienteId?: string;
   status?: StatusOrcamento;
+  /** Grupo de status (filtros da v1.3, flag ui_v2_nav). Ignorado quando vazio. */
+  statusEm?: StatusOrcamento[];
   /** Busca livre — mesma regra da tela: cliente (case-insensitive) OU número do orçamento (substring). */
   busca?: string;
 }
@@ -1404,6 +1406,10 @@ function whereOrcamentosFiltro(filtro: FiltroOrcamentos): { clausula: string; pa
   if (filtro.status) {
     condicoes.push("json_extract(data, '$.status') = ?");
     params.push(filtro.status);
+  }
+  if (filtro.statusEm && filtro.statusEm.length > 0) {
+    condicoes.push(`json_extract(data, '$.status') IN (${filtro.statusEm.map(() => '?').join(', ')})`);
+    params.push(...filtro.statusEm);
   }
   if (filtro.busca && filtro.busca.trim()) {
     // Nome: sem-acento+minúsculo dos dois lados (acento-insensível como o app).

@@ -2048,7 +2048,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   guardWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
   guardTitle: { fontSize: 22, fontWeight: '800', color: c.onBackground, marginTop: Spacing.lg },
@@ -2116,16 +2116,16 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   profilePhone: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   segChip: { alignSelf: 'flex-start', backgroundColor: 'rgba(52,198,217,0.14)', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3, marginTop: 6 },
-  segChipText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  segChipText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
   editBtn: { alignItems: 'center', gap: 2 },
-  editBtnText: { fontSize: 11, fontWeight: '700', color: c.accentLight },
+  editBtnText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   proCard: { backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
   proHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   proBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
   proBadgeText: { fontSize: 12, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0 },
   soonPill: { backgroundColor: comAlfa(c.onSurface, 0.06), borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  soonPillText: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
+  soonPillText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   proTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface },
   proSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 19 },
   proBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },

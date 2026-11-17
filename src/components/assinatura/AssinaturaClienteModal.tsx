@@ -313,7 +313,7 @@ const criarEstilos = (c: Cores) =>
     },
 
     aviso: {
-      fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant,
+      fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant,
       lineHeight: 17, marginTop: Spacing.sm,
     },
 

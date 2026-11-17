@@ -196,8 +196,8 @@ function ProdutosConteudo() {
                 </View>
               </View>
               <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => setEditing({ ...p })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} /></TouchableOpacity>
-                <TouchableOpacity onPress={() => Alert.alert('Excluir', `Excluir "${p.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { try { await deleteProduto(p.id); load(); } catch { Alert.alert('Erro', 'Não foi possível excluir o produto agora. Tente novamente.'); } } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Editar" onPress={() => setEditing({ ...p })} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><MaterialCommunityIcons name="pencil-outline" size={20} color={cores.primary} /></TouchableOpacity>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Excluir" onPress={() => Alert.alert('Excluir', `Excluir "${p.nome}"?`, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Excluir', style: 'destructive', onPress: async () => { try { await deleteProduto(p.id); load(); } catch { Alert.alert('Erro', 'Não foi possível excluir o produto agora. Tente novamente.'); } } }])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
                 </TouchableOpacity>
               </View>
@@ -208,7 +208,7 @@ function ProdutosConteudo() {
       />
       )}
 
-      <TouchableOpacity style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Novo produto" style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={() => setEditing({ unidade: 'un', preco: 0 })} activeOpacity={0.85}>
         <MaterialCommunityIcons name="plus" size={28} color="#fff" />
       </TouchableOpacity>
 
@@ -217,7 +217,7 @@ function ProdutosConteudo() {
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editing.id ? 'Editar Produto' : 'Novo Produto'}</Text>
-              <TouchableOpacity onPress={() => setEditing(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><MaterialCommunityIcons name="close" size={26} color={cores.onSurface} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar" onPress={() => setEditing(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><MaterialCommunityIcons name="close" size={26} color={cores.onSurface} /></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <TouchableOpacity style={styles.fotoBtn} onPress={pickFoto} activeOpacity={0.8}>
@@ -277,7 +277,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
   searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, ...sombrasDe(c).sm },
@@ -288,7 +288,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tagsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
   price: { fontSize: 13, color: c.primary, fontWeight: '700' },
   margemTag: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  margemText: { fontSize: 11, color: c.success, fontWeight: '700' },
+  margemText: { fontSize: 13, color: c.success, fontWeight: '700' },
   cardActions: { flexDirection: 'row', gap: 16, marginLeft: 8 },
   fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).lg, shadowColor: c.primary, shadowOpacity: 0.4 },
   modal: { flex: 1, backgroundColor: c.background },

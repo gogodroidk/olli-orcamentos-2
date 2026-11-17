@@ -1685,10 +1685,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginTop: 10 },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 3, maxWidth: '48%' },
-  metaChipText: { fontSize: 11.5, color: c.onSurfaceVariant, fontWeight: '600' },
+  metaChipText: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600' },
 
   statusBadge: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  statusBadgeText: { fontSize: 11, fontWeight: '800' },
+  statusBadgeText: { fontSize: 13, fontWeight: '800' },
 
   // Detalhe
   bloco: {
@@ -1702,7 +1702,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   infoValor: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '700', textAlign: 'right' },
 
   critChip: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  critChipText: { fontSize: 11.5, fontWeight: '800' },
+  critChipText: { fontSize: 13, fontWeight: '800' },
 
   caveat: {
     flexDirection: 'row', gap: 8, alignItems: 'flex-start',

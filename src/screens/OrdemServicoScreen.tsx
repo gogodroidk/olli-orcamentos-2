@@ -1561,12 +1561,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   cardMeta: { fontSize: 12, color: c.onSurfaceMuted, fontWeight: '600' },
   metaChip: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  metaChipText: { fontSize: 11.5, color: c.onSurfaceVariant, fontWeight: '600' },
+  metaChipText: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600' },
   tecnicoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   tecnicoText: { fontSize: 12, color: c.accentLight, fontWeight: '700' },
 
   statusBadge: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  statusBadgeText: { fontSize: 11, fontWeight: '800' },
+  statusBadgeText: { fontSize: 13, fontWeight: '800' },
 
   // Detalhe
   bloco: {

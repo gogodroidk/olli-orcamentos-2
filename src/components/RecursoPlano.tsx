@@ -14,7 +14,7 @@ import { vendaPlayConfirmada } from '../services/playBilling';
 import { track, Eventos } from '../services/analytics';
 
 /**
- * RECURSO DO PLANO — o paywall reposicionado (Grátis ilimitado, 01/10/2026).
+ * RECURSO DO PLANO — o paywall reposicionado (Grátis, desde 01/10/2026).
  *
  * O Grátis não tem mais cota de orçamentos: o que o Pro vende são RECURSOS (sem o
  * selo, follow-up automático, link com pagamento, inteligência de campo) e o

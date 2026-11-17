@@ -840,7 +840,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   //  as três superfícies generativas compartilham o mesmo caminho de denúncia)
 
   sugestoesWrap: { marginTop: 8 },
-  sugestoesLabel: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.8, color: c.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 },
+  sugestoesLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 0.8, color: c.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 10, marginLeft: 4 },
   // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
   sugestaoChip: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: comAlfa(c.accent, 0.07), borderWidth: 1, borderColor: comAlfa(c.accent, 0.28), borderRadius: BorderRadius.md, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 9 },
   sugestaoText: { flex: 1, fontSize: 14, color: c.onSurface, fontWeight: '600' },
@@ -850,10 +850,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   creditoAviso: { color: c.onSurfaceVariant, fontSize: 12.5, lineHeight: 18, textAlign: 'center', marginTop: 2 },
 
   casoBar: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.base, paddingTop: 8, paddingBottom: 2, backgroundColor: c.surface },
-  casoBarTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 11.5, lineHeight: 16 },
+  casoBarTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 13, lineHeight: 17 },
   casoBarDestaque: { color: c.onSurface, fontWeight: '800' },
   modoAviso: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: Spacing.base, paddingTop: 8, paddingBottom: 2, backgroundColor: c.surface },
-  modoAvisoTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 11.5, lineHeight: 16 },
+  modoAvisoTexto: { flex: 1, color: c.onSurfaceVariant, fontSize: 13, lineHeight: 17 },
   acaoCard: { marginBottom: 12, padding: Spacing.base, borderRadius: BorderRadius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.45), ...sombrasDe(c).sm },
   acaoCabecalho: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   acaoIcone: { width: 36, height: 36, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: comAlfa(c.accentLight, 0.12) },
@@ -863,10 +863,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   acaoAlvoDestaque: { color: c.onSurface, fontWeight: '800' },
   acaoMudancas: { marginTop: 8, borderTopWidth: 1, borderTopColor: c.outline },
   acaoMudanca: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: c.outline },
-  acaoCampo: { width: 104, color: c.onSurfaceMuted, fontSize: 11.5, fontWeight: '700' },
+  acaoCampo: { width: 104, color: c.onSurfaceMuted, fontSize: 13, fontWeight: '700' },
   acaoValor: { flex: 1, color: c.onSurface, fontSize: 12, lineHeight: 17 },
   acaoBotoes: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  acaoNota: { color: c.onSurfaceMuted, fontSize: 10.5, lineHeight: 15, marginTop: 10 },
+  acaoNota: { color: c.onSurfaceMuted, fontSize: 13, lineHeight: 17, marginTop: 10 },
 
   inputBar: { paddingHorizontal: Spacing.base, paddingTop: 10, backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline },
   composer: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, paddingLeft: 14, paddingRight: 6, paddingVertical: 6, minHeight: 48 },

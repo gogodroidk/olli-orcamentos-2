@@ -18,6 +18,7 @@ import { vibrar } from '../utils/haptico';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
 import { SidebarNav } from '../components/web/SidebarNav';
 import type { Recurso } from '../services/entitlements';
+import { UI_V2_NAV, rotuloAbaMobile } from '../services/uiFlags';
 import type { VerticalId } from '../services/verticais';
 
 // Screens
@@ -134,6 +135,8 @@ export type RootStackParamList = {
   // manter navigate('Tabs', { screen, params }) tipado, é o que o `linking` da
   // v4 exige para aceitar `screens` aninhados no PathConfig de Tabs.
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
+  /** Hoje como tela (v1.3, flag ui_v2_nav); sem a flag Hoje segue como aba. */
+  HojeDia: undefined;
   Onboarding: undefined;
   Entrar: undefined;
   // NovoOrcamento aceita um modelo, OU pré-seleção de cliente, OU 1 item pré-carregado
@@ -243,6 +246,8 @@ export type TabParamList = {
   Orcar: undefined;     // botão central elevado → abre NovoOrcamento (stack)
   Hoje: undefined;
   Conta: undefined;
+  /** Aba Orçamentos do celular (v1.3, só com a flag ui_v2_nav). */
+  OrcamentosLista?: { clienteId?: string; clienteNome?: string } | undefined;
   // ─── Abas SOMENTE-desktop (v4) ──────────────────────────────────────────
   // Registradas condicionalmente sob `ehDesktop`; no mobile/APK nunca montam.
   // Vivem DENTRO do shell (com a sidebar visível), em vez de cobrirem-na como
@@ -512,6 +517,22 @@ function TabNavigator() {
       ? TecnicoHomeScreen
       : HomeComAvisoCadastro;
 
+  // v1.3: flag ui_v2_nav só muda o CELULAR aqui (o desktop muda na SidebarNav).
+  const navV2 = UI_V2_NAV && !ehDesktop;
+  const abaAgenda = (
+    <Tab.Screen
+      name="Agenda"
+      // Desktop: grade de semana (AgendaDesktopScreen); mobile: AgendaScreen atual.
+      component={ehDesktop ? AgendaDesktopScreen : AgendaScreen}
+      options={{
+        tabBarLabel: 'Agenda',
+        tabBarIcon: ({ color, size }) => (
+          <MaterialCommunityIcons name="calendar-month-outline" color={color} size={size} />
+        ),
+      }}
+    />
+  );
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -542,7 +563,7 @@ function TabNavigator() {
               paddingTop: 10,
               // sem position absolute: mantém o layout estável na web (PWA)
             },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '800', letterSpacing: 0 },
+        tabBarLabelStyle: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
         tabBarHideOnKeyboard: true,
       }}
       // Sidebar permanente no desktop: substitui a tab bar inferior por completo.
@@ -568,17 +589,22 @@ function TabNavigator() {
           ),
         }}
       />
-      <Tab.Screen
-        name="Agenda"
-        // Desktop: grade de semana (AgendaDesktopScreen); mobile: AgendaScreen atual.
-        component={ehDesktop ? AgendaDesktopScreen : AgendaScreen}
-        options={{
-          tabBarLabel: 'Agenda',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="calendar-month-outline" color={color} size={size} />
-          ),
-        }}
-      />
+      {/* v1.3 (ui_v2_nav): Orçamentos vira aba no celular, logo depois do Início. */}
+      {navV2 && (
+        <Tab.Screen
+          name="OrcamentosLista"
+          component={OrcamentosScreen}
+          options={{
+            tabBarLabel: 'Orçamentos',
+            tabBarAccessibilityLabel: 'Orçamentos',
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons name="file-document-outline" color={color} size={size} />
+            ),
+          }}
+        />
+      )}
+      {/* Com a flag a Agenda vem DEPOIS do ＋ (ordem: Início · Orçamentos · ＋ · Agenda · Mais). */}
+      {!navV2 && abaAgenda}
       {/* Aba central "Orcar" (botão elevado) — só existe no mobile. No desktop o
           botão '+ Novo orçamento' vive na SidebarNav, que ignora este item. O
           técnico não vê atalho de orçamento (fluxo de campo é OS, não venda).
@@ -601,6 +627,7 @@ function TabNavigator() {
           }}
         />
       )}
+      {navV2 && abaAgenda}
       {/* ─── Abas SOMENTE-desktop: vivem dentro do shell com a sidebar. ─────── */}
       {ehDesktop && (
         <>
@@ -662,7 +689,7 @@ function TabNavigator() {
       )}
       {/* Hoje só existe no mobile: no desktop a sidebar não a lista (o resumo
           do dia vive no dashboard) e a tela mobile esticada ficaria estranha. */}
-      {!ehDesktop && (
+      {!ehDesktop && !navV2 && (
       <Tab.Screen
         name="Hoje"
         component={HojeScreen}
@@ -678,9 +705,10 @@ function TabNavigator() {
         name="Conta"
         component={ContaScreen}
         options={{
-          tabBarLabel: 'Conta',
+          // Com ui_v2_nav a Conta vira "Mais" (mesma tela: ajustes, ferramentas, ajuda).
+          tabBarLabel: rotuloAbaMobile('Conta', navV2),
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="account-circle-outline" color={color} size={size} />
+            <MaterialCommunityIcons name={navV2 ? 'dots-horizontal-circle-outline' : 'account-circle-outline'} color={color} size={size} />
           ),
         }}
       />
@@ -777,6 +805,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Planos" component={PlanosCentro} />
       <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
+      {/* v1.3 (ui_v2_nav): Hoje deixa de ser aba e abre a partir do Início. */}
+      {UI_V2_NAV && <Stack.Screen name="HojeDia" component={HojeScreen} />}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
       {/* Onda I3 — confirmação de véspera e garantia que se cuida sozinha. */}
       <Stack.Screen name="ConfirmarVisitas" component={ConfirmarVisitasCentro} />
@@ -830,6 +860,6 @@ const criarEstilos = (c: Cores) => {
       shadowColor: glowCyan.shadowColor, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 14,
       elevation: 8,
     },
-    centerLabel: { fontSize: 11, fontWeight: '800', color: c.tabActive, marginTop: 3 },
+    centerLabel: { fontSize: 13, fontWeight: '800', color: c.tabActive, marginTop: 3 },
   });
 };

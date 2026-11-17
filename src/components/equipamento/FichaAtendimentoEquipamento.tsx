@@ -255,9 +255,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderWidth: 1, borderColor: c.outline, padding: 12,
   },
   resumoTopo: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  resumoRotulo: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
+  resumoRotulo: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   resumoValor: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginTop: 6 },
-  resumoSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 2 },
+  resumoSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   alerta: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: c.warningLight, borderRadius: BorderRadius.md, padding: 10,

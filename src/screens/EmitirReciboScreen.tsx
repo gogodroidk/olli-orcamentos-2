@@ -696,8 +696,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   reciboRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   reciboNumero: { fontSize: 14, fontWeight: '800', color: c.onSurface },
   reciboCliente: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
-  reciboMeta: { fontSize: 11.5, color: c.onSurfaceMuted, marginTop: 2 },
-  reciboPendenteTag: { fontSize: 11, fontWeight: '700', color: c.warning, marginTop: 4 },
+  reciboMeta: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 2 },
+  reciboPendenteTag: { fontSize: 13, fontWeight: '700', color: c.warning, marginTop: 4 },
   reciboValor: { fontSize: 15, fontWeight: '800', color: c.success },
   reenviarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,

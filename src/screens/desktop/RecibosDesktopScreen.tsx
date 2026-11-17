@@ -448,7 +448,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.warningLight,
   },
   pillPendenteTexto: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '800',
     color: c.warning,
   },

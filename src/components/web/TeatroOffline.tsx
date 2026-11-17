@@ -301,7 +301,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   badgeTexto: {
-    fontSize: 11.5,
+    fontSize: 13,
     fontFamily: Fonts.bold,
   },
   sinalWrap: {

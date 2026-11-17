@@ -699,7 +699,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Pill escura FIXA (rgba(10,22,38,0.92)) nos dois modos: o primeiro plano tem que
   // ficar CLARO nos dois. `accentLight` escurece no claro (#197884 → 3.28:1, reprova
   // texto); `accent` fica #34C6D9 nos dois modos (8.27:1). No escuro os dois são iguais.
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.28:1 (8.27:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.28:1 (8.27:1)
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
   searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...sombrasDe(c).sm },
@@ -728,7 +728,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   name: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: c.onSurface },
   // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   radarBadge: { backgroundColor: 'rgba(247,178,59,0.14)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.34)', borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  radarBadgeText: { fontSize: 10, fontWeight: '800', color: c.warning },
+  radarBadgeText: { fontSize: 13, fontWeight: '800', color: c.warning },
   info: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   infoMuted: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 1 },
   cardActions: { flexDirection: 'row', gap: 16 },

@@ -75,7 +75,7 @@ const criarEstilos = (c: Cores) =>
       gap: 4,
     },
     linha: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    selo: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.6, color: c.accentLight },
+    selo: { fontSize: 13, fontWeight: '800', letterSpacing: 0.6, color: c.accentLight },
     titulo: { fontSize: 14, fontWeight: '700', color: c.onSurface },
     texto: { fontSize: 12.5, lineHeight: 17, color: c.onSurfaceVariant },
     acao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight, marginTop: 4 },

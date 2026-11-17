@@ -179,7 +179,7 @@ const criarEstilos = (c: Cores) =>
     validade: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.warning },
     instr: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center' },
     codeBox: { alignSelf: 'stretch', backgroundColor: c.background, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.md },
-    code: { fontSize: 11, fontFamily: 'monospace', color: c.onSurface, lineHeight: 16 },
+    code: { fontSize: 13, fontFamily: 'monospace', color: c.onSurface, lineHeight: 17 },
     cta: { alignSelf: 'stretch', marginTop: Spacing.xs },
     aguardando: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
     aguardandoTxt: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant },

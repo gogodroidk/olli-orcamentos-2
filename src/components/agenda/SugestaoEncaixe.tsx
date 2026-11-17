@@ -156,5 +156,5 @@ const criarEstilos = (c: Cores) =>
     linhaTexto: { flex: 1 },
     quando: { color: c.onSurface, fontSize: 14, fontWeight: '700' },
     motivo: { color: c.onSurfaceVariant, fontSize: 12, marginTop: 2 },
-    nota: { color: c.onSurfaceMuted, fontSize: 11, lineHeight: 15 },
+    nota: { color: c.onSurfaceMuted, fontSize: 13, lineHeight: 17 },
   });

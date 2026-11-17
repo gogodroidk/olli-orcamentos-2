@@ -12,7 +12,7 @@
  * Aqui não há import nenhum. `pdfGenerator` reexporta os nomes antigos, então
  * todo call site antigo (`from './pdfGenerator'`) continua válido.
  *
- * ═══ O SELO "FEITO COM OLLI" (Grátis ilimitado, 01/10/2026) ═══
+ * ═══ O SELO "FEITO COM OLLI" (Grátis, desde 01/10/2026) ═══
  * O Grátis não tem mais cota de orçamentos: o que ele "paga" é este selo discreto
  * no PDF, no recibo e no link /o/<token>. Cada orçamento enviado vira um convite
  * para o cliente final conhecer o OLLI — por isso o selo é um LINK para a landing,

@@ -1079,7 +1079,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   secaoHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.md },
   secaoTitulo: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   contagemPill: { backgroundColor: c.accentContainer, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 1, minWidth: 22, alignItems: 'center' },
-  contagemText: { fontSize: 11, fontWeight: '800', color: c.accentLight },
+  contagemText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   botaoTexto: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8, borderRadius: BorderRadius.full, backgroundColor: c.surfacePressed },
   botaoTextoLabel: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 
@@ -1091,28 +1091,28 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   perHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   perNome: { flex: 1, fontSize: 14.5, fontWeight: '800', color: c.onSurface },
   freqPill: { backgroundColor: c.primaryContainer, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  freqPillText: { fontSize: 11, fontWeight: '800', color: c.primaryContainerText },
+  freqPillText: { fontSize: 13, fontWeight: '800', color: c.primaryContainerText },
   perMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   perMeta: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
   atividadesWrap: { marginTop: 2, gap: 4, borderTopWidth: 1, borderTopColor: c.outline, paddingTop: 8 },
   atividadeItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
   atividadeText: { flex: 1, fontSize: 13, color: c.onSurface, lineHeight: 18 },
   referenciaWrap: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 4 },
-  referenciaText: { flex: 1, fontSize: 11.5, color: c.onSurfaceMuted, fontStyle: 'italic', lineHeight: 16 },
+  referenciaText: { flex: 1, fontSize: 13, color: c.onSurfaceMuted, fontStyle: 'italic', lineHeight: 17 },
 
   // Equipamentos
   equipRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, paddingVertical: 9, paddingHorizontal: 11 },
   equipTitulo: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
-  equipSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 1 },
+  equipSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
 
   // Versões
   versaoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   versaoNum: { width: 38, height: 38, borderRadius: BorderRadius.chip, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline, alignItems: 'center', justifyContent: 'center' },
   versaoNumText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   versaoTitulo: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
-  versaoSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 1 },
+  versaoSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   vigorTag: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  vigorTagText: { fontSize: 10.5, fontWeight: '800', color: c.success },
+  vigorTagText: { fontSize: 13, fontWeight: '800', color: c.success },
 
   // Gerar
   gerarHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -1124,11 +1124,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   resultadoLinha: { flexDirection: 'row', justifyContent: 'space-around' },
   contador: { alignItems: 'center', gap: 2, flex: 1 },
   contadorNum: { fontSize: 22, fontWeight: '800' },
-  contadorLabel: { fontSize: 11, color: c.onSurfaceVariant, fontWeight: '600' },
+  contadorLabel: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600' },
   resultadoNota: { fontSize: 12, color: c.onSurfaceVariant, lineHeight: 17, marginTop: Spacing.md, textAlign: 'center' },
 
   statusBadge: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
-  statusBadgeText: { fontSize: 11, fontWeight: '800' },
+  statusBadgeText: { fontSize: 13, fontWeight: '800' },
 
   // Editor
   editorContainer: { flex: 1, backgroundColor: c.background },
@@ -1143,7 +1143,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   perEditNum: { fontSize: 12, fontWeight: '800', color: c.accentLight, letterSpacing: 0.5 },
   equipPick: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, paddingHorizontal: 11, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, backgroundColor: c.surface },
   equipPickAtivo: { borderColor: c.accent, backgroundColor: c.surfacePressed },
-  editorNota: { fontSize: 11.5, color: c.onSurfaceMuted, lineHeight: 17, marginTop: Spacing.md, textAlign: 'center' },
+  editorNota: { fontSize: 13, color: c.onSurfaceMuted, lineHeight: 17, marginTop: Spacing.md, textAlign: 'center' },
 
   // Modais em sheet (aprovação) — scrim padrão de modal, sempre escuro.
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },

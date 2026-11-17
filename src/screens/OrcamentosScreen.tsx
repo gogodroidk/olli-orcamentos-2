@@ -1,4 +1,5 @@
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
+import { GRUPOS_ORCAMENTOS, UI_V2_NAV, statusDoGrupo, type GrupoOrcamentos } from '../services/uiFlags';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TextInput,
@@ -64,7 +65,10 @@ const LIMITE_ANIMACAO_ENTRADA = 20;
 const PAGE_SIZE = 50;
 
 /** Monta o filtro compartilhado (busca/status/cliente) a partir do estado atual da tela. */
-function montarFiltro(query: string, statusFilter: StatusOrcamento | 'todos', clienteId?: string): FiltroOrcamentos {
+function montarFiltro(query: string, statusFilter: FiltroLista, clienteId?: string): FiltroOrcamentos {
+  if (ehGrupo(statusFilter)) {
+    return { clienteId, statusEm: statusDoGrupo(statusFilter) ?? undefined, busca: query.trim() || undefined };
+  }
   return {
     clienteId,
     status: statusFilter === 'todos' ? undefined : statusFilter,
@@ -257,7 +261,14 @@ function SincronizandoPill({ onDone }: { onDone: () => void }) {
 // "Em negociação", "Expirado", "Convertido") fica preso só no filtro "Todos"
 // quando a lista de status cresce. Mesmo padrão do STATUS_MANUAIS em
 // VisualizarOrcamentoScreen. "Todos" continua como primeira opção.
-const STATUS_FILTERS: Array<{ key: StatusOrcamento | 'todos'; label: string }> = [
+// v1.3 (flag ui_v2_nav): 3 grupos sobre os 10 status, em vez dos 11 chips.
+type FiltroLista = StatusOrcamento | 'todos' | Exclude<GrupoOrcamentos, 'todos'>;
+function ehGrupo(f: FiltroLista): f is Exclude<GrupoOrcamentos, 'todos'> {
+  return f === 'com_cliente' || f === 'aprovados' || f === 'rascunhos';
+}
+const FILTROS_V2: Array<{ key: FiltroLista; label: string }> = GRUPOS_ORCAMENTOS.map((g) => ({ key: g.id, label: g.label }));
+
+const STATUS_FILTERS: Array<{ key: FiltroLista; label: string }> = [
   { key: 'todos', label: 'Todos' },
   ...(Object.keys(STATUS_LABELS) as StatusOrcamento[]).map(key => ({ key, label: STATUS_LABELS[key] })),
 ];
@@ -280,7 +291,7 @@ export default function OrcamentosScreen() {
   const [temMais, setTemMais] = useState(false);
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusOrcamento | 'todos'>('todos');
+  const [statusFilter, setStatusFilter] = useState<FiltroLista>('todos');
   const [refreshing, setRefreshing] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [sincronizando, setSincronizando] = useState(false);
@@ -308,7 +319,7 @@ export default function OrcamentosScreen() {
   // re-registraria o effect de foco). pedidoIdRef: descarta respostas de uma
   // busca/filtro já ultrapassado por um mais novo (corrida ao digitar rápido).
   const itensRef = useRef<Orcamento[]>([]);
-  const filtroRef = useRef({ query: '', statusFilter: 'todos' as StatusOrcamento | 'todos', clienteId: undefined as string | undefined });
+  const filtroRef = useRef({ query: '', statusFilter: 'todos' as FiltroLista, clienteId: undefined as string | undefined });
   filtroRef.current = { query, statusFilter, clienteId };
   const pedidoIdRef = useRef(0);
   const temMaisRef = useRef(false);
@@ -643,7 +654,8 @@ export default function OrcamentosScreen() {
     <View style={styles.container}>
       {sincronizando && <SincronizandoPill onDone={() => setSincronizando(false)} />}
       <GradientHeader
-        onBack={() => goBackOrHome(nav)}
+        // Como aba (v1.3, ui_v2_nav) não há para onde voltar: sem seta.
+        onBack={(route.name as string) === 'OrcamentosLista' ? undefined : () => goBackOrHome(nav)}
         title="Orçamentos"
         comoFunciona="orcamentos"
         subtitle={clienteId && clienteNome ? `de ${clienteNome}` : undefined}
@@ -683,7 +695,7 @@ export default function OrcamentosScreen() {
       <View>
         <FlatList
           horizontal
-          data={STATUS_FILTERS}
+          data={UI_V2_NAV ? FILTROS_V2 : STATUS_FILTERS}
           keyExtractor={i => i.key}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: Spacing.base, paddingVertical: 8, gap: 8 }}
@@ -691,6 +703,8 @@ export default function OrcamentosScreen() {
             <TouchableOpacity
               style={[styles.chip, statusFilter === item.key && styles.chipActive]}
               onPress={() => handleStatusFilter(item.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: statusFilter === item.key }}
             >
               <Text style={[styles.chipLabel, statusFilter === item.key && styles.chipLabelActive]}>
                 {item.label}
@@ -887,7 +901,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   newBtn: {
     // Botão dentro do GradientHeader (sempre colorido, nos dois modos) —
     // glass branco translúcido, mesma convenção do próprio GradientHeader.
@@ -967,7 +981,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   itemNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   itemMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
-  revisaoMeta: { fontSize: 11, fontWeight: '700', color: c.primary, marginTop: 2 },
+  revisaoMeta: { fontSize: 13, fontWeight: '700', color: c.primary, marginTop: 2 },
   itemValor: { fontSize: 15, fontWeight: '700', color: c.primary, marginBottom: 4 },
 
   itemActions: {
@@ -978,7 +992,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 3, paddingVertical: 4,
   },
-  actionLabel: { fontSize: 11, fontWeight: '700' },
+  actionLabel: { fontSize: 13, fontWeight: '700' },
   actionMenu: { flex: 0, paddingHorizontal: 10 },
 
   menuFundo: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },

@@ -586,7 +586,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: 2,
   },
   seloEmBreveTexto: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     color: c.onSurfaceVariant,
   },
@@ -642,7 +642,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: 3,
   },
   papelChipTexto: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '800',
   },
 

@@ -259,7 +259,7 @@ function ServicosConteudo() {
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{editing.id ? 'Editar Serviço' : 'Novo Serviço'}</Text>
-              <TouchableOpacity onPress={() => setEditing(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><MaterialCommunityIcons name="close" size={26} color={cores.onSurface} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar" onPress={() => setEditing(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><MaterialCommunityIcons name="close" size={26} color={cores.onSurface} /></TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
               <TouchableOpacity style={styles.fotoBtn} onPress={pickFoto} activeOpacity={0.8}>
@@ -330,7 +330,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
   searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.md, ...sombrasDe(c).sm },
@@ -345,7 +345,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   priceZerado: { color: c.danger },
   margemTag: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
   margemTagPrejuizo: { backgroundColor: c.dangerLight },
-  margemText: { fontSize: 11, color: c.success, fontWeight: '700' },
+  margemText: { fontSize: 13, color: c.success, fontWeight: '700' },
   margemTextPrejuizo: { color: c.danger },
   fab: { position: 'absolute', right: 20, bottom: 24, width: 58, height: 58, borderRadius: 29, backgroundColor: c.primary, justifyContent: 'center', alignItems: 'center', ...sombrasDe(c).lg, shadowColor: c.primary, shadowOpacity: 0.4 },
   modal: { flex: 1, backgroundColor: c.background },

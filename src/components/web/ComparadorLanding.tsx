@@ -276,7 +276,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     gap: 2,
   },
   celulaLegenda: {
-    fontSize: 10.5,
+    fontSize: 13,
     fontFamily: Fonts.regular,
     color: c.onSurfaceMuted,
     textAlign: 'center',

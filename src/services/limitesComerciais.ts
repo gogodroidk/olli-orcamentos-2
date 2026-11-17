@@ -3,13 +3,16 @@ import type { PlanoId } from './entitlements';
 /**
  * CONTRATO COMERCIAL DO ENVIO DE ORÇAMENTOS — fonte única.
  *
- * ═══ GRÁTIS = ORÇAMENTOS ILIMITADOS (decisão do dono, 01/10/2026) ═══
+ * ═══ GRÁTIS = ATÉ 5 ORÇAMENTOS ENVIADOS POR MÊS (em produção desde 07/11/2026, D-1827) ═══
  *
- * Até 01/10/2026 o Grátis tinha uma cota de 5 orçamentos enviados por mês. O
- * diagnóstico de 29/09 mostrou que ninguém batia nela, e a avaliação mais curtida
- * contra o concorrente era exatamente "só faz 5 orçamento por mês? to fora". A
- * cota saiu. O que o Grátis paga agora é o SELO discreto "Feito com OLLI" no PDF,
- * no recibo e no link (ver `src/utils/marcaOlli.ts`); o Pro tira o selo.
+ * Histórico: até 01/10/2026 o Grátis tinha cota de 5 envios/mês; de 01/10 a
+ * 06/11/2026 ficou sem teto. Desde 07/11/2026 o limite de 5 envios por mês vale
+ * de novo para TODAS as contas do Grátis, controlado no servidor pela tabela
+ * `limite_gratis_config` (`corte` para contas novas, `corte_antigas` para as
+ * anteriores). A copy das telas sai de `planosBase.ts` (`CORTE_GRATIS_DATA`,
+ * `CORTE_ANTIGAS_DATA`, `LIMITE_ENVIOS_GRATIS_MES`). O Grátis também leva o selo
+ * discreto "Feito com OLLI" no PDF, no recibo e no link (ver `src/utils/marcaOlli.ts`);
+ * o Pro tira o limite e o selo.
  *
  * ═══ O QUE CONTINUA EXISTINDO (e por quê) ═══
  *
@@ -85,7 +88,7 @@ export type InicioTrialPro =
 
 export interface ReservaEnvioOrcamento {
   /**
-   * `true` quase sempre: o Grátis é ilimitado e falha de registro NUNCA barra o envio.
+   * `true` quase sempre: falha de registro NUNCA barra o envio.
    * A ÚNICA recusa é `cota_esgotada` com `permitido:false` vinda do servidor — conta
    * nova do Grátis que já usou o limite do mês (P0-09; o servidor só devolve isso
    * quando o corte está ligado em `limite_gratis_config`). Toda tela que envia

@@ -368,7 +368,7 @@ export function selecionarAvisosValidade(
 
 /**
  * FOLLOW-UP AUTOMÁTICO é recurso do Pro (`followup_automatico`, decisão do dono
- * em 01/10/2026 — o Grátis ficou com orçamentos ilimitados e o Pro vende o que
+ * em 01/10/2026 — o Grátis ficou sem teto até 06/11/2026 (hoje: 5 envios/mês) e o Pro vende o que
  * trabalha sozinho). Três estados, como todo gate da casa:
  *  - `liberado`      → os lembretes D+2/D+5 planejados;
  *  - `bloqueado`     → nenhum (a reconciliação cancela os que existirem);

@@ -20,8 +20,8 @@ import { CartaoRecursoPlano } from './RecursoPlano';
  * breve" nem um bloco vazio: o preview é o que dá vontade de assinar.
  *
  * Regra de ouro: só se usa em recursos Pro/Empresa. NUNCA envolver o fluxo de
- * criar orçamento/recibo/cliente/agenda — esses são livres no Grátis (que desde
- * 01/10/2026 tem orçamentos ILIMITADOS).
+ * criar orçamento/recibo/cliente/agenda — esses são livres no Grátis (o envio tem
+ * limite de 5 por mês desde 07/11/2026, cobrado no servidor).
  *
  * TRÊS ESTADOS (regra da casa): com o plano CONFIRMADO sem o recurso, o muro
  * "Disponível no Pro"; com a leitura do plano FALHANDO, o cartão "não consegui

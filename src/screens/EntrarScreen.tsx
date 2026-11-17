@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useNavigation, CommonActions } from '@react-navigation/native';
@@ -31,6 +31,7 @@ import { track, Eventos } from '../services/analytics';
 import { Empresa } from '../types';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { traduzirErroAuth } from '../utils/authErrors';
+import { erroAuthNoCampo, validarCampo, validarTudo, type CampoAuth, type ErrosAuth } from '../utils/validarCadastro';
 import { mensagemErroOAuth } from '../services/oauthRetorno';
 import { SENHA_MINIMA } from '../services/authPolicy';
 import { AcessoPorCodigo, type FluxoCodigo } from '../components/auth/AcessoPorCodigo';
@@ -74,6 +75,10 @@ export default function EntrarScreen() {
   // some antes do onPress.
   const [emailFocado, setEmailFocado] = useState(false);
   const [busy, setBusy] = useState(false);
+  // v1.3: erro mora no próprio campo (validado ao sair dele) e o erro do
+  // servidor vira texto humano no campo certo ou na linha acima do botão.
+  const [erros, setErros] = useState<ErrosAuth>({});
+  const [aviso, setAviso] = useState<string | null>(null);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [appleBusy, setAppleBusy] = useState(false);
   // Sign in with Apple so existe no iOS 13+. Checagem assincrona: enquanto nao
@@ -167,26 +172,24 @@ export default function EntrarScreen() {
     nav.dispatch(CommonActions.reset({ index: 0, routes: [{ name: destino }] }));
   }
 
+  /** Valida um campo ao sair dele — só se já tem algo escrito (não acusa campo intocado). */
+  function validarAoSair(campo: CampoAuth) {
+    const valores = { nome, email, telefone, senha, confirmar };
+    if (!valores[campo]) return;
+    const erro = validarCampo(campo, valores, modo, SENHA_MINIMA);
+    setErros((atual) => ({ ...atual, [campo]: erro, geral: undefined }));
+  }
+
   async function handleAuth() {
     if (!configured) {
-      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
+      setErros({ geral: 'O login está fora do ar nesta versão. Fale com o suporte.' });
       return;
     }
-    if (modo === 'signup' && !nome.trim()) {
-      Alert.alert('Faltou o nome', 'Informe seu nome completo.');
-      return;
-    }
-    const telDigits = telefone.replace(/\D/g, '');
-    if (modo === 'signup' && telDigits.length < 10) {
-      Alert.alert('Faltou o telefone', 'Informe um WhatsApp válido com DDD.');
-      return;
-    }
-    if (!email.trim() || senha.length < SENHA_MINIMA) {
-      Alert.alert('Atenção', `Informe um e-mail válido e senha de pelo menos ${SENHA_MINIMA} caracteres.`);
-      return;
-    }
-    if (modo === 'signup' && senha !== confirmar) {
-      Alert.alert('Senhas diferentes', 'A senha e a confirmação não são iguais.');
+    const errosForm = validarTudo({ nome, email, telefone, senha, confirmar }, modo, SENHA_MINIMA);
+    setErros(errosForm);
+    setAviso(null);
+    if (Object.keys(errosForm).length > 0) {
+      vibrar('erro');
       return;
     }
     const emailLimpo = email.trim();
@@ -209,7 +212,7 @@ export default function EntrarScreen() {
           // coerente com o gate — o usuário não entra até confirmar.
           setModo('login');
           setSenha(''); setConfirmar('');
-          Alert.alert('Confirme seu e-mail', `Enviamos um link de confirmação para ${emailLimpo}. Confirme e depois entre aqui.`);
+          setAviso(`Enviamos um link para ${emailLimpo}. Abra o link e depois entre aqui.`);
         }
       } else {
         await signIn(emailLimpo, senha);
@@ -217,8 +220,8 @@ export default function EntrarScreen() {
         await entrarNoApp();
       }
     } catch (e: any) {
-      const { titulo, texto } = traduzirErroAuth(e);
-      Alert.alert(titulo, texto);
+      setErros(erroAuthNoCampo(e, modo));
+      vibrar('erro');
     }
     setBusy(false);
   }
@@ -232,7 +235,7 @@ export default function EntrarScreen() {
   async function handleGoogle() {
     vibrar('selecao');
     if (!configured) {
-      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
+      setErros({ geral: 'O login está fora do ar nesta versão. Fale com o suporte.' });
       return;
     }
     if (googleBusy) return; // toque duplo: já há uma sessão do Google abrindo
@@ -245,11 +248,10 @@ export default function EntrarScreen() {
         await entrarNoApp();
       }
       if (res === 'cancelado') {
-        Alert.alert('Login com o Google não concluído', mensagemErroOAuth('cancelado'));
+        setErros({ geral: mensagemErroOAuth('cancelado') });
       }
     } catch (e: any) {
-      const { titulo, texto } = traduzirErroAuth(e);
-      Alert.alert(titulo, texto);
+      setErros({ geral: traduzirErroAuth(e).texto });
     }
     setGoogleBusy(false);
   }
@@ -261,7 +263,7 @@ export default function EntrarScreen() {
   async function handleApple() {
     vibrar('selecao');
     if (!configured) {
-      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
+      setErros({ geral: 'O login está fora do ar nesta versão. Fale com o suporte.' });
       return;
     }
     setAppleBusy(true);
@@ -272,11 +274,10 @@ export default function EntrarScreen() {
         await entrarNoApp();
       }
       if (res === 'cancelado') {
-        Alert.alert('Login com a Apple não concluído', mensagemErroOAuth('cancelado', 'apple'));
+        setErros({ geral: mensagemErroOAuth('cancelado', 'apple') });
       }
     } catch (e: any) {
-      const { titulo, texto } = traduzirErroAuth(e);
-      Alert.alert(titulo, texto);
+      setErros({ geral: traduzirErroAuth(e).texto });
     }
     setAppleBusy(false);
   }
@@ -285,7 +286,7 @@ export default function EntrarScreen() {
   function abrirFluxoCodigo(fluxo: FluxoCodigo) {
     vibrar('selecao');
     if (!configured) {
-      Alert.alert('Backup na nuvem não configurado', 'Peça ao assistente para configurar o Supabase para ativar o login.');
+      setErros({ geral: 'O login está fora do ar nesta versão. Fale com o suporte.' });
       return;
     }
     setFluxoCodigo(fluxo);
@@ -309,7 +310,7 @@ export default function EntrarScreen() {
       )}
 
       {modo === 'signup' && (
-        <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" />
+        <OlliInput label="Nome completo" value={nome} onChangeText={setNome} placeholder="João da Silva" leftIcon="account" autoCapitalize="words" error={erros.nome} onBlur={() => validarAoSair('nome')} />
       )}
       <OlliInput
         label="E-mail"
@@ -320,7 +321,8 @@ export default function EntrarScreen() {
         autoCapitalize="none"
         leftIcon="email"
         onFocus={() => setEmailFocado(true)}
-        onBlur={() => setTimeout(() => setEmailFocado(false), 150)}
+        error={erros.email}
+        onBlur={() => { validarAoSair('email'); setTimeout(() => setEmailFocado(false), 150); }}
       />
       <SugestoesEmail email={email} focado={emailFocado} onSelecionar={setEmail} />
       {modo === 'signup' && (
@@ -332,6 +334,8 @@ export default function EntrarScreen() {
           placeholder="(11) 99999-9999"
           keyboardType="phone-pad"
           leftIcon="whatsapp"
+          error={erros.telefone}
+          onBlur={() => validarAoSair('telefone')}
         />
       )}
       <OlliInput
@@ -344,9 +348,11 @@ export default function EntrarScreen() {
         rightIcon={verSenha ? 'eye-off' : 'eye'}
         onRightIconPress={() => setVerSenha(v => !v)}
         rightIconLabel={verSenha ? 'Ocultar senha' : 'Mostrar senha'}
+        error={erros.senha}
+        onBlur={() => validarAoSair('senha')}
       />
       {modo === 'signup' && (
-        <OlliInput label="Confirmar senha" value={confirmar} onChangeText={setConfirmar} placeholder="repita a senha" secureTextEntry={!verSenha} leftIcon="lock-check" />
+        <OlliInput label="Confirmar senha" value={confirmar} onChangeText={setConfirmar} placeholder="repita a senha" secureTextEntry={!verSenha} leftIcon="lock-check" error={erros.confirmar} onBlur={() => validarAoSair('confirmar')} />
       )}
 
       {modo === 'login' && (
@@ -355,6 +361,12 @@ export default function EntrarScreen() {
         </TouchableOpacity>
       )}
 
+      {erros.geral ? (
+        <Text style={styles.erroGeral} accessibilityRole="alert" accessibilityLiveRegion="polite">{erros.geral}</Text>
+      ) : null}
+      {aviso ? (
+        <Text style={styles.avisoForm} accessibilityLiveRegion="polite">{aviso}</Text>
+      ) : null}
       <OlliButton
         label={modo === 'login' ? 'Entrar' : 'Criar conta'}
         variant="gradient" size="lg" fullWidth loading={busy} disabled={googleBusy || appleBusy} onPress={handleAuth}
@@ -394,7 +406,7 @@ export default function EntrarScreen() {
       )}
 
       {/* ALTERNA LOGIN/SIGNUP */}
-      <TouchableOpacity disabled={anyBusy} onPress={() => { vibrar('selecao'); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
+      <TouchableOpacity accessibilityRole="button" disabled={anyBusy} onPress={() => { vibrar('selecao'); setErros({}); setAviso(null); setModo(modo === 'login' ? 'signup' : 'login'); }} style={styles.switchWrap}>
         <Text style={styles.switchText}>
           {modo === 'login' ? 'Ainda não tem conta? ' : 'Já tem conta? '}
           <Text style={styles.switchLink}>{modo === 'login' ? 'Criar agora' : 'Entrar'}</Text>
@@ -481,6 +493,8 @@ export default function EntrarScreen() {
 }
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
+  erroGeral: { color: c.danger, fontSize: 14, fontWeight: '700', marginTop: 4, marginBottom: 4 },
+  avisoForm: { color: c.onSurface, fontSize: 14, marginTop: 4, marginBottom: 4 },
   container: { flex: 1, backgroundColor: c.background },
 
   // DESKTOP — duas colunas (hero de valor | card de login)

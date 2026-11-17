@@ -159,6 +159,6 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Discreto de proposito: nao pode competir visualmente com a acao principal
   // da tela (transformar em orcamento, criar orcamento, responder a Olli).
   btn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, alignSelf: 'flex-start' },
-  btnText: { fontSize: 11.5, fontWeight: '600', color: c.onSurfaceVariant },
-  enviadoText: { fontSize: 11.5, fontWeight: '600', color: c.onSurfaceVariant, fontStyle: 'italic', paddingVertical: 4 },
+  btnText: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant },
+  enviadoText: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant, fontStyle: 'italic', paddingVertical: 4 },
 });

@@ -94,7 +94,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headText: { flex: 1, fontSize: 13, fontWeight: '800', color: c.onSurface },
   corpo: { fontSize: 12, lineHeight: 17, color: c.onSurfaceVariant },
-  rodape: { fontSize: 11, lineHeight: 15, color: c.onSurfaceMuted },
+  rodape: { fontSize: 13, lineHeight: 17, color: c.onSurfaceMuted },
   linha: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: Spacing.sm },
-  linhaTexto: { flex: 1, fontSize: 11, lineHeight: 15, color: c.onSurfaceMuted },
+  linhaTexto: { flex: 1, fontSize: 13, lineHeight: 17, color: c.onSurfaceMuted },
 });

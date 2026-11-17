@@ -857,7 +857,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
   },
-  revisionBannerText: { flex: 1, color: '#fff', fontSize: 11.5, fontWeight: '700', lineHeight: 16 },
+  revisionBannerText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '700', lineHeight: 17 },
   progressTrack: {
     height: 4,
     borderRadius: 2,
@@ -922,7 +922,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: 5,
   },
   summaryChipFlex: { flex: 1, maxWidth: 168 },
-  summaryChipText: { flexShrink: 1, fontSize: 11.5, fontWeight: '800', color: c.onSurface },
+  summaryChipText: { flexShrink: 1, fontSize: 13, fontWeight: '800', color: c.onSurface },
   footer: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: c.surfaceGlass,

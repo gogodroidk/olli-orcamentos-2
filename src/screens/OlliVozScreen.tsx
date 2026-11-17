@@ -1539,7 +1539,7 @@ function Revisao(props: {
                     </Text>
                   </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => props.onRemoveItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Excluir" onPress={() => props.onRemoveItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
                 </TouchableOpacity>
               </View>
@@ -1557,7 +1557,7 @@ function Revisao(props: {
                 <View style={styles.qtyField}>
                   <Text style={styles.miniLabel}>Qtd</Text>
                   <View style={styles.qtyRow}>
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Diminuir quantidade"
                       style={styles.qtyBtn}
                       onPress={() => props.onUpdateItem(item.id, { quantidade: Math.max(1, item.quantidade - 1) })}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1565,7 +1565,7 @@ function Revisao(props: {
                       <MaterialCommunityIcons name="minus" size={15} color={cores.primary} />
                     </TouchableOpacity>
                     <Text style={styles.qtyValue}>{item.quantidade}</Text>
-                    <TouchableOpacity
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Aumentar quantidade"
                       style={styles.qtyBtn}
                       onPress={() => props.onUpdateItem(item.id, { quantidade: item.quantidade + 1 })}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1665,7 +1665,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroKicker: { fontSize: 12, fontWeight: '800', letterSpacing: 0, color: c.accentLight, marginBottom: Spacing.lg },
   // rgba(124,58,237,x) era o roxo fixo do "plan" — vira c.plan (ajustado por contraste).
   usoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -8, marginBottom: Spacing.md, backgroundColor: comAlfa(c.plan, 0.12), borderWidth: 1, borderColor: comAlfa(c.plan, 0.32), borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
-  usoPillText: { fontSize: 11.5, fontWeight: '800', color: c.plan },
+  usoPillText: { fontSize: 13, fontWeight: '800', color: c.plan },
   limiteCard: { alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: comAlfa(c.plan, 0.32), padding: Spacing.xl, ...sombrasDe(c).sm },
   // Era '#fff' fixo: o card fica sobre a superfície da tela, não sobre um
   // gradiente — no claro (padrão do app) o texto branco já nascia ilegível
@@ -1681,7 +1681,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   micGrad: { width: 140, height: 140, borderRadius: 70, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: comAlfa(c.accentLight, 0.18) },
   heroHint: { fontSize: 13.5, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 20, marginTop: Spacing.lg, paddingHorizontal: 8 },
   infoPill: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12, backgroundColor: comAlfa(c.accentLight, 0.10), borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.28), borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6 },
-  infoPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  infoPillText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   // rgba(255,107,107,x) era o danger estático — vira o danger do tema.
   contadorPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 14, backgroundColor: c.dangerLight, borderWidth: 1, borderColor: comAlfa(c.danger, 0.35), borderRadius: BorderRadius.full, paddingHorizontal: 14, paddingVertical: 7 },
@@ -1692,7 +1692,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   // rgba(52,198,217,x) era o accent estático — vira o accent do tema.
   transcriptCard: { backgroundColor: comAlfa(c.accent, 0.06), borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: comAlfa(c.accent, 0.30), padding: Spacing.base, marginTop: Spacing.sm },
-  transcriptLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight, textTransform: 'uppercase', marginBottom: 6 },
+  transcriptLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 0, color: c.accentLight, textTransform: 'uppercase', marginBottom: 6 },
   transcriptText: { fontSize: 15.5, color: c.onSurface, lineHeight: 22 },
   transcriptInterim: { color: c.onSurfaceMuted, fontStyle: 'italic' },
 
@@ -1760,12 +1760,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // '#0891B2' (e seu rgba) é um ciano fixo só pra diferenciar "peça" de
   // "serviço" (que já usa accent) — não tem token semântico no tema, mantido.
   tipoChipPeca: { backgroundColor: 'rgba(8,145,178,0.14)', borderColor: 'rgba(8,145,178,0.35)' },
-  tipoChipText: { fontSize: 11.5, fontWeight: '800' },
+  tipoChipText: { fontSize: 13, fontWeight: '800' },
   itemDescInput: { fontSize: 15, color: c.onSurface, lineHeight: 21, paddingVertical: 2, marginBottom: 10 },
   itemFields: { flexDirection: 'row', gap: 12 },
   qtyField: { width: 118 },
   valorField: { flex: 1 },
-  miniLabel: { fontSize: 11, fontWeight: '700', color: c.onSurfaceMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  miniLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, paddingHorizontal: 6, height: 44 },
   qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: c.primary, justifyContent: 'center', alignItems: 'center' },
   qtyValue: { fontSize: 15, fontWeight: '800', color: c.onSurface, minWidth: 22, textAlign: 'center' },
@@ -1781,7 +1781,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // não branco fixo: uma marca clara escolhida pelo usuário exige tinta escura.
   totalBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: c.primary, borderRadius: BorderRadius.lg, padding: Spacing.lg, ...sombrasDe(c).md },
   totalLabel: { fontSize: 13, color: comAlfa(c.onPrimary, 0.82), fontWeight: '600' },
-  totalHint: { fontSize: 11, color: comAlfa(c.onPrimary, 0.7), marginTop: 2 },
+  totalHint: { fontSize: 13, color: comAlfa(c.onPrimary, 0.7), marginTop: 2 },
   totalValue: { ...Typography.displaySerif, color: c.onPrimary },
 
   revFooter: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderTopWidth: 1, borderTopColor: c.outline, paddingHorizontal: Spacing.base, paddingTop: 12, paddingBottom: 26 },

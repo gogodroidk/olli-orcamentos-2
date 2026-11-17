@@ -2146,7 +2146,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
   // Textos/hairlines brancos abaixo pertencem ao GradientHeader (não migrado): o
   // header é sempre um banner colorido/escuro nos dois modos, então branco fixo
@@ -2167,7 +2167,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   weekStrip: { flexDirection: 'row', alignItems: 'stretch', gap: 4 },
   weekDay: { flex: 1, minHeight: 62, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center', paddingVertical: 7, borderWidth: 1, borderColor: 'transparent' },
   weekDaySelected: { backgroundColor: c.accentLight, borderColor: c.accentLight },
-  weekDayName: { fontSize: 10, fontWeight: '800', color: c.onSurfaceMuted },
+  weekDayName: { fontSize: 13, fontWeight: '800', color: c.onSurfaceMuted },
   weekDayNumber: { fontSize: 17, lineHeight: 22, fontWeight: '800', color: c.onSurface, marginTop: 2 },
   weekDayToday: { color: c.accentLight },
   weekDayTextSelected: { color: textoSobre(c.accentLight) },
@@ -2176,7 +2176,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Bolinha sobre o dia selecionado (fundo accent): um aro da cor do texto para não sumir.
   dayMarkerRing: { borderWidth: 1, borderColor: textoSobre(c.accentLight) },
   monthWeekNames: { flexDirection: 'row', marginBottom: 4 },
-  monthWeekName: { width: '14.2857%', textAlign: 'center', fontSize: 9.5, fontWeight: '800', color: c.onSurfaceMuted },
+  monthWeekName: { width: '14.2857%', textAlign: 'center', fontSize: 13, fontWeight: '800', color: c.onSurfaceMuted },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   monthDayCell: { width: '14.2857%', alignItems: 'center', paddingVertical: 2 },
   monthDay: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
@@ -2192,7 +2192,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   googleCardRow: { flexDirection: 'row', alignItems: 'center' },
   googleCardTitle: { fontSize: 14, fontWeight: '700', color: c.onSurface },
   googleCardHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
-  googleCardFooter: { fontSize: 11.5, color: c.onSurfaceMuted, marginTop: 10 },
+  googleCardFooter: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 10 },
 
   // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   routeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(52,198,217,0.12)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
@@ -2220,15 +2220,15 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   itemBar: { width: 4, alignSelf: 'stretch', borderRadius: 4, marginRight: 12 },
   itemTime: { width: 48, marginRight: 8 },
   itemHour: { fontSize: 15, fontWeight: '800', color: c.onSurface },
-  itemHourEnd: { fontSize: 11, color: c.onSurfaceMuted, marginTop: 1 },
+  itemHourEnd: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 1 },
   itemDiaTodo: { fontSize: 12, lineHeight: 15, fontWeight: '800', color: c.accentLight },
   itemTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   itemClient: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   itemMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' },
   tipoChip: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2 },
-  tipoChipText: { fontSize: 11, fontWeight: '800' },
+  tipoChipText: { fontSize: 13, fontWeight: '800' },
   addrRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
-  addrText: { fontSize: 11.5, color: c.onSurfaceMuted, flex: 1 },
+  addrText: { fontSize: 13, color: c.onSurfaceMuted, flex: 1 },
   statusLinha: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   itemClima: { marginTop: 8 },
   statusText: { fontSize: 12, fontWeight: '700' },

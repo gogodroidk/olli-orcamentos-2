@@ -705,7 +705,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   conteudo: { padding: Spacing.xl, gap: Spacing.base },
 
   statusChip: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  statusChipTexto: { fontSize: 11, fontWeight: '800' as const },
+  statusChipTexto: { fontSize: 13, fontWeight: '800' as const },
 
   bloco: {
     backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg,

@@ -344,10 +344,10 @@ function BlocoArrastavel({
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
   diaTodoLinha: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: c.outline },
-  diaTodoRotulo: { width: COLUNA_HORAS, fontSize: 11, fontWeight: '800', color: c.onSurfaceMuted, paddingTop: 8 },
+  diaTodoRotulo: { width: COLUNA_HORAS, fontSize: 13, fontWeight: '800', color: c.onSurfaceMuted, paddingTop: 8 },
   diaTodoChip: { backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, borderLeftWidth: 4, paddingHorizontal: 10, paddingVertical: 6 },
   linhaHora: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', height: 14, marginTop: -7 },
-  rotuloHora: { width: COLUNA_HORAS, fontSize: 11, fontWeight: '700', color: c.onSurfaceMuted },
+  rotuloHora: { width: COLUNA_HORAS, fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted },
   fio: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.outline },
   agora: { position: 'absolute', left: COLUNA_HORAS - 4, right: 0, flexDirection: 'row', alignItems: 'center', height: 10, marginTop: -5, zIndex: 5 },
   agoraBolinha: { width: 10, height: 10, borderRadius: 5 },
@@ -359,9 +359,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   blocoElevado: { zIndex: 10, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 14 },
   blocoLinha: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   blocoTitulo: { fontSize: 13, fontWeight: '800', color: c.onSurface },
-  blocoSub: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 1 },
+  blocoSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   riscado: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
   previa: { position: 'absolute', right: 4, top: 4, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  previaTexto: { fontSize: 11, fontWeight: '900' },
+  previaTexto: { fontSize: 13, fontWeight: '900' },
   salvando: { position: 'absolute', right: 4, bottom: 4 },
 });

@@ -48,7 +48,7 @@ export const RECURSO_REMOVE_MARCA: Recurso = 'remove_olli_brand';
 /**
  * RECURSOS_POR_PLANO — o que cada plano libera (decisão do dono, 01/10/2026).
  *
- * gratis: orçamentos ILIMITADOS (PDF, link e WhatsApp, sem cota mensal), com o
+ * gratis: até 5 orçamentos enviados por mês (PDF, link e WhatsApp), com o
  *   selo discreto "Feito com OLLI" no PDF, no recibo e no link; rascunhos,
  *   recibos, clientes, agenda e diagnóstico por código de erro. IA tem 3 usos/mês
  *   (cota, não plano). Nenhum recurso Pro/Empresa.

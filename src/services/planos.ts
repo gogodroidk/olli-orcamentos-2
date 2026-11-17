@@ -182,7 +182,7 @@ export function invalidarCachePlano(): void {
 // Mapa ÚNICO de quais recursos cada plano libera. Fonte de verdade para o hook
 // usePlano().temAcesso(recurso) e para o componente <GatePro>. NUNCA gatear o
 // fluxo de criar orçamento/recibo/cliente/agenda — é a alma do plano Grátis
-// (que, desde 01/10/2026, tem orçamentos ILIMITADOS: ver limitesComerciais.ts).
+// (que tem até 5 envios por mês desde 07/11/2026: ver limitesComerciais.ts).
 
 /**
  * Identificadores dos recursos gateáveis. String union para dar autocomplete e

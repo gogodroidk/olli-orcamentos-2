@@ -174,8 +174,8 @@ const APRESENTACAO: Record<PlanoId, { preco: FontePreco | null; icon: string; ct
 };
 
 // Lista base dos planos. Nome, tagline e benefícios vêm de `planosBase.ts` (a tabela
-// ÚNICA que o painel, a landing e os e-mails também leem — Grátis ilimitado desde
-// 01/10/2026). Preço NUNCA é literal aqui: vem de precosPlanos (a fonte conferida
+// ÚNICA que o painel, a landing e os e-mails também leem — Grátis com 5 envios/mês
+// desde 07/11/2026). Preço NUNCA é literal aqui: vem de precosPlanos (a fonte conferida
 // contra a Stripe). `atual` é decidido em runtime (plano lido de getPlanoAtual()).
 const PLANOS_BASE: Omit<Plano, 'atual'>[] = TABELA_PLANOS.map((p) => ({
   id: p.id,
@@ -981,7 +981,7 @@ export default function PlanosScreen() {
           <View style={styles.cobrancaAviso}>
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
             <Text style={styles.cobrancaAvisoTexto}>Não deu para confirmar seu plano agora. O estado exibido pode estar desatualizado e nenhuma nova contratação será iniciada até você tentar de novo.</Text>
-            <TouchableOpacity onPress={carregarPlano} activeOpacity={0.8} style={styles.avisoAcaoHit}>
+            <TouchableOpacity accessibilityRole="button" onPress={carregarPlano} activeOpacity={0.8} style={styles.avisoAcaoHit}>
               <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
             </TouchableOpacity>
           </View>
@@ -1408,7 +1408,7 @@ function PlanoCard({
           </View>
         )
       ) : plano.destaque ? (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
+        <TouchableOpacity accessibilityRole="button" onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
           <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan, !acoesDisponiveis && styles.ctaDisabled]}>
             {carregandoAcao ? (
               <ActivityIndicator size="small" color={gradientes.sobreBrand} />
@@ -1421,7 +1421,7 @@ function PlanoCard({
           </LinearGradient>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={[styles.ctaOutline, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.ctaOutline, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
           {carregandoAcao ? (
             <ActivityIndicator size="small" color={cores.primaryLight} />
           ) : (
@@ -1473,7 +1473,7 @@ function PlanoCard({
           CTA principal e é claramente secundário — a verdade sobre o custo já
           está na linha acima, então aqui é só o caminho, não a promessa. */}
       {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && !plano.atual && plano.id === 'pro' && linha12x ? (
-        <TouchableOpacity style={[styles.ctaSecundario, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || !acoesDisponiveis }}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.ctaSecundario, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || !acoesDisponiveis }}>
           <MaterialCommunityIcons name="credit-card-outline" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Pagar em 12x no cartão</Text>
         </TouchableOpacity>
@@ -1484,7 +1484,7 @@ function PlanoCard({
           viraria o caminho de venda por fora do app, o link-out que a
           guideline proíbe. */}
       {COMPRA_NO_APP && !plano.atual && plano.id === 'empresa' && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
-        <TouchableOpacity style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
+        <TouchableOpacity accessibilityRole="button" style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
           <MaterialCommunityIcons name="whatsapp" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Falar com a gente</Text>
         </TouchableOpacity>
@@ -1745,7 +1745,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // calculado), correto pra qualquer cor de marca escolhida pelo usuário.
   toggleTextActive: { color: c.onPrimary },
   toggleBadge: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 7, paddingVertical: 2 },
-  toggleBadgeText: { fontSize: 10, fontWeight: '800', color: c.success },
+  toggleBadgeText: { fontSize: 13, fontWeight: '800', color: c.success },
 
   cardFrame: { borderRadius: BorderRadius.xl + 2, padding: 2, marginBottom: Spacing.base },
   cardPlain: { borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, marginBottom: Spacing.base, backgroundColor: c.surface, ...sombrasDe(c).sm },
@@ -1762,9 +1762,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardName: { fontSize: 20, fontWeight: '800', color: c.onSurface },
   popular: { backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
   // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
-  popularText: { fontSize: 9.5, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0.6 },
+  popularText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0.6 },
   atualPill: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  atualPillText: { fontSize: 10, fontWeight: '800', color: c.success },
+  atualPillText: { fontSize: 13, fontWeight: '800', color: c.success },
   cardTagline: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
 
   priceRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: Spacing.base, marginBottom: 4 },
@@ -1773,7 +1773,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   priceDestaque: { color: c.accentLight },
   pricePeriod: { fontSize: 13.5, color: c.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 6 },
   priceSaveBadge: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, marginBottom: 7 },
-  priceSaveBadgeText: { fontSize: 10.5, fontWeight: '800', color: c.success },
+  priceSaveBadgeText: { fontSize: 13, fontWeight: '800', color: c.success },
   // Linha do anual (informação): equivalente /mês, total do ano e −20%.
   notaAnual: { fontSize: 12.5, color: c.onSurfaceVariant, fontWeight: '600', marginTop: 2, lineHeight: 17 },
 
@@ -1819,7 +1819,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   compHeadCell: { width: 84, alignItems: 'center', justifyContent: 'flex-start', paddingVertical: Spacing.sm, paddingHorizontal: 4, gap: 3 },
   compHeadNome: { fontSize: 13, fontWeight: '800', color: c.onSurface },
   compHeadNomeAtual: { color: c.success },
-  compHeadPreco: { fontSize: 10.5, color: c.onSurfaceVariant, fontWeight: '600', textAlign: 'center' },
+  compHeadPreco: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600', textAlign: 'center' },
   compAtualPill: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 7, paddingVertical: 1 },
   compAtualPillText: { fontSize: 8.5, fontWeight: '800', color: c.success, letterSpacing: 0.3 },
   compRow: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
@@ -1829,7 +1829,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   compCell: { width: 84, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 4 },
   // Realce leve da coluna do plano atual — a barra de fundo que "puxa o olho".
   compColAtual: { backgroundColor: comAlfa(c.success, 0.08) },
-  compValor: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant, textAlign: 'center' },
+  compValor: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, textAlign: 'center' },
   compValorAtual: { color: c.success },
   compAnualNota: { fontSize: 12, color: c.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.md, lineHeight: 17, paddingHorizontal: 8 },
 });

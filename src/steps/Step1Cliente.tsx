@@ -186,7 +186,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
           placeholderTextColor={cores.onSurfaceMuted}
         />
         {query ? (
-          <TouchableOpacity onPress={() => { setQuery(''); setResults([]); setShowResults(false); }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Limpar a busca" onPress={() => { setQuery(''); setResults([]); setShowResults(false); }}>
             <MaterialCommunityIcons name="close-circle" size={20} color={cores.onSurfaceMuted} />
           </TouchableOpacity>
         ) : null}
@@ -260,7 +260,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
               {orc.clienteCpfCnpj ? <Text style={styles.selectedInfo}>{orc.clienteCpfCnpj}</Text> : null}
               {orc.clienteEndereco ? <Text style={styles.selectedInfo} numberOfLines={2}>{orc.clienteEndereco}</Text> : null}
             </View>
-            <TouchableOpacity
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Limpar a busca"
               onPress={() => { onChange({ clienteId: '', clienteNome: '', clienteTelefone: '', clienteCpfCnpj: undefined, clienteEndereco: undefined }); setQuery(''); }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -283,7 +283,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
         <View style={styles.modal}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Novo Cliente</Text>
-            <TouchableOpacity onPress={() => { setShowNew(false); setNcErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar" onPress={() => { setShowNew(false); setNcErrors({}); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
             </TouchableOpacity>
           </View>

@@ -405,9 +405,9 @@ export default function VisualizarOrcamentoScreen() {
   }
 
   /**
-   * Registra o envio (teste automático do Pro + funil). O Grátis é ilimitado: falha do
+   * Registra o envio (teste automático do Pro + funil). Falha do
    * registro NUNCA barra o envio (`sem_registro`). Exceção única: `cota_esgotada` do
-   * limite de conta nova (P0-09), tratada logo abaixo (ver limitesComerciais.ts).
+   * limite do Grátis (P0-09), tratada logo abaixo (ver limitesComerciais.ts).
    */
   async function autorizarEntrega(canal: CanalEnvioOrcamento): Promise<ReservaEnvioOrcamento | null> {
     if (!orc) return null;
@@ -2003,7 +2003,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   revisaoTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
   revisaoTexto: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginTop: 2 },
   editadoEm: {
-    fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant,
+    fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant,
     textAlign: 'right', marginBottom: 8,
   },
 
@@ -2017,7 +2017,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.28),
     alignItems: 'center', justifyContent: 'center',
   },
-  closeEyebrow: { fontSize: 11, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
+  closeEyebrow: { fontSize: 13, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
   closeTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginTop: 2 },
   closeSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   closePrimary: {
@@ -2057,10 +2057,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
-  closeActionText: { fontSize: 11.5, fontWeight: '800', color: c.accentLight },
+  closeActionText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   closeChecklist: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   closeCheck: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 6 },
-  closeCheckText: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
+  closeCheckText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   closeCheckTextWarn: { color: c.warning },
 
   // Aceite do cliente (assinatura) — reusa closeTop/closeEyebrow/closeTitle/
@@ -2085,7 +2085,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     minHeight: 44, marginTop: 6,
   },
   assinRefazerTexto: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
-  assinNota: { fontSize: 11, color: c.onSurfaceVariant, lineHeight: 16, marginTop: 10 },
+  assinNota: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 17, marginTop: 10 },
 
   cardTitle: { fontSize: 14, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   clientHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -2143,7 +2143,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full,
     paddingHorizontal: 8, paddingVertical: 2,
   },
-  versaoBadgeText: { fontSize: 11, fontWeight: '800', color: c.onSurfaceVariant },
+  versaoBadgeText: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
   versaoData: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
   versaoValor: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
   versaoResumo: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 4 },
