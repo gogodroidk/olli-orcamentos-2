@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { PaperProvider } from 'react-native-paper';
+import { CaptchaHost } from './src/components/auth/CaptchaHost';
 import { registerTranslation, pt as ptDatas } from 'react-native-paper-dates';
 import { iniciarRastreio, resetarRastreioTelas, telaMudou } from './src/services/rastreioTelas';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
@@ -587,6 +588,7 @@ function AppConteudo() {
               emulador: abaixo do breakpoint o layout mobile flui em largura
               total, como qualquer site responsivo. No nativo isto nunca se
               aplicou — comportamento do APK intacto. */}
+          <CaptchaHost />
           <View style={[styles.appFrame, { backgroundColor: cores.background }]}>
             {ready && versao === 'atualizar' && <AtualizacaoObrigatoria />}
             {ready && versao !== 'atualizar' && (

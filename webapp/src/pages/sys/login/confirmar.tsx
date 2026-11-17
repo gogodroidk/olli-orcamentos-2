@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { supabase, urlDeEntrada } from "@/lib/supabase";
+import { obterTokenCaptcha, opcoesCaptcha } from "@/lib/captcha";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
@@ -199,17 +200,19 @@ function FalhaDoLink({ motivo, tipoLink }: { motivo: MotivoFalhaAcesso; tipoLink
 	const valido = /^\S+@\S+\.\S+$/.test(email.trim());
 
 	async function pedir(alvo: string) {
+		const captchaToken = await obterTokenCaptcha();
+		const captcha = opcoesCaptcha(captchaToken);
 		switch (reenvio) {
 			case "recuperacao":
-				return (await supabase.auth.resetPasswordForEmail(alvo, { redirectTo: urlRecuperacaoSenha() })).error;
+				return (await supabase.auth.resetPasswordForEmail(alvo, { redirectTo: urlRecuperacaoSenha(), ...captcha })).error;
 			case "confirmacao_cadastro":
 				return (
-					await supabase.auth.resend({ type: "signup", email: alvo, options: { emailRedirectTo: `${URL_PAINEL}/auth/login` } })
+					await supabase.auth.resend({ type: "signup", email: alvo, options: { emailRedirectTo: `${URL_PAINEL}/auth/login`, ...captcha } })
 				).error;
 			case "troca_email":
-				return (await supabase.auth.resend({ type: "email_change", email: alvo })).error;
+				return (await supabase.auth.resend({ type: "email_change", email: alvo, options: captcha })).error;
 			default:
-				return (await supabase.auth.signInWithOtp({ email: alvo, options: { shouldCreateUser: false } })).error;
+				return (await supabase.auth.signInWithOtp({ email: alvo, options: { shouldCreateUser: false, ...captcha } })).error;
 		}
 	}
 

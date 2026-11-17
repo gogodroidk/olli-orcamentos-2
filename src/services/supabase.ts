@@ -19,6 +19,7 @@ import { queryParamsGoogleConvite } from './conviteGoogle';
 import { decidirSessaoNoBoot, erroDeRenovacaoEhDeRede, interpretarSessaoGuardada, type DecisaoSessao } from './sessaoOffline';
 import { criarFetchResiliente } from './refreshResiliente';
 import { registrarHoraDoServidor } from './relogioServidor';
+import { obterTokenCaptcha, opcoesCaptcha } from './captcha';
 
 export function isSupabaseConfigured(): boolean {
   return !!SUPABASE_URL && !!SUPABASE_ANON_KEY && SUPABASE_URL.startsWith('http');
@@ -88,10 +89,11 @@ export async function signUp(email: string, password: string, nome?: string, tel
     const tel = normalizarTelefoneBR(telefone);
     if (tel) meta.telefone = tel;
   }
+  const captchaToken = await obterTokenCaptcha();
   const { data, error } = await supabase.auth.signUp({
     email: email.trim(),
     password,
-    options: Object.keys(meta).length > 0 ? { data: meta } : undefined,
+    options: { ...(Object.keys(meta).length > 0 ? { data: meta } : {}), ...opcoesCaptcha(captchaToken) },
   });
   if (error) throw error;
   return data;
@@ -99,7 +101,12 @@ export async function signUp(email: string, password: string, nome?: string, tel
 
 export async function signIn(email: string, password: string) {
   if (!supabase) throw new Error('Backup na nuvem não configurado.');
-  const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+  const captchaToken = await obterTokenCaptcha();
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.trim(),
+    password,
+    options: opcoesCaptcha(captchaToken),
+  });
   if (error) throw error;
   return data;
 }
@@ -118,11 +125,16 @@ export async function signIn(email: string, password: string) {
  */
 export async function enviarCodigoLogin(email: string): Promise<{ error: unknown }> {
   if (!supabase) return { error: new Error('Backup na nuvem não configurado.') };
-  const { error } = await supabase.auth.signInWithOtp({
-    email: email.trim(),
-    options: { shouldCreateUser: false },
-  });
-  return { error };
+  try {
+    const captchaToken = await obterTokenCaptcha();
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { shouldCreateUser: false, ...opcoesCaptcha(captchaToken) },
+    });
+    return { error };
+  } catch (error) {
+    return { error };
+  }
 }
 
 /**
@@ -131,10 +143,16 @@ export async function enviarCodigoLogin(email: string): Promise<{ error: unknown
  */
 export async function pedirRecuperacaoSenha(email: string): Promise<{ error: unknown }> {
   if (!supabase) return { error: new Error('Backup na nuvem não configurado.') };
-  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-    redirectTo: urlRecuperacaoSenha(),
-  });
-  return { error };
+  try {
+    const captchaToken = await obterTokenCaptcha();
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: urlRecuperacaoSenha(),
+      ...opcoesCaptcha(captchaToken),
+    });
+    return { error };
+  } catch (error) {
+    return { error };
+  }
 }
 
 /**
