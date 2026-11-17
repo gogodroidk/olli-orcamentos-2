@@ -17,6 +17,7 @@ import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 import { RootStackParamList, TabParamList } from '../../navigation/AppNavigator';
 import { Orcamento, Recibo, StatusOrcamento, STATUS_LABELS } from '../../types';
+import { GRUPOS_ORCAMENTOS, UI_V2_NAV, statusDoGrupo, type GrupoOrcamentos } from '../../services/uiFlags';
 import { getStatusFinanceiro } from '../../services/pagamentos';
 import { FinanceiroBadge } from '../../components/FinanceiroBadge';
 
@@ -27,7 +28,12 @@ type Route = RouteProp<TabParamList, 'OrcamentosTab'>;
 // fonte única e exaustiva (STATUS_LABELS, na ordem do type), para os 10 status
 // ficarem sempre cobertos — nenhum ("Visualizado"/"Em negociação"/"Expirado"/
 // "Convertido") fica preso só no "Todos" quando a lista cresce. "Todos" primeiro.
-const FILTROS_STATUS: Array<{ chave: StatusOrcamento | 'todos'; label: string }> = [
+// v1.3 (flag ui_v2_nav): 3 grupos sobre os 10 status.
+type FiltroDesk = StatusOrcamento | GrupoOrcamentos;
+const FILTROS_V2: Array<{ chave: FiltroDesk; label: string }> = GRUPOS_ORCAMENTOS.map((g) => ({ chave: g.id, label: g.label }));
+const GRUPOS = new Set<string>(['com_cliente', 'aprovados', 'rascunhos']);
+
+const FILTROS_STATUS: Array<{ chave: FiltroDesk; label: string }> = [
   { chave: 'todos', label: 'Todos' },
   ...(Object.keys(STATUS_LABELS) as StatusOrcamento[]).map(chave => ({ chave, label: STATUS_LABELS[chave] })),
 ];
@@ -59,7 +65,7 @@ export default function OrcamentosDesktopScreen() {
   const [todos, setTodos] = useState<Orcamento[]>([]);
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [busca, setBusca] = useState('');
-  const [statusFiltro, setStatusFiltro] = useState<StatusOrcamento | 'todos'>('todos');
+  const [statusFiltro, setStatusFiltro] = useState<FiltroDesk>('todos');
   const [recorteInicial, setRecorteInicial] = useState<typeof recorteDaRota>(recorteDaRota);
   const [carregando, setCarregando] = useState(true);
 
@@ -84,7 +90,10 @@ export default function OrcamentosDesktopScreen() {
     } else if (recorteInicial) {
       r = r.filter((o) => o.status === recorteInicial);
     }
-    if (statusFiltro !== 'todos') r = r.filter((o) => o.status === statusFiltro);
+    if (GRUPOS.has(statusFiltro)) {
+      const doGrupo = statusDoGrupo(statusFiltro as GrupoOrcamentos) ?? [];
+      r = r.filter((o) => doGrupo.includes(o.status));
+    } else if (statusFiltro !== 'todos') r = r.filter((o) => o.status === statusFiltro);
     if (busca.trim()) {
       const q = normalizarBusca(busca);
       r = r.filter((o) => normalizarBusca(o.clienteNome).includes(q) || o.numero.includes(q) || formatarNumeroExibicao(o.numero).includes(q));
@@ -194,7 +203,7 @@ export default function OrcamentosDesktopScreen() {
             onPress={() => setRecorteInicial(undefined)}
           />
         )}
-        {FILTROS_STATUS.map((f) => (
+        {(UI_V2_NAV ? FILTROS_V2 : FILTROS_STATUS).map((f) => (
           <Chip
             key={f.chave}
             label={f.label}
