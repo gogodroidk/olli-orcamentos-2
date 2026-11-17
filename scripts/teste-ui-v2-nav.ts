@@ -48,16 +48,18 @@ ok('grupos não se repetem', new Set(todos).size === todos.length);
 ok('Com o cliente inclui visualizado', STATUS_DO_GRUPO.com_cliente.includes('visualizado'));
 
 // ─── Entrar: erro no campo ────────────────────────────────────────────────
+const oito = 'x'.repeat(8);
+const curta = 'x'.repeat(3);
 const vazio = { nome: '', email: '', telefone: '', senha: '', confirmar: '' };
 ok('login: só e-mail e senha', igual(Object.keys(validarTudo(vazio, 'login')).sort(), ['email', 'senha']));
 ok('signup: nome, e-mail, telefone e senha vazios', igual(Object.keys(validarTudo(vazio, 'signup')).sort(), ['email', 'nome', 'senha', 'telefone']));
 ok('e-mail sem domínio', !!validarCampo('email', { ...vazio, email: 'joao@gmail' }, 'signup'));
 ok('e-mail ok', validarCampo('email', { ...vazio, email: 'joao@gmail.com' }, 'signup') === undefined);
-ok('senha curta no cadastro', !!validarCampo('senha', { ...vazio, senha: '123' }, 'signup'));
-ok('senha curta no login passa (servidor decide)', validarCampo('senha', { ...vazio, senha: '123' }, 'login') === undefined);
-ok('confirmação diferente', !!validarCampo('confirmar', { ...vazio, senha: '12345678', confirmar: '12345679' }, 'signup'));
+ok('senha curta no cadastro', !!validarCampo('senha', { ...vazio, senha: curta }, 'signup'));
+ok('senha curta no login passa (servidor decide)', validarCampo('senha', { ...vazio, senha: curta }, 'login') === undefined);
+ok('confirmação diferente', !!validarCampo('confirmar', { ...vazio, senha: oito, confirmar: `${oito}y` }, 'signup'));
 ok('telefone sem DDD', !!validarCampo('telefone', { ...vazio, telefone: '9999-9999' }, 'signup'));
-const completo = { nome: 'João', email: 'joao@gmail.com', telefone: '(11) 99999-9999', senha: '12345678', confirmar: '12345678' };
+const completo = { nome: 'João', email: 'joao@gmail.com', telefone: '(11) 99999-9999', senha: oito, confirmar: oito };
 ok('cadastro completo sem erro', Object.keys(validarTudo(completo, 'signup')).length === 0);
 ok('rate limit no cadastro = texto humano', erroAuthNoCampo(new Error('email rate limit exceeded'), 'signup').geral === 'Não deu para criar a conta agora. Tente em 1 minuto.');
 ok('e-mail já cadastrado vai pro campo e-mail', !!erroAuthNoCampo(new Error('User already registered'), 'signup').email);
