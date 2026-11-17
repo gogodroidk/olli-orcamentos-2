@@ -25,6 +25,7 @@ import type { VerticalId } from '../services/verticais';
 import HomeScreen from '../screens/HomeScreen';
 import OrcamentosScreen from '../screens/OrcamentosScreen';
 import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
+import { limiteDeTela } from '../components/ErrorBoundary';
 import DiagnosticoScreen from '../screens/DiagnosticoScreen';
 import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
@@ -535,6 +536,7 @@ function TabNavigator() {
 
   return (
     <Tab.Navigator
+      screenLayout={limiteDeTela}
       screenOptions={{
         headerShown: false,
         ...transicaoAba,
@@ -741,6 +743,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
   const capa = opcoesTransicao('fade', reduzir);
   return (
     <Stack.Navigator
+      screenLayout={limiteDeTela}
       initialRouteName={initialRouteName ?? 'Tabs'}
       screenOptions={{
         headerShown: false,

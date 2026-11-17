@@ -70,3 +70,25 @@ const aninhado = limparEventoSentry({ diagnostico: { exception: { value: 'x' } }
 assert.equal('exception' in aninhado, false, 'fora da raiz, `exception` continua sendo descartada');
 
 console.log('PASSOU: PII, autenticação, corpos, contexto, query e breadcrumbs sensíveis removidos; exceção e stack preservados.');
+
+// CQ-APP-13-B: transação sem contexts.trace é rejeitada pelo Sentry (invalid_transaction).
+{
+  const transacao = {
+    type: 'transaction', transaction: 'Home', start_timestamp: 1, timestamp: 2,
+    contexts: {
+      trace: { trace_id: 'a'.repeat(32), span_id: 'b'.repeat(16), op: 'navigation', status: 'ok', data: { email: 'cliente@exemplo.com' } },
+      os: { name: 'Android', version: '14' },
+      cliente: { nome: 'Pessoa Real' },
+      device: { model: 'Pixel 7', name: 'Celular do João' },
+    },
+  };
+  const t = limparEventoSentry(transacao) as Record<string, any>;
+  assert.equal(t.contexts.trace.trace_id, 'a'.repeat(32));
+  assert.equal(t.contexts.trace.span_id, 'b'.repeat(16));
+  assert.equal(t.contexts.trace.op, 'navigation');
+  assert.equal(t.contexts.os.name, 'Android');
+  assert.equal(t.contexts.device.model, 'Pixel 7');
+  const ser = JSON.stringify(t);
+  for (const proibido of ['cliente@exemplo.com', 'Pessoa Real', 'Celular do João']) assert.equal(ser.includes(proibido), false, proibido);
+  console.log('  ✓ transação mantém contexts.trace (sem PII)');
+}
