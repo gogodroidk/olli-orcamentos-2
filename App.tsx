@@ -104,6 +104,10 @@ Sentry.init({
   enableNativeFramesTracking: true,
   enableStallTracking: true,
   enableAppStartTracking: true,
+  // Release Health (sessões sem travamento, meta >= 99,9%). Padrão do SDK já é
+  // true; explícito para ninguém desligar sem ver. A sessão é envelope próprio
+  // (não passa pelo beforeSend), então o redator não a derruba.
+  enableAutoSessionTracking: true,
   // Array = SOMA aos integrations padrão do SDK (não substitui).
   integrations: [navegacaoSentry],
 });
