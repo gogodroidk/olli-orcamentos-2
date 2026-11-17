@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { GLOBAL_CONFIG } from "@/global-config";
+import { aceiteParaCadastro, TEXTO_MARKETING_V1 } from "@/lib/aceiteMarketing";
 import { origemUtmParaCadastro, registrarCadastroConcluido } from "@/lib/marketing";
 import { navegadorInAppAtual } from "@/lib/navegadorInApp";
 import { registrarFunilAuth, supabase } from "@/lib/supabase";
@@ -25,6 +26,7 @@ interface RegisterFormValues {
 	email: string;
 	password: string;
 	confirmPassword: string;
+	aceiteMarketing: boolean;
 }
 
 // Landing (Astro) publica os termos e a política — fica fora do domínio do
@@ -76,6 +78,8 @@ function RegisterForm() {
 			email: "",
 			password: "",
 			confirmPassword: "",
+			// Nunca pré-marcada: silêncio não é aceite (LGPD).
+			aceiteMarketing: false,
 		},
 	});
 
@@ -96,6 +100,8 @@ function RegisterForm() {
 						phone,
 						// Origem da campanha (UTM/fbclid/gclid) capturada na landing ou nesta URL.
 						...origemUtmParaCadastro(),
+						// Aceite de marketing só existe se a caixa foi marcada; vira registro após o login.
+						...aceiteParaCadastro(values.aceiteMarketing === true),
 					},
 				},
 			});
@@ -259,6 +265,29 @@ function RegisterForm() {
 								/>
 							</FormControl>
 							<FormMessage />
+						</FormItem>
+					)}
+				/>
+
+				<FormField
+					control={form.control}
+					name="aceiteMarketing"
+					render={({ field }) => (
+						<FormItem className="flex flex-row items-start gap-2 space-y-0">
+							<FormControl>
+								<input
+									id="aceite-marketing"
+									type="checkbox"
+									className="mt-1 size-4 shrink-0"
+									checked={field.value === true}
+									onChange={(e) => field.onChange(e.target.checked)}
+									onBlur={field.onBlur}
+									ref={field.ref}
+								/>
+							</FormControl>
+							<label htmlFor="aceite-marketing" className="text-xs leading-relaxed text-muted-foreground">
+								{TEXTO_MARKETING_V1}
+							</label>
 						</FormItem>
 					)}
 				/>
