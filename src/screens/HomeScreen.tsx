@@ -917,7 +917,7 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="Abrir o seu dia: visitas, lembretes e cobranças de hoje"
             >
-              <MaterialCommunityIcons name="white-balance-sunny" size={22} color={cores.accent} />
+              <MaterialCommunityIcons name="white-balance-sunny" size={22} color={cores.accentLight} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.hojeSecaoTitulo}>Seu dia</Text>
                 <Text style={styles.hojeSecaoSub}>Visitas, lembretes e quem precisa de resposta hoje</Text>
