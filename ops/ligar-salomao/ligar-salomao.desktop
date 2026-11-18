@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Ligar pro Salomão
+Comment=Chamada de voz ao vivo com o Salomão (Maestro da equipe OLLI)
+Exec=/home/igor/.local/bin/olli-ligar-salomao
+Icon=/home/igor/wt/cq-ligar-salomao/ops/ligar-salomao/public/icone-192.png
+Terminal=false
+StartupNotify=false
+Categories=Network;
