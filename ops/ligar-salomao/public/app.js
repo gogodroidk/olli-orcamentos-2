@@ -87,7 +87,6 @@ async function conectar(retomada) {
       if (sc.inputTranscription?.text) {
         falaIgor = (falaIgor + sc.inputTranscription.text).slice(-600);
         falaTurno = (falaTurno + sc.inputTranscription.text).slice(-300);
-        estadoDepois = false;
         if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${(falaTurno || falaIgor).slice(-200)}`;
       }
       if (sc.outputTranscription?.text) {
@@ -97,7 +96,7 @@ async function conectar(retomada) {
       }
       for (const p of sc.modelTurn?.parts || []) if (p.inlineData?.data) tocar(p.inlineData.data, p.inlineData.mimeType);
       // falaTurno = só o que o Igor disse depois da última fala da voz; ultimaFalaVoz = última fala completa (com voz) do modelo
-      if (sc.turnComplete) { pDele = null; if (falaDele.trim()) { ultimaFalaVoz = falaDele; falaTurno = ""; } falaDele = ""; }
+      if (sc.turnComplete) { pDele = null; if (falaDele.trim()) { ultimaFalaVoz = falaDele; falaTurno = ""; estadoDepois = false; } falaDele = ""; }
     };
   });
 }
