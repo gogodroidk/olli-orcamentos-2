@@ -239,6 +239,8 @@ export interface Cliente {
   telefone: string;
   cpf?: string;
   cnpj?: string;
+  /** E-mail do cliente — OPCIONAL (I-0053). Só nome e telefone são obrigatórios; vazio = não informado. */
+  email?: string;
   endereco?: string;
   complemento?: string;
   estado?: string;
