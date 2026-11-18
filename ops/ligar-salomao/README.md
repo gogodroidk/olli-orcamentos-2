@@ -15,14 +15,16 @@ celular ──(áudio direto)──▶ Google Gemini Live (gemini-3.8-live, voz 
 - **Configuração travada no token** (`fieldMask`): persona, voz e as 2 ferramentas vêm do servidor; o navegador não troca prompt nem adiciona ferramenta (testado: setup forjado é ignorado).
 - **Acesso remoto**: só pelo hostname `comando.ollizap.online/ligar/` (atrás do Cloudflare Access "Central de Comando", Google do Igor) **e** o servidor revalida o JWT do Access (assinatura, aud, iss, exp, e-mail). Sem config = remoto recusado. Host estranho = 421.
 - **POST**: exige JSON + cabeçalho `X-Ligar: 1` + mesma origem (anti-CSRF). Limites por janela.
-- **Ferramentas**: só 2. Sem shell (execFile sem shell, filho sem variáveis de segredo). Ordem só sai depois que a voz repete e o Igor confirma. O recado leva a transcrição do que o Igor falou, para o Salomão conferir.
-- **Injeção**: estado da empresa vai marcado como DADO e mascarado (chaves, telefone, e-mail, CPF/CNPJ); a persona manda ignorar ordens dentro dos dados.
+- **Ferramentas**: só 2. Sem shell (execFile sem shell, filho sem variáveis de segredo).
+- **Confirmação travada em código** (P1 do LIVRE): o recado só sai se a fala do Igor *depois* da última fala da voz confirmar ("sim", "confirmo", "pode mandar"…, sem "não/cancela"). Conferido no navegador **e** no servidor; recusa vai para o log. O recado leva a transcrição real e avisa o Salomão que voz não autoriza zona de aprovação (dinheiro, produção, segredo, cliente).
+- **Injeção/LGPD**: estado da empresa vai marcado como DADO e mascarado (chaves, telefone, e-mail, CPF/CNPJ); falas de vendas/atendimento/celular (texto de lead) ficam fora. Resposta do Salomão só vale com o código único do recado (`L` + 8 hex).
 - **Botão de pânico**: `touch ~/.olli-ligar/desligado` desliga token e ferramentas na hora.
 - Logs (sem conteúdo de áudio): `~/.olli-ligar/acessos.jsonl`, `~/.olli-ligar/ligacoes.jsonl` (duração, tokens, custo).
 
 ## Rodar / conferir
 ```bash
-node --test ops/ligar-salomao/teste.mjs                         # 13 testes, sem rede
+node --test ops/ligar-salomao/teste.mjs                         # 16 testes, sem rede
+bash ops/ligar-salomao/instalar.sh                               # copia para ~/.local/share/olli-ligar-salomao (o serviço roda dali)
 systemctl --user daemon-reload && systemctl --user enable --now olli-ligar-salomao.service
 olli-ligar-salomao                                               # botão "Ligar pro Salomão" (abre/reaproveita a aba)
 ```
