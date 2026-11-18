@@ -192,7 +192,6 @@ function macros() {
     { name: 'Venda fechada', actions: [
       ...tirarFunil('funil-fechado'),
       { action_name: 'add_label', action_params: ['funil-fechado', 'pedido-fechado'] },
-      { action_name: 'change_priority', action_params: ['high'] },
       { action_name: 'add_private_note', action_params: ['Venda fechada. Próximo passo: conferir pagamento e entregar.'] },
     ] },
     { name: 'Pedir dados — OLLI', actions: [
