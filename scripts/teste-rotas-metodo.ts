@@ -121,8 +121,9 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   // 405, como as demais rotas de dinheiro. `/revenuecat/` saiu junto com o RevenueCat.
   // `/whatsapp/` (worker/src/whatsappCloud.js: webhook, enviar, fila, aprovar) também responde o próprio 405 por
   // rota (webhook GET+POST, as demais POST/GET) e retorna antes da tabela — por isso é delegada, não tabelada.
+  // `/nfse/` (worker/src/nfse.js) responde o próprio 404/405 e retorna antes da tabela.
   // `/apple/` (worker/src/appleRotas.js: /apple/config, /apple/verificar, /apple/notificacoes) também responde o próprio 405 e 404.
-  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/apple/', '/whatsapp/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/', '/ical/'];
+  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/apple/', '/whatsapp/', '/equipe/', '/conta/', '/o/', '/q/', '/e/', '/v/', '/ical/', '/nfse/'];
 
   // Rotas resolvidas no roteador de topo por igualdade de path.
   const exatas = new Set(

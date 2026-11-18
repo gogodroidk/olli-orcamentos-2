@@ -53,6 +53,10 @@
     // AbacatePay liberar Pix Automático na loja: criar o produto MONTHLY de R$ 39,00 lá, acrescentar aqui
     //   "ABACATE_PA_PRODUTO_PRO_MENSAL": "prod_…"   e trocar este valor para "true". Ver docs/ABACATEPAY.md (Pix Automático).
     "ABACATE_PIX_AUTOMATICO": "false",
+    // NFS-e (nota de serviço, Fase 1) — DESLIGADA. "1" liga as rotas /nfse/*. NFSE_PROVEDOR ausente = mock (simulado).
+    // Provedor real (Focus NFe) só em homologação: NFSE_PROVEDOR=focus + FOCUS_NFE_AMBIENTE=homologacao + secret
+    // FOCUS_NFE_TOKEN (wrangler secret put). Precisa da migration 20261118120000_nfse_f1.sql aplicada. Ver docs/NFSE.md.
+    "NFSE_ENABLED": "0",
     // E-mail REAL ligado (dono autorizou em 29/09/2026). Só linhas novas da
     // outbox nascem scope=production (config no banco, migration 20260929200000);
     // as boas-vindas antigas presas em hold foram descartadas sem envio.

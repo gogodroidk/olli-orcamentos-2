@@ -62,6 +62,7 @@ import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
+import { handleNfse, NFSE_ROUTES } from './nfse.js';
 import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
 import { handleApple } from './appleRotas.js';
 import { cronPlayComBatimento } from './playBatimento.js';
@@ -1012,6 +1013,12 @@ const handler = {
     // Com chave de dev em produção a rota fica DESLIGADA (nunca modo demo).
     if (url.pathname.startsWith('/abacate/')) {
       return handleAbacate(request, env, url);
+    }
+
+    // ── NFS-e (nota de serviço) — Fase 1, atrás da flag NFSE_ENABLED ("0" por padrão). Provedor mock por
+    // padrão; Focus só em homologação. Ver nfse.js. Desligada: /nfse/config diz false e o resto responde 503.
+    if (url.pathname.startsWith('/nfse/')) {
+      return NFSE_ROUTES.has(url.pathname) ? handleNfse(request, env, url) : new Response(JSON.stringify({ erro: 'nao_encontrado' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     }
 
     // ── ASSINATURA PELA GOOGLE PLAY — Play Billing direto (sem RevenueCat) ──

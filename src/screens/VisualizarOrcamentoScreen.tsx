@@ -100,6 +100,7 @@ import { avisar } from './desktop/dialogo';
 import { recarregarPlanoGlobal } from '../hooks/usePlano';
 import type { CanalEnvioOrcamento, ReservaEnvioOrcamento } from '../services/limitesComerciais';
 import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
+import { EmitirNotaBotao } from '../components/EmitirNotaBotao';
 import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { eventoDoStatusOrcamento, type EventoDica } from '../services/dicasRoteiro';
@@ -1252,6 +1253,9 @@ export default function VisualizarOrcamentoScreen() {
               </View>
             </Aparecer>
           )}
+
+          {/* NFS-e (Fase 1): só aparece com a flag NFSE_ENABLED ligada no servidor + plano Empresa + orçamento aprovado. */}
+          <EmitirNotaBotao orc={orc} />
 
           {cardAcao === 'cobrar' && cobrancaPronta && (
             <OlliCard style={styles.closeCard}>
