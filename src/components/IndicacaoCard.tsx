@@ -61,7 +61,7 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
   async function compartilhar(canal: 'whatsapp' | 'copiar') {
     if (!dados) return;
     try {
-      const message = canal === 'whatsapp' ? mensagemWhatsApp(dados.link, dados.creditos) : dados.link;
+      const message = canal === 'whatsapp' ? mensagemWhatsApp(dados.link, dados.meses) : dados.link;
       await Share.share({ message });
       void registrarEventoIndicacao('compartilhada', momento, canal);
     } catch {
@@ -75,7 +75,7 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
   }
 
   // Recurso desligado (creditos = 0): sem contador, não há o que acumular.
-  const resumo = dados && dados.creditos > 0 ? textoResumo(dados.resumo) : null;
+  const resumo = dados && dados.meses > 0 ? textoResumo(dados.resumo) : null;
 
   return (
     <Modal visible={visivel} transparent animationType="fade" onRequestClose={aoFechar}>
@@ -91,7 +91,7 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
             <ActivityIndicator color={cores.primary} style={styles.espera} />
           ) : dados ? (
             <View style={styles.corpo}>
-              <Text style={styles.texto}>{textoPromessa(dados.creditos)}</Text>
+              <Text style={styles.texto}>{textoPromessa(dados.meses, dados.teto)}</Text>
               <OlliButton label="Mandar no WhatsApp" icon={<MaterialCommunityIcons name="whatsapp" size={18} color="#fff" />} variant="gradient" fullWidth onPress={() => compartilhar('whatsapp')} />
               <View style={styles.linha}>
                 <OlliButton label="Copiar link" variant="outline" size="sm" onPress={() => compartilhar('copiar')} style={styles.meio} />

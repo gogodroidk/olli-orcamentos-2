@@ -5,12 +5,17 @@
 --   indicacoes         1 linha por INDICADO (indicado_id único = 1 recompensa por indicado).
 --   indicacao_eventos  medição do cartão (visto / compartilhada), sem dado pessoal.
 --
--- Recompensa = crédito de IA no credit_ledger (origem 'referral', já permitida pelo check
--- da 20260720). NADA de tabela nova de crédito. Quem escreve é só o worker (service_role);
+-- Recompensa = N meses de Pro para os DOIS lados (N e tetos vêm do worker, de UMA constante:
+-- src/services/limitesComerciais.ts; nada de número digitado aqui). A concessão usa o mesmo
+-- mecanismo auditado do crédito de troca (assinaturas.admin_plano_override + admin_override_ate):
+-- benefício de uso, sem dinheiro, intransferível, NÃO toca nos campos do gateway (plano/status/
+-- current_period_end/stripe_*), então não vira "pagante" no funil de receita e não abate nada
+-- já pago. Só premia depois do indicado ENVIAR orçamento real, com e-mail confirmado dos dois
+-- lados e teto diário global. Quem escreve é só o worker (service_role);
 -- o usuário só LÊ as próprias linhas. A decisão de recompensar é toda no Postgres, numa
 -- transação só, sob lock do indicador — o worker apenas chama a RPC.
 --
--- Depende de: 20260720 (credit_ledger), 20260930120100 (funil_exclusoes),
+-- Depende de: assinaturas (override admin), 20260930120100 (funil_exclusoes),
 --             20261007130000 (ativacao_exemplos_ref: define "orçamento real").
 -- Idempotente (if not exists / or replace). NÃO aplicada: o integrador aplica.
 
@@ -34,6 +39,7 @@ create table if not exists public.indicacoes (
   cadastrou_em    timestamptz not null default now(),
   orcou_em        timestamptz,
   recompensado_em timestamptz,
+  meses_pro       integer check (meses_pro is null or meses_pro > 0),
   constraint indicacoes_nao_a_si_mesmo check (indicador_id <> indicado_id)
 );
 create index if not exists indicacoes_indicador_idx on public.indicacoes (indicador_id, estado);
@@ -139,7 +145,7 @@ grant execute on function public.indicacao_codigo(uuid) to service_role;
 -- ─── vínculo no cadastro ────────────────────────────────────────────────────
 -- p_indicado vem do JWT validado no worker, nunca do corpo. Conta precisa ser nova
 -- (≤ 7 dias: dá tempo de confirmar o e-mail): o link é para quem ainda vai entrar, não para amarrar conta antiga.
-create or replace function public.indicacao_vincular(p_indicado uuid, p_codigo text)
+create or replace function public.indicacao_vincular(p_indicado uuid, p_codigo text, p_teto integer)
 returns text
 language plpgsql
 security definer
@@ -163,11 +169,11 @@ begin
   end if;
   -- já vinculado (a qualquer indicador): não gasta vaga de ninguém
   if exists (select 1 from public.indicacoes where indicado_id = p_indicado) then return 'ja_vinculado'; end if;
-  -- teto no VÍNCULO: o 6º colega não entra (e o app sabe, em vez de ser barrado em silêncio
+  -- teto no VÍNCULO: o colega além do teto não entra (e o app sabe, em vez de ser barrado em silêncio
   -- só na recompensa). Serializa por indicador, igual à recompensa.
   perform 1 from public.indicacao_codigos where user_id = v_indicador for update;
   if (select count(*) from public.indicacoes
-       where indicador_id = v_indicador and estado in ('cadastrou', 'recompensado')) >= 5 then
+       where indicador_id = v_indicador and estado in ('cadastrou', 'recompensado')) >= greatest(coalesce(p_teto, 0), 1) then
     return 'teto_indicador';
   end if;
   insert into public.indicacoes (indicador_id, indicado_id, codigo)
@@ -177,14 +183,70 @@ begin
   return 'vinculado';
 end;
 $$;
-revoke all on function public.indicacao_vincular(uuid, text) from public, anon, authenticated;
-grant execute on function public.indicacao_vincular(uuid, text) to service_role;
+revoke all on function public.indicacao_vincular(uuid, text, integer) from public, anon, authenticated;
+grant execute on function public.indicacao_vincular(uuid, text, integer) to service_role;
+
+-- ─── concessão de Pro (benefício de uso) ────────────────────────────────────
+-- Mesmas guardas do crédito de troca / concederPlanoPeriodo: nunca rebaixa nível (Empresa
+-- manual continua Empresa), nunca encurta vigência (sem data final continua sem data final),
+-- e soma os meses a partir do fim de uma concessão ainda vigente.
+create or replace function public.indicacao_conceder_pro(p_user uuid, p_meses integer, p_razao text)
+returns void
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  a public.assinaturas%rowtype;
+  v_tem boolean;
+  v_plano text := 'pro';
+  v_ate timestamptz;
+  v_base timestamptz := now();
+  v_vigente boolean := false;
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_user::text, 0));
+  select * into a from public.assinaturas x where x.user_id = p_user for update;
+  v_tem := found;
+  if v_tem then
+    v_vigente := a.admin_override_ativo is true
+      and a.admin_plano_override in ('pro', 'empresa')
+      and (a.admin_override_ate is null or a.admin_override_ate > now());
+    if v_vigente then
+      if a.admin_plano_override = 'empresa' then v_plano := 'empresa'; end if;
+      if a.admin_override_ate is not null then v_base := a.admin_override_ate; end if;
+    end if;
+  end if;
+  v_ate := v_base + make_interval(months => p_meses);
+  if v_vigente and a.admin_override_ate is null then v_ate := null; end if;
+
+  insert into public.assinaturas (
+    user_id, plano, status, stripe_customer_id, stripe_subscription_id, current_period_end,
+    admin_plano_override, admin_override_ativo, admin_override_ate, admin_override_reason,
+    admin_override_by, admin_override_at, atualizado_em
+  ) values (
+    p_user, v_plano, 'canceled', null, null, null,
+    v_plano, true, v_ate, left(p_razao, 500), null, now(), now()
+  )
+  on conflict (user_id) do update set
+    admin_plano_override = excluded.admin_plano_override,
+    admin_override_ativo = true,
+    admin_override_ate = excluded.admin_override_ate,
+    admin_override_reason = excluded.admin_override_reason,
+    admin_override_by = excluded.admin_override_by,
+    admin_override_at = excluded.admin_override_at,
+    atualizado_em = now();
+end;
+$$;
+revoke all on function public.indicacao_conceder_pro(uuid, integer, text) from public, anon, authenticated;
+grant execute on function public.indicacao_conceder_pro(uuid, integer, text) to service_role;
 
 -- ─── recompensa no 1º orçamento real do indicado ────────────────────────────
--- p_creditos <= 0 = recurso desligado: não grava nada, não decide nada.
--- Serializa por indicador (lock na linha do código) para o teto de 5 não furar.
--- Idempotente: ref do ledger = 'ind:<id>:<lado>'; (origem,ref) é único.
-create or replace function public.indicacao_recompensar(p_indicado uuid, p_creditos integer)
+-- p_meses <= 0 = recurso desligado: não grava nada, não decide nada.
+-- Serializa por indicador (lock na linha do código) para o teto não furar. Idempotente:
+-- só decide enquanto estado = 'cadastrou', sob lock (a 2ª chamada vê 'recompensado').
+-- E-mail confirmado dos dois lados e teto diário global ficam PENDENTES (estado segue
+-- 'cadastrou'): voltam a ser tentados quando a condição passar.
+create or replace function public.indicacao_recompensar(p_indicado uuid, p_meses integer, p_teto integer, p_teto_dia integer)
 returns jsonb
 language plpgsql
 security definer
@@ -195,8 +257,9 @@ declare
   v_orc timestamptz;
   v_n integer;
   v_interno boolean;
+  v_dia integer;
 begin
-  if p_creditos is null or p_creditos <= 0 then
+  if p_meses is null or p_meses <= 0 or p_teto is null or p_teto <= 0 or p_teto_dia is null or p_teto_dia <= 0 then
     return jsonb_build_object('status', 'desligado');
   end if;
 
@@ -206,6 +269,11 @@ begin
 
   v_orc := public.indicacao_primeiro_orcamento_real(p_indicado);
   if v_orc is null then return jsonb_build_object('status', 'sem_orcamento_real'); end if;
+
+  if (select count(*) from auth.users u
+       where u.id in (v.indicador_id, v.indicado_id) and u.email_confirmed_at is not null and u.deleted_at is null) < 2 then
+    return jsonb_build_object('status', 'email_nao_confirmado');
+  end if;
 
   -- lock do indicador, depois relê a indicação (outra chamada pode ter decidido)
   perform 1 from public.indicacao_codigos where user_id = v.indicador_id for update;
@@ -224,27 +292,31 @@ begin
   end if;
 
   select count(*) into v_n from public.indicacoes where indicador_id = v.indicador_id and estado = 'recompensado';
-  if v_n >= 5 then
+  if v_n >= p_teto then
     update public.indicacoes set estado = 'sem_recompensa', motivo = 'teto_indicador', orcou_em = v_orc where id = v.id;
     return jsonb_build_object('status', 'sem_recompensa', 'motivo', 'teto_indicador');
   end if;
 
-  insert into public.credit_ledger (user_id, delta, origem, ref, descricao) values
-    (v.indicador_id, p_creditos, 'referral', 'ind:' || v.id || ':indicador', 'Indicação: um colega fez o 1º orçamento'),
-    (v.indicado_id,  p_creditos, 'referral', 'ind:' || v.id || ':indicado',  'Bônus de indicação: seu 1º orçamento')
-  on conflict (origem, ref) where ref is not null do nothing;
+  -- teto diário global (antifraude): serializa pelo advisory lock e segue pendente
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('indicacao_teto_dia', 0));
+  select count(*) into v_dia from public.indicacoes
+   where estado = 'recompensado' and recompensado_em >= date_trunc('day', now());
+  if v_dia >= p_teto_dia then return jsonb_build_object('status', 'teto_diario'); end if;
+
+  perform public.indicacao_conceder_pro(v.indicador_id, p_meses, 'Indicação: um colega enviou o 1º orçamento');
+  perform public.indicacao_conceder_pro(v.indicado_id,  p_meses, 'Bônus de indicação: seu 1º orçamento enviado');
 
   update public.indicacoes
-     set estado = 'recompensado', orcou_em = v_orc, recompensado_em = now()
+     set estado = 'recompensado', orcou_em = v_orc, recompensado_em = now(), meses_pro = p_meses
    where id = v.id;
-  return jsonb_build_object('status', 'recompensado', 'creditos', p_creditos, 'indicador_id', v.indicador_id);
+  return jsonb_build_object('status', 'recompensado', 'meses', p_meses, 'indicador_id', v.indicador_id);
 end;
 $$;
-revoke all on function public.indicacao_recompensar(uuid, integer) from public, anon, authenticated;
-grant execute on function public.indicacao_recompensar(uuid, integer) to service_role;
+revoke all on function public.indicacao_recompensar(uuid, integer, integer, integer) from public, anon, authenticated;
+grant execute on function public.indicacao_recompensar(uuid, integer, integer, integer) to service_role;
 
 -- ─── resumo do indicador (cartão/painel) ────────────────────────────────────
-create or replace function public.indicacao_resumo(p_user uuid)
+create or replace function public.indicacao_resumo(p_user uuid, p_teto integer)
 returns jsonb
 language sql
 stable
@@ -255,18 +327,18 @@ as $$
     -- só RECOMPENSADOS: cadastro sozinho é farmável (contas novas sem orçamento) e não
     -- pode inflar o contador do cartão.
     'recompensadas', count(*) filter (where estado = 'recompensado'),
-    'teto',          5
+    'teto',          p_teto
   ) from public.indicacoes where indicador_id = p_user;
 $$;
-revoke all on function public.indicacao_resumo(uuid) from public, anon, authenticated;
-grant execute on function public.indicacao_resumo(uuid) to service_role;
+revoke all on function public.indicacao_resumo(uuid, integer) from public, anon, authenticated;
+grant execute on function public.indicacao_resumo(uuid, integer) to service_role;
 
 -- ============================================================================
 -- TESTES MANUAIS (service_role). A=indicador, B=indicado (conta nova), I=conta em funil_exclusoes.
 --   select public.indicacao_codigo('<A>');                  -- 6 chars; repetir devolve o mesmo
---   select public.indicacao_vincular('<B>', '<codigo>');     -- 'vinculado'; de novo 'ja_vinculado'
---   select public.indicacao_vincular('<A>', '<codigo>');     -- 'auto_indicacao'
---   select public.indicacao_recompensar('<B>', 0);           -- {"status":"desligado"}
---   select public.indicacao_recompensar('<B>', 10);          -- sem orçamento real: 'sem_orcamento_real'
---   -- após B criar orçamento real: 'recompensado'; 2ª chamada: 'ja_decidido'; ledger: 2 linhas 'referral'
+--   select public.indicacao_vincular('<B>', '<codigo>', 3);     -- 'vinculado'; de novo 'ja_vinculado'
+--   select public.indicacao_vincular('<A>', '<codigo>', 3);     -- 'auto_indicacao'
+--   select public.indicacao_recompensar('<B>', 0, 3, 20);        -- {"status":"desligado"}
+--   select public.indicacao_recompensar('<B>', 1, 3, 20);        -- sem orçamento real: 'sem_orcamento_real'
+--   -- após B criar orçamento real: 'recompensado'; 2ª chamada: 'ja_decidido'; assinaturas: override pro nos 2 lados
 -- ============================================================================

@@ -15,12 +15,6 @@ export const CUSTO = {
   review_google: 3,
 };
 
-// Créditos de IA que CADA lado ganha quando o indicado faz o 1º orçamento real
-// (indicacao.js / RPC indicacao_recompensar). 0 = DESLIGADO: nada é decidido nem
-// creditado e o cartão não promete nada. Quem define o número é o dono, lendo a
-// tabela CUSTO acima (ex.: 10 = 10 usos de voz IA). Ligar = trocar este número.
-export const INDICACAO_CREDITOS = 0;
-
 // Cota grátis de IA por mês no plano Grátis. Espelha IA_USOS_GRATIS_MES
 // (src/services/planos.ts) — o app conta a MESMA cota localmente só para a UX
 // ("2 de 3 usos grátis"); quem ENFORÇA é este número, no servidor.

@@ -3,28 +3,30 @@
  * para o cartão do app e o teste usarem a mesma fonte.
  *
  * REGRA: a promessa de recompensa só aparece quando o worker diz que está ligada
- * (`creditos > 0`, vindo de INDICACAO_CREDITOS). Desligada, o cartão convida sem
+ * (`meses > 0`, flag INDICACAO_RECOMPENSA_ATIVA). Desligada, o cartão convida sem
  * prometer nada — texto de produto não pode afirmar o que o servidor não paga.
+ * Valor e teto NUNCA são digitados aqui: vêm do servidor (que lê limitesComerciais.ts).
  */
+import { INDICACAO_TETO_PREMIADAS } from '../services/limitesComerciais.ts';
 
-export const TETO_INDICACOES = 5;
+export const TETO_INDICACOES = INDICACAO_TETO_PREMIADAS;
 
-/** Pluraliza "N créditos de IA". */
-export function rotuloCreditos(n: number): string {
-  return n === 1 ? '1 crédito de IA' : `${n} créditos de IA`;
+/** "1 mês de Pro" / "N meses de Pro". */
+export function rotuloMeses(n: number): string {
+  return n === 1 ? '1 mês de Pro' : `${n} meses de Pro`;
 }
 
 /** Linha de apoio do cartão. */
-export function textoPromessa(creditos: number): string {
-  if (!(creditos > 0)) {
+export function textoPromessa(meses: number, teto: number = TETO_INDICACOES): string {
+  if (!(meses > 0)) {
     return 'Mande seu link para um colega que também faz orçamento. Ele testa o OLLI no próprio ritmo.';
   }
-  return `Mande seu link: quando o colega fizer o 1º orçamento de verdade, vocês dois ganham ${rotuloCreditos(creditos)}. Vale até ${TETO_INDICACOES} colegas.`;
+  return `Mande seu link: quando o colega se cadastrar e enviar o 1º orçamento de verdade, vocês dois ganham ${rotuloMeses(meses)}. Vale até ${teto} indicações premiadas por pessoa; cada colega só pode ser indicado uma vez. O mês de Pro não vale dinheiro e não pode ser transferido.`;
 }
 
 /** Mensagem pronta de WhatsApp — sai da conta do próprio prestador, 1 a 1. */
-export function mensagemWhatsApp(link: string, creditos: number): string {
-  const ganho = creditos > 0 ? ` Quando você fizer o 1º orçamento, nós dois ganhamos ${rotuloCreditos(creditos)}.` : '';
+export function mensagemWhatsApp(link: string, meses: number): string {
+  const ganho = meses > 0 ? ` Quando você enviar o 1º orçamento, nós dois ganhamos ${rotuloMeses(meses)}.` : '';
   return `Oi! Uso o OLLI para fazer orçamento rápido pelo celular. Se você também orça, dá uma olhada: ${link}${ganho}`;
 }
 

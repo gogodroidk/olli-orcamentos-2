@@ -5,12 +5,12 @@
  * Exit 0 = passou; 1 = falhou.
  *
  * Prende: JWT obrigatório (id vem do token, nunca do corpo); método por rota; "não sei" =
- * 503 (nunca 200 vazio); recompensa desligada (INDICACAO_CREDITOS=0) não promete nada;
+ * 503 (nunca 200 vazio); recompensa desligada (flag desligada) não promete nada;
  * código validado antes de ir ao banco; evento só com valores da lista; o indicado não
  * descobre quem o indicou.
  */
 import { handleIndicacao, normalizarCodigo, LINK_BASE } from '../src/indicacao.js';
-import { INDICACAO_CREDITOS } from '../src/creditos.js';
+import { INDICACAO_MESES_PRO, INDICACAO_TETO_PREMIADAS, INDICACAO_TETO_DIARIO } from '../src/indicacao.js';
 
 let ok = 0;
 let falhas = 0;
@@ -83,13 +83,25 @@ checar('OPTIONS = 204', r.status === 204);
 
 console.log('GET /indicacao/meu');
 reset();
-rpcs = { indicacao_codigo: 'K7M2QX', indicacao_resumo: { recompensadas: 1, teto: 5 } };
+rpcs = { indicacao_codigo: 'K7M2QX', indicacao_resumo: { recompensadas: 1, teto: INDICACAO_TETO_PREMIADAS } };
 r = await rodar(req('/indicacao/meu'));
 let j = await r.json();
 checar('devolve código e link', r.status === 200 && j.codigo === 'K7M2QX' && j.link === `${LINK_BASE}K7M2QX`, JSON.stringify(j));
 checar('id da RPC vem do JWT', JSON.parse(rpcChamado('indicacao_codigo').init.body).p_user === USER.id);
-checar('créditos reflete a constante (0 = desligado)', j.creditos === (INDICACAO_CREDITOS > 0 ? INDICACAO_CREDITOS : 0));
-checar('resumo: repassado só com recompensa ligada; desligada = null', INDICACAO_CREDITOS > 0 ? j.resumo?.recompensadas === 1 : j.resumo === null);
+checar('flag desligada (padrão): meses 0, sem contador, teto da constante', j.meses === 0 && j.resumo === null && j.teto === INDICACAO_TETO_PREMIADAS, JSON.stringify(j));
+checar('resumo pede o teto da constante', JSON.parse(rpcChamado('indicacao_resumo').init.body).p_teto === INDICACAO_TETO_PREMIADAS);
+env.INDICACAO_RECOMPENSA_ATIVA = '1';
+reset();
+rpcs = { indicacao_codigo: 'K7M2QX', indicacao_resumo: { recompensadas: 1, teto: INDICACAO_TETO_PREMIADAS } };
+j = await (await rodar(req('/indicacao/meu'))).json();
+checar('flag ligada: meses = constante e resumo repassado', j.meses === INDICACAO_MESES_PRO && j.resumo?.recompensadas === 1, JSON.stringify(j));
+delete env.INDICACAO_RECOMPENSA_ATIVA;
+env.INDICACAO_RECOMPENSA_ATIVA = 'true';
+reset();
+rpcs = { indicacao_codigo: 'K7M2QX', indicacao_resumo: { recompensadas: 1 } };
+j = await (await rodar(req('/indicacao/meu'))).json();
+checar("só o valor exato '1' liga (nada de 'true' solto)", j.meses === 0);
+delete env.INDICACAO_RECOMPENSA_ATIVA;
 reset();
 rpcs = { indicacao_codigo: 'erro' };
 r = await rodar(req('/indicacao/meu'));
@@ -134,13 +146,20 @@ console.log('POST /indicacao/verificar');
 reset();
 rpcs = { indicacao_recompensar: { status: 'sem_orcamento_real' } };
 j = await (await rodar(req('/indicacao/verificar', { method: 'POST' }))).json();
-checar('repassa o status', j.status === 'sem_orcamento_real' && j.creditos === 0);
+checar('repassa o status', j.status === 'sem_orcamento_real' && j.meses === 0);
 const chamada = JSON.parse(rpcChamado('indicacao_recompensar').init.body);
-checar('usuário do JWT e créditos da constante', chamada.p_indicado === USER.id && chamada.p_creditos === INDICACAO_CREDITOS);
+checar('desligada: manda p_meses 0 (banco não decide nada)', chamada.p_indicado === USER.id && chamada.p_meses === 0);
+env.INDICACAO_RECOMPENSA_ATIVA = '1';
 reset();
-rpcs = { indicacao_recompensar: { status: 'recompensado', creditos: 10, indicador_id: 'segredo-do-indicador' } };
+rpcs = { indicacao_recompensar: { status: 'teto_diario' } };
+await rodar(req('/indicacao/verificar', { method: 'POST' }));
+const lig = JSON.parse(rpcChamado('indicacao_recompensar').init.body);
+checar('ligada: valor e tetos vêm das constantes', lig.p_meses === INDICACAO_MESES_PRO && lig.p_teto === INDICACAO_TETO_PREMIADAS && lig.p_teto_dia === INDICACAO_TETO_DIARIO, JSON.stringify(lig));
+delete env.INDICACAO_RECOMPENSA_ATIVA;
+reset();
+rpcs = { indicacao_recompensar: { status: 'recompensado', meses: 1, indicador_id: 'segredo-do-indicador' } };
 j = await (await rodar(req('/indicacao/verificar', { method: 'POST' }))).json();
-checar('recompensado devolve créditos', j.status === 'recompensado' && j.creditos === 10);
+checar('recompensado devolve meses', j.status === 'recompensado' && j.meses === 1);
 checar('NÃO vaza indicador_id ao indicado', !JSON.stringify(j).includes('segredo-do-indicador'));
 reset();
 rpcs = { indicacao_recompensar: 'erro' };

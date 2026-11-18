@@ -6,6 +6,7 @@
  */
 import { supabase } from './supabase';
 import { PAGAMENTOS_URL } from '../config';
+import { INDICACAO_TETO_PREMIADAS } from './limitesComerciais.ts';
 
 export type MomentoIndicacao = 'apos_envio' | 'apos_aprovacao' | 'painel';
 export type CanalIndicacao = 'whatsapp' | 'copiar' | 'qr';
@@ -14,7 +15,9 @@ export interface MeuLinkIndicacao {
   codigo: string;
   link: string;
   /** 0 = recompensa desligada no servidor: não prometer nada. */
-  creditos: number;
+  /** Meses de Pro por lado; 0 = recompensa desligada. */
+  meses: number;
+  teto: number;
   resumo: { recompensadas: number; teto: number } | null;
 }
 
@@ -40,7 +43,7 @@ async function chamar(caminho: string, metodo: 'GET' | 'POST', corpo?: unknown):
 export async function obterMeuLinkIndicacao(): Promise<MeuLinkIndicacao | null> {
   const j = await chamar('/indicacao/meu', 'GET');
   if (!j || typeof j.codigo !== 'string' || typeof j.link !== 'string') return null;
-  return { codigo: j.codigo, link: j.link, creditos: Number(j.creditos) > 0 ? Number(j.creditos) : 0, resumo: j.resumo ?? null };
+  return { codigo: j.codigo, link: j.link, meses: Number(j.meses) > 0 ? Number(j.meses) : 0, teto: Number(j.teto) > 0 ? Number(j.teto) : INDICACAO_TETO_PREMIADAS, resumo: j.resumo ?? null };
 }
 
 export async function registrarEventoIndicacao(evento: 'cartao_visto' | 'compartilhada', momento: MomentoIndicacao, canal?: CanalIndicacao): Promise<void> {
@@ -50,11 +53,11 @@ export async function registrarEventoIndicacao(evento: 'cartao_visto' | 'compart
 /**
  * Pede ao servidor para decidir a recompensa do usuário logado (se ele veio por
  * indicação e já fez o 1º orçamento real). Idempotente e seguro de chamar à toa.
- * Devolve os créditos ganhos agora (0 se nada).
+ * Devolve os meses de Pro ganhos agora (0 se nada).
  */
 export async function verificarRecompensaIndicacao(): Promise<number> {
   const j = await chamar('/indicacao/verificar', 'POST', {});
-  return j?.status === 'recompensado' && Number(j.creditos) > 0 ? Number(j.creditos) : 0;
+  return j?.status === 'recompensado' && Number(j.meses) > 0 ? Number(j.meses) : 0;
 }
 
 const INTERVALO_VERIFICACAO_MS = 10 * 60 * 1000;

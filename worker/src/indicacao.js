@@ -16,11 +16,23 @@
  *  - /verificar pode ser chamado à vontade pelo cliente: a verdade (o orçamento existe?)
  *    está no banco; chamar não concede nada que o banco não conceda.
  *  - "Não sei" nunca vira "não tem": RPC fora do ar = 503 com motivo, nunca 200 vazio.
- *  - INDICACAO_CREDITOS = 0 (creditos.js) = recurso de recompensa DESLIGADO e dito assim.
+ *  - Recompensa (1 mês de Pro por lado) fica DESLIGADA por flag: só liga com env
+ *    INDICACAO_RECOMPENSA_ATIVA='1'. Desligada, nada é decidido e o app não promete nada.
+ *    Valor e tetos vêm de UMA fonte (espelho de src/services/limitesComerciais.ts; paridade no teste).
  */
 import { rateOkSensivel, cabeNoTeto, textoCabeNoTeto, TETO } from './rateLimit.js';
 import { parseJsonBody } from './util.js';
-import { INDICACAO_CREDITOS, sbHeaders } from './creditos.js';
+import { sbHeaders } from './creditos.js';
+
+// Espelho de src/services/limitesComerciais.ts (teste de paridade em scripts/teste-indicacoes-sql.ts).
+export const INDICACAO_MESES_PRO = 1;
+export const INDICACAO_TETO_PREMIADAS = 3;
+export const INDICACAO_TETO_DIARIO = 20;
+
+/** Meses de Pro por lado, ou 0 = recompensa desligada (flag). */
+export function mesesLigados(env) {
+  return env && env.INDICACAO_RECOMPENSA_ATIVA === '1' ? INDICACAO_MESES_PRO : 0;
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -122,8 +134,9 @@ export async function handleMeu(request, env) {
   if (resp) return resp;
   const [cod, resumo] = await Promise.all([
     rpc(env, 'indicacao_codigo', { p_user: user.id }),
-    rpc(env, 'indicacao_resumo', { p_user: user.id }),
+    rpc(env, 'indicacao_resumo', { p_user: user.id, p_teto: INDICACAO_TETO_PREMIADAS }),
   ]);
+  const meses = mesesLigados(env);
   const codigo = cod.ok ? normalizarCodigo(cod.data) : null;
   if (!codigo) return json({ ok: false, erro: 'indisponivel' }, 503);
   // Resumo é enfeite do cartão: sem ele o código ainda vale. Mas "não sei" ≠ zero → null.
@@ -132,9 +145,10 @@ export async function handleMeu(request, env) {
     codigo,
     link: `${LINK_BASE}${codigo}`,
     // 0 = recompensa desligada; o cartão não pode prometer nada.
-    creditos: INDICACAO_CREDITOS > 0 ? INDICACAO_CREDITOS : 0,
-    // Desligado (INDICACAO_CREDITOS=0): sem contador. Ligado: só recompensados contam.
-    resumo: INDICACAO_CREDITOS > 0 && resumo.ok && resumo.data && typeof resumo.data === 'object' ? resumo.data : null,
+    meses,
+    teto: INDICACAO_TETO_PREMIADAS,
+    // Desligado: sem contador. Ligado: só recompensados contam.
+    resumo: meses > 0 && resumo.ok && resumo.data && typeof resumo.data === 'object' ? resumo.data : null,
   });
 }
 
@@ -145,7 +159,7 @@ export async function handleVincular(request, env) {
   if (erro) return json({ ok: false, erro }, 413);
   const codigo = normalizarCodigo(corpo.codigo);
   if (!codigo) return json({ ok: false, erro: 'codigo_invalido' }, 400);
-  const r = await rpc(env, 'indicacao_vincular', { p_indicado: user.id, p_codigo: codigo });
+  const r = await rpc(env, 'indicacao_vincular', { p_indicado: user.id, p_codigo: codigo, p_teto: INDICACAO_TETO_PREMIADAS });
   if (!r.ok || typeof r.data !== 'string') return json({ ok: false, erro: 'indisponivel' }, 503);
   // Estados "perdidos" (código inexistente, conta antiga...) não são erro do cliente
   // refazer: 200 com o status, para o app apagar o código guardado e seguir a vida.
@@ -155,10 +169,15 @@ export async function handleVincular(request, env) {
 export async function handleVerificar(request, env) {
   const { user, resp } = await porta(request, env, 'verificar');
   if (resp) return resp;
-  const r = await rpc(env, 'indicacao_recompensar', { p_indicado: user.id, p_creditos: INDICACAO_CREDITOS });
+  const r = await rpc(env, 'indicacao_recompensar', {
+    p_indicado: user.id,
+    p_meses: mesesLigados(env),
+    p_teto: INDICACAO_TETO_PREMIADAS,
+    p_teto_dia: INDICACAO_TETO_DIARIO,
+  });
   if (!r.ok || !r.data || typeof r.data.status !== 'string') return json({ ok: false, erro: 'indisponivel' }, 503);
   // Não devolve indicador_id ao indicado: ele não precisa saber quem foi.
-  return json({ ok: true, status: r.data.status, creditos: r.data.status === 'recompensado' ? r.data.creditos : 0 });
+  return json({ ok: true, status: r.data.status, meses: r.data.status === 'recompensado' ? r.data.meses : 0 });
 }
 
 export async function handleEvento(request, env) {

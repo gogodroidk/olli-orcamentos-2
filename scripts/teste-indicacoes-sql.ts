@@ -7,11 +7,13 @@
  *
  * Prende: código único e estável; vínculo (auto-indicação, conta antiga, ciclo,
  * duplicado, código ruim); recompensa só no 1º orçamento REAL (exemplo sem edição,
- * preço 0 e lixeira não contam); desligado (0) não decide nada; dois lados creditados
- * uma vez; idempotência; contas internas; teto de 5; permissões (só service_role).
+ * preço 0 e lixeira não contam); desligado (0) não decide nada; e-mail confirmado dos dois
+ * lados; dois lados ganham 1 mês de Pro (override, sem tocar no gateway) uma vez; idempotência;
+ * contas internas; teto por pessoa e teto diário; paridade com as constantes; permissões.
  */
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
+import { INDICACAO_MESES_PRO, INDICACAO_TETO_DIARIO, INDICACAO_TETO_PREMIADAS } from '../src/services/limitesComerciais.ts';
 
 const MIGRATION = readFileSync('supabase/migrations/20261010100000_indicacoes.sql', 'utf8');
 
@@ -27,7 +29,7 @@ create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin bypassrls;
 create schema auth;
-create table auth.users (id uuid primary key, email text, created_at timestamptz not null default now(), deleted_at timestamptz);
+create table auth.users (id uuid primary key, email text, created_at timestamptz not null default now(), deleted_at timestamptz, email_confirmed_at timestamptz);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 create table public.funil_exclusoes (
   id bigint generated always as identity primary key,
@@ -36,12 +38,13 @@ create table public.funil_exclusoes (
 create table public.ativacao_exemplos_ref (vertical text not null, nome text not null, preco numeric(12,2) not null, primary key (vertical, nome));
 insert into public.ativacao_exemplos_ref values ('geral', 'Visita técnica e avaliação', 60.00);
 create table public.orcamentos (id text primary key, user_id uuid, dados jsonb, criado_em timestamptz not null default now(), excluido_em timestamptz);
-create table public.credit_ledger (
-  id uuid primary key default gen_random_uuid(), user_id uuid not null references auth.users(id) on delete cascade,
-  delta integer not null, origem text not null check (origem in ('stripe','pix','iap','promo','referral','mesada','consumo','ajuste')),
-  ref text, descricao text not null default '', criado_em timestamptz not null default now()
+create table public.assinaturas (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  plano text not null default 'gratis', status text not null default 'canceled',
+  stripe_customer_id text, stripe_subscription_id text, current_period_end timestamptz,
+  admin_plano_override text, admin_override_ativo boolean not null default false, admin_override_ate timestamptz,
+  admin_override_reason text, admin_override_by uuid, admin_override_at timestamptz, atualizado_em timestamptz default now()
 );
-create unique index credit_ledger_origem_ref_uidx on public.credit_ledger (origem, ref) where ref is not null;
 `;
 
 const db = new PGlite();
@@ -51,10 +54,10 @@ await db.exec(MIGRATION); // idempotente: reaplicar não pode quebrar
 
 let seq = 0;
 const uid = (): string => `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
-async function conta(horasAtras = 1, email?: string): Promise<string> {
+async function conta(horasAtras = 1, email?: string, confirmado = true): Promise<string> {
   const id = uid();
   await db.query(
-    `insert into auth.users (id, email, created_at) values ($1, $2, now() - ($3 || ' hours')::interval)`,
+    `insert into auth.users (id, email, created_at, email_confirmed_at) values ($1, $2, now() - ($3 || ' hours')::interval, ${confirmado ? 'now()' : 'null'})`,
     [id, email ?? `${id}@t.local`, String(horasAtras)],
   );
   return id;
@@ -71,9 +74,12 @@ async function orc(user: string, itens: unknown, extra = ''): Promise<void> {
 }
 const REAL = [{ nome: 'Troca de resistência', preco: 150 }];
 const codigoDe = (u: string) => um<string>('select public.indicacao_codigo($1)', [u]);
-const vincular = (u: string, c: string) => um<string>('select public.indicacao_vincular($1,$2)', [u, c]);
-const recompensar = (u: string, n: number) => um<{ status: string; motivo?: string }>('select public.indicacao_recompensar($1,$2)', [u, n]);
-const saldo = (u: string) => um<number>('select coalesce(sum(delta),0)::int from public.credit_ledger where user_id=$1', [u]);
+const vincular = (u: string, c: string) => um<string>('select public.indicacao_vincular($1,$2,$3)', [u, c, INDICACAO_TETO_PREMIADAS]);
+const recompensar = (u: string, meses = INDICACAO_MESES_PRO, dia = INDICACAO_TETO_DIARIO) =>
+  um<{ status: string; motivo?: string }>('select public.indicacao_recompensar($1,$2,$3,$4)', [u, meses, INDICACAO_TETO_PREMIADAS, dia]);
+const override = async (u: string) => (await db.query<any>(`select plano, status, stripe_customer_id, current_period_end, admin_plano_override, admin_override_ativo, admin_override_ate from public.assinaturas where user_id=$1`, [u])).rows[0] ?? null;
+const mesesAFrente = (d: Date | string) => (new Date(d).getTime() - Date.now()) / (30.44 * 86400000);
+const temPro = async (u: string) => { const o = await override(u); return !!o && o.admin_plano_override === 'pro' && o.admin_override_ativo && Math.abs(mesesAFrente(o.admin_override_ate) - INDICACAO_MESES_PRO) < 0.2; };
 
 console.log('código');
 const A = await conta(100);
@@ -106,24 +112,35 @@ checar('indicado já vinculado não troca de indicador', (await vincular(B, cX))
 checar('código do próprio indicado: auto_indicacao', (await vincular(B, cB)) === 'auto_indicacao');
 
 console.log('recompensa');
-checar('créditos 0 = desligado, não decide', (await recompensar(B, 0)).status === 'desligado');
-checar('sem orçamento = sem_orcamento_real', (await recompensar(B, 10)).status === 'sem_orcamento_real');
+checar('meses 0 = desligado, não decide', (await recompensar(B, 0)).status === 'desligado');
+checar('teto 0 / teto diário 0 também desligam', (await um<{ status: string }>('select public.indicacao_recompensar($1,1,0,20)', [B])).status === 'desligado' && (await recompensar(B, 1, 0)).status === 'desligado');
+checar('sem orçamento = sem_orcamento_real', (await recompensar(B)).status === 'sem_orcamento_real');
 await orc(B, [{ nome: 'Visita técnica e avaliação', preco: 60 }]);
-checar('só exemplo sem edição não conta', (await recompensar(B, 10)).status === 'sem_orcamento_real');
+checar('só exemplo sem edição não conta', (await recompensar(B)).status === 'sem_orcamento_real');
 await orc(B, [{ nome: 'Serviço', preco: 0 }]);
-checar('preço zero não conta', (await recompensar(B, 10)).status === 'sem_orcamento_real');
+checar('preço zero não conta', (await recompensar(B)).status === 'sem_orcamento_real');
 await orc(B, REAL, 'now()');
-checar('orçamento na lixeira não conta', (await recompensar(B, 10)).status === 'sem_orcamento_real');
-checar('nada foi creditado até aqui', (await saldo(A)) === 0 && (await saldo(B)) === 0);
+checar('orçamento na lixeira não conta', (await recompensar(B)).status === 'sem_orcamento_real');
+checar('nada foi concedido até aqui', (await override(A)) === null && (await override(B)) === null);
 await orc(B, REAL);
-const r1 = await recompensar(B, 10);
+await db.query(`update auth.users set email_confirmed_at = null where id = $1`, [B]);
+checar('indicado SEM e-mail confirmado fica pendente (não premia)', (await recompensar(B)).status === 'email_nao_confirmado' && (await override(A)) === null);
+await db.query(`update auth.users set email_confirmed_at = now() where id = $1`, [B]);
+await db.query(`update auth.users set email_confirmed_at = null where id = $1`, [A]);
+checar('indicador SEM e-mail confirmado também fica pendente', (await recompensar(B)).status === 'email_nao_confirmado');
+await db.query(`update auth.users set email_confirmed_at = now() where id = $1`, [A]);
+checar('pendente continua "cadastrou" (volta a valer quando confirmar)', (await um<string>(`select estado from public.indicacoes where indicado_id=$1`, [B])) === 'cadastrou');
+const r1 = await recompensar(B);
 checar('1º orçamento real recompensa', r1.status === 'recompensado', JSON.stringify(r1));
-checar('indicador e indicado ganham X cada', (await saldo(A)) === 10 && (await saldo(B)) === 10);
-checar('2ª chamada não paga de novo', (await recompensar(B, 10)).status === 'ja_decidido' && (await saldo(A)) === 10);
+checar('indicador e indicado ganham 1 mês de Pro (constante)', (await temPro(A)) && (await temPro(B)) && (await um<number>(`select meses_pro from public.indicacoes where indicado_id=$1`, [B])) === INDICACAO_MESES_PRO);
+const oA = await override(A);
+checar('NÃO toca no gateway (sem pagante, sem período, sem stripe)', oA.status === 'canceled' && oA.current_period_end === null && oA.stripe_customer_id === null, JSON.stringify(oA));
+const ateA = (await override(A)).admin_override_ate;
+checar('2ª chamada não premia de novo (vigência igual)', (await recompensar(B)).status === 'ja_decidido' && +new Date((await override(A)).admin_override_ate) === +new Date(ateA));
 checar('estado e datas gravados', (await um<string>(`select estado from public.indicacoes where indicado_id=$1`, [B])) === 'recompensado'
   && (await um<boolean>(`select recompensado_em is not null and orcou_em is not null from public.indicacoes where indicado_id=$1`, [B])));
 checar('sem indicação = sem_indicacao', (await recompensar(A, 10)).status === 'sem_indicacao');
-checar('ledger: 1 lançamento por lado', (await um<number>(`select count(*)::int from public.credit_ledger where origem='referral'`)) === 2);
+checar('trilha: motivo gravado nos dois lados', (await um<number>(`select count(*)::int from public.assinaturas where admin_override_reason like '%ndica%'`)) === 2);
 
 console.log('contas internas');
 const I = await conta(1, 'interna@olli.local');
@@ -139,36 +156,70 @@ const D = await conta(1);
 await vincular(D, cInt);
 await orc(D, REAL);
 checar('indicador em funil_exclusoes (por id) não paga', (await recompensar(D, 10)).motivo === 'conta_interna');
-checar('conta interna não ganhou nada', (await saldo(Int)) === 0 && (await saldo(D)) === 0);
+checar('conta interna não ganhou nada', (await override(Int)) === null && (await override(D)) === null);
 
-console.log('teto de 5 por indicador (no vínculo)');
+console.log('guardas do Pro concedido');
+const E = await conta(100);
+await db.query(`insert into public.assinaturas (user_id, plano, status, admin_plano_override, admin_override_ativo, admin_override_ate) values ($1,'empresa','canceled','empresa',true,null)`, [E]);
+await db.query(`select public.indicacao_conceder_pro($1, 1, 'teste de guarda')`, [E]);
+const oE = await override(E);
+checar('quem já tem Empresa sem data final continua Empresa e sem data final', oE.admin_plano_override === 'empresa' && oE.admin_override_ate === null);
+const S = await conta(100);
+await db.query(`select public.indicacao_conceder_pro($1, 1, 'teste soma')`, [S]);
+await db.query(`select public.indicacao_conceder_pro($1, 1, 'teste soma')`, [S]);
+checar('concessão vigente soma a partir do fim (2 meses, não 1)', Math.abs(mesesAFrente((await override(S)).admin_override_ate) - 2) < 0.2);
+const PG = await conta(100);
+await db.query(`insert into public.assinaturas (user_id, plano, status, stripe_customer_id, current_period_end) values ($1,'pro','active','cus_x', now() + interval '20 days')`, [PG]);
+await db.query(`select public.indicacao_conceder_pro($1, 1, 'teste pagante')`, [PG]);
+const oPG = await override(PG);
+checar('pagante: não mexe no que já pagou (status/stripe/período intactos)', oPG.status === 'active' && oPG.stripe_customer_id === 'cus_x' && oPG.current_period_end !== null);
+
+console.log('teto por pessoa e teto diário');
 const T = await conta(100);
 const cT = await codigoDe(T);
 const vinc: string[] = [];
 const filhos: string[] = [];
-for (let i = 0; i < 7; i++) {
+for (let i = 0; i < INDICACAO_TETO_PREMIADAS + 2; i++) {
   const x = await conta(1);
   vinc.push(await vincular(x, cT));
   filhos.push(x);
 }
-checar('5 vinculam, o 6º e o 7º batem no teto', vinc.slice(0, 5).every((s) => s === 'vinculado') && vinc.slice(5).every((s) => s === 'teto_indicador'), vinc.join(','));
-checar('quem foi barrado não ficou vinculado', (await um<number>(`select count(*)::int from public.indicacoes where indicador_id=$1`, [T])) === 5);
-const resumoAntes = await um<any>(`select public.indicacao_resumo($1)`, [T]);
-checar('7 contas novas sem orçamento: contador = 0 recompensadas', resumoAntes.recompensadas === 0 && resumoAntes.cadastraram === undefined, JSON.stringify(resumoAntes));
-for (const x of filhos.slice(0, 5)) { await orc(x, REAL); await recompensar(x, 10); }
-checar('indicador recebeu exatamente 5 × 10', (await saldo(T)) === 50);
-const resumoDepois = await um<any>(`select public.indicacao_resumo($1)`, [T]);
-checar('contador conta só recompensados (5 de teto 5)', resumoDepois.recompensadas === 5 && resumoDepois.teto === 5, JSON.stringify(resumoDepois));
+checar('até o teto vinculam, o resto bate no teto', vinc.slice(0, INDICACAO_TETO_PREMIADAS).every((s) => s === 'vinculado') && vinc.slice(INDICACAO_TETO_PREMIADAS).every((s) => s === 'teto_indicador'), vinc.join(','));
+checar('quem foi barrado não ficou vinculado', (await um<number>(`select count(*)::int from public.indicacoes where indicador_id=$1`, [T])) === INDICACAO_TETO_PREMIADAS);
+const resumoAntes = await um<any>(`select public.indicacao_resumo($1,$2)`, [T, INDICACAO_TETO_PREMIADAS]);
+checar('contas novas sem orçamento: contador = 0 recompensadas', resumoAntes.recompensadas === 0 && resumoAntes.cadastraram === undefined, JSON.stringify(resumoAntes));
+for (const x of filhos.slice(0, INDICACAO_TETO_PREMIADAS)) { await orc(x, REAL); await recompensar(x); }
+const oT = await override(T);
+checar('indicador com o teto cheio: soma exatamente TETO × meses', Math.abs(mesesAFrente(oT.admin_override_ate) - INDICACAO_TETO_PREMIADAS * INDICACAO_MESES_PRO) < 0.3, JSON.stringify(oT));
+const resumoDepois = await um<any>(`select public.indicacao_resumo($1,$2)`, [T, INDICACAO_TETO_PREMIADAS]);
+checar('contador conta só recompensados (teto cheio)', resumoDepois.recompensadas === INDICACAO_TETO_PREMIADAS && resumoDepois.teto === INDICACAO_TETO_PREMIADAS, JSON.stringify(resumoDepois));
+
+// teto diário: com teto 1/dia, o 2º prêmio do dia fica pendente (não vira sem_recompensa)
+const U = await conta(100);
+const cU = await codigoDe(U);
+const u1 = await conta(1); const u2 = await conta(1);
+await vincular(u1, cU); await vincular(u2, cU);
+await orc(u1, REAL); await orc(u2, REAL);
+const hoje = await um<number>(`select count(*)::int from public.indicacoes where estado='recompensado' and recompensado_em >= date_trunc('day', now())`);
+checar('antes do teto diário premia', (await recompensar(u1, INDICACAO_MESES_PRO, hoje + 1)).status === 'recompensado');
+checar('no teto diário fica pendente', (await recompensar(u2, INDICACAO_MESES_PRO, hoje + 1)).status === 'teto_diario' && (await override(u2)) === null);
+checar('pendente por teto diário segue "cadastrou" e premia no dia seguinte', (await um<string>(`select estado from public.indicacoes where indicado_id=$1`, [u2])) === 'cadastrou' && (await recompensar(u2)).status === 'recompensado');
+
+console.log('paridade das constantes');
+const wk = await import('../worker/src/indicacao.js');
+checar('worker espelha limitesComerciais (meses, teto, teto diário)', wk.INDICACAO_MESES_PRO === INDICACAO_MESES_PRO && wk.INDICACAO_TETO_PREMIADAS === INDICACAO_TETO_PREMIADAS && wk.INDICACAO_TETO_DIARIO === INDICACAO_TETO_DIARIO);
+checar('migration não digita valor nem teto (sem "5", sem créditos)', !/>= 5|'teto',\s+5|credit_ledger|p_creditos/.test(MIGRATION));
 
 console.log('permissões');
 async function como(papel: string, sql: string): Promise<boolean> {
   await db.exec(`set role ${papel}`);
   try { await db.query(sql); return true; } catch { return false; } finally { await db.exec('reset role'); }
 }
+checar('authenticated não executa a concessão de Pro', !(await como('authenticated', `select public.indicacao_conceder_pro('${B}', 1, 'x')`)));
 checar('anon não executa RPC', !(await como('anon', `select public.indicacao_codigo('${A}')`)));
-checar('authenticated não executa RPC de recompensa', !(await como('authenticated', `select public.indicacao_recompensar('${B}', 10)`)));
-checar('authenticated não executa vincular', !(await como('authenticated', `select public.indicacao_vincular('${B}', '${cA}')`)));
-checar('service_role executa', await como('service_role', `select public.indicacao_resumo('${A}')`));
+checar('authenticated não executa RPC de recompensa', !(await como('authenticated', `select public.indicacao_recompensar('${B}', 1, 3, 20)`)));
+checar('authenticated não executa vincular', !(await como('authenticated', `select public.indicacao_vincular('${B}', '${cA}', 3)`)));
+checar('service_role executa', await como('service_role', `select public.indicacao_resumo('${A}', 3)`));
 checar('authenticated não escreve em indicacoes', !(await como('authenticated', `insert into public.indicacoes (indicador_id, indicado_id, codigo) values ('${A}','${uid()}','AAAAAA')`)));
 checar('authenticated não lê indicacoes direto (sem PII do indicado)', !(await como('authenticated', `select * from public.indicacoes`)));
 await db.exec(`set role authenticated; set request.jwt.claim.sub = '${A}'`);

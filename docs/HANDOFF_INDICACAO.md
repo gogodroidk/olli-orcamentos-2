@@ -1,10 +1,28 @@
-# HANDOFF — indicação "colega indica colega" (PR #195, branch `claude/indicacao`)
+# HANDOFF — indicação "colega indica colega" (Fase 2 do programa "indicou, os dois ganham 1 mês de Pro")
 
-Estado: código + migration `20261010100000_indicacoes.sql` prontos, NÃO aplicada, NÃO mesclada. Recompensa desligada (`INDICACAO_CREDITOS=0`). Último a mexer: Claude, b59425d.
+Branch `claude/indicacao-mes-pro` (rebase do #195 na main, sem force-push). Migration `20261010100000_indicacoes.sql`
+NÃO aplicada; nada publicado; recompensa DESLIGADA por flag. Último a mexer: BUILD — Indicação (Claude).
 
-## Pendências ANTES de ligar a recompensa (`INDICACAO_CREDITOS > 0`)
+## O que mudou em relação ao #195
+- Recompensa: de "10 créditos de IA" para **1 mês de Pro nos dois lados**, concedido pelo mesmo mecanismo auditado do crédito de
+  troca (`assinaturas.admin_plano_override` + `admin_override_ate`): sem dinheiro, intransferível, não toca no gateway, nunca
+  rebaixa nível nem encurta vigência, soma sobre concessão vigente.
+- UMA fonte para valor e tetos: `src/services/limitesComerciais.ts` (`INDICACAO_MESES_PRO`, `INDICACAO_TETO_PREMIADAS`,
+  `INDICACAO_TETO_DIARIO`). Copy lê daí (nunca digita); worker espelha; SQL recebe por parâmetro; teste de paridade em
+  `scripts/teste-indicacoes-sql.ts`.
+- Flag: o worker só liga com `INDICACAO_RECOMPENSA_ATIVA='1'` (valor exato). Sem ela: banco não decide nada, app não promete nada.
+- Só premia depois do indicado ENVIAR orçamento real, com e-mail confirmado dos dois lados e teto diário global
+  (pendente, volta a valer; não vira "sem recompensa").
 
-1. **TTL de 7 dias na vaga `cadastrou`.** Hoje `indicacao_vincular` conta `cadastrou` + `recompensado` contra o teto de 5. Um indicado que cadastrou e nunca orçou ocupa a vaga para sempre: 30 dias depois ainda dá `teto_indicador`, e 5 contas sem orçamento (inclusive farmadas) travam o indicador. Regra a implementar: `cadastrou` só conta no teto se `cadastrou_em > now() - interval '7 days'`; passado o prazo a vaga é liberada (ou a linha vira `sem_recompensa`, motivo `expirou`). Cobrir em `scripts/teste-indicacoes-sql.ts` (vaga volta após 7 dias; recompensado nunca expira).
-2. **Avisar o indicado.** Quem entra com o link e esbarra no teto, ou perde a vaga por TTL, precisa ver aviso claro no app/painel — hoje `/indicacao/vincular` devolve `status: teto_indicador` e a captura do `?ref` só apaga o código guardado, sem mensagem. Texto sem prometer recompensa que não vem. Também decidir se o indicador é avisado quando a vaga expira.
+## Para ligar (nada disso foi feito)
+1. Parecer/gate do líder do andar (CPO) sobre "mês de Pro" (o parecer de 21/10 avisa que muda a análise; Paulo desligado).
+2. Pergunta ao contador sobre a contabilização do mês grátis (custo em caixa hoje = 0).
+3. Patch da política de privacidade ("se você veio por indicação, guardamos quem indicou para conceder o mês").
+4. Aplicar a migration pelo roteiro (staging primeiro, versão anterior anotada, smoke) e só então setar a flag.
+5. TTL de 7 dias na vaga `cadastrou` (pendência antiga abaixo) e aviso ao indicado no teto.
 
-Origem: re-revisão LIVRE do #195 em b59425d. Não implementado de propósito.
+## Pendências antigas (re-revisão LIVRE do #195, não implementadas de propósito)
+- **TTL de 7 dias na vaga `cadastrou`:** hoje `cadastrou` + `recompensado` contam no teto do vínculo; quem nunca orça ocupa a vaga.
+  Regra: `cadastrou` só conta se `cadastrou_em > now() - interval '7 days'`. Cobrir em `scripts/teste-indicacoes-sql.ts`.
+- **Avisar o indicado** que esbarra no teto/vaga expirada (hoje `/indicacao/vincular` devolve `teto_indicador` e a captura do
+  `?ref` só apaga o código). Texto sem prometer recompensa que não vem.

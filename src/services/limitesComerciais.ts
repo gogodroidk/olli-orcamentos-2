@@ -39,6 +39,20 @@ export const CREDITO_TROCA_MESES_MAX = 3;
 /** Pedidos no total por conta (recusado por print ilegível pode reenviar). */
 export const CREDITO_TROCA_PEDIDOS_MAX = 3;
 
+/**
+ * Indicação "colega indica colega": recompensa = meses de Pro para os DOIS lados, só depois
+ * de o indicado ENVIAR um orçamento de verdade. FONTE ÚNICA do valor e dos tetos — a copy
+ * (src/utils/indicacaoTexto.ts) e o worker (worker/src/indicacao.js, espelho) leem daqui;
+ * ninguém digita "1 mês" nem o teto em texto. Benefício de uso: sem dinheiro, intransferível.
+ * Paridade: migration 20261010100000_indicacoes.sql (recebe os valores por parâmetro) e
+ * teste scripts/teste-indicacoes-sql.ts.
+ */
+export const INDICACAO_MESES_PRO = 1;
+/** Indicações premiadas por pessoa (e vagas de vínculo). */
+export const INDICACAO_TETO_PREMIADAS = 3;
+/** Prêmios por dia no sistema todo (antifraude: acima disso fica pendente para o dia seguinte). */
+export const INDICACAO_TETO_DIARIO = 20;
+
 export type CanalEnvioOrcamento = 'pdf' | 'link' | 'whatsapp';
 export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';
 
