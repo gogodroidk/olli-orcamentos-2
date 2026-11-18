@@ -33,7 +33,7 @@ import {
   type RetratoCelebracao,
 } from '../components/orcamento/linhaDoTempo';
 import { jaCelebrou, marcarCelebrado } from '../services/celebracoes';
-import { toast } from '../components/feedback';
+import { confirmar, toast } from '../components/feedback';
 import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -511,9 +511,17 @@ export default function VisualizarOrcamentoScreen() {
   async function handleWhatsAppAgora() {
     if (!orc || enviandoWhats) return;
     const telefone = (orc.clienteTelefone || '').trim();
+    // Sem número, o envio NÃO para (antes era um aviso sem saída e o orçamento morria em rascunho:
+    // 6 de 9 contas novas paradas só em rascunho tinham todos os orçamentos sem telefone, 18/11).
+    // O WhatsApp abre com a mensagem pronta para a pessoa escolher o contato — o mesmo caminho de Contratos.
     if (!telefone) {
-      toast.info(`Cadastre o WhatsApp de ${orc.clienteNome} para enviar por aqui.`);
-      return;
+      const seguir = await confirmar({
+        titulo: `Sem o WhatsApp de ${orc.clienteNome}`,
+        mensagem: 'Abro o WhatsApp com a mensagem pronta e você escolhe o contato. Para não perguntar de novo, cadastre o número no cliente.',
+        rotuloConfirmar: 'Escolher no WhatsApp',
+        rotuloCancelar: 'Agora não',
+      });
+      if (!seguir) return;
     }
     if (!(await exigirCadastroParaEnviar('orcamento'))) return;
     setEnviandoWhats(true);
