@@ -7,7 +7,7 @@
  * tabelas REAIS de opt-out (e-mail 20260929200000, WhatsApp 20261006090000):
  *  · `conversa` não entra no outbox ANTES da migration e entra DEPOIS; os templates antigos seguem válidos;
  *  · o patch do catálogo não apaga template acrescentado por outra migration e é idempotente;
- *  · enqueue_conversa enfileira 1 vez e barra: suprimido (e-mail OU WhatsApp), conversa recente, não-Grátis, excluído,
+ *  · enqueue_conversa enfileira 1 vez e barra: suprimido (e-mail OU WhatsApp, por conta OU só pelo telefone), conversa recente, não-Grátis, excluído,
  *    1 e-mail/24 h, teto diário, texto grande demais; `numero_invalido` NÃO barra;
  *  · só service_role executa as RPCs novas.
  * `private.oferta_pro_fatos` é trocada por um stub (depende de plano/assinatura/organização, fora do que se prova aqui).
@@ -46,7 +46,8 @@ async function novoBanco(antesDaMigration = ''): Promise<PGlite> {
     end $$;
     create schema if not exists private;
     create schema if not exists auth;
-    create table auth.users (id uuid primary key default gen_random_uuid(), email text, deleted_at timestamptz);
+    create table auth.users (id uuid primary key default gen_random_uuid(), email text, deleted_at timestamptz,
+      raw_user_meta_data jsonb default '{}'::jsonb);
     create table public.email_outbox (
       id bigserial primary key, event_id text, user_id uuid, tenant_id uuid, idempotency_key text unique,
       template text, template_version text, purpose text, recipient text, status text default 'pending',
@@ -75,8 +76,10 @@ async function novoBanco(antesDaMigration = ''): Promise<PGlite> {
   return db;
 }
 
-const usuario = async (db: PGlite) =>
-  (await db.query<{ id: string }>(`insert into auth.users (email) values ('x@x.com') returning id`)).rows[0].id;
+const usuario = async (db: PGlite, tel: string | null = null) =>
+  (await db.query<{ id: string }>(
+    `insert into auth.users (email, raw_user_meta_data) values ('x@x.com', case when $1::text is null then '{}'::jsonb else jsonb_build_object('phone', $1::text) end) returning id`, [tel],
+  )).rows[0].id;
 const outbox = (db: PGlite, id: string, template: string, version: string, purpose: string, dados: string | null = '{"a":1}') =>
   db.query(
     `insert into public.email_outbox (event_id, user_id, idempotency_key, template, template_version, purpose, recipient, template_dados)
@@ -158,6 +161,21 @@ const falha = async (p: Promise<unknown>, trecho: string, msg: string) => {
     igual((await enq(db, wa)).motivo, 'suprimido', `${motivo} no WhatsApp barra o e-mail (fecha o buraco só neste caminho)`);
     igual((await db.query('select 1 from public.email_outbox where user_id = $1', [wa])).rows.length, 0, `${motivo}: nada foi enfileirado`);
   }
+  // P1 do LIVRE: os 3 caminhos reais de SAIR gravam SÓ o telefone (registrar_nao_contatar_whatsapp(null, tel, ...)).
+  for (const motivo of ['pediu_sair', 'reclamou', 'decisao_interna']) {
+    const tel = `(11) 9${Math.floor(1000 + Math.random() * 8999)}-${Math.floor(1000 + Math.random() * 8999)}`;
+    const soTel = await usuario(db, tel);
+    await db.query('select public.registrar_nao_contatar_whatsapp(null, $1, $2, \'whatsapp\')', [tel, motivo]);
+    igual((await enq(db, soTel)).motivo, 'suprimido', `${motivo} gravado SÓ com o telefone barra a conta que tem esse número`);
+    igual((await db.query('select 1 from public.email_outbox where user_id = $1', [soTel])).rows.length, 0, `${motivo} por telefone: nada enfileirado`);
+  }
+  {
+    const outroTel = await usuario(db, '(11) 95555-4444');
+    await db.query(`select public.registrar_nao_contatar_whatsapp(null, '11933332222', 'pediu_sair', 'whatsapp')`);
+    igual((await enq(db, outroTel)).enfileirado, true, 'telefone de OUTRA pessoa no opt-out não barra');
+    const semTel = await usuario(db);
+    igual((await enq(db, semTel)).enfileirado, true, 'conta sem telefone no cadastro segue a regra normal');
+  }
   const invalido = await usuario(db);
   await db.query(`insert into public.whatsapp_nao_contatar (user_id, motivo, origem) values ($1, 'numero_invalido', 'whatsapp')`, [invalido]);
   igual((await enq(db, invalido)).enfileirado, true, 'numero_invalido NÃO barra (a pessoa não pediu para parar)');
@@ -201,9 +219,12 @@ const falha = async (p: Promise<unknown>, trecho: string, msg: string) => {
   await db.exec(migration);
   const u = await usuario(db);
   await db.query(`insert into public.whatsapp_nao_contatar (user_id, motivo, origem) values ($1, 'pediu_sair', 'whatsapp')`, [u]);
+  await db.query(`update auth.users set raw_user_meta_data = '{"phone":"(21) 98888-1111"}' where id = $1`, [u]);
+  await db.query(`delete from public.whatsapp_nao_contatar where user_id = $1`, [u]);
+  await db.query(`select public.registrar_nao_contatar_whatsapp(null, '21988881111', 'pediu_sair', 'whatsapp')`);
   const f = (await db.query<{ fato: { suprimido: boolean; conversaRecenteEm: string | null; existe: boolean } }>(
     'select * from public.fatos_conversa(array[$1::uuid])', [u])).rows[0].fato;
-  igual([f.existe, f.suprimido, f.conversaRecenteEm], [true, true, null], 'fatos_conversa junta e-mail + WhatsApp em `suprimido`');
+  igual([f.existe, f.suprimido, f.conversaRecenteEm], [true, true, null], 'fatos_conversa junta e-mail + WhatsApp (conta OU só telefone) em `suprimido`');
   await falha(db.query('select * from public.fatos_conversa(array[]::uuid[])'), 'conversa_argumentos_invalidos', 'lista vazia é recusada');
 
   const priv = async (role: string, fn: string) =>

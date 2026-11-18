@@ -8,7 +8,8 @@
 -- 20261006090000 (whatsapp_nao_contatar). NÃO APLICAR sem PR + revisão + ordem do Igor (migration em produção).
 --
 -- Fecha o buraco de supressão cruzada SÓ para este caminho: quem pediu para parar no WhatsApp
--- (pediu_sair | reclamou | decisao_interna) também é barrado aqui, mesmo sem a migration 20261118130000.
+-- (pediu_sair | reclamou | decisao_interna), por conta OU só pelo telefone do cadastro, também é barrado aqui,
+-- mesmo sem a migration 20261118130000.
 begin;
 
 -- ─── 1. Catálogo do outbox: acrescenta `conversa` SEM reescrever a lista ────────────────────────
@@ -52,11 +53,19 @@ begin
   return v_fatos
     || pg_catalog.jsonb_build_object(
       -- Barra também quem pediu para parar no WhatsApp (o e-mail não olhava essa lista).
+      -- Por conta OU pelo telefone do cadastro: os caminhos reais de SAIR no WhatsApp gravam SÓ o telefone
+      -- (mesma regra do pode_contatar_whatsapp). `decisao_interna` também barra: a casa decidiu não contatar.
       'suprimido', ((v_fatos ->> 'suprimido') is distinct from 'false')
                    or exists (
                      select 1 from public.whatsapp_nao_contatar n
-                      where n.user_id = p_user_id
-                        and n.motivo in ('pediu_sair', 'reclamou', 'decisao_interna')
+                      where n.motivo in ('pediu_sair', 'reclamou', 'decisao_interna')
+                        and (
+                          n.user_id = p_user_id
+                          or (n.telefone is not null
+                              and n.telefone = (
+                                select private.telefone_whatsapp_br(u.raw_user_meta_data ->> 'phone')
+                                  from auth.users u where u.id = p_user_id and u.deleted_at is null))
+                        )
                    ),
       'conversaRecenteEm', (
         select pg_catalog.max(o.created_at) from public.email_outbox o
@@ -141,6 +150,8 @@ begin
   if private.email_recebeu_ultimas_24h(p_user_id, p_now) then
     return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'recebeu_email_24h');
   end if;
+  -- Trava global só para o teto diário: duas execuções em paralelo não passam do limite (volume pequeno).
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('olli.conversa:teto_diario', 0));
   if (
     select pg_catalog.count(*) from public.email_outbox o
      where o.purpose = 'conversa' and o.created_at > p_now - interval '24 hours'

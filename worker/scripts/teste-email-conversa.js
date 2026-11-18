@@ -114,6 +114,7 @@ await caso('política do modelo conversa: usa conversaRecenteEm; oferta_pro cont
   assert.equal(dec(ID(6), 'conversa'), 'sairia');
   assert.equal(dec(ID(6), 'oferta_pro'), 'oferta_recente');
   assert.equal(dec(ID(7), 'conversa'), 'conta_indisponivel');
+  assert.throws(() => decidirOferta(FATOS[ID(1)], { agora: AGORA, modelo: 'inexistente' }), /modelo_invalido/);
 });
 
 const ENV = { SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'k'.repeat(40) };
@@ -164,6 +165,7 @@ await caso('migration: sem grant público, `conversa` no catálogo, opt-out do W
   assert.ok(!/grant execute on function [^;]* to (anon|authenticated|public)/i.test(sql));
   assert.ok(sql.includes("template = ''conversa'' and template_version = ''conversa.v1'' and purpose = ''conversa''"));
   assert.ok(sql.includes('whatsapp_nao_contatar') && sql.includes('email_recebeu_ultimas_24h'));
+  assert.ok(sql.includes('n.telefone = ('), 'opt-out do WhatsApp também pelo telefone do cadastro');
   assert.ok(!/drop table|delete from|truncate/i.test(sql));
 });
 
