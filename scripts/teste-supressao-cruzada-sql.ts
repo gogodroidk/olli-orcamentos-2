@@ -4,12 +4,16 @@
  *     node scripts/teste-supressao-cruzada-sql.ts
  *
  * Prova, sobre as tabelas e funções REAIS de opt-out (WhatsApp 20261006090000, e-mail 20260929200000):
- *  · SAIR no WhatsApp (registrar_nao_contatar_whatsapp) suprime o e-mail e cancela o que está na fila;
- *  · descadastro/reclamação por e-mail (inserção em email_supressoes) bloqueia `pode_contatar_whatsapp`;
- *  · `numero_invalido` e `hard_bounce` NÃO cruzam (a pessoa não pediu para parar);
- *  · opt-out só por telefone (sem conta) não gera supressão de e-mail;
- *  · não há laço, nem duplicata, e rodar a migration de novo é idempotente (backfill incluso);
- *  · o backfill cobre quem já tinha pedido antes da migration.
+ *  · SAIR no WhatsApp SÓ POR TELEFONE (os 3 caminhos reais gravam `registrar_nao_contatar_whatsapp(null, tel, …)`)
+ *    suprime o e-mail das contas cujo telefone do cadastro bate, e cancela o que está na fila;
+ *  · SAIR com a conta (app/painel) também suprime; o telefone que não bate com conta nenhuma não faz nada;
+ *  · descadastro/reclamação por e-mail grava a linha da CONTA e a do TELEFONE: `pode_contatar_whatsapp` recusa
+ *    tanto por conta quanto só pelo número;
+ *  · `origem = 'email'` legítima (pessoa pediu por e-mail) suprime o e-mail; o espelho usa origem própria
+ *    (`espelho_email`), então não há laço;
+ *  · `numero_invalido`, `hard_bounce` e `decisao_interna` NÃO cruzam;
+ *  · `numero_invalido` anterior não esconde o pedido de parar;
+ *  · rodar a migration de novo é idempotente e o backfill cobre linhas antigas (conta e só-telefone).
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -46,101 +50,210 @@ await db.exec(`
 await db.exec(tabelaEmail[0]);
 await db.exec(optout);
 
-const novoUsuario = async (tel = '(11) 99999-0000') =>
+// Cada conta ganha um telefone DIFERENTE (11 9NNNN-NNNN) para o casamento por telefone ser testável.
+let seq = 1000;
+const proximoTel = () => { seq += 1; return `(11) 9${seq}-${String(seq).split('').reverse().join('')}`; };
+const norm = (tel: string) => `55${tel.replace(/\D/g, '')}`;
+const novoUsuario = async (tel: string | null = proximoTel(), deletado = false) =>
   (await db.query<{ id: string }>(
-    `insert into auth.users (email, raw_user_meta_data) values ('x@x.com', jsonb_build_object('phone', $1::text)) returning id`, [tel],
+    `insert into auth.users (email, deleted_at, raw_user_meta_data)
+     values ('x@x.com', ${deletado ? 'now()' : 'null'}, case when $1::text is null then '{}'::jsonb else jsonb_build_object('phone', $1::text) end) returning id`, [tel],
   )).rows[0].id;
 const supEmail = async (id: string) =>
   (await db.query<{ motivo: string; origem: string }>(
     'select motivo, origem from public.email_supressoes where user_id = $1 order by motivo', [id],
   )).rows;
-const waNao = async (id: string) =>
+const waConta = async (id: string) =>
   (await db.query<{ motivo: string; origem: string }>(
     'select motivo, origem from public.whatsapp_nao_contatar where user_id = $1', [id],
   )).rows;
-const podeWa = async (id: string) =>
-  (await db.query<{ r: { pode: boolean; motivo: string } }>('select public.pode_contatar_whatsapp($1::uuid, null) as r', [id])).rows[0].r;
+const waTel = async (tel: string) =>
+  (await db.query<{ motivo: string; origem: string }>(
+    'select motivo, origem from public.whatsapp_nao_contatar where telefone = $1', [norm(tel)],
+  )).rows;
+const podeWa = async (id: string | null, tel: string | null = null) =>
+  (await db.query<{ r: { pode: boolean; motivo: string } }>('select public.pode_contatar_whatsapp($1::uuid, $2::text) as r', [id, tel])).rows[0].r;
 const fila = async (id: string) =>
   (await db.query<{ template: string; status: string }>(
     'select template, status from public.email_outbox where user_id = $1 order by id', [id],
   )).rows;
 const enfileira = (id: string, template: string) =>
   db.query('insert into public.email_outbox (user_id, template) values ($1, $2)', [id, template]);
+const sair = (id: string | null, tel: string | null, motivo: string, origem = 'whatsapp') =>
+  db.query('select public.registrar_nao_contatar_whatsapp($1::uuid, $2::text, $3, $4)', [id, tel, motivo, origem]);
 
 // ── estado "antes da migration": quem já tinha pedido para sair ──────────────────────────────
-const antigoWa = await novoUsuario();
+const telAntigoZap = proximoTel();
+const antigoWaTel = await novoUsuario(telAntigoZap);          // SAIR no WhatsApp, linha só de telefone (caminho real)
+const antigoWaConta = await novoUsuario();                    // SAIR registrado pela conta (app/painel)
 const antigoEmail = await novoUsuario();
 const antigoBounce = await novoUsuario();
-await db.query(`insert into public.whatsapp_nao_contatar (user_id, motivo, origem) values ($1, 'pediu_sair', 'whatsapp')`, [antigoWa]);
-await enfileira(antigoWa, 'lembrete_ativacao');
-await enfileira(antigoWa, 'boas_vindas');
+const antigoInterna = await novoUsuario();
+const antigoDeletado = await novoUsuario(telAntigoZap, true); // conta apagada com o mesmo número: não entra
+await db.query(`insert into public.whatsapp_nao_contatar (telefone, motivo, origem) values ($1, 'pediu_sair', 'whatsapp')`, [norm(telAntigoZap)]);
+await db.query(`insert into public.whatsapp_nao_contatar (user_id, motivo, origem) values ($1, 'reclamou', 'painel')`, [antigoWaConta]);
+await db.query(`insert into public.whatsapp_nao_contatar (user_id, motivo, origem) values ($1, 'decisao_interna', 'admin')`, [antigoInterna]);
+await enfileira(antigoWaTel, 'lembrete_ativacao');
+await enfileira(antigoWaTel, 'boas_vindas');
+await enfileira(antigoWaConta, 'lembrete_reengajamento');
 await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'link_email')`, [antigoEmail]);
 await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'hard_bounce', 'resend_webhook')`, [antigoBounce]);
 
 await db.exec(migration);
 
 // backfill
-igual(await supEmail(antigoWa), [{ motivo: 'descadastro', origem: 'whatsapp' }], 'backfill: SAIR antigo do WhatsApp virou supressão de e-mail');
-igual(await fila(antigoWa), [
+igual(await supEmail(antigoWaTel), [{ motivo: 'descadastro', origem: 'whatsapp' }], 'backfill: SAIR antigo SÓ POR TELEFONE suprimiu o e-mail da conta cujo telefone bate');
+igual(await fila(antigoWaTel), [
   { template: 'lembrete_ativacao', status: 'dead_letter' },
   { template: 'boas_vindas', status: 'pending' },
 ], 'backfill: lembrete na fila cancelado; boas-vindas não conta como lembrete');
-igual(await waNao(antigoEmail), [{ motivo: 'pediu_sair', origem: 'email' }], 'backfill: descadastro antigo do e-mail virou opt-out do WhatsApp');
-igual((await podeWa(antigoEmail)).pode, false, 'backfill: pode_contatar_whatsapp recusa quem se descadastrou do e-mail');
-igual(await waNao(antigoBounce), [], 'backfill: hard_bounce não cruza (o endereço não existe, ninguém pediu para parar)');
+igual(await supEmail(antigoDeletado), [], 'backfill: conta apagada com o mesmo número não é suprimida');
+igual(await supEmail(antigoWaConta), [{ motivo: 'descadastro', origem: 'whatsapp' }], 'backfill: pedido gravado pela conta (painel) também suprimiu o e-mail');
+igual((await fila(antigoWaConta))[0].status, 'dead_letter', 'backfill: fila da conta do painel cancelada');
+igual(await supEmail(antigoInterna), [], 'backfill: decisao_interna NÃO vira descadastro de e-mail');
+igual(await waConta(antigoEmail), [{ motivo: 'pediu_sair', origem: 'espelho_email' }], 'backfill: descadastro antigo do e-mail virou opt-out da CONTA no WhatsApp');
+igual((await podeWa(antigoEmail)).pode, false, 'backfill: pode_contatar_whatsapp (por conta) recusa quem se descadastrou do e-mail');
+igual(await waBloqueadoPorNumero(), true, 'backfill: consulta só pelo número também recusa o descadastrado do e-mail');
+async function waBloqueadoPorNumero() {
+  const tel = (await db.query<{ t: string }>(`select raw_user_meta_data->>'phone' as t from auth.users where id = $1`, [antigoEmail])).rows[0].t;
+  return (await podeWa(null, tel)).pode === false;
+}
+igual(await waConta(antigoBounce), [], 'backfill: hard_bounce não cruza (o endereço não existe, ninguém pediu para parar)');
 igual((await podeWa(antigoBounce)).pode, true, 'backfill: bounce segue liberado no WhatsApp');
 
 // idempotência: rodar de novo não duplica nem estoura
 await db.exec(migration);
-igual((await supEmail(antigoWa)).length, 1, 'rodar a migration de novo não duplica a supressão de e-mail');
-igual((await waNao(antigoEmail)).length, 1, 'rodar a migration de novo não duplica o opt-out do WhatsApp');
+igual((await supEmail(antigoWaTel)).length, 1, 'rodar a migration de novo não duplica a supressão de e-mail');
+igual((await waConta(antigoEmail)).length, 1, 'rodar a migration de novo não duplica o opt-out da conta no WhatsApp');
+igual((await db.query('select 1 from public.whatsapp_nao_contatar where origem = \'espelho_email\'')).rows.length, 2,
+  'rodar de novo: 2 linhas espelhadas (conta + telefone do descadastrado), sem duplicata');
 
-// ── gatilhos, daqui para frente ──────────────────────────────────────────────────────────────
-for (const motivo of ['pediu_sair', 'reclamou', 'decisao_interna']) {
-  const u = await novoUsuario();
+// ── gatilho WhatsApp -> e-mail, daqui para frente ───────────────────────────────────────────
+// P1: o caminho REAL grava só o telefone.
+for (const motivo of ['pediu_sair', 'reclamou']) {
+  const tel = proximoTel();
+  const u = await novoUsuario(tel);
+  const outro = await novoUsuario(); // outro telefone: não pode ser atingido
   await enfileira(u, 'lembrete_reengajamento');
-  await db.query('select public.registrar_nao_contatar_whatsapp($1::uuid, null, $2, $3)', [u, motivo, 'whatsapp']);
-  igual(await supEmail(u), [{ motivo: 'descadastro', origem: 'whatsapp' }], `${motivo} no WhatsApp suprime o e-mail`);
-  igual((await fila(u))[0].status, 'dead_letter', `${motivo} no WhatsApp cancela o lembrete que estava na fila`);
-  igual(await waNao(u), [{ motivo, origem: 'whatsapp' }], `${motivo}: o pedido original do WhatsApp fica intacto (sem laço)`);
+  await enfileira(outro, 'lembrete_reengajamento');
+  await sair(null, norm(tel), motivo);
+  igual(await supEmail(u), [{ motivo: 'descadastro', origem: 'whatsapp' }], `${motivo} SÓ POR TELEFONE no WhatsApp suprime o e-mail da conta que tem esse número`);
+  igual((await fila(u))[0].status, 'dead_letter', `${motivo} por telefone cancela o lembrete que estava na fila`);
+  igual(await supEmail(outro), [], `${motivo}: conta de OUTRO telefone não é suprimida`);
+  igual((await fila(outro))[0].status, 'pending', `${motivo}: fila da outra conta intacta`);
+  igual(await waTel(tel), [{ motivo, origem: 'whatsapp' }], `${motivo}: o pedido original do WhatsApp fica intacto (sem laço)`);
+  igual(await waConta(u), [], `${motivo}: não inventa linha de conta no WhatsApp (sem laço)`);
 }
 
+// o mesmo telefone em duas contas: as duas saem
+{
+  const tel = proximoTel();
+  const a = await novoUsuario(tel);
+  const b = await novoUsuario(`+55 ${tel}`);
+  await sair(null, norm(tel), 'pediu_sair');
+  igual([(await supEmail(a)).length, (await supEmail(b)).length], [1, 1], 'duas contas com o mesmo telefone (formatos diferentes): as duas suprimidas');
+}
+
+// pedido com conta e telefone ao mesmo tempo (registrar grava as duas linhas): sem duplicata
+{
+  const tel = proximoTel();
+  const u = await novoUsuario(tel);
+  await sair(u, tel, 'pediu_sair', 'app');
+  igual(await supEmail(u), [{ motivo: 'descadastro', origem: 'whatsapp' }], 'pedido com conta + telefone: uma só supressão de e-mail');
+}
+
+// P2: `origem = 'email'` legítima (a pessoa pediu por e-mail) suprime o e-mail; não é confundida com o espelho
+{
+  const u = await novoUsuario();
+  await enfileira(u, 'lembrete_ativacao');
+  await sair(u, null, 'pediu_sair', 'email');
+  igual(await supEmail(u), [{ motivo: 'descadastro', origem: 'whatsapp' }], "registrar(..., 'email') legítimo suprime o e-mail");
+  igual((await fila(u))[0].status, 'dead_letter', "registrar(..., 'email'): fila cancelada");
+}
+
+// P3: não cruzam
 const invalido = await novoUsuario();
 await enfileira(invalido, 'lembrete_ativacao');
-await db.query(`select public.registrar_nao_contatar_whatsapp($1::uuid, null, 'numero_invalido', 'whatsapp')`, [invalido]);
+await sair(invalido, null, 'numero_invalido');
 igual(await supEmail(invalido), [], 'numero_invalido NÃO suprime o e-mail (número errado não é pedido de saída)');
 igual((await fila(invalido))[0].status, 'pending', 'numero_invalido não cancela a fila de e-mail');
+
+const interna = await novoUsuario();
+await enfileira(interna, 'lembrete_ativacao');
+await sair(interna, null, 'decisao_interna', 'admin');
+igual(await supEmail(interna), [], 'decisao_interna NÃO vira descadastro de e-mail (não foi pedido da pessoa)');
+igual((await fila(interna))[0].status, 'pending', 'decisao_interna não cancela a fila de e-mail');
 
 const contaEmail = async () =>
   Number((await db.query<{ n: string }>('select count(*) as n from public.email_supressoes')).rows[0].n);
 const antesTel = await contaEmail();
-await db.query(`select public.registrar_nao_contatar_whatsapp(null, '11988887777', 'pediu_sair', 'whatsapp')`);
-igual(await contaEmail(), antesTel, 'opt-out só por telefone (sem conta) não cria supressão de e-mail e não dá erro');
+await sair(null, '11988887777', 'pediu_sair');
+igual(await contaEmail(), antesTel, 'telefone que não bate com conta nenhuma não cria supressão de e-mail e não dá erro');
+const deletada = await novoUsuario('(11) 97777-6666', true);
+await sair(null, '11977776666', 'pediu_sair');
+igual(await supEmail(deletada), [], 'conta apagada não é suprimida pelo telefone');
 
-const descad = await novoUsuario();
-await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'one_click')`, [descad]);
-igual(await waNao(descad), [{ motivo: 'pediu_sair', origem: 'email' }], 'descadastro por e-mail (one-click) vira opt-out do WhatsApp');
-igual((await podeWa(descad)).pode, false, 'pode_contatar_whatsapp recusa quem se descadastrou');
-igual((await supEmail(descad)).length, 1, 'o e-mail continua com UMA linha (sem laço)');
+// ── gatilho e-mail -> WhatsApp, daqui para frente ───────────────────────────────────────────
+{
+  const tel = proximoTel();
+  const descad = await novoUsuario(tel);
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'one_click')`, [descad]);
+  igual(await waConta(descad), [{ motivo: 'pediu_sair', origem: 'espelho_email' }], 'descadastro por e-mail (one-click) vira opt-out da conta no WhatsApp');
+  igual(await waTel(tel), [{ motivo: 'pediu_sair', origem: 'espelho_email' }], 'P2: e a linha do TELEFONE da conta também');
+  igual((await podeWa(descad)).pode, false, 'pode_contatar_whatsapp (por conta) recusa quem se descadastrou');
+  igual((await podeWa(null, tel)).pode, false, 'P2: pode_contatar_whatsapp só pelo número (lista do SALES) também recusa');
+  igual((await supEmail(descad)).length, 1, 'o e-mail continua com UMA linha (sem laço)');
 
-const spam = await novoUsuario();
-await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'complaint', 'resend_webhook')`, [spam]);
-igual(await waNao(spam), [{ motivo: 'reclamou', origem: 'email' }], 'reclamação (spam) no e-mail vira opt-out do WhatsApp como "reclamou"');
+  // já suprimido dos dois lados: nenhuma segunda linha, nenhum erro
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'complaint', 'resend_webhook')`, [descad]);
+  igual((await waConta(descad)).length, 1, 'quem já está no opt-out do WhatsApp não ganha segunda linha');
+}
+
+{
+  const tel = proximoTel();
+  const spam = await novoUsuario(tel);
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'complaint', 'resend_webhook')`, [spam]);
+  igual(await waConta(spam), [{ motivo: 'reclamou', origem: 'espelho_email' }], 'reclamação (spam) no e-mail vira opt-out do WhatsApp como "reclamou"');
+  igual(await waTel(tel), [{ motivo: 'reclamou', origem: 'espelho_email' }], 'reclamação: linha do telefone também');
+  // conhecido e aceito: voltar pelo autoatendimento só apaga `pediu_sair`, então `reclamou` não sai sozinho
+  await db.query(`delete from public.whatsapp_nao_contatar where user_id = $1 and motivo = 'pediu_sair'`, [spam]);
+  igual((await podeWa(spam)).pode, false, 'complaint bloqueia o WhatsApp sem volta por autoatendimento (aceito, documentado)');
+}
+
+{
+  const semTel = await novoUsuario(null);
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'link_email')`, [semTel]);
+  igual(await waConta(semTel), [{ motivo: 'pediu_sair', origem: 'espelho_email' }], 'conta sem telefone: grava a linha da conta e não quebra');
+}
+
+// P3 #5: `numero_invalido` anterior não esconde o pedido de parar
+{
+  const tel = proximoTel();
+  const u = await novoUsuario(tel);
+  await sair(u, tel, 'numero_invalido');
+  igual((await podeWa(u)).motivo, 'numero_invalido', 'preparo: conta e telefone marcados como número inválido');
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'one_click')`, [u]);
+  igual(await waConta(u), [{ motivo: 'pediu_sair', origem: 'espelho_email' }], 'descadastro substitui numero_invalido na linha da conta');
+  igual(await waTel(tel), [{ motivo: 'pediu_sair', origem: 'espelho_email' }], 'descadastro substitui numero_invalido na linha do telefone');
+}
 
 const bounce = await novoUsuario();
 await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'hard_bounce', 'resend_webhook')`, [bounce]);
-igual(await waNao(bounce), [], 'hard_bounce novo não cruza');
+igual(await waConta(bounce), [], 'hard_bounce novo não cruza');
 
 const limpo = await novoUsuario();
 igual((await podeWa(limpo)).pode, true, 'quem nunca pediu para parar segue liberado no WhatsApp');
 igual(await supEmail(limpo), [], 'quem nunca pediu para parar segue liberado no e-mail');
 
-// já suprimido dos dois lados: nenhuma segunda linha, nenhum erro
-await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'complaint', 'resend_webhook')`, [descad]);
-igual((await waNao(descad)).length, 1, 'quem já está no opt-out do WhatsApp não ganha segunda linha');
-
 // "voltar" no WhatsApp remove só o pedido do WhatsApp; a supressão de e-mail espelhada fica
-await db.query(`delete from public.whatsapp_nao_contatar where user_id = $1 and motivo = 'pediu_sair'`, [antigoWa]);
-igual((await supEmail(antigoWa)).length, 1, 'voltar ao WhatsApp não reativa o e-mail sozinho');
+await db.query(`delete from public.whatsapp_nao_contatar where telefone = $1 and motivo = 'pediu_sair'`, [norm(telAntigoZap)]);
+igual((await supEmail(antigoWaTel)).length, 1, 'voltar ao WhatsApp não reativa o e-mail sozinho');
+
+// permissões: nada novo executável por anon/authenticated
+for (const fn of ['private.contas_do_nao_contatar(uuid, text)', 'private.espelhar_nao_contatar_no_email()', 'private.espelhar_supressao_email_no_whatsapp()']) {
+  const r = await db.query<{ a: boolean; b: boolean }>(
+    `select has_function_privilege('anon', $1, 'execute') as a, has_function_privilege('authenticated', $1, 'execute') as b`, [fn]);
+  igual([r.rows[0].a, r.rows[0].b], [false, false], `${fn}: sem execute para anon/authenticated`);
+}
 
 console.log(`teste-supressao-cruzada-sql: ${checks} verificações ok`);
