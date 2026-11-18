@@ -127,7 +127,7 @@ async function ferramenta(fc) {
       resposta = { erro: "O Igor ainda não confirmou em voz. Repita a ordem em uma frase, pergunte 'confirma?' e espere ele dizer sim. Nada foi enviado." };
     } else if (fc.name === "mandar_ao_salomao") {
       legenda(`Recado ao Salomão: ${String(fc.args?.texto || "").slice(0, 160)}`, "sistema");
-      const r = await post("mandar", { texto: String(fc.args?.texto || ""), falaIgor });
+      const r = await post("mandar", { texto: String(fc.args?.texto || ""), falaIgor, confirmacao: falaTurno });
       resposta = { resultado: r.resultado };
       if (r.estado === "esperando" && r.id) acompanhar(r.id);
     } else {

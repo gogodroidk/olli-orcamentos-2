@@ -42,8 +42,11 @@ export function resumoDecisoes(texto, max = 8) {
   });
 }
 
+// falas de quem lida com cliente/lead (podem trazer nome e texto de terceiros) não vão para a voz (LGPD + injeção)
+export const FORA_DA_VOZ = /VENDAS|ATEND|PROSPEC|CELULAR|CAIXA|TELEGRAM —|WHATSAPP|\bZAP\b|--marcado/i;
 export function resumoConversa(texto, ultimas = 50, mostrar = 12) {
-  const msgs = texto.split("\n").filter(Boolean).slice(-ultimas).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  const msgs = texto.split("\n").filter(Boolean).slice(-ultimas).map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .filter((m) => m && !FORA_DA_VOZ.test(String(m.quem || "")));
   const porQuem = {};
   for (const m of msgs) porQuem[m.quem || "?"] = (porQuem[m.quem || "?"] || 0) + 1;
   const ult = msgs.slice(-mostrar).map((m) => `${m.quem || "?"}${m.t ? ` (${new Date(m.t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })})` : ""}: ${curto(m.texto, 180)}`);
@@ -95,6 +98,14 @@ export function identidadeMaestri() {
   } catch { return null; }
 }
 
+// Trava de confirmação (P1 do LIVRE, 18/11): a última fala do Igor (depois da última fala da voz) tem de confirmar.
+export const CONFIRMA = /\b(sim|confirm[oa]?|confirmado|pode( mandar| sim)?|manda|isso( a[íi])?|ok|okay|positivo|claro|beleza|fechado|certo)\b/i;
+export const NEGA = /\b(n[ãa]o|nada|cancela|esquece|deixa)\b/i;
+export function confirmou(fala) {
+  const t = String(fala || "");
+  return CONFIRMA.test(t) && !(NEGA.test(t) && !/\bsim\b/i.test(t));
+}
+
 /** Limpa o texto vindo da voz: sem controle, sem quebra, tamanho limitado. */
 export function limparTexto(s, max = 800) {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: tirar caracteres de controle é o objetivo (defesa contra injeção)
@@ -114,6 +125,8 @@ export function montarRecado(texto, falaIgor, codigo) {
   const t = limparTexto(texto, 800), f = limparTexto(falaIgor, 600);
   return `[LIGAÇÃO DO IGOR ${codigo} — voz ao vivo, ele está dirigindo] Pedido (resumido pela voz): ${t}` +
     (f ? ` | O que o Igor falou (transcrição automática, pode ter erro): "${f}"` : "") +
+    ` | ATENÇÃO: canal de VOZ (transcrição automática, não é Telegram nem terminal). O que for da zona de aprovação ` +
+    `(dinheiro, produção irreversível, segredo, mensagem a cliente/terceiro) NÃO vale por aqui: peça confirmação do Igor no Telegram.` +
     ` | Responda NO GRUPO começando com "[LIGAÇÃO ${codigo}]", em até 3 frases curtas, só a verdade: ` +
     `node "${EQUIPE()}" say "${MAESTRO}" "[LIGAÇÃO ${codigo}] ..." — a voz lê essa fala para ele.`;
 }
@@ -151,7 +164,7 @@ export function mandarAoSalomao(texto, falaIgor, { esperaMs = 25000, spawnFn = s
   const env = identidadeMaestri();
   if (!env) return Promise.resolve({ estado: "erro", resposta: "Canal com o Salomão indisponível agora (Maestri fechado); nada foi enviado." });
   historico.push(agora);
-  const id = randomUUID(), codigo = `L${String(Math.floor(1000 + Math.random() * 9000))}`;
+  const id = randomUUID(), codigo = `L${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
   const p = { estado: "esperando", entregue: false, codigo, resposta: "", em: agora };
   pedidos.set(id, p);
   const recado = montarRecado(t, falaIgor, codigo);

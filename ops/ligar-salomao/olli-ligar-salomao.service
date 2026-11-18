@@ -3,7 +3,7 @@ Description=Ligar pro Salomao: chamada de voz ao vivo (Gemini Live) - pagina em 
 After=network-online.target
 
 [Service]
-WorkingDirectory=/home/igor/wt/cq-ligar-salomao/ops/ligar-salomao
+WorkingDirectory=/home/igor/.local/share/olli-ligar-salomao
 Environment=PATH=/home/igor/.nvm/versions/node/v24.22.1/bin:/home/igor/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=LIGAR_PORTA=8796
 ExecStart=/home/igor/.nvm/versions/node/v24.22.1/bin/node server.mjs

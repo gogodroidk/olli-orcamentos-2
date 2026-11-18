@@ -14,7 +14,7 @@ import { readFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, normalize } from "node:path";
 import { guarda, postSeguro, log, DIR_DADOS, mascarar } from "./lib/acesso.mjs";
-import { estadoEmpresa, mandarAoSalomao, consultarPedido, limparTexto } from "./lib/ferramentas.mjs";
+import { estadoEmpresa, mandarAoSalomao, consultarPedido, limparTexto, confirmou } from "./lib/ferramentas.mjs";
 import { criarToken, MODELO, VOZ } from "./lib/voz.mjs";
 import { custoDaLigacao } from "./lib/custo.mjs";
 
@@ -90,6 +90,10 @@ export const servidor = createServer(async (req, res) => {
     }
     if (rota === "api/mandar") {
       if (!dentroDoLimite("mandar", 6, 10 * 60e3)) return json(res, 429, { resultado: "Muitos recados seguidos; nada foi enviado. Espere uns minutos." });
+      if (!confirmou(limparTexto(b.confirmacao, 300))) {
+        log("recado_sem_confirmacao", { texto: mascarar(limparTexto(b.texto, 200)) });
+        return json(res, 200, { id: null, estado: "erro", resultado: "Não enviado: o Igor ainda não confirmou em voz. Repita a ordem e pergunte 'confirma?'." });
+      }
       const r = await mandarAoSalomao(limparTexto(b.texto, 800), limparTexto(b.falaIgor, 600));
       const resultado = r.estado === "pronto" ? `Resposta do Salomão: ${r.resposta}`
         : r.estado === "esperando" ? "Recado enviado ao Salomão. Ele responde no grupo; aviso quando a resposta chegar."
