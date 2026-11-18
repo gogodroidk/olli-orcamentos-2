@@ -13,6 +13,8 @@ prestador marcar quem vira cliente. Por isso, a partir deste PR:
   nada sobe sem o usuário marcar e confirmar) e a política de privacidade. Aviso da Play: apps com alvo Android 17 (API 37)
   só mantêm `READ_CONTACTS` se o Contact Picker não bastar — a importação em lote é o argumento.
 
+> **HISTÓRICO (#358, antes do D-2245): tudo daqui para baixo descreve a versão só com o seletor. Vale o bloco "ATUALIZAÇÃO D-2245" acima: o app agora declara `READ_CONTACTS` (pedida ao tocar, depois do aviso), usa `hasAny`/`requestPermissionsAsync`, e só `WRITE_CONTACTS` fica bloqueada.**
+
 ## O que o app faz
 Botão **"Escolher da agenda"** no cadastro de cliente (novo orçamento e Clientes). Abre o **seletor nativo do sistema**
 (`Contact.presentPicker()` do expo-contacts); o usuário toca em UM contato; o app lê **nome, telefone e e-mail** só

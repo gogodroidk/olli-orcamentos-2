@@ -212,7 +212,9 @@ await caso('D-2267: importar em lote passa pelo entitlement importar_lote (carê
 		ler('screens/ImportarScreen.tsx'), ler('screens/ClientesScreen.tsx'), ler('steps/Step1Cliente.tsx'),
 		ler('screens/VisualizarOrcamentoScreen.tsx'), ler('services/puxarTelefoneDosContatos.ts'),
 	]);
-	assert.match(importar, /<TelaRecursoPlano recurso="importar_lote"/);
+	assert.match(importar, /useRecursoPlano\('importar_lote'\)/);
+	assert.ok(!/<TelaRecursoPlano/.test(importar), 'Importar não tranca a tela inteira: catálogo e foto seguem Grátis');
+	assert.match(importar, /origem === 'contatos' \|\| \(origem === 'planilha' && tipo === 'clientes'\)/, 'só importar CLIENTES é Pro');
 	assert.match(clientes, /useRecursoPlano\('importar_lote'\)/);
 	assert.match(clientes, /lock-outline/, 'trancado, o atalho aparece com cadeado');
 	for (const [nome, fonte] of [['Step1Cliente', step1], ['VisualizarOrcamento', visualizar], ['puxarTelefone', puxar]] as const) {

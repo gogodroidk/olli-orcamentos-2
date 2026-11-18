@@ -44,7 +44,7 @@ import {
 import { lerArquivoImportacao, type FormatoImportacao } from '../services/importacaoArquivo';
 import { lerContatosDoCelular } from '../services/contatosCelular';
 import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
-import { TelaRecursoPlano } from '../components/RecursoPlano';
+import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
 import { resumoImportacaoContatos } from '../services/contatosCelularNucleo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -95,20 +95,13 @@ async function lerBytes(asset: DocumentPicker.DocumentPickerAsset): Promise<Uint
 }
 
 /**
- * D-2267: importar em LOTE (contatos, planilha, vCard, foto) é do Pro, com carência do Grátis até
+ * D-2267: importar CLIENTES em lote (contatos, planilha, vCard) é do Pro, com carência do Grátis até
  * `TRANCA_GRATIS_D2267` (entitlement `importar_lote`; `estadoAcessoRecurso` já aplica a carência).
- * Trancado: a tela vira o cartão "Disponível no Pro" (3 estados: carregando | não confirmei | bloqueado).
+ * Catálogo (serviços/produtos) e foto de orçamento seguem no Grátis, como em `planosBase` e no painel.
+ * Trancado: no lugar do botão aparece o cartão "Disponível no Pro" (3 estados: carregando | não confirmei | bloqueado).
  * Puxar UM telefone no orçamento NÃO passa por aqui e segue Grátis.
  */
 export default function ImportarScreen() {
-  return (
-    <TelaRecursoPlano recurso="importar_lote" titulo="Trazer meus dados">
-      <ImportarConteudo />
-    </TelaRecursoPlano>
-  );
-}
-
-function ImportarConteudo() {
   const nav = useNavigation<Nav>();
   const rota = useRoute<Rota>();
   const cores = useCores();
@@ -116,6 +109,8 @@ function ImportarConteudo() {
   const { pode, carregando: papelCarregando } = usePermissao();
   const podeClientes = pode('ver_clientes');
   const podeCatalogo = pode('ver_valores_agregados');
+  const { estado: estadoLote } = useRecursoPlano('importar_lote');
+  const loteTrancado = estadoLote !== 'liberado' && estadoLote !== 'em_breve';
 
   const [origem, setOrigem] = useState<Origem | null>(rota.params?.origem === 'contatos' ? 'contatos' : null);
   // Agenda negada: guarda se dá para pedir de novo (senão o caminho é Ajustes) — 3 estados, nunca "sem contatos" por engano.
@@ -440,6 +435,8 @@ function ImportarConteudo() {
   }, [fotoIa, existentes, previa, gravados]);
 
   const temFonte = Boolean(arquivo || fotoIa);
+  // Só importar CLIENTES é Pro; catálogo e foto ficam livres.
+  const bloqueioLote = loteTrancado && (origem === 'contatos' || (origem === 'planilha' && tipo === 'clientes'));
   const semPermissaoTipo = !papelCarregando && origem !== 'foto' && origem !== null && (tipo === 'clientes' ? !podeClientes : !podeCatalogo);
 
   return (
@@ -466,7 +463,8 @@ function ImportarConteudo() {
           ))}
         </View>
 
-        {origem === 'contatos' && (
+        {origem === 'contatos' && bloqueioLote && <CartaoRecursoPlano recurso="importar_lote" />}
+        {origem === 'contatos' && !bloqueioLote && (
           <View style={styles.card}>
             {Platform.OS !== 'web' && (
               <>
@@ -508,8 +506,12 @@ function ImportarConteudo() {
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.textoMudo}>CSV ou XLSX até {Math.round(LIMITE_ARQUIVO_BYTES / 1024 / 1024)} MB, com uma linha de cabeçalho. Só a primeira aba do XLSX é lida; fórmulas não são executadas.</Text>
-            <OlliButton label={lendo ? 'Lendo…' : 'Escolher planilha'} variant="gradient" fullWidth onPress={() => { void escolherArquivo(); }} disabled={lendo || gravando} loading={lendo} icon={!lendo ? <MaterialCommunityIcons name="folder-open-outline" size={18} color="#fff" /> : undefined} style={{ marginTop: Spacing.md }} />
+            {bloqueioLote ? <CartaoRecursoPlano recurso="importar_lote" /> : (
+              <>
+              <Text style={styles.textoMudo}>CSV ou XLSX até {Math.round(LIMITE_ARQUIVO_BYTES / 1024 / 1024)} MB, com uma linha de cabeçalho. Só a primeira aba do XLSX é lida; fórmulas não são executadas.</Text>
+              <OlliButton label={lendo ? 'Lendo…' : 'Escolher planilha'} variant="gradient" fullWidth onPress={() => { void escolherArquivo(); }} disabled={lendo || gravando} loading={lendo} icon={!lendo ? <MaterialCommunityIcons name="folder-open-outline" size={18} color="#fff" /> : undefined} style={{ marginTop: Spacing.md }} />
+              </>
+            )}
           </View>
         )}
 
