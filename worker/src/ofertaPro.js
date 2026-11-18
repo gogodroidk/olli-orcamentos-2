@@ -60,7 +60,8 @@ export function validarOfertas(ofertas, modelo = 'oferta_pro') {
 
 /** Política pura: dado o que o banco diz da conta, devolve o motivo que a barra, ou 'sairia'. */
 export function decidirOferta(fato, { agora = new Date(), modelo = 'oferta_pro' } = {}) {
-  const M = MODELOS[modelo] ?? MODELOS.oferta_pro;
+  const M = MODELOS[modelo];
+  if (!M) throw Object.assign(new Error('modelo_invalido'), { codigo: 'modelo_invalido' });
   if (!fato || fato.existe !== true) return 'conta_indisponivel';
   if (fato.suprimido !== false) return 'suprimido';
   if (fato.excluido !== false) return 'excluido';
