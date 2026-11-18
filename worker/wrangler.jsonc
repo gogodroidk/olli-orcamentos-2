@@ -49,10 +49,12 @@
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
     "SUPABASE_ANON_KEY": "sb_publishable_uDltTEnZAUek_YYGFhKaUw_q0DNu_6_", // gitleaks:allow — chave publicável, protegida por RLS
-    // Pix Automático (assinatura recorrente no Pix, Pro mensal, via AbacatePay) — DESLIGADO. Para ligar, quando a
-    // AbacatePay liberar Pix Automático na loja: criar o produto MONTHLY de R$ 39,00 lá, acrescentar aqui
-    //   "ABACATE_PA_PRODUTO_PRO_MENSAL": "prod_…"   e trocar este valor para "true". Ver docs/ABACATEPAY.md (Pix Automático).
-    "ABACATE_PIX_AUTOMATICO": "false",
+    // Pix Automático (assinatura recorrente no Pix, Pro mensal, via AbacatePay) — LIGADO em 18/11/2026 (D-2171).
+    // Produto MONTHLY de R$ 39,00 na AbacatePay de produção (externalId olli_pro_mensal_pix_automatico).
+    // Desligar = voltar a flag para "false" e fazer deploy (cancelar, status e webhook seguem funcionando).
+    // Ver docs/ABACATEPAY.md (Pix Automático).
+    "ABACATE_PA_PRODUTO_PRO_MENSAL": "prod_Y0WuHZsg2mwXRBaxjB2AYbFG",
+    "ABACATE_PIX_AUTOMATICO": "true",
     // E-mail REAL ligado (dono autorizou em 29/09/2026). Só linhas novas da
     // outbox nascem scope=production (config no banco, migration 20260929200000);
     // as boas-vindas antigas presas em hold foram descartadas sem envio.
