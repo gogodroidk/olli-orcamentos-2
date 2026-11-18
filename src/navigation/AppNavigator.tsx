@@ -168,7 +168,8 @@ export type RootStackParamList = {
   OlliChat: undefined;
   Autopilot: undefined;
   // Troque em 5 minutos: contatos (.vcf/CSV), planilha CSV/XLSX e foto de orçamento antigo (IA).
-  Importar: undefined;
+  // `origem: 'contatos'` abre já na porta "Contatos do celular" (botão "Importar dos contatos" em Clientes).
+  Importar: { origem?: 'contatos' } | undefined;
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
   // Comprovante de controle de pragas (RDC 622, art. 19) do ofício de dedetização (gate `vertical: 'dedetizacao'`).

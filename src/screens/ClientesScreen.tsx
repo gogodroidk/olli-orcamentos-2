@@ -534,6 +534,23 @@ export default function ClientesScreen() {
           icon="gesture-tap"
           texto="Cadastre seus clientes aqui. Toque em um cliente para ver o histórico, criar orçamento, agendar visita ou chamar no WhatsApp na hora."
         />
+        {Platform.OS !== 'web' && (
+          // D-2245: cliente sem digitar — lê nome e telefone dos contatos do celular
+          // (permissão pedida só ao tocar, lá na tela Importar) e mostra uma lista para marcar.
+          <TouchableOpacity
+            style={styles.mapaAtalho}
+            onPress={() => nav.navigate('Importar', { origem: 'contatos' })}
+            accessibilityRole="button"
+            accessibilityLabel="Importar clientes dos contatos do celular"
+          >
+            <MaterialCommunityIcons name="card-account-phone-outline" size={20} color={cores.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mapaAtalhoTitulo}>Importar dos contatos</Text>
+              <Text style={styles.mapaAtalhoSub}>Escolha na sua agenda quem é cliente. Sem digitar.</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceVariant} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.mapaAtalho}
           onPress={() => nav.navigate('Prospeccao')}
@@ -683,7 +700,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   mapaAtalho: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline,
-    padding: 12, marginTop: 10,
+    padding: 12, marginTop: 10, minHeight: 56,
   },
   mapaAtalhoTitulo: { color: c.onSurface, fontWeight: '800', fontSize: 14 },
   mapaAtalhoSub: { color: c.onSurfaceVariant, fontSize: 12, marginTop: 2 },

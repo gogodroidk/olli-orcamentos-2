@@ -75,7 +75,8 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.WRITE_CONTACTS"
       ]
     },
     "web": {
@@ -101,6 +102,12 @@
         {
           "cameraPermission": "O OLLI usa a câmera para fotografar os serviços do orçamento e para ler o QR do equipamento.",
           "microphonePermission": "O OLLI usa o microfone para você ditar orçamentos e falar com a assistente."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "O OLLI lê nome e telefone dos seus contatos só para você escolher quem vira cliente. Nada é salvo sem a sua escolha."
         }
       ],
       "expo-font",

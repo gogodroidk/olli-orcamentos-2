@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { registrarAtividadeUsuario } from '../services/equipe';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
-  TouchableOpacity, Modal, Alert, Keyboard,
+  TouchableOpacity, Modal, Alert, Keyboard, Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../utils/haptico';
@@ -20,6 +20,8 @@ import { AvisoCep } from '../components/AvisoCep';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
 import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { clienteParaOrc } from '../utils/orcamentoBase';
+import { escolherUmContato } from '../services/contatosCelular';
+import { telefoneDoContato } from '../services/contatosCelularNucleo';
 
 /** Quantos clientes recentes aparecem antes de digitar na busca. */
 const QTD_RECENTES = 5;
@@ -166,6 +168,37 @@ export default function Step1Cliente({ orc, onChange }: Props) {
 
   const selected = !!orc.clienteNome;
 
+  // D-2245: orçamento sem telefone trava o envio no WhatsApp — "Puxar dos contatos" preenche SÓ o telefone.
+  // 3 estados: puxando (spinner no botão) | erro (mensagem, nada alterado) | valor (telefone aplicado).
+  const [puxando, setPuxando] = useState(false);
+  const [erroPuxar, setErroPuxar] = useState<string | null>(null);
+  const puxarDosContatos = useCallback(async () => {
+    if (puxando) return;
+    setErroPuxar(null);
+    setPuxando(true);
+    try {
+      const r = await escolherUmContato();
+      if (r.estado === 'cancelado') return;
+      if (r.estado === 'indisponivel') { setErroPuxar('Os contatos só abrem no app do celular. Digite o telefone no cadastro do cliente.'); return; }
+      if (r.estado === 'erro') { setErroPuxar(`${r.mensagem} Nada foi alterado.`); return; }
+      const telefone = telefoneDoContato(r.telefones);
+      if (!telefone) { setErroPuxar(`${r.nome || 'Esse contato'} não tem um telefone com DDD que o WhatsApp aceite. Escolha outro contato.`); return; }
+      onChange({ clienteTelefone: telefone });
+      vibrar('selecao');
+      // Guarda também no cadastro, para o próximo orçamento já sair com telefone.
+      if (orc.clienteId) {
+        try {
+          const atual = (await getClientes()).find(c => c.id === orc.clienteId);
+          if (atual && !atual.telefone) await saveCliente({ ...atual, telefone, atualizadoEm: nowISO() });
+        } catch {
+          setErroPuxar('O telefone entrou no orçamento, mas não consegui guardar no cadastro do cliente agora.');
+        }
+      }
+    } finally {
+      setPuxando(false);
+    }
+  }, [puxando, onChange, orc.clienteId]);
+
   return (
     <ScrollView
       style={styles.container}
@@ -256,7 +289,16 @@ export default function Step1Cliente({ orc, onChange }: Props) {
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.selectedName}>{orc.clienteNome}</Text>
-              {orc.clienteTelefone ? <Text style={styles.selectedInfo}>{orc.clienteTelefone}</Text> : null}
+              {orc.clienteTelefone ? <Text style={styles.selectedInfo}>{orc.clienteTelefone}</Text> : (
+                <>
+                  <Text style={styles.selectedInfo}>Sem telefone — o envio pelo WhatsApp precisa dele.</Text>
+                  {Platform.OS !== 'web' && <TouchableOpacity style={styles.puxarBtn} onPress={() => { void puxarDosContatos(); }} disabled={puxando} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Puxar o telefone dos contatos do celular">
+                    <MaterialCommunityIcons name="card-account-phone-outline" size={18} color={cores.primary} />
+                    <Text style={styles.puxarBtnLabel}>{puxando ? 'Abrindo contatos…' : 'Puxar dos contatos'}</Text>
+                  </TouchableOpacity>}
+                  {erroPuxar ? <Text style={[styles.selectedInfo, { color: cores.danger }]} accessibilityRole="alert">{erroPuxar}</Text> : null}
+                </>
+              )}
               {orc.clienteCpfCnpj ? <Text style={styles.selectedInfo}>{orc.clienteCpfCnpj}</Text> : null}
               {orc.clienteEndereco ? <Text style={styles.selectedInfo} numberOfLines={2}>{orc.clienteEndereco}</Text> : null}
             </View>
@@ -358,6 +400,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     gap: 8,
   },
   newBtnLabel: { fontSize: 15, color: c.primary, fontWeight: '700' },
+  puxarBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    minHeight: 44, marginTop: 6, paddingHorizontal: 12,
+    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.primary,
+  },
+  puxarBtnLabel: { fontSize: 14, color: c.primary, fontWeight: '700' },
   modal: { flex: 1, backgroundColor: c.background },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
