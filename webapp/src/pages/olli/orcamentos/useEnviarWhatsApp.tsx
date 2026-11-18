@@ -23,6 +23,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { mascaraTelefone } from "@/olli/components/campos";
+import { doNavegador, escolherNaAgenda, primeiroTelefone, seletorDeContatosDisponivel } from "@/olli/contatos/contatos";
 import {
 	avisoLimiteEnvios,
 	cancelarReservaEnvioOrcamento,
@@ -180,6 +181,29 @@ export function useEnviarWhatsApp() {
 						aria-describedby={erroNumero ? "whatsapp-cliente-envio-erro" : undefined}
 						className="min-h-[44px]"
 					/>
+					{/* D-2245: no Chrome do Android a agenda abre aqui mesmo (iPhone/computador não oferecem). */}
+					{seletorDeContatosDisponivel() && (
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-[44px] w-full"
+							disabled={salvandoNumero}
+							onClick={async () => {
+								setErroNumero(null);
+								try {
+									const escolhido = await escolherNaAgenda(false);
+									if (!escolhido.length) return;
+									const tel = primeiroTelefone(doNavegador(escolhido));
+									if (tel) setNumero(mascaraTelefone(tel));
+									else setErroNumero("Esse contato não tem telefone com DDD. Digite o número.");
+								} catch {
+									setErroNumero("O navegador não abriu a agenda agora. Digite o número.");
+								}
+							}}
+						>
+							Puxar dos contatos
+						</Button>
+					)}
 					{erroNumero && (
 						<p id="whatsapp-cliente-envio-erro" role="alert" className="text-sm text-error">
 							{erroNumero}

@@ -10,10 +10,12 @@
  */
 import type { Empresa } from "@dominio";
 import { FileText, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
+import { lerContatosCompartilhados } from "@/olli/contatos/compartilhado";
+import ImportarContatos from "@/olli/contatos/ImportarContatos";
 import RecordListPage, { type AcaoDeLinha, type Linha } from "@/olli/components/RecordListPage";
 import { useMinhaEmpresa } from "@/olli/data";
 import { useExcluir } from "@/olli/mutacoes";
@@ -39,6 +41,19 @@ export default function ClientesPage() {
 	const navigate = useNavigate();
 	const [alvo, setAlvo] = useState<Alvo | null>(null);
 	const [aExcluir, setAExcluir] = useState<Linha | null>(null);
+	// Contato compartilhado pelo WhatsApp com o painel instalado (share_target → /clientes?compartilhado=1).
+	const [recebidos, setRecebidos] = useState<Array<{ nome: string; telefones: string[] }> | null>(null);
+	const [erroRecebido, setErroRecebido] = useState<string | null>(null);
+	useEffect(() => {
+		if (!new URLSearchParams(window.location.search).has("compartilhado")) return;
+		void lerContatosCompartilhados().then((r) => {
+			if (r.ok) setRecebidos(r.contatos);
+			else setErroRecebido(r.motivo);
+		});
+	}, []);
+	useEffect(() => {
+		if (erroRecebido) toast.error(erroRecebido);
+	}, [erroRecebido]);
 	const excluir = useExcluir("clientes");
 	const { data: empresaLinha } = useMinhaEmpresa();
 	// A `empresa` também é uma tabela de BLOB: o nome mora em `dados` (ver orcamentos/index.tsx).
@@ -115,6 +130,7 @@ export default function ClientesPage() {
 				ascending
 				columns={["nome", "telefone", "cidade", "estado"]}
 				acaoNova={{ rotulo: "Novo cliente", aoClicar: () => setAlvo({ modo: "novo" }) }}
+				acoesExtras={<ImportarContatos recebidos={recebidos} aoFecharRecebidos={() => setRecebidos(null)} />}
 				aoAbrirLinha={(linha) => setAlvo({ modo: "editar", linha })}
 				acoesDaLinha={acoes}
 				vazioTitulo="Nenhum cliente cadastrado"
