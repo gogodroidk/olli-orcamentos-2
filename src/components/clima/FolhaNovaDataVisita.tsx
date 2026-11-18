@@ -31,6 +31,8 @@ import { toast } from '../feedback';
 import { vibrar } from '../../utils/haptico';
 import { capitalizeFirst } from '../../utils/date';
 import { desfazerRemarcacao, remarcarVisita } from '../../services/remarcarVisita';
+import { CartaoRecursoPlano } from '../RecursoPlano';
+import { useCadeado } from '../../hooks/useCadeado';
 import type { EstadoEncaixe } from '../../hooks/useEncaixe';
 import type { OcorrenciaAgendamento } from '../../utils/contratoRecorrente';
 
@@ -59,6 +61,8 @@ export function FolhaNovaDataVisita({ visivel, visita, encaixe, aoFechar, aoRema
   const [passo, setPasso] = useState<'lista' | 'dia' | 'hora'>('lista');
   const [diaEscolhido, setDiaEscolhido] = useState<Date | null>(null);
   const serie = !!(visita.recorrencia || visita.ocorrenciaDe);
+  // D-2267: remarcar visita é edição de agenda (Pro, com carência do Grátis): a folha mostra o cartão do plano.
+  const trancado = useCadeado('agenda').trancado;
 
   useEffect(() => {
     if (visivel) {
@@ -70,7 +74,7 @@ export function FolhaNovaDataVisita({ visivel, visita, encaixe, aoFechar, aoRema
   }, [visivel]);
 
   async function gravar(novoInicio: Date) {
-    if (salvando) return;
+    if (salvando || trancado) return;
     // O calendário só barra o DIA: "hoje às 8h" escolhido às 15h remarcaria para
     // o passado (a visita sairia do Hoje e ninguém iria). Recusa com o motivo.
     if (novoInicio.getTime() < Date.now() - 60_000) {
@@ -131,7 +135,12 @@ export function FolhaNovaDataVisita({ visivel, visita, encaixe, aoFechar, aoRema
             </PressableAnimado>
           </View>
 
-          <View style={styles.conteudo}>
+          {trancado ? (
+            <View style={styles.conteudo}>
+              <CartaoRecursoPlano recurso="agenda" titulo="Remarcar visita" />
+            </View>
+          ) : null}
+          <View style={[styles.conteudo, trancado && { display: 'none' }]}>
             <Aparecer indice={0}>
               <SugestaoEncaixe
                 resultado={encaixe}

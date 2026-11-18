@@ -113,5 +113,61 @@ ok('cartão e tela do cadeado: sem link externo, sem Pix e sem texto de pagament
   && !/pix/i.test(cartao.replace(/beneficioRecurso\(recurso\)/g, '')));
 ok('preço do cartão vem de precosPlanos (informação; nada de "pague por Pix")', /PRECO_PRO/.test(cartao) && /por mês/.test(cartao) && !/pix/i.test(cartao.split('por mês')[0].slice(-200)));
 
+// 7. Os caminhos de escrita que o LIVRE achou (tablet/desktop, Hoje, Mapa, Encerrar atendimento): cada um bloqueia no Grátis
+//    e libera no Pro, ligados ao MESMO estado de acesso (estadoAcessoRecurso -> useCadeado -> recursoTrancado).
+const estadoCom = (plano: 'gratis' | 'pro' | 'empresa', agora: number, extra: { carregando?: boolean; confirmado?: boolean; planoTenant?: 'gratis' | 'pro' | 'empresa' } = {}) => {
+  const real = Date.now;
+  Date.now = () => agora;
+  try {
+    return estadoAcessoRecurso({ plano, planoTenant: extra.planoTenant, carregando: extra.carregando ?? false, confirmado: extra.confirmado ?? true } as never, 'agenda');
+  } finally { Date.now = real; }
+};
+const pontos: Array<{ nome: string; recurso: 'agenda' | 'ordem_servico'; arquivo: string; prova: (c: string) => boolean }> = [
+  { nome: 'tablet/desktop: agenda (novo, editar, salvar, concluir, cancelar, excluir)', recurso: 'agenda', arquivo: 'src/screens/desktop/AgendaDesktopScreen.tsx',
+    prova: (c) => /useCadeado\('agenda'\)/.test(c) && (c.match(/if \(cadeadoAgenda\.trancado\) \{ cadeadoAgenda\.abrirGate\(\); return; \}/g) ?? []).length === 6 },
+  { nome: 'tablet/desktop: painel Nova OS', recurso: 'ordem_servico', arquivo: 'src/screens/desktop/PainelNovaOS.tsx',
+    prova: (c) => /useCadeado\('ordem_servico'\)/.test(c) && /<CartaoRecursoPlano recurso="ordem_servico" \/>/.test(c) && (c.match(/if \(cadeadoOS\.trancado\) return;/g) ?? []).length === 2 },
+  { nome: 'tablet/desktop: painel da OS (status, checklist, agenda, dados, atribuir)', recurso: 'ordem_servico', arquivo: 'src/screens/desktop/PainelOS.tsx',
+    prova: (c) => /useCadeado\('ordem_servico'\)\.trancado/.test(c) && (c.match(/if \(osTrancada\) return;/g) ?? []).length === 6 && /pointerEvents=\{osTrancada \? 'none' : 'auto'\}/.test(c) && /<CartaoRecursoPlano recurso="ordem_servico"/.test(c) },
+  { nome: 'tela Hoje: concluir/reabrir visita', recurso: 'agenda', arquivo: 'src/screens/HojeScreen.tsx',
+    prova: (c) => /useCadeado\('agenda'\)/.test(c) && /mudarStatus = useCallback\(async \(a: OcorrenciaAgendamento, status: 'concluido' \| 'agendado'\) => \{\s*if \(cadeadoAgenda\.trancado\) \{ cadeadoAgenda\.abrirGate\(\); return; \}/.test(c) },
+  { nome: 'Mapa: reordenar a rota regrava horários', recurso: 'agenda', arquivo: 'src/screens/MapaDiaScreen.tsx',
+    prova: (c) => /useCadeado\('agenda'\)/.test(c) && /if \(ordenando\) return;\s*if \(cadeadoAgenda\.trancado\) \{ cadeadoAgenda\.abrirGate\(\); return; \}/.test(c) },
+  { nome: 'Mapa e Clima: folha "Remarcar" (remarcarVisita)', recurso: 'agenda', arquivo: 'src/components/clima/FolhaNovaDataVisita.tsx',
+    prova: (c) => /useCadeado\('agenda'\)\.trancado/.test(c) && /if \(salvando \|\| trancado\) return;/.test(c) && /<CartaoRecursoPlano recurso="agenda" titulo="Remarcar visita" \/>/.test(c) },
+  { nome: 'Encerrar atendimento (fotos, assinatura, cobrança, próxima visita)', recurso: 'ordem_servico', arquivo: 'src/components/encerramento/EncerrarAtendimentoModal.tsx',
+    prova: (c) => /useCadeado\('ordem_servico'\)\.trancado/.test(c) && /pointerEvents=\{trancado \? 'none' : 'auto'\}/.test(c) && /finalizado \|\| trancado \?/.test(c) && /<CartaoRecursoPlano recurso="ordem_servico" titulo="Encerrar atendimento"/.test(c) },
+  { nome: 'técnico em campo: avançar status da OS', recurso: 'ordem_servico', arquivo: 'src/screens/TecnicoHomeScreen.tsx',
+    prova: (c) => /useCadeado\('ordem_servico'\)/.test(c) && /avancarStatus\(ordem: OrdemServico, proximo: StatusOS\) \{\s*if \(cadeadoOS\.trancado\)/.test(c) },
+];
+for (const p of pontos) {
+  ok(`${p.nome}: portão no código (${p.arquivo.split('/').pop()})`, p.prova(semComentarios(ler(p.arquivo))));
+}
+ok('estado de acesso, para cada ponto: Grátis depois da carência TRANCA; Pro, Empresa e técnico de empresa Pro LIBERAM; Grátis na carência libera',
+  recursoTrancado(estadoCom('gratis', depois)) && !recursoTrancado(estadoCom('pro', depois)) && !recursoTrancado(estadoCom('empresa', depois))
+  && !recursoTrancado(estadoCom('gratis', depois, { planoTenant: 'pro' })) && !recursoTrancado(estadoCom('gratis', antes)));
+ok('3 estados: carregando/indeterminado trancam o Grátis; Pro com plano em cache (offline, sem confirmar) segue LIBERADO',
+  recursoTrancado(estadoCom('gratis', depois, { carregando: true, confirmado: false })) && recursoTrancado(estadoCom('gratis', depois, { confirmado: false }))
+  && !recursoTrancado(estadoCom('pro', depois, { carregando: true, confirmado: false })) && !recursoTrancado(estadoCom('pro', depois, { confirmado: false })));
+// Varredura: qualquer tela/componente que chame um serviço de ESCRITA de agenda/OS/recibo precisa usar useCadeado (ou estar na lista de isentos)
+import { readdirSync, statSync } from 'node:fs';
+const ESCRITA = /\b(saveAgendamento|deleteAgendamento|editarRecorrente|remarcarVisita|mudarStatusVisitaDoDia|criarOSManual|criarOSDeOrcamento|salvarEncerramentoOS|finalizarEncerramentoOS|atualizarStatusOS|atualizarChecklist|editarDadosOS|saveOrdemServico)\(/;
+const ISENTOS = new Set<string>([
+  'src/components/tecnico/BarraOffline.tsx', // só comentário de exemplo
+  'src/database/database.ts', // camada de dados (sync/restauração), não é ação do usuário
+]);
+const sobra: string[] = [];
+const varrer = (dir: string) => {
+  for (const nome of readdirSync(new URL(`../${dir}`, import.meta.url))) {
+    const rel = `${dir}/${nome}`;
+    if (statSync(new URL(`../${rel}`, import.meta.url)).isDirectory()) { varrer(rel); continue; }
+    if (!/\.tsx?$/.test(nome) || ISENTOS.has(rel)) continue;
+    const c = semComentarios(ler(rel));
+    if (ESCRITA.test(c) && !/useCadeado\(/.test(c)) sobra.push(rel);
+  }
+};
+for (const d of ['src/screens', 'src/screens/desktop', 'src/components', 'src/components/clima', 'src/components/encerramento', 'src/components/tecnico', 'src/steps']) varrer(d);
+ok(`varredura: toda tela/componente que escreve agenda/OS usa o cadeado${sobra.length ? ' — SEM: ' + sobra.join(', ') : ''}`, sobra.length === 0);
+
 console.log(falhas ? `\nFALHOU: ${falhas}` : '\nPASSOU');
 process.exit(falhas ? 1 : 0);
