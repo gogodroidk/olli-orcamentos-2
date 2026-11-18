@@ -40,6 +40,12 @@ html, body { margin: 0; height: 100%; background: radial-gradient(120% 80% at 50
 .desligar { background: var(--vermelho); color: var(--branco); }
 .mudo { min-height: 56px; font-size: 18px; background: rgba(255,255,255,.08); color: var(--branco); border: 1px solid rgba(255,255,255,.18); }
 .mudo[aria-pressed="true"] { background: rgba(229,72,77,.18); border-color: var(--vermelho); }
+.cartao { border: 2px solid var(--ciano); border-radius: var(--raio); padding: 14px; background: rgba(52,198,217,.08); display: flex; flex-direction: column; gap: 10px; }
+.cartao-titulo { margin: 0; font-size: 15px; font-weight: 700; color: var(--ciano-claro); }
+.cartao-texto { margin: 0; font-size: 20px; line-height: 1.35; overflow-wrap: anywhere; }
+.cartao-acoes { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+.confirmar { background: linear-gradient(135deg, var(--azul), var(--ciano)); color: var(--navy); }
+.cancelar { background: rgba(255,255,255,.08); color: var(--branco); border: 1px solid rgba(255,255,255,.25); font-size: 20px; }
 .nota { color: var(--cinza); font-size: 12px; text-align: center; margin: 4px 0 0; }
 [hidden] { display: none !important; }
 @media (prefers-reduced-motion: reduce) {

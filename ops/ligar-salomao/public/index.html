@@ -28,6 +28,16 @@
 
     <section class="legenda" id="legenda" aria-label="O que está sendo falado"></section>
 
+    <section class="cartao" id="cartao" hidden aria-live="assertive" aria-labelledby="cartao-titulo">
+      <p class="cartao-titulo" id="cartao-titulo">Recado para o Salomão: ainda NÃO enviado</p>
+      <p class="cartao-texto" id="pedido-texto"></p>
+      <div class="cartao-acoes">
+        <button id="confirmar" class="botao confirmar" type="button">Confirmar envio</button>
+        <button id="cancelar" class="botao cancelar" type="button">Cancelar</button>
+      </div>
+      <p class="nota">Também vale dizer "sim" depois que a voz ler o pedido e perguntar "confirma?".</p>
+    </section>
+
     <footer class="acoes">
       <button id="ligar" class="botao ligar" type="button">Ligar pro Salomão</button>
       <button id="desligar" class="botao desligar" type="button" hidden>Desligar</button>

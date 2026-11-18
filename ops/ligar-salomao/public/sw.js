@@ -1,5 +1,5 @@
 // Service worker do "Ligar pro Salomão": guarda só o casco da página. NUNCA guarda /ligar/api/* (token, estado, recados).
-const V = "ligar-v1";
+const V = "ligar-v2"; // v2: confirmação com token do servidor (P1 LIVRE)
 const CASCO = ["/ligar/", "/ligar/estilo.css", "/ligar/app.js", "/ligar/mic-worklet.js", "/ligar/icone.svg", "/ligar/manifest.webmanifest"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(V).then((c) => c.addAll(CASCO)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("ligar-") && k !== V).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

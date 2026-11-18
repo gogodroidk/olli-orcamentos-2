@@ -6,8 +6,10 @@ Página (PWA) para o Igor conversar **por voz, ao vivo**, com o Salomão (Maestr
 celular ──(áudio direto)──▶ Google Gemini Live (gemini-3.8-live, voz Enceladus)
    │                              │ chama ferramenta
    └──(Access do Igor)──▶ PC 127.0.0.1:8796/ligar ──▶ estado_empresa()  (só leitura)
-                                                  └─▶ mandar_ao_salomao(texto) ──▶ hibernar.mjs ask "SALOMÃO — Maestro"
-                                                                                  resposta = fala dele no grupo com o código [LIGAÇÃO Lnnnn]
+                                                  └─▶ mandar_ao_salomao(texto) ──▶ só PREPARA (texto guardado + token de uso único)
+   Igor: "sim" após ouvir o pedido, ou botão "Confirmar envio" ──▶ /api/confirmar (token conferido no servidor)
+                                                                 ──▶ hibernar.mjs ask "SALOMÃO — Maestro"
+                       resposta = linha "R-Lnnnnnnnn:" no retorno do ask, ou ~/.olli-ligar/respostas/Lnnnnnnnn.txt (nada no grupo)
 ```
 
 ## Segurança (o que segura o quê)
@@ -16,14 +18,21 @@ celular ──(áudio direto)──▶ Google Gemini Live (gemini-3.8-live, voz 
 - **Acesso remoto**: só pelo hostname `comando.ollizap.online/ligar/` (atrás do Cloudflare Access "Central de Comando", Google do Igor) **e** o servidor revalida o JWT do Access (assinatura, aud, iss, exp, e-mail). Sem config = remoto recusado. Host estranho = 421.
 - **POST**: exige JSON + cabeçalho `X-Ligar: 1` + mesma origem (anti-CSRF). Limites por janela.
 - **Ferramentas**: só 2. Sem shell (execFile sem shell, filho sem variáveis de segredo).
-- **Confirmação travada em código** (P1 do LIVRE): o recado só sai se a fala do Igor *depois* da última fala da voz confirmar ("sim", "confirmo", "pode mandar"…, sem "não/cancela"). Conferido no navegador **e** no servidor; recusa vai para o log. O recado leva a transcrição real e avisa o Salomão que voz não autoriza zona de aprovação (dinheiro, produção, segredo, cliente).
-- **Injeção/LGPD**: estado da empresa vai marcado como DADO e mascarado (chaves, telefone, e-mail, CPF/CNPJ); falas de vendas/atendimento/celular (texto de lead) ficam fora. Resposta do Salomão só vale com o código único do recado (`L` + 8 hex).
+- **Confirmação no SERVIDOR** (P1 do LIVRE, CQ-LIGAR-SALOMAO-P1, `lib/confirmacao.mjs`):
+  - cada ligação tem id gerado no servidor, preso à identidade do Access (e-mail + sub); toda rota exige ligação + mesma identidade;
+  - a ferramenta do modelo só **prepara**: o servidor guarda o texto exato e gera um token aleatório de **uso único** (3 min, 3 erros cancelam), que fica só no código da página e **nunca** vai ao modelo;
+  - só `/api/confirmar` envia, com token + ligação + identidade, a partir de um ato do Igor: botão "Confirmar envio", ou "sim" falado depois de a voz **ler o pedido guardado** e perguntar "confirma?" (sem leitura do estado no meio). O texto enviado é o guardado no servidor;
+  - não existe mais rota de envio direto (`/api/mandar` foi removida).
+- **Injeção**: o que vem do grupo/DECISOES entra **cercado** como `<dado_nao_confiavel id=aleatório>` (o texto de dentro não consegue fechar a cerca). O servidor guarda o que foi lido em cada ligação e **recusa preparar** pedido que copie esse conteúdo, que diga "o Igor mandou…" (3ª pessoa) ou que traga marcas do sistema. Teste: `teste.mjs` ("INJEÇÃO…", "HTTP…") e `teste-navegador.mjs`.
+- **LGPD**: estado mascarado (chaves, telefone, e-mail, CPF/CNPJ); falas de vendas/atendimento/celular (texto de lead) ficam fora.
+- **Nada no grupo do Telegram** (D-2348): o recado pede resposta no próprio terminal (linha `R-<código>:`), lida do retorno do `hibernar ask`; resposta demorada vai para arquivo local da ligação.
 - **Botão de pânico**: `touch ~/.olli-ligar/desligado` desliga token e ferramentas na hora.
 - Logs (sem conteúdo de áudio): `~/.olli-ligar/acessos.jsonl`, `~/.olli-ligar/ligacoes.jsonl` (duração, tokens, custo).
 
 ## Rodar / conferir
 ```bash
-node --test ops/ligar-salomao/teste.mjs                         # 16 testes, sem rede
+node --test ops/ligar-salomao/teste.mjs                         # 20 testes, sem rede (inclui injeção e HTTP)
+node ops/ligar-salomao/teste-navegador.mjs                       # Chromium headless, Gemini simulado, hibernar falso
 bash ops/ligar-salomao/instalar.sh                               # copia para ~/.local/share/olli-ligar-salomao (o serviço roda dali)
 systemctl --user daemon-reload && systemctl --user enable --now olli-ligar-salomao.service
 olli-ligar-salomao                                               # botão "Ligar pro Salomão" (abre/reaproveita a aba)

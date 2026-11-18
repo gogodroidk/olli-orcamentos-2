@@ -5,7 +5,7 @@ set -euo pipefail
 ORIG="$(cd "$(dirname "$0")" && pwd)"
 DEST="$HOME/.local/share/olli-ligar-salomao"
 mkdir -p "$DEST" "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.config/systemd/user"
-rsync -a --delete --exclude teste.mjs --exclude '*.service' --exclude '*.desktop' --exclude instalar.sh --exclude olli-ligar-salomao.sh \
+rsync -a --delete --exclude teste.mjs --exclude teste-navegador.mjs --exclude '*.service' --exclude '*.desktop' --exclude instalar.sh --exclude olli-ligar-salomao.sh \
   "$ORIG/lib" "$ORIG/public" "$ORIG/server.mjs" "$ORIG/README.md" "$DEST/"
 install -m 0755 "$ORIG/olli-ligar-salomao.sh" "$HOME/.local/bin/olli-ligar-salomao"
 install -m 0644 "$ORIG/olli-ligar-salomao.service" "$HOME/.config/systemd/user/olli-ligar-salomao.service"
