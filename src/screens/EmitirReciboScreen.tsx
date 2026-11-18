@@ -414,10 +414,12 @@ function EmitirReciboConteudo() {
 
   const semEmpresa = !carregandoEmpresa && !empresa;
 
-  // D-2267: emitir recibo novo é do Pro (com carência do Grátis). O que já foi emitido segue na aba "Emitidos";
-  // um pagamento já registrado que ainda não gerou o PDF termina normalmente (é dado do usuário, não recibo novo).
+  // D-2267 (corte do CPO): REGISTRAR o pagamento recebido é básico e segue Grátis ("Registrar pagamento" no orçamento);
+  // EMITIR o documento de recibo (PDF e link para o cliente) é do Pro, com carência do Grátis. Esta tela é a emissão:
+  // trancada, mostra o cartão do plano — inclusive para um pagamento já registrado cujo PDF ainda não saiu.
+  // O que já foi emitido segue visível e legível na aba "Emitidos".
   const cadeadoRecibo = useCadeado('recibos');
-  const reciboTrancado = cadeadoRecibo.trancado && !reciboPendente;
+  const reciboTrancado = cadeadoRecibo.trancado;
   const cadeadoNota = useCadeado('nota_fiscal'); // nota fiscal: "em breve" no Pro, cadeado no Grátis
 
   return (

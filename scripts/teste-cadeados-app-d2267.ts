@@ -57,7 +57,12 @@ const nav = ler('src/navigation/AppNavigator.tsx');
 ok('rota RecursoTrancado registrada e tipada', /RecursoTrancado: \{ recurso: Recurso \}/.test(nav) && /name="RecursoTrancado" component=\{RecursoTrancadoScreen\}/.test(nav));
 ok('tela "Disponível no Pro" usa o cartão da fonte única', /<CartaoRecursoPlano recurso=\{recurso\} \/>/.test(gate) && /Disponível no \$\{NOME_PLANO\[planoMinimoDoRecurso\(recurso\)\]\}/.test(gate));
 ok('recibo: aba Novo vira cartão do plano quando trancada', /useCadeado\('recibos'\)/.test(recibo) && /aba === 'novo' && reciboTrancado/.test(recibo) && /<CartaoRecursoPlano recurso="recibos" \/>/.test(recibo));
-ok('recibo: pagamento já registrado (PDF pendente) não é trancado', /cadeadoRecibo\.trancado && !reciboPendente/.test(recibo));
+ok('recibo (corte do CPO): EMITIR PDF/link tranca, inclusive o pagamento já registrado com PDF pendente', /const reciboTrancado = cadeadoRecibo\.trancado;/.test(recibo) && !/cadeadoRecibo\.trancado && !reciboPendente/.test(recibo));
+// REGISTRAR pagamento recebido segue Grátis: nem o registro (serviço) nem o botão no orçamento passam pelo cadeado de recibo
+const vis = semComentarios(ler('src/screens/VisualizarOrcamentoScreen.tsx'));
+const orcs = semComentarios(ler('src/screens/OrcamentosScreen.tsx'));
+const pagamentos = [...vis.matchAll(/registrarPagamento\(/g)].map((m) => vis.slice(Math.max(0, m.index! - 400), m.index! + 400)).concat([...orcs.matchAll(/registrarPagamento\(/g)].map((m) => orcs.slice(Math.max(0, m.index! - 400), m.index! + 400)));
+ok('recibo (corte do CPO): registrar pagamento recebido (marcar pago, valor, data) NÃO passa pelo cadeado', pagamentos.length > 0 && pagamentos.every((t) => !/cadeadoRecibo|abrirGate/.test(t)) && !/cadeado/i.test(semComentarios(ler('src/services/pagamentos.ts'))));
 ok('agenda: agendar nova visita, salvar, excluir e arrastar passam pelo portão',
   /useCadeado\('agenda'\)/.test(agenda)
   && (agenda.match(/if \(cadeadoAgenda\.trancado\) \{ cadeadoAgenda\.abrirGate\(\); return/g) ?? []).length === 4);
