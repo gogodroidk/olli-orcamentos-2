@@ -23,7 +23,6 @@ export interface FotoPrestador {
 }
 
 export const AVISO_ILUSTRATIVA = "Imagem ilustrativa criada com IA. Não é cliente da OLLI.";
-export const AVISO_ILUSTRATIVAS = "Imagens ilustrativas criadas com IA. Não são clientes da OLLI.";
 
 export const FOTOS: Record<ChaveFoto, FotoPrestador> = {
 	eletrica: {
