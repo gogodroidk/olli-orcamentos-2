@@ -36,6 +36,13 @@ const VALIDADE_MS = VALIDADE_SEGUNDOS * 1000;
 /** Tolerância a relógio de aparelho adiantado: toque "do futuro" além disso é lixo. */
 const TOLERANCIA_FUTURO_MS = 24 * 60 * 60 * 1000;
 const TAMANHO_MAXIMO_VALOR = 100;
+/**
+ * `fbclid` e `gclid` são identificadores opacos: cortá-los os invalida (o Meta só casa o clique
+ * com o `fbc` se o fbclid estiver inteiro, e fbclid recente passa de 100 caracteres). Teto maior,
+ * só para eles; o cookie continua limitado por TAMANHO_MAXIMO_COOKIE.
+ */
+const TAMANHO_MAXIMO_CLICK_ID = 500;
+const CHAVES_CLICK_ID = new Set<string>(["fbclid", "gclid"]);
 /** Limite de segurança: o navegador descarta cookie acima de ~4 KB e não avisa. */
 const TAMANHO_MAXIMO_COOKIE = 3500;
 
@@ -81,13 +88,17 @@ export interface Ambiente {
 
 // ─── Parser ─────────────────────────────────────────────────────────────────
 
-function limparValor(bruto: unknown): string | null {
+function limparValor(bruto: unknown, max: number = TAMANHO_MAXIMO_VALOR): string | null {
 	if (typeof bruto !== "string") return null;
 	const semControle = Array.from(bruto)
 		.filter((c) => c.charCodeAt(0) > 31 && c.charCodeAt(0) !== 127)
 		.join("");
-	const valor = semControle.trim().slice(0, TAMANHO_MAXIMO_VALOR);
+	const valor = semControle.trim().slice(0, max);
 	return valor === "" ? null : valor;
+}
+
+function limiteDoParametro(chave: string): number {
+	return CHAVES_CLICK_ID.has(chave) ? TAMANHO_MAXIMO_CLICK_ID : TAMANHO_MAXIMO_VALOR;
 }
 
 /** Lê os parâmetros de campanha de uma query string. `null` = visita sem campanha. */
@@ -96,7 +107,7 @@ export function lerToqueDaUrl(search: string, pagina: string | undefined, agora:
 	const toque: Toque = { ts: agora };
 	let achou = false;
 	for (const chave of PARAMETROS_ATRIBUICAO) {
-		const valor = limparValor(params.get(chave));
+		const valor = limparValor(params.get(chave), limiteDoParametro(chave));
 		if (valor) {
 			toque[chave] = valor;
 			achou = true;
@@ -118,7 +129,7 @@ function toqueValido(bruto: unknown, agora: number): Toque | null {
 	const toque: Toque = { ts };
 	let achou = false;
 	for (const chave of PARAMETROS_ATRIBUICAO) {
-		const valor = limparValor(candidato[chave]);
+		const valor = limparValor(candidato[chave], limiteDoParametro(chave));
 		if (valor) {
 			toque[chave] = valor;
 			achou = true;

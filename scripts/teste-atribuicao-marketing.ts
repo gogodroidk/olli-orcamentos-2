@@ -71,6 +71,18 @@ assert.equal(lerToqueDaUrl('?utm_source=', '/', T0), null, 'valor vazio não con
 assert.deepEqual(lerToqueDaUrl('?fbclid=abc', undefined, T0), { ts: T0, fbclid: 'abc' }, 'só o fbclid já é uma origem');
 const longo = lerToqueDaUrl(`?utm_source=${'a'.repeat(500)}`, '/', T0);
 assert.equal(longo?.utm_source?.length, 100, 'valor é truncado');
+// fbclid/gclid são IDs opacos: inteiros até 500 (cortar em 100 invalida o fbc no Meta); utm_* segue em 100.
+const fbclidLongo = 'IwY2xjaw' + 'A'.repeat(160);
+const comClickId = lerToqueDaUrl(`?fbclid=${fbclidLongo}&gclid=${'g'.repeat(150)}&utm_source=${'b'.repeat(150)}`, '/', T0);
+assert.equal(comClickId?.fbclid, fbclidLongo, 'fbclid longo não é cortado');
+assert.equal(comClickId?.gclid?.length, 150, 'gclid longo não é cortado');
+assert.equal(comClickId?.utm_source?.length, 100, 'utm continua truncada');
+assert.equal(lerToqueDaUrl(`?fbclid=${'z'.repeat(900)}`, '/', T0)?.fbclid?.length, 500, 'click id tem teto de 500');
+assert.equal(
+  montarOrigemUtm(registrarToque(ATRIBUICAO_VAZIA, comClickId), '')?.fbc,
+  `fb.1.${T0}.${fbclidLongo}`,
+  'fbc montado com o fbclid inteiro',
+);
 const controle = lerToqueDaUrl(`?utm_source=${encodeURIComponent('fa\u0000ce\nbook')}`, '/', T0);
 assert.equal(controle?.utm_source, 'facebook', 'caractere de controle é removido');
 assert.equal(lerToqueDaUrl('?FBCLID=x&UTM_SOURCE=y', '/', T0), null, 'nome do parâmetro é case-sensitive');
