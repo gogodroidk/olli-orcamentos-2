@@ -61,7 +61,13 @@ export function FeedbackCadeadoHost() {
     const recurso = recursoRef.current;
     if (!recurso) return;
     setEnvio('enviando');
-    const r = await enviarMotivoCadeado({ recurso, opcao, texto, plano: planoRef.current.plano });
+    // Best-effort só para não travar a tela: qualquer falha (inclusive exceção) vira o estado "erro" VISÍVEL, nunca silêncio.
+    let r: 'ok' | 'sem_sessao' | 'erro' = 'erro';
+    try {
+      r = await enviarMotivoCadeado({ recurso, opcao, texto, plano: planoRef.current.plano });
+    } catch {
+      r = 'erro';
+    }
     if (r === 'ok') {
       estadoRef.current = aposResposta(estadoRef.current, Date.now());
       await gravarEstadoFeedback(estadoRef.current);

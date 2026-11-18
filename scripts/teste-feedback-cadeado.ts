@@ -56,7 +56,7 @@ ok('pergunta usa o nome do plano da fonte', c.pergunta === `O que faltou para vo
 ok('4 opções + campo livre curto', OPCOES_MOTIVO.length === 4 && TEXTO_LIVRE_MAX <= 280);
 ok('sem recompensa por avaliação em loja nem promessa de crédito que o servidor não concede', !/avali|estrela|play store|app store|nota na loja|cr[eé]dito|gr[aá]tis por/i.test(tudo));
 ok('aviso de 1 linha do porquê perguntamos e de quem vê', /melhorar/.test(c.aviso) && /s[oó] a nossa equipe vê/.test(c.aviso) && c.aviso.split('\n').length === 1);
-ok('erro nunca vira "obrigado": mensagens distintas', c.erro !== c.enviado && /continua aqui/.test(c.erro));
+ok('erro nunca vira "obrigado": mensagens distintas, dizem que falhou e que a resposta continua', c.erro !== c.enviado && /N[ãa]o consegui enviar agora, tente de novo/.test(c.erro) && /continua aqui/.test(c.erro));
 
 // 3. Ligação no app
 const host = semComentarios(ler('src/components/FeedbackCadeadoHost.tsx'));
@@ -77,6 +77,9 @@ ok('só o App importa o host', !/FeedbackCadeadoHost/.test(ler('src/navigation/A
 // 4. 3 estados, alvos, canal
 ok('3 estados no modal: enviando, erro com "tentar de novo" e enviado', /'enviando'/.test(modal) && /'erro'/.test(modal) && /'enviado'/.test(modal) && /c\.tentarDeNovo/.test(modal) && /accessibilityRole="alert"/.test(modal));
 ok('erro mantém a resposta (texto e opção ficam no estado do modal, o host só troca o estado de envio)', /setEnvio\('erro'\)/.test(host) && !/setOpcao\(null\)|setTexto\(''\)/.test(modal));
+ok('P0 erro nunca vira vazio: falha OU exceção no envio mostram o erro (try/catch), e o "enviado" só vem de r === \'ok\'', /try \{\s*r = await enviarMotivoCadeado/.test(host) && /\} catch \{\s*r = 'erro';/.test(host) && /if \(r === 'ok'\) \{[\s\S]*setEnvio\('enviado'\)[\s\S]*\} else \{\s*setEnvio\('erro'\)/.test(host));
+ok('com erro na tela, o botão de voltar do Android não joga a resposta fora (só "Agora não" explícito fecha)', /estado === 'ocioso' \? onAgoraNao : \(\) => \{\}/.test(modal));
+ok('contexto estável para o admin: origem, tela, recurso, opcao, plano; tipo no banco = feedback (CHECK) e origem = motivo_cadeado', /\{ tela: 'cadeado', recurso: p\.recurso, opcao: p\.opcao, plano: p\.plano \}/.test(servico) && /motivo_cadeado: 'feedback'/.test(ler('src/services/feedback.ts')) && /origem: tipo/.test(ler('src/services/feedback.ts')));
 ok('alvos >= 44 px: opção 48, links 44, botões lg', /minHeight: 48/.test(modal) && /minHeight: 44/.test(modal) && /size="lg"/.test(modal));
 ok('teclado e leitor de tela: rádio com estado, rótulo no campo, modal acessível', /accessibilityRole="radio"/.test(modal) && /accessibilityViewIsModal/.test(modal) && /accessibilityLabel=\{c\.campoLivre\}/.test(modal));
 ok('sem animação decorativa (Modal animationType none)', /animationType="none"/.test(modal) && !/Animated|withTiming|withSpring/.test(modal));

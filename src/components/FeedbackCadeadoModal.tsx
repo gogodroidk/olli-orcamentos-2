@@ -31,7 +31,7 @@ export function FeedbackCadeadoModal({ visivel, estado, onEnviar, onAgoraNao, on
   const enviando = estado === 'enviando';
 
   return (
-    <Modal visible={visivel} transparent animationType="none" onRequestClose={estado === 'enviado' ? onFechar : onAgoraNao}>
+    <Modal visible={visivel} transparent animationType="none" onRequestClose={estado === 'enviado' ? onFechar : estado === 'ocioso' ? onAgoraNao : () => {}}>
       <View style={styles.fundo}>
         <View style={[styles.folha, { paddingBottom: Spacing.base + insets.bottom }]} accessibilityViewIsModal>
           {estado === 'enviado' ? (

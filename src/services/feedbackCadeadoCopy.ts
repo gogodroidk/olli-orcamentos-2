@@ -24,7 +24,7 @@ export const COPY_FEEDBACK_CADEADO = {
   agoraNao: 'Agora não',
   naoPerguntarMais: 'Não perguntar mais',
   enviando: 'Enviando…',
-  erro: 'Não consegui enviar agora. Sua resposta continua aqui.',
+  erro: 'Não consegui enviar agora, tente de novo. Sua resposta continua aqui.',
   tentarDeNovo: 'Tentar de novo',
   enviado: 'Recebi, obrigado!',
   fechar: 'Fechar',
