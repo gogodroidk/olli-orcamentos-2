@@ -441,7 +441,7 @@ Limite conhecido: lê até 100 cobranças PAID por execução (uma página); a d
 
 ---
 
-## Pix Automático (assinatura recorrente, Pro mensal) — flag DESLIGADA
+## Pix Automático (assinatura recorrente, Pro mensal) — LIGADO em produção em 18/11/2026 (D-2171)
 
 Código: `worker/src/abacatePixAutomatico.js` (webhook `subscription.*` entra por `processarEventoAssinatura` em `abacate.js`). Testes:
 `worker/scripts/teste-abacate-recorrente.js` (`npm run test:abacate-recorrente` no worker) e `scripts/teste-pix-automatico-copy.ts`.
