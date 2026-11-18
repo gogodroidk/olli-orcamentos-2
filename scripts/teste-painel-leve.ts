@@ -19,7 +19,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DONUT_FOLGA, fatiasDonut } from '../webapp/src/pages/olli/inicio/donut.ts';
-import { medidaParaSentry, secaoDaRota } from '../webapp/src/olli/webVitals.ts';
+import { medidaParaSentry, navegadorSuportaVitals, secaoDaRota } from '../webapp/src/olli/webVitals.ts';
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ler = (rel: string) => readFileSync(join(RAIZ, rel), 'utf8');
@@ -137,6 +137,8 @@ console.log('\n3) painel — o peso tirado não volta');
   const iVitals = main.indexOf('ligarWebVitals(');
   checar('web-vitals ligado DEPOIS do Sentry.init (nada antes da 1ª tela)', iInit > 0 && iVitals > iInit, true);
   checar('web-vitals vai como métrica, não como evento de erro', main.includes('Sentry.metrics.distribution'), true);
+  checar('web-vitals: navegador sem Array.at não liga a medição', navegadorSuportaVitals({}), false);
+  checar('web-vitals: guarda de suporte antes do import()', /navegadorSuportaVitals\(\)\) return false;\s*try \{\s*const \{ onCLS/.test(ler('webapp/src/olli/webVitals.ts')), true);
   checar('web-vitals só por import() dinâmico', /^import .*web-vitals/m.test(ler('webapp/src/olli/webVitals.ts')), false);
 }
 

@@ -71,6 +71,16 @@ export function medidaParaSentry(vital: VitalBruto, pathname: string): MedidaVit
 	};
 }
 
+/**
+ * O `web-vitals` chama `Array.prototype.at` dentro de um callback do
+ * PerformanceObserver (Sentry OLLI-PAINEL-C: "this.o.at is not a function").
+ * Esse erro nasce fora do nosso try/catch, vira exceção global e sujeita o
+ * painel a ruído em navegador antigo. Sem suporte, não liga a medição.
+ */
+export function navegadorSuportaVitals(alvo: { at?: unknown; } = []): boolean {
+	return typeof alvo.at === "function" && typeof PerformanceObserver === "function";
+}
+
 type Distribuir = (nome: string, valor: number, opcoes: { unit: string; attributes: Record<string, string> }) => void;
 
 /**
@@ -78,6 +88,7 @@ type Distribuir = (nome: string, valor: number, opcoes: { unit: string; attribut
  * Falha ao baixar o `web-vitals` só desliga a medição — nunca a tela.
  */
 export async function ligarWebVitals(distribuir: Distribuir): Promise<boolean> {
+	if (!navegadorSuportaVitals()) return false;
 	try {
 		const { onCLS, onINP, onLCP } = await import("web-vitals");
 		const enviar = (vital: VitalBruto) => {
