@@ -1,0 +1,9 @@
+[Unit]
+Description=Central ZAP — resumo das 18h30 no privado do Igor
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=TZ=America/Sao_Paulo
+Environment=PATH=/home/igor/.local/bin:/usr/bin:/bin
+ExecStart=/home/igor/.local/bin/node /home/igor/wt/grok-GZ-CHATWOOT-PRO-2/ops/chatwoot-pro/resumo-18h30.mjs --enviar

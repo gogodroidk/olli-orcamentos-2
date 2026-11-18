@@ -1,0 +1,10 @@
+[Unit]
+Description=Central ZAP — dispara o resumo em dia útil às 18h30
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 18:30:00
+Persistent=true
+Unit=central-zap-resumo.service
+
+[Install]
+WantedBy=timers.target
