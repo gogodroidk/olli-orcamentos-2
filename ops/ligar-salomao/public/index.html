@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111F">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Salomão">
+  <title>Ligar pro Salomão</title>
+  <link rel="manifest" href="/ligar/manifest.webmanifest">
+  <link rel="icon" href="/ligar/icone.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/ligar/icone-192.png">
+  <link rel="stylesheet" href="/ligar/estilo.css">
+</head>
+<body>
+  <main class="tela">
+    <header class="topo">
+      <span class="marca">OLLI</span>
+      <span class="sub">Salomão · Maestro da equipe</span>
+    </header>
+
+    <section class="centro" aria-live="polite">
+      <div class="anel" id="anel" data-estado="parado" aria-hidden="true"><div class="miolo">S</div></div>
+      <p class="status" id="status">Pronto para ligar</p>
+      <p class="tempo" id="tempo" hidden>00:00</p>
+    </section>
+
+    <section class="legenda" id="legenda" aria-label="O que está sendo falado"></section>
+
+    <footer class="acoes">
+      <button id="ligar" class="botao ligar" type="button">Ligar pro Salomão</button>
+      <button id="desligar" class="botao desligar" type="button" hidden>Desligar</button>
+      <button id="mudo" class="botao mudo" type="button" hidden aria-pressed="false">Microfone ligado</button>
+      <p class="nota">Voz de inteligência artificial (Google Gemini). Só lê o estado da empresa e leva recados ao Salomão.</p>
+    </footer>
+  </main>
+  <script type="module" src="/ligar/app.js"></script>
+</body>
+</html>
