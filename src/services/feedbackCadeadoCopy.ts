@@ -18,7 +18,7 @@ export const TEXTO_LIVRE_MAX = 280;
 
 export const COPY_FEEDBACK_CADEADO = {
   pergunta: `O que faltou para você assinar o ${NOME_PLANO.pro}?`,
-  aviso: 'Perguntamos para melhorar o OLLI. A resposta fica ligada à sua conta e só a nossa equipe vê.',
+  aviso: 'Sua resposta vai só para a equipe da OLLI, para melhorar o app. Ela fica ligada à sua conta.',
   campoLivre: 'Quer contar mais? (opcional)',
   enviar: 'Enviar',
   agoraNao: 'Agora não',

@@ -55,7 +55,10 @@ const tudo = JSON.stringify([c, OPCOES_MOTIVO]);
 ok('pergunta usa o nome do plano da fonte', c.pergunta === `O que faltou para você assinar o ${NOME_PLANO.pro}?`);
 ok('4 opções + campo livre curto', OPCOES_MOTIVO.length === 4 && TEXTO_LIVRE_MAX <= 280);
 ok('sem recompensa por avaliação em loja nem promessa de crédito que o servidor não concede', !/avali|estrela|play store|app store|nota na loja|cr[eé]dito|gr[aá]tis por/i.test(tudo));
-ok('aviso de 1 linha do porquê perguntamos e de quem vê', /melhorar/.test(c.aviso) && /s[oó] a nossa equipe vê/.test(c.aviso) && c.aviso.split('\n').length === 1);
+ok('LGPD: 1 linha perto do botão Enviar — vai só para a equipe da OLLI, para melhorar o app, ligada à conta', /vai s[oó] para a equipe da OLLI, para melhorar o app/.test(c.aviso) && /ligada à sua conta/.test(c.aviso) && c.aviso.split('\n').length === 1);
+const iAviso = semComentarios(ler('src/components/FeedbackCadeadoModal.tsx')).indexOf('{c.aviso}');
+const iEnviar = semComentarios(ler('src/components/FeedbackCadeadoModal.tsx')).indexOf('label={enviando ? c.enviando');
+ok('o aviso de LGPD fica logo acima do botão Enviar (antes do envio, sem rolar para achar)', iAviso > 0 && iEnviar > iAviso && iEnviar - iAviso < 700);
 ok('erro nunca vira "obrigado": mensagens distintas, dizem que falhou e que a resposta continua', c.erro !== c.enviado && /N[ãa]o consegui enviar agora, tente de novo/.test(c.erro) && /continua aqui/.test(c.erro));
 
 // 3. Ligação no app
