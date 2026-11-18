@@ -114,6 +114,8 @@ interface Props {
 
 	/** Botão primário do cabeçalho — e do estado vazio, onde ele mais importa. */
 	acaoNova?: { rotulo: string; aoClicar: () => void };
+	/** Ações secundárias ao lado do botão primário, só no cabeçalho (montadas UMA vez: podem ter diálogo próprio). */
+	acoesExtras?: ReactNode;
 	/**
 	 * Abrir/editar o registro. Liga o clique na linha E um botão de verdade na
 	 * coluna principal — porque `onClick` numa `<tr>` não existe para quem usa
@@ -135,6 +137,7 @@ export default function RecordListPage({
 	ascending,
 	columns,
 	acaoNova,
+	acoesExtras,
 	aoAbrirLinha,
 	acoesDaLinha,
 	vazioTitulo,
@@ -268,7 +271,7 @@ export default function RecordListPage({
 					</div>
 					{subtitle && <p className="mt-1 text-sm text-text-secondary">{subtitle}</p>}
 				</div>
-				<div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+				<div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
 					<div className="relative w-full sm:w-72">
 						<Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-text-disabled" />
 						<Input
@@ -280,6 +283,7 @@ export default function RecordListPage({
 							className="h-10 rounded-full pl-10"
 						/>
 					</div>
+					{acoesExtras}
 					{botaoNovo}
 				</div>
 			</div>

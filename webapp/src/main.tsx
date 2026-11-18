@@ -106,6 +106,15 @@ if (import.meta.env.DEV) {
 		serviceWorker: { url: urlJoin(GLOBAL_CONFIG.publicPath, "mockServiceWorker.js") },
 	});
 }
+// Service worker SÓ do "compartilhar contato" do WhatsApp (share_target do manifest, D-2245).
+// Em produção e quando o navegador ocioso: não disputa a primeira tela. Ele não cacheia nada.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+	quandoOcioso(() => {
+		navigator.serviceWorker.register("/sw-compartilhar.js").catch(() => {
+			/* sem worker: o resto do painel funciona igual; só o "compartilhar" não aparece */
+		});
+	});
+}
 // `menuService` arrasta o axios (~94 KB antes de minificar) e só serve ao modo
 // "backend", que NÃO é o do OLLI (o padrão é "frontend" e é o que roda em produção).
 // Estático, ele entrava no bundle de todo mundo para servir a ninguém. Por import()
