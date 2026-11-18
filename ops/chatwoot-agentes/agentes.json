@@ -1,0 +1,18 @@
+{
+  "conta": 2,
+  "caixas": { "olli": 4, "servicos": 3 },
+  "caixasForaDoItem": [2, 5],
+  "times": { "olli": 3, "servicos": 4 },
+  "agentes": [
+    { "chave": "IRIS", "nome": "Íris", "display": "Íris · Atendimento", "terminal": "ZAP — Íris", "email": "iris@agentes.olli.local", "caixas": ["olli", "servicos"], "times": ["olli", "servicos"], "cor": "#0A2547", "inicial": "Í" },
+    { "chave": "CARTEIRA", "nome": "Carteira", "display": "Carteira · Vendas OLLI", "terminal": "VENDAS — Carteira OLLI Orçamentos", "email": "carteira@agentes.olli.local", "caixas": ["olli"], "times": ["olli"], "cor": "#1F6FB8", "inicial": "C" },
+    { "chave": "BRUNO", "nome": "Bruno", "display": "Bruno · Diretor Comercial", "terminal": "SALES — Diretor Comercial", "email": "bruno@agentes.olli.local", "caixas": ["olli", "servicos"], "times": ["olli", "servicos"], "cor": "#123A66", "inicial": "B" },
+    { "chave": "SDR", "nome": "SDR", "display": "SDR · OLLI Serviços", "terminal": "VENDAS — SDR Frio OLLI Serviços", "email": "sdr@agentes.olli.local", "caixas": ["servicos"], "times": ["servicos"], "cor": "#2E7D5B", "inicial": "S" },
+    { "chave": "ACOLHE", "nome": "Acolhe", "display": "Acolhe · Onboarding", "terminal": "ONBOARDING — Acolhe", "email": "acolhe@agentes.olli.local", "caixas": ["olli"], "times": ["olli"], "cor": "#3B8FE0", "inicial": "A" },
+    { "chave": "DESTRAVA", "nome": "Destrava", "display": "Destrava · Onboarding", "terminal": "ONBOARDING — Destrava", "email": "destrava@agentes.olli.local", "caixas": ["olli"], "times": ["olli"], "cor": "#C77700", "inicial": "D" },
+    { "chave": "FECHA", "nome": "Fecha", "display": "Fecha · Onboarding", "terminal": "ONBOARDING — Fecha", "email": "fecha@agentes.olli.local", "caixas": ["olli"], "times": ["olli"], "cor": "#7A3FB0", "inicial": "F" }
+  ],
+  "numerosInternos": ["5511941727487", "5511960163507", "5511958758030"],
+  "etiquetasCampanha": ["prospeccao", "ativacao", "reforma-contadores"],
+  "etiquetasNaoContatar": ["parar-contato", "lgpd", "sair"]
+}

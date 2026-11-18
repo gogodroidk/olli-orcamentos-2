@@ -1,0 +1,19 @@
+[Unit]
+Description=Acordador dos agentes no Chatwoot (webhook message_created -> hibernar.mjs ask) + sincronia Evolution->Chatwoot
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/igor/chatwoot-central/agentes
+ExecStart=/home/igor/.nvm/versions/node/v24.22.1/bin/node /home/igor/chatwoot-central/agentes/acordador.mjs
+Environment=PATH=/home/igor/.local/bin:/home/igor/.nvm/versions/node/v24.22.1/bin:/usr/local/bin:/usr/bin:/bin
+Environment=ACORDADOR_HOST=172.20.0.1
+Environment=ACORDADOR_PORTA=3013
+Environment=SINCRONIA_MIN=5
+Restart=on-failure
+RestartSec=10
+MemoryMax=200M
+
+[Install]
+WantedBy=default.target
