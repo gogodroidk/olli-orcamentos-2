@@ -29,6 +29,7 @@ import {
 	resumoImportacaoContatos,
 } from '../src/services/contatosCelularNucleo.ts';
 import { numeroWhatsAppBR } from '../src/utils/telefoneWhatsapp.ts';
+import { TRANCA_GRATIS_D2267, temAcessoRecurso } from '../src/services/entitlements.ts';
 import { telefonePuxadoDe } from '../src/utils/telefonePuxado.ts';
 
 let falhas = 0;
@@ -195,6 +196,34 @@ await caso('telas: Clientes e Importar abrem a porta de contatos; Step1 puxa só
 	for (const escrita of ['Contact.create', 'createWithForm', 'presentCreateForm', '.delete(', '.update(', '.patch(']) {
 		assert.ok(!nativo.includes(escrita), `app só lê contatos: ${escrita}`);
 	}
+});
+
+await caso('aviso destacado ANTES do pedido de permissão (Play): frase exata, na tela, antes do botão', async () => {
+	const FRASE = 'O OLLI vai ler seus contatos só para você escolher quais virar clientes. Nada é enviado sem você escolher.';
+	const tela = (await readFile(new URL('../src/screens/ImportarScreen.tsx', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
+	assert.equal(tela.split(FRASE).length - 1, 1, 'a frase aparece uma vez, exata');
+	assert.ok(tela.indexOf(FRASE) < tela.indexOf("label={lendo ? 'Lendo…' : 'Ler meus contatos'}"), 'a frase vem antes do botão que dispara a permissão');
+	assert.ok(!tela.includes('Nada é salvo sem você marcar'), 'frase antiga não pode voltar');
+});
+
+await caso('D-2267: importar em lote passa pelo entitlement importar_lote (carência até 26/11); puxar 1 telefone segue Grátis', async () => {
+	const ler = (p: string) => readFile(new URL(`../src/${p}`, import.meta.url), 'utf8');
+	const [importar, clientes, step1, visualizar, puxar] = await Promise.all([
+		ler('screens/ImportarScreen.tsx'), ler('screens/ClientesScreen.tsx'), ler('steps/Step1Cliente.tsx'),
+		ler('screens/VisualizarOrcamentoScreen.tsx'), ler('services/puxarTelefoneDosContatos.ts'),
+	]);
+	assert.match(importar, /<TelaRecursoPlano recurso="importar_lote"/);
+	assert.match(clientes, /useRecursoPlano\('importar_lote'\)/);
+	assert.match(clientes, /lock-outline/, 'trancado, o atalho aparece com cadeado');
+	for (const [nome, fonte] of [['Step1Cliente', step1], ['VisualizarOrcamento', visualizar], ['puxarTelefone', puxar]] as const) {
+		assert.ok(!fonte.includes('importar_lote'), `${nome} (puxar 1 telefone) NÃO tranca`);
+	}
+	const antes = Date.parse(TRANCA_GRATIS_D2267) - 1000;
+	const depois = Date.parse(TRANCA_GRATIS_D2267) + 1000;
+	assert.equal(temAcessoRecurso('gratis', 'importar_lote', antes), true, 'Grátis na carência importa');
+	assert.equal(temAcessoRecurso('gratis', 'importar_lote', depois), false, 'Grátis depois da carência: cadeado');
+	assert.equal(temAcessoRecurso('pro', 'importar_lote', depois), true);
+	assert.equal(temAcessoRecurso('empresa', 'importar_lote', depois), true);
 });
 
 if (falhas) {

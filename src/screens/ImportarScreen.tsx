@@ -44,6 +44,7 @@ import {
 import { lerArquivoImportacao, type FormatoImportacao } from '../services/importacaoArquivo';
 import { lerContatosDoCelular } from '../services/contatosCelular';
 import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
+import { TelaRecursoPlano } from '../components/RecursoPlano';
 import { resumoImportacaoContatos } from '../services/contatosCelularNucleo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -93,7 +94,21 @@ async function lerBytes(asset: DocumentPicker.DocumentPickerAsset): Promise<Uint
   return base64ParaBytes(base64);
 }
 
+/**
+ * D-2267: importar em LOTE (contatos, planilha, vCard, foto) é do Pro, com carência do Grátis até
+ * `TRANCA_GRATIS_D2267` (entitlement `importar_lote`; `estadoAcessoRecurso` já aplica a carência).
+ * Trancado: a tela vira o cartão "Disponível no Pro" (3 estados: carregando | não confirmei | bloqueado).
+ * Puxar UM telefone no orçamento NÃO passa por aqui e segue Grátis.
+ */
 export default function ImportarScreen() {
+  return (
+    <TelaRecursoPlano recurso="importar_lote" titulo="Trazer meus dados">
+      <ImportarConteudo />
+    </TelaRecursoPlano>
+  );
+}
+
+function ImportarConteudo() {
   const nav = useNavigation<Nav>();
   const rota = useRoute<Rota>();
   const cores = useCores();
@@ -456,7 +471,7 @@ export default function ImportarScreen() {
             {Platform.OS !== 'web' && (
               <>
                 <Text style={styles.cardTitulo}>Pegar direto da agenda</Text>
-                <Text style={styles.texto}>O OLLI lê nome e telefone dos seus contatos só para você escolher quem vira cliente. Nada é salvo sem você marcar.</Text>
+                <Text style={styles.texto}>O OLLI vai ler seus contatos só para você escolher quais virar clientes. Nada é enviado sem você escolher.</Text>
                 <OlliButton label={lendo ? 'Lendo…' : 'Ler meus contatos'} variant="gradient" fullWidth onPress={() => { void lerAgenda(); }} disabled={lendo || gravando} loading={lendo} icon={!lendo ? <MaterialCommunityIcons name="card-account-phone-outline" size={18} color="#fff" /> : undefined} style={{ marginTop: Spacing.sm }} />
                 {agendaNegada && (
                   <View style={[styles.aviso, { marginTop: Spacing.sm }]} accessibilityRole="alert">

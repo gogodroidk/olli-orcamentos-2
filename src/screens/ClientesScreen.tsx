@@ -40,6 +40,8 @@ import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
+import { useRecursoPlano } from '../components/RecursoPlano';
+import { NOME_PLANO } from '../services/planosBase';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -188,6 +190,10 @@ const LinhaCliente = React.memo(LinhaClienteBase);
 
 export default function ClientesScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: importar em lote é do Pro (com carência do Grátis). Trancado, o atalho APARECE com cadeado
+  // e a tela Importar mostra o cartão "Disponível no Pro"; os 3 estados vivem em `useRecursoPlano`.
+  const { estado: estadoLote, planoMinimo: planoLote } = useRecursoPlano('importar_lote');
+  const loteTrancado = estadoLote === 'bloqueado';
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
@@ -547,14 +553,14 @@ export default function ClientesScreen() {
             style={styles.mapaAtalho}
             onPress={() => nav.navigate('Importar', { origem: 'contatos' })}
             accessibilityRole="button"
-            accessibilityLabel="Importar clientes dos contatos do celular"
+            accessibilityLabel={loteTrancado ? `Importar clientes dos contatos do celular. Disponível no ${NOME_PLANO[planoLote]}` : 'Importar clientes dos contatos do celular'}
           >
             <MaterialCommunityIcons name="card-account-phone-outline" size={20} color={cores.primary} />
             <View style={{ flex: 1 }}>
               <Text style={styles.mapaAtalhoTitulo}>Importar dos contatos</Text>
-              <Text style={styles.mapaAtalhoSub}>Escolha na sua agenda quem é cliente. Sem digitar.</Text>
+              <Text style={styles.mapaAtalhoSub}>{loteTrancado ? `Disponível no ${NOME_PLANO[planoLote]}` : 'Escolha na sua agenda quem é cliente. Sem digitar.'}</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={20} color={cores.onSurfaceVariant} />
+            <MaterialCommunityIcons name={loteTrancado ? 'lock-outline' : 'chevron-right'} size={20} color={cores.onSurfaceVariant} />
           </TouchableOpacity>
         )}
         <TouchableOpacity
