@@ -14,22 +14,33 @@
  *  5. ABRIR NÃO É ENVIAR: só depois de "Já enviei" o envio é confirmado e o orçamento vira
  *     "enviado" (e só se ainda for rascunho — nunca rebaixa quem já foi aprovado).
  */
-import type { Orcamento } from "@dominio";
+
 import { avisoTrialAutomatico } from "@ativacao";
+import type { Orcamento } from "@dominio";
 import type { ReservaEnvioOrcamento } from "@limites-comerciais";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import { avisoLimiteEnvios, cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
+import { mascaraTelefone } from "@/olli/components/campos";
+import {
+	avisoLimiteEnvios,
+	cancelarReservaEnvioOrcamento,
+	confirmarEnvioOrcamento,
+	obterEstadoOfertaComercial,
+	reservarEnvioOrcamento,
+} from "@/olli/cota-envios";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
-import { linkWhatsApp } from "@/olli/linkWhatsApp";
+import { linkWhatsApp, numeroParaWhatsApp } from "@/olli/linkWhatsApp";
+import { useSalvar } from "@/olli/mutacoes";
 import { publicarLinkOrcamento } from "@/olli/publicarLink";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
-import { useMarcarEnviado } from "./useMarcarEnviado";
+import { Input } from "@/ui/input";
+import { Label } from "@/ui/label";
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from "../../../../../src/utils/mensagensOrcamento";
+import { useMarcarEnviado } from "./useMarcarEnviado";
 
 interface Pendente {
 	orcamentoId: string;
@@ -49,6 +60,13 @@ export function useEnviarWhatsApp() {
 	const [pendente, setPendente] = useState<Pendente | null>(null);
 	const [preparando, setPreparando] = useState<string | null>(null);
 	const [confirmando, setConfirmando] = useState(false);
+	// D-2151 #2: orçamento sem WhatsApp do cliente. Antes era um aviso vermelho sem saída e o 1º envio
+	// morria ali; agora o número é pedido AQUI, salvo no orçamento (blob fresco) e o envio segue.
+	const salvarOrcamento = useSalvar("orcamentos");
+	const [semNumero, setSemNumero] = useState<{ orcamentoId: string; blob: Orcamento } | null>(null);
+	const [numero, setNumero] = useState("");
+	const [erroNumero, setErroNumero] = useState<string | null>(null);
+	const [salvandoNumero, setSalvandoNumero] = useState(false);
 
 	const enviar = useCallback(
 		async (orcamentoId: string, blob: Orcamento) => {
@@ -56,12 +74,9 @@ export function useEnviarWhatsApp() {
 			// 1) WhatsApp do cliente: número que não dá para confiar não vira link.
 			const semLinkWa = linkWhatsApp(blob.clienteTelefone, "");
 			if (!semLinkWa) {
-				toast.error(`Informe o WhatsApp de ${blob.clienteNome || "o cliente"} com DDD`, {
-					description: blob.clienteId
-						? "Edite o orçamento (ou o cadastro do cliente) e salve o número. Sem ele não dá para abrir a conversa."
-						: "Este orçamento tem só o nome do cliente. Abra o orçamento, escolha ou cadastre o cliente (com WhatsApp) e salve; depois é só enviar.",
-					position: "top-center",
-				});
+				setNumero(blob.clienteTelefone ?? "");
+				setErroNumero(null);
+				setSemNumero({ orcamentoId, blob });
 				return;
 			}
 			setPreparando(orcamentoId);
@@ -98,6 +113,95 @@ export function useEnviarWhatsApp() {
 			}
 		},
 		[exigirCadastro, preparando],
+	);
+
+	/** Salva o número no orçamento (relê o blob fresco; nunca grava por cima de um velho) e segue o envio. */
+	const salvarNumeroEEnviar = useCallback(async () => {
+		const alvo = semNumero;
+		if (!alvo || salvandoNumero) return;
+		if (!numeroParaWhatsApp(numero)) {
+			setErroNumero("Confira o número: DDD + número, ex.: (11) 98123-4567.");
+			return;
+		}
+		setSalvandoNumero(true);
+		setErroNumero(null);
+		let salvo = false;
+		try {
+			const { data, error } = await supabase
+				.from("orcamentos")
+				.select("dados")
+				.eq("id", alvo.orcamentoId)
+				.maybeSingle();
+			if (error) throw error;
+			const fresco = data?.dados as Orcamento | null | undefined;
+			if (!fresco || typeof fresco !== "object") throw new Error("orçamento não encontrado");
+			const atualizado = { ...fresco, clienteTelefone: numero, atualizadoEm: new Date().toISOString() };
+			await salvarOrcamento.mutateAsync(atualizado);
+			void qc.invalidateQueries({ queryKey: ["olli", "orcamentos"] });
+			salvo = true;
+		} catch {
+			// Erro nunca vira silêncio: o diálogo fica aberto e diz o que houve.
+			setErroNumero("Não consegui salvar o número agora. Verifique a internet e tente de novo.");
+		} finally {
+			setSalvandoNumero(false);
+		}
+		if (!salvo) return;
+		// Fora do try: uma falha do ENVIO tem a mensagem própria do `enviar` e não pode virar
+		// "não consegui salvar" (já salvou) num diálogo que já fechou (revisão LIVRE #379, P3).
+		setSemNumero(null);
+		await enviar(alvo.orcamentoId, { ...alvo.blob, clienteTelefone: numero });
+	}, [semNumero, salvandoNumero, numero, salvarOrcamento, qc, enviar]);
+
+	const dialogoNumero = (
+		<Dialog open={!!semNumero} onOpenChange={(aberto) => !aberto && !salvandoNumero && setSemNumero(null)}>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle>Qual o WhatsApp de {semNumero?.blob.clienteNome || "seu cliente"}?</DialogTitle>
+					<DialogDescription>Fica salvo neste orçamento. Depois é só conferir a mensagem e enviar.</DialogDescription>
+				</DialogHeader>
+				<form
+					onSubmit={(ev) => {
+						ev.preventDefault();
+						void salvarNumeroEEnviar();
+					}}
+					className="space-y-2"
+				>
+					<Label htmlFor="whatsapp-cliente-envio">WhatsApp com DDD</Label>
+					<Input
+						id="whatsapp-cliente-envio"
+						type="tel"
+						inputMode="tel"
+						autoFocus
+						value={numero}
+						onChange={(ev) => setNumero(mascaraTelefone(ev.target.value))}
+						placeholder="(11) 98123-4567"
+						maxLength={20}
+						aria-invalid={!!erroNumero}
+						aria-describedby={erroNumero ? "whatsapp-cliente-envio-erro" : undefined}
+						className="min-h-[44px]"
+					/>
+					{erroNumero && (
+						<p id="whatsapp-cliente-envio-erro" role="alert" className="text-sm text-error">
+							{erroNumero}
+						</p>
+					)}
+					<DialogFooter className="gap-2 pt-2">
+						<Button
+							type="button"
+							variant="outline"
+							className="min-h-[44px]"
+							disabled={salvandoNumero}
+							onClick={() => setSemNumero(null)}
+						>
+							Cancelar
+						</Button>
+						<Button type="submit" className="min-h-[44px]" disabled={salvandoNumero} aria-busy={salvandoNumero}>
+							{salvandoNumero ? "Salvando…" : "Salvar e continuar"}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 
 	const cancelar = useCallback(async () => {
@@ -203,7 +307,8 @@ export function useEnviarWhatsApp() {
 						<DialogHeader>
 							<DialogTitle>Conseguiu enviar?</DialogTitle>
 							<DialogDescription>
-								Abrir o WhatsApp não é enviar. Toque em “Enviar” lá e volte aqui: só marco o orçamento como enviado se você confirmar.
+								Abrir o WhatsApp não é enviar. Toque em “Enviar” lá e volte aqui: só marco o orçamento como enviado se
+								você confirmar.
 							</DialogDescription>
 						</DialogHeader>
 						<DialogFooter className="gap-2">
@@ -220,5 +325,14 @@ export function useEnviarWhatsApp() {
 		</Dialog>
 	);
 
-	return { enviar, preparando, dialogo };
+	return {
+		enviar,
+		preparando,
+		dialogo: (
+			<>
+				{dialogo}
+				{dialogoNumero}
+			</>
+		),
+	};
 }
