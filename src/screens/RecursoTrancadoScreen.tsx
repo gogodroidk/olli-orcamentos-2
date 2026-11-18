@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GradientHeader } from '../components/GradientHeader';
-import { CartaoRecursoPlano } from '../components/RecursoPlano';
+import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
+import { fechouCadeadoSemAssinar } from '../services/feedbackCadeado';
 import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso } from '../services/entitlements';
 import { NOME_PLANO } from '../services/planosBase';
@@ -21,6 +22,11 @@ export default function RecursoTrancadoScreen() {
   const { recurso } = useRoute<RouteProp<RootStackParamList, 'RecursoTrancado'>>().params;
   const insets = useSafeAreaInsets();
   const cores = useCores();
+  // Fechou sem assinar (o recurso segue bloqueado quando a tela sai): dispara o popup "o que faltou?" (regra de frequência no host).
+  const { estado } = useRecursoPlano(recurso);
+  const estadoRef = useRef(estado);
+  estadoRef.current = estado;
+  useEffect(() => () => fechouCadeadoSemAssinar(recurso, estadoRef.current), [recurso]);
   return (
     <View style={[styles.raiz, { backgroundColor: cores.background }]}>
       <GradientHeader title={`Disponível no ${NOME_PLANO[planoMinimoDoRecurso(recurso)]}`} onBack={() => goBackOrHome(nav as never)} />
