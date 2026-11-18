@@ -1,3 +1,4 @@
+import { Check, Maximize2, Minimize2, Moon, Settings, Sun } from "lucide-react";
 import {
 	type CSSProperties,
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -12,7 +13,6 @@ import screenfull from "screenfull";
 import { ThemeLayout, ThemeMode } from "#/enum";
 import CyanBlur from "@/assets/images/background/cyan-blur.png";
 import RedBlur from "@/assets/images/background/red-blur.png";
-import { Icon } from "@/components/icon";
 import { type SettingsType, useSettingActions, useSettings } from "@/store/settingStore";
 import { themeVars } from "@/theme/theme.css";
 import { Button } from "@/ui/button";
@@ -110,7 +110,7 @@ function SettingRadioGroup<T extends string>({
 					>
 						{option.content}
 						{checked && (
-							<Icon icon="carbon:checkmark-filled" size={14} className="absolute top-1 right-1 text-primary" />
+							<Check className="absolute top-1 right-1 size-3.5 text-primary" strokeWidth={2} aria-hidden="true" />
 						)}
 					</button>
 				);
@@ -181,9 +181,8 @@ export default function SettingButton() {
 				{/* Girava infinito antes (animate-slow-spin sempre ligado) — motion decorativo
 				    sem respeitar prefers-reduced-motion. Agora só gira no hover/foco, e só
 				    quando o SO não pediu movimento reduzido (variant motion-safe). */}
-				{/* "no escuro eu NÃO CONSIGO VER A ENGRENAGEM": o ic-setting.svg é
-				    `fill="currentColor"`, e o variant ghost do Button não define cor de
-				    texto nenhuma — a engrenagem herdava o preto padrão do navegador e
+				{/* "no escuro eu NÃO CONSIGO VER A ENGRENAGEM": o variant ghost do Button
+				    não define cor de texto — o ícone herdava o preto do navegador e
 				    ficava em 1,11:1 sobre o navy. `text-text-primary` leva a 18,94:1 no
 				    escuro e 15,51:1 no claro. min-h/w 44px = alvo de toque mínimo. */}
 				<Button
@@ -192,7 +191,7 @@ export default function SettingButton() {
 					className="rounded-full min-h-[44px] min-w-[44px] text-text-primary motion-safe:hover:animate-slow-spin motion-safe:focus-visible:animate-slow-spin"
 					aria-label="Configurações de aparência"
 				>
-					<Icon icon="local:ic-setting" size={24} />
+					<Settings className="size-5" strokeWidth={2} aria-hidden="true" />
 				</Button>
 			</SheetTrigger>
 			<SheetContent style={sheetContentBgStyle} className="gap-0" onOpenAutoFocus={(e) => e.preventDefault()}>
@@ -216,10 +215,13 @@ export default function SettingButton() {
 										value: ThemeMode.Light,
 										label: "Tema claro",
 										content: (
-											<Icon
-												icon="local:ic-settings-mode-sun"
-												size="24"
-												color={themeMode === ThemeMode.Light ? themeVars.colors.palette.primary.default : ""}
+											<Sun
+												className="size-6"
+												strokeWidth={2}
+												aria-hidden="true"
+												color={
+													themeMode === ThemeMode.Light ? themeVars.colors.palette.primary.default : "currentColor"
+												}
 											/>
 										),
 									},
@@ -227,10 +229,11 @@ export default function SettingButton() {
 										value: ThemeMode.Dark,
 										label: "Tema escuro",
 										content: (
-											<Icon
-												icon="local:ic-settings-mode-moon"
-												size="24"
-												color={themeMode === ThemeMode.Dark ? themeVars.colors.palette.primary.default : ""}
+											<Moon
+												className="size-6"
+												strokeWidth={2}
+												aria-hidden="true"
+												color={themeMode === ThemeMode.Dark ? themeVars.colors.palette.primary.default : "currentColor"}
 											/>
 										),
 									},
@@ -451,12 +454,12 @@ export default function SettingButton() {
 						>
 							{isFullscreen ? (
 								<>
-									<Icon icon="local:ic-settings-exit-fullscreen" />
+									<Minimize2 className="size-5" strokeWidth={2} aria-hidden="true" />
 									<span className="ml-2">{t("sys.settings.exitFullscreen")}</span>
 								</>
 							) : (
 								<>
-									<Icon icon="local:ic-settings-fullscreen" />
+									<Maximize2 className="size-5" strokeWidth={2} aria-hidden="true" />
 									<span className="ml-2">{t("sys.settings.fullscreen")}</span>
 								</>
 							)}

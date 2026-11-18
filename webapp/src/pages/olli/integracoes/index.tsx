@@ -1,23 +1,23 @@
 import {
-	Bot,
 	CalendarClock,
 	CalendarPlus,
 	FileCheck2,
 	FileSpreadsheet,
 	KeyRound,
 	LogIn,
+	type LucideIcon,
 	MapPin,
 	MessageCircle,
+	MessageSquareText,
 	Plug,
 	Star,
 	Webhook,
-	type LucideIcon,
 } from "lucide-react";
 import { NavLink } from "react-router";
 import { Badge } from "@/ui/badge";
 import { buttonVariants } from "@/ui/button";
 import { cn } from "@/utils";
-import { FORA_DESTA_LEVA, listarDisponiveis, listarEmBreve, type Integracao } from "./catalogo";
+import { FORA_DESTA_LEVA, type Integracao, listarDisponiveis, listarEmBreve } from "./catalogo";
 
 const ICONE: Record<string, LucideIcon> = {
 	whatsapp: MessageCircle,
@@ -31,7 +31,7 @@ const ICONE: Record<string, LucideIcon> = {
 	"avaliacao-painel": Star,
 	"login-google-equipe": LogIn,
 	webhooks: Webhook,
-	"chave-ia": Bot,
+	"chave-ia": MessageSquareText,
 };
 
 function Cartao({ item }: { item: Integracao }) {
@@ -40,9 +40,15 @@ function Cartao({ item }: { item: Integracao }) {
 	const tituloId = `integracao-${item.id}`;
 
 	return (
-		<article className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-sm" aria-labelledby={tituloId}>
+		<article
+			className="flex h-full flex-col rounded-2xl border border-border bg-card p-5 shadow-sm"
+			aria-labelledby={tituloId}
+		>
 			<div className="flex items-start justify-between gap-3">
-				<span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary" aria-hidden="true">
+				<span
+					className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
+					aria-hidden="true"
+				>
 					<Icone className="size-5" />
 				</span>
 				<Badge variant={pronto ? "success" : "warning"}>{pronto ? "Já no OLLI" : "Em breve"}</Badge>
@@ -101,8 +107,8 @@ export default function IntegracoesPage() {
 						Em breve
 					</h2>
 					<p className="mt-1 max-w-2xl text-sm leading-6 text-text-secondary">
-						Ordem de prioridade, do mais útil para o prestador ao que pode esperar. Nenhum deles está ligado. Não há data
-						prometida.
+						Ordem de prioridade, do mais útil para o prestador ao que pode esperar. Nenhum deles está ligado. Não há
+						data prometida.
 					</p>
 				</div>
 				<ol className="grid list-none gap-4 md:grid-cols-2">

@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight, Info } from "lucide-react";
 import Icon from "@/components/icon/icon";
 import useLocale from "@/locales/use-locale";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/ui/tooltip";
@@ -26,7 +27,7 @@ export const NavItem = (item: NavItemProps) => {
 				<TooltipProvider>
 					<Tooltip>
 						<TooltipTrigger>
-							<Icon icon="solar:info-circle-linear" size={16} className="ml-1.5" style={navItemStyles.caption} />
+							<Info className="ml-1.5 size-4" strokeWidth={2} style={navItemStyles.caption} aria-hidden="true" />
 						</TooltipTrigger>
 						<TooltipContent side="bottom">{t(item.caption)}</TooltipContent>
 					</Tooltip>
@@ -58,6 +59,6 @@ export const NavItem = (item: NavItemProps) => {
 };
 
 const ItemIcon = ({ depth = 1 }: { depth?: number }) => {
-	const icon = depth === 1 ? "eva:arrow-ios-downward-fill" : "eva:arrow-ios-forward-fill";
-	return <Icon icon={icon} style={navItemStyles.arrow} />;
+	const Glyph = depth === 1 ? ChevronDown : ChevronRight;
+	return <Glyph className="size-4" strokeWidth={2} style={navItemStyles.arrow} aria-hidden="true" />;
 };

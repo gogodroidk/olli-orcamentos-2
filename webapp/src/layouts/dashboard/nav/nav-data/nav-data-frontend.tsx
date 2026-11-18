@@ -1,22 +1,24 @@
 import {
-	Calculator,
-	Bot,
 	BookOpen,
+	Calculator,
 	Calendar,
 	ClipboardList,
 	Crown,
 	DatabaseBackup,
 	FileSignature,
+	Files,
 	FileText,
 	Home,
 	Kanban,
 	MapPinned,
+	MessageSquareText,
 	Package,
+	PencilRuler,
 	Plug,
 	Receipt,
+	Settings2,
 	Stethoscope,
 	Store,
-	Settings2,
 	Users,
 	UsersRound,
 	Wind,
@@ -29,52 +31,52 @@ import type { NavProps } from "@/components/nav";
  * devolve a própria string quando não acha a chave, então não precisa de
  * tradução para renderizar em português.
  *
- * Ícones em lucide-react (linha fina) — mesma família usada no conteúdo das
- * telas, pra não misturar com o Iconify "solar:*-bold-duotone" (preenchido)
- * que ficava divergente do cabeçalho de cada página (ex.: Orçamentos usava
- * um ícone de documento no menu e outro, `FileText`, no cabeçalho).
+ * Ícones em lucide-react 0.487, traço 2, 20px — a mesma família e o mesmo
+ * peso do topo e do conteúdo. 24px estourava a caixa de 22px do item e
+ * brigava com a lupa e a engrenagem. Orçamentos e Documentos não compartilham
+ * mais o mesmo glifo.
  */
 export const frontendNavData: NavProps["data"] = [
 	{
 		name: "Painel",
-		items: [{ title: "Início", path: "/inicio", icon: <Home size={24} /> }],
+		items: [{ title: "Início", path: "/inicio", icon: <Home size={20} strokeWidth={2} /> }],
 	},
 	{
 		name: "Comercial",
 		items: [
-			{ title: "Quadro", path: "/quadro", icon: <Kanban size={24} /> },
-			{ title: "Orçamentos", path: "/orcamentos", icon: <FileText size={24} /> },
-			{ title: "Clientes", path: "/clientes", icon: <Users size={24} /> },
-			{ title: "Prospecção", path: "/prospeccao", icon: <MapPinned size={24} /> },
-			{ title: "Produtos", path: "/produtos", icon: <Package size={24} /> },
-			{ title: "Serviços", path: "/servicos", icon: <Wrench size={24} /> },
-			{ title: "Precificação", path: "/precificacao", icon: <Calculator size={24} /> },
-			{ title: "Recibos", path: "/recibos", icon: <Receipt size={24} /> },
-			{ title: "Documentos", path: "/documentos", icon: <FileText size={24} /> },
-			{ title: "Central de dados", path: "/dados", icon: <DatabaseBackup size={24} /> },
+			{ title: "Quadro", path: "/quadro", icon: <Kanban size={20} strokeWidth={2} /> },
+			{ title: "Orçamentos", path: "/orcamentos", icon: <FileText size={20} strokeWidth={2} /> },
+			{ title: "Clientes", path: "/clientes", icon: <Users size={20} strokeWidth={2} /> },
+			{ title: "Prospecção", path: "/prospeccao", icon: <MapPinned size={20} strokeWidth={2} /> },
+			{ title: "Produtos", path: "/produtos", icon: <Package size={20} strokeWidth={2} /> },
+			{ title: "Serviços", path: "/servicos", icon: <Wrench size={20} strokeWidth={2} /> },
+			{ title: "Precificação", path: "/precificacao", icon: <Calculator size={20} strokeWidth={2} /> },
+			{ title: "Recibos", path: "/recibos", icon: <Receipt size={20} strokeWidth={2} /> },
+			{ title: "Documentos", path: "/documentos", icon: <Files size={20} strokeWidth={2} /> },
+			{ title: "Central de dados", path: "/dados", icon: <DatabaseBackup size={20} strokeWidth={2} /> },
 		],
 	},
 	{
 		name: "Operação",
 		items: [
-			{ title: "Ordens de serviço", path: "/ordens-servico", icon: <ClipboardList size={24} /> },
-			{ title: "Agenda", path: "/agenda", icon: <Calendar size={24} /> },
+			{ title: "Ordens de serviço", path: "/ordens-servico", icon: <ClipboardList size={20} strokeWidth={2} /> },
+			{ title: "Agenda", path: "/agenda", icon: <Calendar size={20} strokeWidth={2} /> },
 			// Contrato recorrente por ativo: gera cada visita na agenda (qualquer ofício).
-			{ title: "Contratos", path: "/contratos", icon: <FileSignature size={24} /> },
-			{ title: "Equipe", path: "/equipe", icon: <UsersRound size={24} /> },
+			{ title: "Contratos", path: "/contratos", icon: <FileSignature size={20} strokeWidth={2} /> },
+			{ title: "Equipe", path: "/equipe", icon: <UsersRound size={20} strokeWidth={2} /> },
 			// Era `mdi:air-conditioner` (Iconify) — antes disso, `solar:cpu-bolt-bold-duotone`,
 			// um CHIP DE PROCESSADOR que não dizia nada sobre equipamento de campo. Os
 			// campos da tabela são BTU, refrigerante e tensão: é ar-condicionado. `Wind`
 			// (fluxo de ar) é o equivalente em lucide-react.
-			{ title: "Equipamentos", path: "/equipamentos", icon: <Wind size={24} /> },
+			{ title: "Equipamentos", path: "/equipamentos", icon: <Wind size={20} strokeWidth={2} /> },
 		],
 	},
 	{
 		name: "Ferramentas",
 		items: [
-			{ title: "Assistente IA", path: "/assistente", icon: <Bot size={24} /> },
-			{ title: "Central de ajuda", path: "/ajuda", icon: <BookOpen size={24} /> },
-			{ title: "Ferramentas de ofício", path: "/ferramentas", icon: <Calculator size={24} /> },
+			{ title: "Assistente IA", path: "/assistente", icon: <MessageSquareText size={20} strokeWidth={2} /> },
+			{ title: "Central de ajuda", path: "/ajuda", icon: <BookOpen size={20} strokeWidth={2} /> },
+			{ title: "Ferramentas de ofício", path: "/ferramentas", icon: <PencilRuler size={20} strokeWidth={2} /> },
 			{
 				// A base é 100% HVAC (climatização/refrigeração) — só aparece pra quem
 				// tem esse ofício, via o gate de `ITENS_SOMENTE_VERTICAL` em
@@ -82,17 +84,17 @@ export const frontendNavData: NavProps["data"] = [
 				// definido, mostra normalmente.
 				title: "Diagnóstico IA",
 				path: "/diagnostico",
-				icon: <Stethoscope size={24} />,
+				icon: <Stethoscope size={20} strokeWidth={2} />,
 			},
 		],
 	},
 	{
 		name: "Conta",
 		items: [
-			{ title: "Planos", path: "/planos", icon: <Crown size={24} /> },
-			{ title: "Meu negócio", path: "/meu-negocio", icon: <Store size={24} /> },
-			{ title: "Integrações", path: "/integracoes", icon: <Plug size={24} /> },
-			{ title: "Configurações", path: "/configuracoes", icon: <Settings2 size={24} /> },
+			{ title: "Planos", path: "/planos", icon: <Crown size={20} strokeWidth={2} /> },
+			{ title: "Meu negócio", path: "/meu-negocio", icon: <Store size={20} strokeWidth={2} /> },
+			{ title: "Integrações", path: "/integracoes", icon: <Plug size={20} strokeWidth={2} /> },
+			{ title: "Configurações", path: "/configuracoes", icon: <Settings2 size={20} strokeWidth={2} /> },
 		],
 	},
 ];
