@@ -1,6 +1,7 @@
 ---
 import EsteiraTelas from "../components/EsteiraTelas.astro";
 import Footer from "../components/Footer.astro";
+import FotoPrestador from "../components/FotoPrestador.astro";
 import Header from "../components/Header.astro";
 import HeroDevices from "../components/HeroDevices.tsx";
 import Icone from "../components/Icone.astro";
@@ -17,6 +18,7 @@ import {
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
 import { FRASE_GRATIS } from "../data/recursos";
+import { AVISO_ILUSTRATIVAS, FOTOS, ORDEM_HOME } from "../data/fotos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -415,6 +417,34 @@ const schemaFaq = {
       Escolheu o ofício no cadastro? A OLLI já deduz pelo seu CNPJ. Sem ofício definido, você vê tudo —
       o filtro só esconde o que é de outro serviço, nunca bloqueia.
     </p>
+  </section>
+
+  {/* ══════════ FOTOS DE PRESTADORES (D-2151) ══════════
+       Seis fotos ilustrativas (geradas com IA, com a tela real do app no celular). O aviso vale para o conjunto,
+       fica visível logo abaixo e também no alt de cada imagem. Sem depoimento, sem nome, sem número.
+       Cada cartão leva à página do ofício; oficina e limpeza não têm vertical própria e vão para a página
+       "qualquer serviço", que já diz a verdade sobre o que a OLLI entrega nesses casos. */}
+  <section class="mx-auto max-w-7xl px-6 pb-24" aria-labelledby="quem-executa">
+    <div class="mx-auto max-w-2xl text-center">
+      <span class="eyebrow">Pensado pra quem executa</span>
+      <h2 id="quem-executa" class="mt-4 text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">
+        Do quadro de luz à oficina.
+      </h2>
+      <p class="mt-4 text-lg leading-relaxed text-slate">
+        O ciclo é o mesmo em qualquer serviço: orçamento, ordem de serviço e recibo, no celular.
+      </p>
+    </div>
+    <ul class="mt-10 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+      {ORDEM_HOME.map((chave) => (
+        <li>
+          <a href={FOTOS[chave].href} class="group block min-h-11 transition hover:-translate-y-1">
+            <FotoPrestador chave={chave} aviso={false} sizes="(min-width:1024px) 190px, (min-width:768px) 30vw, 46vw" />
+            <span class="mt-3 block text-base font-bold text-ink group-hover:text-brand-fg">{FOTOS[chave].rotulo}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+    <p class="mt-6 text-center text-xs text-muted">{AVISO_ILUSTRATIVAS}</p>
   </section>
 
   {/* ══════════ COMO FUNCIONA ══════════ */}
