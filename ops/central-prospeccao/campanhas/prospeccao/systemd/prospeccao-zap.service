@@ -1,0 +1,10 @@
+[Unit]
+Description=OLLI Serviços prospecção WhatsApp — no máximo uma mensagem, com freios
+Documentation=file:///home/igor/Desktop/Entregas%20Claude/OLLI/2026-11-13-prospeccao-zap/HANDOFF.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/igor/chatwoot-central/campanhas/prospeccao
+ExecStart=/home/igor/.local/bin/node /home/igor/chatwoot-central/campanhas/prospeccao/enviar.mjs
+Environment=TZ=America/Sao_Paulo
+Nice=10
