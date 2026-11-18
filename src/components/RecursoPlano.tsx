@@ -11,6 +11,7 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '../services/entitlements';
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
 import { vendaPlayConfirmada } from '../services/playBilling';
+import { podeOferecerPlanoPara } from '../services/cadeadoRecurso';
 import { track, Eventos } from '../services/analytics';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 
@@ -44,10 +45,9 @@ import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 
 /** Onde o app pode oferecer o plano (ver "LOJAS" acima). */
 function podeOferecerPlano(): boolean {
-  if (Platform.OS === 'web') return true;
   // Leitura síncrona e conservadora: antes da 1ª resposta do servidor, ou depois
-  // de um erro, é false — a peça só informa.
-  return Platform.OS === 'android' && vendaPlayConfirmada();
+  // de um erro, é false — a peça só informa. A regra é pura (`podeOferecerPlanoPara`) e tem teste.
+  return podeOferecerPlanoPara(Platform.OS, Platform.OS === 'android' && vendaPlayConfirmada());
 }
 
 export interface UsoRecursoPlano {

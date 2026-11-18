@@ -18,3 +18,14 @@ export const RECURSOS_CADEADO_D2267: readonly Recurso[] = ['recibos', 'agenda', 
 export function recursoTrancado(estado: EstadoAcessoRecurso): boolean {
   return estado !== 'liberado' && estado !== 'em_breve';
 }
+
+/**
+ * LOJAS (iOS Guideline 3.1.1 / Google Play): onde o cartão "Disponível no Pro" pode OFERECER o plano (botão
+ * "Ver o plano"). Web: sim. Android: só quando a venda é pela própria Play (binário com Play Billing E servidor
+ * confirmando). iOS e Android sem Play Billing: só INFORMA — nenhum botão nem caminho de pagamento externo.
+ * O botão só leva à tela de planos, que no build da loja vende apenas pelo fluxo da loja.
+ */
+export function podeOferecerPlanoPara(os: string, vendaPlayConfirmada: boolean): boolean {
+  if (os === 'web') return true;
+  return os === 'android' && vendaPlayConfirmada;
+}

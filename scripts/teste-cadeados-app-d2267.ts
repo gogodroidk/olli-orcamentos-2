@@ -13,7 +13,9 @@
  *  5. Texto e preço só da fonte única (nada digitado à mão nas telas novas); alvos de toque >= 44 px.
  */
 import { readFileSync } from 'node:fs';
-import { RECURSOS_CADEADO_D2267, recursoTrancado } from '../src/services/cadeadoRecurso.ts';
+import { RECURSOS_CADEADO_D2267, podeOferecerPlanoPara, recursoTrancado } from '../src/services/cadeadoRecurso.ts';
+import { regrasDaLoja } from '../src/config/lojaRegras.ts';
+import { ROTULO_RECURSO, beneficioRecursoLoja } from '../src/services/planosBase.ts';
 import { TRANCA_GRATIS_D2267, disponibilidadeRecurso, estadoAcessoRecurso, temAcessoRecurso } from '../src/services/entitlements.ts';
 
 let falhas = 0;
@@ -91,6 +93,25 @@ ok('alvos >= 44 px: aba Novo/Emitidos, "Preparar nota" e "Nova OS"',
   /minHeight: 44, paddingVertical: 9/.test(ler('src/screens/EmitirReciboScreen.tsx'))
   && /paddingTop: 8, minHeight: 44/.test(ler('src/screens/EmitirReciboScreen.tsx'))
   && /minHeight: 44, paddingHorizontal: 14, paddingVertical: 8/.test(ler('src/screens/OrdemServicoScreen.tsx')));
+
+// 6. LOJAS (Play e iOS): "Disponível no Pro" não tem botão nem link de pagamento externo e não cita Pix
+ok('iOS: o cartão só informa (sem botão), mesmo se o servidor disser que a Play vende', !podeOferecerPlanoPara('ios', false) && !podeOferecerPlanoPara('ios', true));
+ok('Android sem Play Billing confirmado: só informa; com a venda pela Play: botão (fluxo da loja)', !podeOferecerPlanoPara('android', false) && podeOferecerPlanoPara('android', true));
+ok('web: pode oferecer', podeOferecerPlanoPara('web', false));
+ok('regras de loja: iOS não vende; Android da Play não abre compra externa; só a web habilita compra externa',
+  !regrasDaLoja('ios').compraNoApp && regrasDaLoja('android').buildPlaySemCompraExterna
+  && regrasDaLoja('web').compraExternaHabilitada && !regrasDaLoja('android').compraExternaHabilitada && !regrasDaLoja('ios').compraExternaHabilitada);
+const todosRecursos = Object.keys(ROTULO_RECURSO) as Array<keyof typeof ROTULO_RECURSO>;
+ok('texto das LOJAS (título e beneficioRecursoLoja) de TODOS os recursos sem "Pix"',
+  todosRecursos.every((r) => !/pix/i.test(beneficioRecursoLoja(r)) && !/pix/i.test(ROTULO_RECURSO[r].titulo)));
+const cartao = semComentarios(ler('src/components/RecursoPlano.tsx'));
+ok('cartão: fora da web o benefício vem de beneficioRecursoLoja', /Platform\.OS === 'web' \? beneficioRecurso\(recurso\) : beneficioRecursoLoja\(recurso\)/.test(cartao));
+ok('cartão: o botão do plano só existe atrás de podeOferecerPlano() e só leva à tela de planos da loja',
+  /podeOferecerPlano\(\) \? \(\s*<OlliPressable onPress=\{irParaPlanos\}/.test(cartao) && /nav\.navigate\('Planos'/.test(cartao));
+ok('cartão e tela do cadeado: sem link externo, sem Pix e sem texto de pagamento fora da loja',
+  !/Linking|openURL|https?:\/\/|mercadopago|stripe|checkout/i.test(cartao + gate) && !/pix/i.test(gate)
+  && !/pix/i.test(cartao.replace(/beneficioRecurso\(recurso\)/g, '')));
+ok('preço do cartão vem de precosPlanos (informação; nada de "pague por Pix")', /PRECO_PRO/.test(cartao) && /por mês/.test(cartao) && !/pix/i.test(cartao.split('por mês')[0].slice(-200)));
 
 console.log(falhas ? `\nFALHOU: ${falhas}` : '\nPASSOU');
 process.exit(falhas ? 1 : 0);
