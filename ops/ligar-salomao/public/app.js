@@ -4,13 +4,17 @@ const API = "/ligar/api/";
 const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=";
 
 const $ = (id) => document.getElementById(id);
+// mesma regra do servidor (lib/ferramentas.mjs → confirmou); o servidor confere de novo
+const PERGUNTOU = /\bconfirma\s*\?/i;
+const CONFIRMA = /^\s*(sim|confirmo|confirmado|confirma|pode mandar|pode sim|pode ir|manda|isso( mesmo| a[íi])?|positivo|fechado|ok)\b[^?]{0,40}$/i;
+// pergunta embutida (a transcrição nem sempre põe "?"): "ok, como está…", "sim, e a fila" não confirmam
+const PERGUNTA_DENTRO = /\b(o que|como|qual|quais|quando|quem|onde|quant[oa]s?|por ?qu[eê]|me fal\w*|me diz\w*|e a|e o|e os|e as)\b/i;
 const NEGA = /\b(n[ãa]o|nada|cancela|esquece|deixa)\b/i;
-const CONFIRMA = /\b(sim|confirm[oa]?|confirmado|pode( mandar| sim)?|manda|isso( a[íi])?|ok|okay|positivo|claro|beleza|fechado|certo)\b/i;
 const el = { ligar: $("ligar"), desligar: $("desligar"), mudo: $("mudo"), status: $("status"), tempo: $("tempo"), anel: $("anel"), legenda: $("legenda") };
 
 let ws = null, modelo = "", handle = null, ativo = false, inicio = 0, relogio = null, travaTela = null;
 let ctxMic = null, ctxSom = null, noMic = null, fluxo = null, proxTempo = 0, fontes = [], mudo = false;
-let uso = [], falaIgor = "", falaTurno = "", falaDele = "", reconectando = false, pendentes = new Set();
+let uso = [], falaIgor = "", falaTurno = "", falaDele = "", ultimaFalaVoz = "", estadoDepois = false, reconectando = false, pendentes = new Set();
 
 async function post(rota, corpo) {
   const r = await fetch(API + rota, { method: "POST", headers: { "content-type": "application/json", "x-ligar": "1" }, body: JSON.stringify(corpo || {}), credentials: "same-origin" });
@@ -83,6 +87,7 @@ async function conectar(retomada) {
       if (sc.inputTranscription?.text) {
         falaIgor = (falaIgor + sc.inputTranscription.text).slice(-600);
         falaTurno = (falaTurno + sc.inputTranscription.text).slice(-300);
+        estadoDepois = false;
         if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${(falaTurno || falaIgor).slice(-200)}`;
       }
       if (sc.outputTranscription?.text) {
@@ -91,7 +96,8 @@ async function conectar(retomada) {
         pIgor = null;
       }
       for (const p of sc.modelTurn?.parts || []) if (p.inlineData?.data) tocar(p.inlineData.data, p.inlineData.mimeType);
-      if (sc.turnComplete) { pDele = null; falaDele = ""; falaTurno = ""; }   // falaTurno = só o que o Igor disse depois da última fala da voz
+      // falaTurno = só o que o Igor disse depois da última fala da voz; ultimaFalaVoz = última fala completa (com voz) do modelo
+      if (sc.turnComplete) { pDele = null; if (falaDele.trim()) { ultimaFalaVoz = falaDele; falaTurno = ""; } falaDele = ""; }
     };
   });
 }
@@ -112,8 +118,8 @@ async function retomar(motivo) {
 // a transcrição da fala do Igor pode chegar um pouco depois do pedido de ferramenta: espera até 2 s
 async function confirmou() {
   for (let i = 0; i < 10 && !falaTurno.trim(); i++) await new Promise((r) => setTimeout(r, 200));
-  const t = falaTurno;
-  return CONFIRMA.test(t) && !(NEGA.test(t) && !/\bsim\b/i.test(t));
+  const t = falaTurno.trim();
+  return !estadoDepois && PERGUNTOU.test(ultimaFalaVoz) && CONFIRMA.test(t) && !NEGA.test(t) && !PERGUNTA_DENTRO.test(t);
 }
 
 async function ferramenta(fc) {
@@ -121,13 +127,14 @@ async function ferramenta(fc) {
   let resposta;
   try {
     if (fc.name === "estado_empresa") {
+      estadoDepois = true;
       resposta = { resultado: (await post("estado")).resultado };
     } else if (fc.name === "mandar_ao_salomao" && !(await confirmou())) {
       // trava que não depende do modelo: só sai recado se a última fala do Igor foi uma confirmação
       resposta = { erro: "O Igor ainda não confirmou em voz. Repita a ordem em uma frase, pergunte 'confirma?' e espere ele dizer sim. Nada foi enviado." };
     } else if (fc.name === "mandar_ao_salomao") {
       legenda(`Recado ao Salomão: ${String(fc.args?.texto || "").slice(0, 160)}`, "sistema");
-      const r = await post("mandar", { texto: String(fc.args?.texto || ""), falaIgor, confirmacao: falaTurno });
+      const r = await post("mandar", { texto: String(fc.args?.texto || ""), falaIgor, confirmacao: falaTurno, pergunta: ultimaFalaVoz, estadoDepois });
       resposta = { resultado: r.resultado };
       if (r.estado === "esperando" && r.id) acompanhar(r.id);
     } else {
@@ -168,7 +175,7 @@ async function ligar() {
   try {
     ctxSom = new AudioContext(); await ctxSom.resume();   // destrava o som no toque do usuário (iOS/Android)
     await abrirMic();
-    ativo = true; handle = null; uso = []; falaIgor = ""; falaTurno = ""; inicio = Date.now();
+    ativo = true; handle = null; uso = []; falaIgor = ""; falaTurno = ""; ultimaFalaVoz = ""; estadoDepois = false; inicio = Date.now();
     await conectar(false);
     el.ligar.hidden = true; el.desligar.hidden = false; el.mudo.hidden = false; el.tempo.hidden = false;
     relogio = setInterval(cronometro, 1000); cronometro();
