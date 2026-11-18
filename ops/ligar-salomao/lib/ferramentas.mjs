@@ -98,12 +98,18 @@ export function identidadeMaestri() {
   } catch { return null; }
 }
 
-// Trava de confirmação (P1 do LIVRE, 18/11): a última fala do Igor (depois da última fala da voz) tem de confirmar.
-export const CONFIRMA = /\b(sim|confirm[oa]?|confirmado|pode( mandar| sim)?|manda|isso( a[íi])?|ok|okay|positivo|claro|beleza|fechado|certo)\b/i;
+// Trava de confirmação (P1 do LIVRE, 18/11, 2ª rodada). Só vale se:
+//  1) a última fala COMPLETA da voz perguntou "confirma?";
+//  2) a fala do Igor depois dela COMEÇA com confirmação, é curta e não é pergunta (sem "?"), sem "não/cancela";
+//  3) não houve leitura de estado_empresa depois da fala do Igor (o texto lido pode trazer injeção).
+export const PERGUNTOU = /\bconfirma\s*\?/i;
+export const CONFIRMA = /^\s*(sim|confirmo|confirmado|confirma|pode mandar|pode sim|pode ir|manda|isso( mesmo| a[íi])?|positivo|fechado|ok)\b[^?]{0,40}$/i;
+// pergunta embutida (a transcrição nem sempre põe "?"): "ok, como está…", "sim, e a fila" não confirmam
+export const PERGUNTA_DENTRO = /\b(o que|como|qual|quais|quando|quem|onde|quant[oa]s?|por ?qu[eê]|me fal\w*|me diz\w*|e a|e o|e os|e as)\b/i;
 export const NEGA = /\b(n[ãa]o|nada|cancela|esquece|deixa)\b/i;
-export function confirmou(fala) {
-  const t = String(fala || "");
-  return CONFIRMA.test(t) && !(NEGA.test(t) && !/\bsim\b/i.test(t));
+export function confirmou(fala, pergunta, estadoDepois = false) {
+  const t = String(fala || "").trim();
+  return !estadoDepois && PERGUNTOU.test(String(pergunta || "")) && CONFIRMA.test(t) && !NEGA.test(t) && !PERGUNTA_DENTRO.test(t);
 }
 
 /** Limpa o texto vindo da voz: sem controle, sem quebra, tamanho limitado. */

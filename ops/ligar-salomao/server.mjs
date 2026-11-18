@@ -90,7 +90,7 @@ export const servidor = createServer(async (req, res) => {
     }
     if (rota === "api/mandar") {
       if (!dentroDoLimite("mandar", 6, 10 * 60e3)) return json(res, 429, { resultado: "Muitos recados seguidos; nada foi enviado. Espere uns minutos." });
-      if (!confirmou(limparTexto(b.confirmacao, 300))) {
+      if (!confirmou(limparTexto(b.confirmacao, 300), limparTexto(b.pergunta, 600), b.estadoDepois === true)) {
         log("recado_sem_confirmacao", { texto: mascarar(limparTexto(b.texto, 200)) });
         return json(res, 200, { id: null, estado: "erro", resultado: "Não enviado: o Igor ainda não confirmou em voz. Repita a ordem e pergunte 'confirma?'." });
       }
