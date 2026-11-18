@@ -4,6 +4,9 @@
  * Fundo em gradiente navy -> azul com brilho ciano, mascote OLLI, wordmark,
  * tagline e 3 provas curtas com check menta.
  */
+/** A frase da marca: aqui no painel azul (>= lg) e, no celular, sob o logo da entrada (D-2151 #5). */
+export const FRASE_MARCA = "Do orçamento ao recibo, sem planilha.";
+
 function OlliMascot({ className }: { className?: string }) {
 	return (
 		<svg viewBox="0 0 64 64" fill="none" className={className} aria-hidden="true" role="img">
@@ -58,9 +61,7 @@ function BrandHero() {
 						<span className="bg-gradient-to-r from-[#3FD8EA] to-[#8FE9F5] bg-clip-text text-5xl font-black tracking-tight text-transparent xl:text-6xl">
 							OLLI
 						</span>
-						<p className="max-w-sm text-balance text-lg font-medium text-white/85 xl:text-xl">
-							Do orçamento ao recibo, sem planilha.
-						</p>
+						<p className="max-w-sm text-balance text-lg font-medium text-white/85 xl:text-xl">{FRASE_MARCA}</p>
 					</div>
 				</div>
 
