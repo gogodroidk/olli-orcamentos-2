@@ -15,14 +15,9 @@
  * nada de módulo nativo no boot, e a web não quebra.
  */
 import { Platform } from 'react-native';
-import {
-	detalhesParaContatos,
-	type DetalhesContatoCelular,
-	type EscolhaContato,
-	type LeituraContatos,
-} from './contatosCelularNucleo';
+import { detalhesParaContatos, type DetalhesContatoCelular, type LeituraContatos } from './contatosCelularNucleo';
 
-export type { EscolhaContato, LeituraContatos } from './contatosCelularNucleo';
+export type { LeituraContatos } from './contatosCelularNucleo';
 
 type ModuloContatos = typeof import('expo-contacts');
 type ModuloLegacy = typeof import('expo-contacts/legacy');
@@ -65,27 +60,5 @@ export async function lerContatosDoCelular(): Promise<LeituraContatos> {
 		return contatos.length ? { estado: 'ok', contatos } : { estado: 'vazio' };
 	} catch (e) {
 		return { estado: 'erro', mensagem: e instanceof Error && e.message ? e.message : 'Não consegui ler os contatos agora.' };
-	}
-}
-
-/**
- * Seletor NATIVO de um contato — não pede permissão de agenda (o sistema mostra a
- * própria lista e só entrega o contato escolhido). É o caminho de quem negou a
- * leitura completa e o do botão "Puxar dos contatos" no orçamento.
- */
-export async function escolherUmContato(): Promise<EscolhaContato> {
-	if (!disponivel()) return { estado: 'indisponivel' };
-	try {
-		const { Contact, ContactField } = modulo();
-		const contato = await Contact.presentPicker();
-		if (!contato) return { estado: 'cancelado' };
-		const detalhes = await contato.getDetails(
-			[ContactField.FULL_NAME, ContactField.GIVEN_NAME, ContactField.FAMILY_NAME, ContactField.PHONES] as const,
-		) as unknown as DetalhesContatoCelular;
-		const [unico] = detalhesParaContatos([detalhes]);
-		if (!unico) return { estado: 'erro', mensagem: 'Esse contato não tem nome nem telefone.' };
-		return { estado: 'ok', nome: unico.nome, telefones: unico.telefones };
-	} catch (e) {
-		return { estado: 'erro', mensagem: e instanceof Error && e.message ? e.message : 'Não consegui abrir seus contatos agora.' };
 	}
 }

@@ -22,8 +22,8 @@ import { isValidEmail } from '../utils/contatoAgenda';
 import { BotaoContatoAgenda } from '../components/BotaoContatoAgenda';
 import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { clienteParaOrc } from '../utils/orcamentoBase';
-import { escolherUmContato } from '../services/contatosCelular';
-import { telefoneDoContato } from '../services/contatosCelularNucleo';
+import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
+import { gravarTelefoneNoCliente } from '../services/telefoneDoCliente';
 
 /** Quantos clientes recentes aparecem antes de digitar na busca. */
 const QTD_RECENTES = 5;
@@ -184,22 +184,14 @@ export default function Step1Cliente({ orc, onChange }: Props) {
     setErroPuxar(null);
     setPuxando(true);
     try {
-      const r = await escolherUmContato();
+      const r = await puxarTelefoneDosContatos();
       if (r.estado === 'cancelado') return;
-      if (r.estado === 'indisponivel') { setErroPuxar('Os contatos só abrem no app do celular. Digite o telefone no cadastro do cliente.'); return; }
-      if (r.estado === 'erro') { setErroPuxar(`${r.mensagem} Nada foi alterado.`); return; }
-      const telefone = telefoneDoContato(r.telefones);
-      if (!telefone) { setErroPuxar(`${r.nome || 'Esse contato'} não tem um telefone com DDD que o WhatsApp aceite. Escolha outro contato.`); return; }
-      onChange({ clienteTelefone: telefone });
+      if (r.estado === 'erro') { setErroPuxar(r.mensagem); return; }
+      onChange({ clienteTelefone: r.telefone });
       vibrar('selecao');
       // Guarda também no cadastro, para o próximo orçamento já sair com telefone.
-      if (orc.clienteId) {
-        try {
-          const atual = (await getClientes()).find(c => c.id === orc.clienteId);
-          if (atual && !atual.telefone) await saveCliente({ ...atual, telefone, atualizadoEm: nowISO() });
-        } catch {
-          setErroPuxar('O telefone entrou no orçamento, mas não consegui guardar no cadastro do cliente agora.');
-        }
+      if ((await gravarTelefoneNoCliente(orc.clienteId, r.telefone)) === 'erro') {
+        setErroPuxar('O telefone entrou no orçamento, mas não consegui guardar no cadastro do cliente agora.');
       }
     } finally {
       setPuxando(false);

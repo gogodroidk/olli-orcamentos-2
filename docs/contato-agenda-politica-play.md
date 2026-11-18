@@ -1,5 +1,18 @@
 # Contato da agenda em 1 toque — política Play e LGPD (I-0045 / I-0053, D-2030)
 
+## ATUALIZAÇÃO D-2245 (18/11/2026) — a importação da agenda declara `READ_CONTACTS`
+Decisão do CTO: o botão **"Importar dos contatos"** (Clientes > Importar) lê nome e telefone da agenda inteira para o
+prestador marcar quem vira cliente. Por isso, a partir deste PR:
+- **`READ_CONTACTS` entra no app** (plugin `expo-contacts` em `app.json`, texto do iOS `NSContactsUsageDescription`
+  em português). A permissão é pedida **só ao tocar em "Ler meus contatos"**, depois de 1 frase na tela.
+- **`WRITE_CONTACTS` continua bloqueada** (`blockedPermissions`): o app só lê. Teste `test:contatos-celular` reprova se voltar.
+- O seletor de 1 contato (abaixo) segue sem listar a agenda; com `READ_CONTACTS` concedida o risco aberto abaixo some
+  (a leitura do contato escolhido passa a ter permissão). Quem negar a agenda cai nesse seletor, no .vcf e no cadastro à mão.
+- **Para o Play Console (TECH):** declarar `READ_CONTACTS` no formulário de permissões restritas (função principal:
+  trazer clientes da agenda do celular) e atualizar "Segurança dos dados" (contatos escolhidos pelo usuário viram clientes;
+  nada sobe sem o usuário marcar e confirmar) e a política de privacidade. Aviso da Play: apps com alvo Android 17 (API 37)
+  só mantêm `READ_CONTACTS` se o Contact Picker não bastar — a importação em lote é o argumento.
+
 ## O que o app faz
 Botão **"Escolher da agenda"** no cadastro de cliente (novo orçamento e Clientes). Abre o **seletor nativo do sistema**
 (`Contact.presentPicker()` do expo-contacts); o usuário toca em UM contato; o app lê **nome, telefone e e-mail** só

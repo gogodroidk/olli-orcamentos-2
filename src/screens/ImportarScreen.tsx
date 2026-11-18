@@ -42,7 +42,8 @@ import {
   type TipoImportacaoCadastro,
 } from '../services/importacao';
 import { lerArquivoImportacao, type FormatoImportacao } from '../services/importacaoArquivo';
-import { escolherUmContato, lerContatosDoCelular } from '../services/contatosCelular';
+import { lerContatosDoCelular } from '../services/contatosCelular';
+import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
 import { resumoImportacaoContatos } from '../services/contatosCelularNucleo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -272,11 +273,10 @@ export default function ImportarScreen() {
     setErro(null);
     setLendo(true);
     try {
-      const r = await escolherUmContato();
+      const r = await puxarTelefoneDosContatos();
       if (r.estado === 'cancelado') return;
-      if (r.estado === 'indisponivel') { setErro('O seletor de contatos só funciona no app do celular. Aqui, use o arquivo de contatos.'); return; }
-      if (r.estado === 'erro') { setErro(`${r.mensagem} Nada foi alterado.`); return; }
-      const nova = contatosParaLinhas([{ nome: r.nome, telefones: r.telefones, endereco: '', cidade: '', estado: '', cep: '', empresa: '' }]);
+      if (r.estado === 'erro') { setErro(r.mensagem); return; }
+      const nova = contatosParaLinhas([{ nome: r.nome, telefones: [r.telefone], endereco: '', cidade: '', estado: '', cep: '', empresa: '' }]);
       const base = arquivo?.nome === NOME_ESCOLHIDOS ? arquivo.linhas : [];
       if (!base.length) {
         limparFonte();

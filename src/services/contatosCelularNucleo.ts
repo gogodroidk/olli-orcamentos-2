@@ -68,31 +68,11 @@ export function detalhesParaContatos(detalhes: DetalhesContatoCelular[]): Contat
 	return contatos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
 }
 
-/**
- * Primeiro telefone BR válido do contato, já formatado — para "Puxar dos contatos"
- * no orçamento sem telefone. `''` = o contato não tem número que o WhatsApp aceite
- * (quem chama mostra o aviso; nunca devolve um número torto).
- */
-export function telefoneDoContato(telefones: string[], dddPadrao?: string): string {
-	for (const t of telefones) {
-		const lido = lerTelefone(t, dddPadrao);
-		if (lido.ok && lido.digitos) return lido.formatado;
-	}
-	return '';
-}
-
 /** Resultado da leitura: 5 estados, nenhum deles é "lista vazia" disfarçando erro. */
 export type LeituraContatos =
 	| { estado: 'ok'; contatos: ContatoVcf[] }
 	| { estado: 'vazio' }
 	| { estado: 'negada'; podePedirDeNovo: boolean }
-	| { estado: 'indisponivel' }
-	| { estado: 'erro'; mensagem: string };
-
-/** Escolha de UM contato (seletor nativo). */
-export type EscolhaContato =
-	| { estado: 'ok'; nome: string; telefones: string[] }
-	| { estado: 'cancelado' }
 	| { estado: 'indisponivel' }
 	| { estado: 'erro'; mensagem: string };
 

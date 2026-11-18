@@ -70,13 +70,13 @@ ok('só o seletor do sistema; nada de varrer a agenda', () => {
   }
   assert.match(svc, /ContactField\.FULL_NAME, ContactField\.PHONES, ContactField\.EMAILS/);
 });
-ok('READ/WRITE_CONTACTS bloqueadas e plugin do expo-contacts fora (ele as injetaria)', () => {
+ok('só LEITURA de contatos (D-2245): WRITE_CONTACTS bloqueada; READ liberada; plugin do expo-contacts declarado', () => {
   const app = JSON.parse(ler('app.json')) as { expo: { plugins: unknown[]; android: { permissions?: string[]; blockedPermissions?: string[] } } };
   const bloq = app.expo.android.blockedPermissions ?? [];
-  assert.ok(bloq.includes('android.permission.READ_CONTACTS'));
+  assert.equal(bloq.includes('android.permission.READ_CONTACTS'), false, 'READ_CONTACTS é a permissão da importação da agenda (D-2245)');
   assert.ok(bloq.includes('android.permission.WRITE_CONTACTS'));
-  assert.equal((app.expo.android.permissions ?? []).some(p => /CONTACTS/.test(p)), false);
-  assert.equal(JSON.stringify(app.expo.plugins).includes('expo-contacts'), false);
+  assert.equal((app.expo.android.permissions ?? []).some(p => /WRITE_CONTACTS/.test(p)), false);
+  assert.equal(JSON.stringify(app.expo.plugins).includes('expo-contacts'), true);
 });
 
 // 5) e-mail ponta a ponta

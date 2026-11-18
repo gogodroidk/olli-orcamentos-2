@@ -27,8 +27,9 @@ import {
 import {
 	detalhesParaContatos,
 	resumoImportacaoContatos,
-	telefoneDoContato,
 } from '../src/services/contatosCelularNucleo.ts';
+import { numeroWhatsAppBR } from '../src/utils/telefoneWhatsapp.ts';
+import { telefonePuxadoDe } from '../src/utils/telefonePuxado.ts';
 
 let falhas = 0;
 async function caso(nome: string, fn: () => void | Promise<void>) {
@@ -108,12 +109,35 @@ await caso('cadastro ilegível (null) não vira "sem duplicado": a tela usa prev
 	assert.match(fonte, /existentes === 'carregando'/);
 });
 
-await caso('Puxar dos contatos: primeiro telefone válido; nenhum serve → vazio', () => {
-	assert.equal(telefoneDoContato(['123', '+55 11 99999-0000', '(21) 98888-7777']), '(11) 99999-0000');
-	assert.equal(telefoneDoContato(['99999-0000']), '', 'sem DDD não é número que o WhatsApp aceite');
-	assert.equal(telefoneDoContato(['99999-0000'], '31'), '(31) 99999-0000');
-	assert.equal(telefoneDoContato([]), '');
-	assert.equal(telefoneDoContato(['abc']), '');
+await caso('dedupe usa a régua do WhatsApp (numeroWhatsAppBR): +55, 0 na frente e máscara são o mesmo cliente', () => {
+	const formas = ['+55 (11) 99999-0000', '011 99999-0000', '11999990000', '(11) 99999-0000', '5511999990000'];
+	for (const f of formas) assert.equal(numeroWhatsAppBR(f), '5511999990000', f);
+	// Cliente antigo gravado com +55: a prévia reconhece como duplicado (só dígitos crus não reconheciam).
+	const base = existentesCom([cliente('c1', 'Dona Rita', '+55 11 99999-0000')]);
+	const contatos = detalhesParaContatos([{ fullName: 'Rita Contato', phones: [{ number: '(11) 99999-0000' }] }]);
+	const previa = montarPrevia('clientes', contatosParaLinhas(contatos), MAPEAMENTO_FIXO.clientes, base, { rotulo: 'contato' });
+	assert.equal(previa[0]?.acao, 'duplicado');
+	// Número que NÃO é BR válido nunca casa com outro inválido (null === null não vale).
+	const base2 = existentesCom([cliente('c2', 'Fulano', '123')]);
+	const p2 = montarPrevia('clientes', contatosParaLinhas(detalhesParaContatos([{ fullName: 'Beltrano', phones: [{ number: '(11) 99999-0000' }] }])), MAPEAMENTO_FIXO.clientes, base2, { rotulo: 'contato' });
+	assert.equal(p2[0]?.acao, 'novo');
+});
+
+await caso('Puxar dos contatos: cada resultado do seletor vira ok | cancelado | erro com instrução', () => {
+	const ok = telefonePuxadoDe({ tipo: 'ok', contato: { nome: 'Ana', telefone: '(11) 99999-0000', email: '' } });
+	assert.deepEqual(ok, { estado: 'ok', nome: 'Ana', telefone: '(11) 99999-0000' });
+	assert.deepEqual(telefonePuxadoDe({ tipo: 'cancelado' }), { estado: 'cancelado' });
+	for (const r of [
+		{ tipo: 'sem_dados', contato: { nome: 'Beto', telefone: '', email: '' } },
+		{ tipo: 'sem_dados', contato: null },
+		{ tipo: 'negado' }, { tipo: 'indisponivel' }, { tipo: 'erro' },
+	] as const) {
+		const v = telefonePuxadoDe(r);
+		assert.equal(v.estado, 'erro', r.tipo);
+		assert.ok(v.estado === 'erro' && v.mensagem.length > 20, 'erro sempre diz o que fazer, nunca fica mudo');
+	}
+	const semFone = telefonePuxadoDe({ tipo: 'sem_dados', contato: { nome: 'Beto', telefone: '', email: '' } });
+	assert.ok(semFone.estado === 'erro' && semFone.mensagem.includes('Beto'));
 });
 
 await caso('resumo "X criados, Y já existiam"', () => {
@@ -123,12 +147,14 @@ await caso('resumo "X criados, Y já existiam"', () => {
 	assert.equal(resumoImportacaoContatos(2, 1, 1), '2 criados, 1 já existia · 1 com erro');
 });
 
-await caso('app.json: plugin com texto em português e WRITE_CONTACTS bloqueado', async () => {
+await caso('app.json: só LEITURA — WRITE_CONTACTS bloqueado, READ liberado, plugin com texto em português', async () => {
 	const app = JSON.parse(await readFile(new URL('../app.json', import.meta.url), 'utf8')).expo;
-	assert.ok(app.android.blockedPermissions.includes('android.permission.WRITE_CONTACTS'));
-	assert.ok(!(app.android.permissions ?? []).includes('android.permission.WRITE_CONTACTS'));
+	const bloqueadas: string[] = app.android.blockedPermissions ?? [];
+	assert.ok(bloqueadas.includes('android.permission.WRITE_CONTACTS'), 'WRITE_CONTACTS tem que ficar bloqueado');
+	assert.ok(!bloqueadas.includes('android.permission.READ_CONTACTS'), 'READ_CONTACTS é a única permissão de agenda do app');
+	assert.ok(!(app.android.permissions ?? []).some((p: string) => /WRITE_CONTACTS/.test(p)));
 	const plugin = app.plugins.find((p: unknown) => Array.isArray(p) && p[0] === 'expo-contacts');
-	assert.ok(plugin, 'plugin expo-contacts declarado');
+	assert.ok(plugin, 'plugin expo-contacts declarado (ele que escreve NSContactsUsageDescription no iOS)');
 	assert.match(plugin[1].contactsPermission, /nome e telefone/);
 	assert.doesNotMatch(plugin[1].contactsPermission, /Allow \$\(PRODUCT_NAME\)/);
 });
@@ -144,16 +170,26 @@ await caso('telas: Clientes e Importar abrem a porta de contatos; Step1 puxa só
 	assert.match(clientes, /navigate\('Importar', \{ origem: 'contatos' \}\)/);
 	assert.match(nav, /Importar: \{ origem\?: 'contatos' \}/);
 	assert.match(importar, /lerContatosDoCelular/);
-	assert.match(importar, /escolherUmContato/);
+	assert.match(importar, /puxarTelefoneDosContatos/);
+	// Mesmo ponto do #383: o envio por WhatsApp oferece puxar do contato, grava no orçamento E no cliente.
+	const visualizar = (await ler('screens/VisualizarOrcamentoScreen.tsx')).replace(/\r\n/g, '\n');
+	const ini = visualizar.indexOf('async function handleWhatsAppAgora()');
+	const corpo = visualizar.slice(ini, visualizar.indexOf('\n  }\n', ini));
+	assert.match(corpo, /puxarTelefoneDosContatos\(\)/);
+	assert.match(corpo, /saveOrcamento\(atualizado\)/);
+	assert.match(corpo, /gravarTelefoneNoCliente\(orc\.clienteId, r\.telefone\)/);
+	assert.ok(corpo.indexOf('puxarTelefoneDosContatos()') < corpo.indexOf("autorizarEntrega('whatsapp')"), 'puxar vem antes de registrar o envio');
+	assert.ok(corpo.indexOf("rotuloConfirmar: 'Puxar dos contatos'") < corpo.indexOf("rotuloConfirmar: 'Escolher no WhatsApp'"), 'a saída do #383 continua depois');
 	assert.match(importar, /Ler meus contatos/);
 	assert.match(step1, /Puxar dos contatos/);
-	assert.match(step1, /onChange\(\{ clienteTelefone: telefone \}\)/);
+	assert.match(step1, /onChange\(\{ clienteTelefone: r\.telefone \}\)/);
+	assert.match(step1, /gravarTelefoneNoCliente\(orc\.clienteId, r\.telefone\)/);
 	// SDK 57: a API antiga lança em runtime. Só a nova (+ permissão pelo /legacy).
 	for (const velha of ['getContactsAsync', 'presentContactPickerAsync', 'addContactAsync', 'writeContactToFileAsync']) {
 		assert.ok(!nativo.includes(velha), `não pode usar ${velha}`);
 	}
 	assert.match(nativo, /Contact\.getAllDetails/);
-	assert.match(nativo, /Contact\.presentPicker/);
+	assert.match(await ler('services/contatoAgenda.ts'), /Contact\.presentPicker/);
 	assert.match(nativo, /expo-contacts\/legacy/);
 	// Só lê: nenhuma escrita de contato no app.
 	for (const escrita of ['Contact.create', 'createWithForm', 'presentCreateForm', '.delete(', '.update(', '.patch(']) {

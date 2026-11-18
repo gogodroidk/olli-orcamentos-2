@@ -3,7 +3,7 @@ import { registrarAtividadeUsuario } from '../services/equipe';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Share, ActivityIndicator, Image, Modal, RefreshControl, Linking,
+  Share, ActivityIndicator, Image, Modal, RefreshControl, Linking, Platform,
   type LayoutChangeEvent,
 } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
@@ -34,6 +34,8 @@ import {
 } from '../components/orcamento/linhaDoTempo';
 import { jaCelebrou, marcarCelebrado } from '../services/celebracoes';
 import { confirmar, toast } from '../components/feedback';
+import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
+import { gravarTelefoneNoCliente } from '../services/telefoneDoCliente';
 import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -510,10 +512,41 @@ export default function VisualizarOrcamentoScreen() {
   const handleWhatsApp = () => comTravaDeEnvio(handleWhatsAppAgora);
   async function handleWhatsAppAgora() {
     if (!orc || enviandoWhats) return;
-    const telefone = (orc.clienteTelefone || '').trim();
+    let telefone = (orc.clienteTelefone || '').trim();
     // Sem número, o envio NÃO para (antes era um aviso sem saída e o orçamento morria em rascunho:
     // 6 de 9 contas novas paradas só em rascunho tinham todos os orçamentos sem telefone, 18/11).
     // O WhatsApp abre com a mensagem pronta para a pessoa escolher o contato — o mesmo caminho de Contratos.
+    if (!telefone && Platform.OS !== 'web') {
+      // D-2245: 1ª saída — puxar o número dos contatos do celular. Grava no orçamento E no cliente,
+      // e o envio segue para esse número. Qualquer falha cai na saída do #383 (escolher no WhatsApp).
+      const puxar = await confirmar({
+        titulo: `Sem o WhatsApp de ${orc.clienteNome}`,
+        mensagem: 'Posso puxar o número dos seus contatos. Você escolhe um contato e eu guardo o telefone neste orçamento e no cliente.',
+        rotuloConfirmar: 'Puxar dos contatos',
+        rotuloCancelar: 'Outras opções',
+      });
+      if (puxar) {
+        const r = await puxarTelefoneDosContatos();
+        if (r.estado === 'ok') {
+          const atualizado = { ...orc, clienteTelefone: r.telefone, atualizadoEm: nowISO() };
+          try {
+            await saveOrcamento(atualizado);
+            setOrc(atualizado);
+            telefone = r.telefone;
+          } catch {
+            toast.erro('O orçamento continua sem telefone. Tente de novo em instantes.', { titulo: 'Não consegui guardar o telefone' });
+            return;
+          }
+          if ((await gravarTelefoneNoCliente(orc.clienteId, r.telefone)) === 'erro') {
+            toast.info('O número entrou no orçamento, mas não consegui guardar no cadastro do cliente agora.');
+          }
+        } else if (r.estado === 'erro') {
+          toast.info(r.mensagem);
+        } else {
+          return; // fechou o seletor de contatos: o prestador desistiu, não insiste.
+        }
+      }
+    }
     if (!telefone) {
       const seguir = await confirmar({
         titulo: `Sem o WhatsApp de ${orc.clienteNome}`,
