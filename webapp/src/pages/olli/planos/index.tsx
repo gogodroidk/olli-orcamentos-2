@@ -825,10 +825,11 @@ function CardPlano({
 		: { valor: reais(0), sufixo: "", nota: null };
 
 	// Pix avulso: paga o período uma vez, sem renovar. Ao lado do Pix Automático, o rótulo diz isso.
+	// D-2151 #13: "secondary" (cinza sobre cinza) parecia desabilitado — contorno na cor da marca.
 	const botaoPix = (
 		<Button
-			variant="secondary"
-			className="mt-2 min-h-[44px] w-full"
+			variant="outline"
+			className="mt-2 min-h-[44px] w-full border-primary text-primary hover:bg-primary/5 hover:text-primary"
 			onClick={aoPagarComPix}
 			disabled={carregando}
 			data-opcao-pagamento="pix-avulso"
@@ -1026,7 +1027,9 @@ function TabelaComparativo() {
 
 	return (
 		<Card className="min-w-0 max-w-full gap-0 overflow-hidden p-0">
-			<div className="w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain">
+			{/* D-2151 #1: `relative` prende aqui os filhos absolutos da tabela (ex.: a legenda `sr-only`); sem ele
+			    eles escapavam da rolagem e a página toda vazava de lado no celular (551px numa tela de 390). */}
+			<div className="relative w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain">
 				<table className="w-[560px] max-w-none border-collapse">
 					<caption className="sr-only">Comparativo de recursos incluídos em cada plano</caption>
 					<thead>
