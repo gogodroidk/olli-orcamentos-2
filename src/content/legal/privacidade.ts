@@ -49,7 +49,7 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '2 de novembro de 2026',
+  atualizadoEm: '18 de novembro de 2026',
   aviso:
     'Documento atualizado em 2 de novembro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
@@ -132,6 +132,12 @@ export const PRIVACIDADE: LegalDoc = {
           dado: 'Dados dos seus clientes (nome, telefone, endereço, CPF/CNPJ) que você digita',
           finalidade: 'Montar orçamentos, recibos, ordens de serviço e sua agenda. O OLLI trata como operador, a seu pedido.',
           base: 'Legítimo interesse do prestador na gestão do próprio negócio (art. 7º, IX); você garante a base legal perante o titular.',
+        },
+        {
+          dado: 'Contatos do celular que você escolhe importar (nome e telefone)',
+          finalidade:
+            'O OLLI nunca grava nem altera seus contatos. Quando você toca em "Importar dos contatos" e autoriza o acesso, o app (ou o painel, no Chrome do Android) lê no próprio aparelho a lista de contatos para você marcar quais viram clientes. Lemos só nome e telefone; não lemos e-mail, endereço, foto nem anotações, e o app não tem permissão para gravar na sua agenda. Não há leitura em segundo plano. Só os contatos que você marca e confirma são salvos como clientes e sincronizados com a sua conta; os demais não saem do seu celular. Você pode negar ou revogar o acesso nos ajustes do celular e continuar cadastrando por um contato, por arquivo .vcf/.csv ou à mão. Para apagar, exclua o cliente no app ou a conta.',
+          base: 'Consentimento ao autorizar o acesso e ao marcar os contatos (art. 7º, I); o prestador responde perante o titular pelos clientes que cadastra (art. 7º, IX).',
         },
         {
           dado: 'Conteúdo de trabalho: orçamentos, recibos, ordens de serviço, equipamentos, agenda',
