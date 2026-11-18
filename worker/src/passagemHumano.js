@@ -9,6 +9,10 @@
 export const FRASE_IA =
   'Sim. Eu sou o assistente virtual da OLLI e sou uma IA. Uma pessoa da equipe assume daqui. Se não quiser mais mensagens, fala SAIR.';
 
+/** Primeira mensagem do contato (CQ-WA-ROBO-GRATIS). Diz que é IA e oferece SAIR (LGPD). Não promete prazo nem preço. */
+export const FRASE_BOAS_VINDAS =
+  'Olá! Recebemos sua mensagem. Aqui é o assistente automático do atendimento e eu sou uma IA. Uma pessoa da equipe vai continuar a conversa por aqui. Se não quiser mais mensagens, responda SAIR.';
+
 const ACENTO = {
   á: 'a', à: 'a', â: 'a', ã: 'a', ä: 'a',
   é: 'e', è: 'e', ê: 'e', ë: 'e',
