@@ -46,6 +46,7 @@
     "deploy": "node ../scripts/janela-release.mjs --alvo producao && npm run types:check && wrangler deploy",
     "test:clima": "node scripts/teste-clima.js",
     "test:alertas": "node scripts/teste-alertas.js",
+    "test:cobranca-contador": "node scripts/teste-gerar-cobranca-contador.js",
     "test:pix-vence": "node scripts/teste-pix-vence.js",
     "test:oferta-pro": "node scripts/teste-oferta-pro.js",
     "test:admin-emails": "node scripts/teste-admin-emails.js",
