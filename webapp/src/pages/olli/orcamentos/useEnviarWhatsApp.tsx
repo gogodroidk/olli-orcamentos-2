@@ -125,6 +125,7 @@ export function useEnviarWhatsApp() {
 		}
 		setSalvandoNumero(true);
 		setErroNumero(null);
+		let salvo = false;
 		try {
 			const { data, error } = await supabase
 				.from("orcamentos")
@@ -137,14 +138,18 @@ export function useEnviarWhatsApp() {
 			const atualizado = { ...fresco, clienteTelefone: numero, atualizadoEm: new Date().toISOString() };
 			await salvarOrcamento.mutateAsync(atualizado);
 			void qc.invalidateQueries({ queryKey: ["olli", "orcamentos"] });
-			setSemNumero(null);
-			await enviar(alvo.orcamentoId, { ...alvo.blob, clienteTelefone: numero });
+			salvo = true;
 		} catch {
 			// Erro nunca vira silêncio: o diálogo fica aberto e diz o que houve.
 			setErroNumero("Não consegui salvar o número agora. Verifique a internet e tente de novo.");
 		} finally {
 			setSalvandoNumero(false);
 		}
+		if (!salvo) return;
+		// Fora do try: uma falha do ENVIO tem a mensagem própria do `enviar` e não pode virar
+		// "não consegui salvar" (já salvou) num diálogo que já fechou (revisão LIVRE #379, P3).
+		setSemNumero(null);
+		await enviar(alvo.orcamentoId, { ...alvo.blob, clienteTelefone: numero });
 	}, [semNumero, salvandoNumero, numero, salvarOrcamento, qc, enviar]);
 
 	const dialogoNumero = (
