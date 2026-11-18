@@ -53,7 +53,7 @@ const home = semComentarios(ler('src/screens/HomeScreen.tsx'));
 const gate = semComentarios(ler('src/screens/RecursoTrancadoScreen.tsx'));
 const nav = ler('src/navigation/AppNavigator.tsx');
 ok('rota RecursoTrancado registrada e tipada', /RecursoTrancado: \{ recurso: Recurso \}/.test(nav) && /name="RecursoTrancado" component=\{RecursoTrancadoScreen\}/.test(nav));
-ok('tela "Disponível no Pro" usa o cartão da fonte única', /<CartaoRecursoPlano recurso=\{recurso\} \/>/.test(gate) && /ROTULO_RECURSO\[recurso\]\.titulo/.test(gate));
+ok('tela "Disponível no Pro" usa o cartão da fonte única', /<CartaoRecursoPlano recurso=\{recurso\} \/>/.test(gate) && /Disponível no \$\{NOME_PLANO\[planoMinimoDoRecurso\(recurso\)\]\}/.test(gate));
 ok('recibo: aba Novo vira cartão do plano quando trancada', /useCadeado\('recibos'\)/.test(recibo) && /aba === 'novo' && reciboTrancado/.test(recibo) && /<CartaoRecursoPlano recurso="recibos" \/>/.test(recibo));
 ok('recibo: pagamento já registrado (PDF pendente) não é trancado', /cadeadoRecibo\.trancado && !reciboPendente/.test(recibo));
 ok('agenda: agendar nova visita, salvar, excluir e arrastar passam pelo portão',
@@ -63,7 +63,7 @@ ok('agenda: visita existente abre em somente leitura (Fechar, sem excluir, campo
   /somenteLeitura=\{cadeadoAgenda\.trancado\}/.test(agenda) && /pointerEvents=\{somenteLeitura \? 'none' : 'auto'\}/.test(agenda)
   && /onDelete && !somenteLeitura/.test(agenda) && /label="Fechar" variant="outline"/.test(agenda));
 ok('OS: "Nova OS" passa pelo portão e o detalhe vira somente leitura com o cartão do plano',
-  /useCadeado\('ordem_servico'\)/.test(os) && /cadeadoOS\.abrirGate\(\)/.test(os)
+  /useCadeado\('ordem_servico'\)/.test(os) && (os.match(/cadeadoOS\.trancado\) \{ cadeadoOS\.abrirGate\(\); return; \}/g) ?? []).length === 2
   && /osTrancada \? <CartaoRecursoPlano recurso="ordem_servico"/.test(os) && /pointerEvents=\{osTrancada \? 'none' : 'auto'\}/.test(os));
 ok('orçamento: "Criar OS" passa pelo portão; botões de OS, recibo e nota mostram o cadeado',
   /cadeadoOS\.trancado\) \{ cadeadoOS\.abrirGate\(\); return; \}/.test(visualizar)
@@ -84,7 +84,7 @@ ok('handleWhatsAppAgora (puxar no envio) não passa por cadeado', !/handleWhatsA
 
 // 5. Fonte única de texto e alvos de toque
 for (const [nome, c] of [['RecursoTrancadoScreen', gate], ['useCadeado', semComentarios(ler('src/hooks/useCadeado.ts'))], ['cadeadoRecurso', semComentarios(ler('src/services/cadeadoRecurso.ts'))]] as const) {
-  ok(`${nome}: sem preço nem nome de plano digitado`, !/R\$\s?\d|\b39\b|'Pro'|"Pro"|Disponível no/.test(c));
+  ok(`${nome}: sem preço nem nome de plano digitado`, !/R\$\s?\d|\b39\b|'Pro'|"Pro"/.test(c));
 }
 ok('Home: o nome do plano do atalho vem de NOME_PLANO', /NOME_PLANO\.pro/.test(home) && !/Disponível no Pro/.test(home));
 ok('alvos >= 44 px: aba Novo/Emitidos, "Preparar nota" e "Nova OS"',

@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GradientHeader } from '../components/GradientHeader';
 import { CartaoRecursoPlano } from '../components/RecursoPlano';
 import { goBackOrHome } from '../navigation/safeBack';
-import { ROTULO_RECURSO } from '../services/planosBase';
+import { planoMinimoDoRecurso } from '../services/entitlements';
+import { NOME_PLANO } from '../services/planosBase';
 import { Spacing, useCores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -22,7 +23,7 @@ export default function RecursoTrancadoScreen() {
   const cores = useCores();
   return (
     <View style={[styles.raiz, { backgroundColor: cores.background }]}>
-      <GradientHeader title={ROTULO_RECURSO[recurso].titulo} onBack={() => goBackOrHome(nav as never)} />
+      <GradientHeader title={`Disponível no ${NOME_PLANO[planoMinimoDoRecurso(recurso)]}`} onBack={() => goBackOrHome(nav as never)} />
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: Spacing.xl + insets.bottom }}>
         <CartaoRecursoPlano recurso={recurso} />
       </ScrollView>

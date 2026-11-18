@@ -12,6 +12,7 @@ import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '..
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
 import { vendaPlayConfirmada } from '../services/playBilling';
 import { track, Eventos } from '../services/analytics';
+import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 
 /**
  * RECURSO DO PLANO — o paywall reposicionado (Grátis ilimitado, 01/10/2026).
@@ -211,6 +212,8 @@ export function CartaoRecursoPlano({ recurso, beneficio, titulo }: PropsCartao) 
       <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
       {/* Nas lojas (APK/iOS) o benefício padrão sai sem Pix: ver `beneficioLoja`. */}
       <Text style={styles.texto}>{beneficio ?? (Platform.OS === 'web' ? beneficioRecurso(recurso) : beneficioRecursoLoja(recurso))}</Text>
+      {/* D-2267: "Disponível no Pro: R$ 39 por mês" — o preço sai de `precosPlanos` (nunca digitado). */}
+      <Text style={styles.preco}>{nome}: {reais((planoMinimo === 'empresa' ? PRECO_EMPRESA : PRECO_PRO).mensalCentavos)} por mês</Text>
       <Text style={styles.nota}>Seus dados continuam salvos, em qualquer plano.</Text>
       {podeOferecerPlano() ? (
         <OlliPressable onPress={irParaPlanos} haptic="light" style={styles.botao} accessibilityRole="button">
@@ -307,6 +310,7 @@ const criarEstilos = (c: Cores) =>
       ...Typography.h3,
       color: c.onSurface,
     },
+    preco: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginTop: Spacing.sm },
     texto: {
       ...Typography.body,
       color: c.onSurfaceVariant,

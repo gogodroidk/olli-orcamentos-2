@@ -387,7 +387,7 @@ export default function OrdemServicoScreen() {
                   : 'Crie a primeira ordem a partir de um orçamento aprovado ou manualmente.'
               }
               actionLabel={ehGestao && !busca ? 'Nova OS' : undefined}
-              onAction={ehGestao && !busca ? () => setShowNova(true) : undefined}
+              onAction={ehGestao && !busca ? () => { if (cadeadoOS.trancado) { cadeadoOS.abrirGate(); return; } setShowNova(true); } : undefined}
             />
           }
         />
