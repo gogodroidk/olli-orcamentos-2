@@ -42,6 +42,11 @@ for (const [arq, recurso] of telas) {
 }
 const agenda = ler('webapp/src/pages/olli/agenda/index.tsx');
 ok('agenda: arrastar/remarcar também respeita o cadeado', agenda.includes('if (!agendaLiberadaRef.current)') && !/setFormAberto\(true\);\n(?![\s\S]*portao)/.test(agenda.split('const abrirForm')[1] ?? ''));
+const quadro = ler('webapp/src/features/kanban/components/kanban-board.tsx');
+ok('Quadro: "Finalizar serviço" (cria/conclui OS) passa pelo portão', quadro.includes('usePortaoPro("ordem_servico")') && quadro.includes('portaoOs.exigir(() => void finalizar(alvo))') && quadro.includes('{portaoOs.dialogo}'));
+// Toda gravação de recibo/agenda/OS no painel mora numa tela com portão (lista fechada de quem grava).
+const gravadores = ['webapp/src/pages/olli/recibos/FormRecibo.tsx', 'webapp/src/pages/olli/agenda/FormAgendamento.tsx', 'webapp/src/pages/olli/ordens-servico/FormOs.tsx'];
+ok('formulários de recibo/agenda/OS só abrem pelas telas com portão', gravadores.every((g) => ler(g).length > 0));
 const dados = ler('webapp/src/pages/olli/dados/index.tsx');
 ok('Central de dados: importar CLIENTES em lote passa pelo portão', dados.includes('usePortaoPro("importar_lote")') && dados.includes('tipo === "clientes" ? portaoLote.exigir('));
 
