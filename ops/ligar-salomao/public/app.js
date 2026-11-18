@@ -4,11 +4,13 @@ const API = "/ligar/api/";
 const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=";
 
 const $ = (id) => document.getElementById(id);
+const NEGA = /\b(n[ãa]o|nada|cancela|esquece|deixa)\b/i;
+const CONFIRMA = /\b(sim|confirm[oa]?|confirmado|pode( mandar| sim)?|manda|isso( a[íi])?|ok|okay|positivo|claro|beleza|fechado|certo)\b/i;
 const el = { ligar: $("ligar"), desligar: $("desligar"), mudo: $("mudo"), status: $("status"), tempo: $("tempo"), anel: $("anel"), legenda: $("legenda") };
 
 let ws = null, modelo = "", handle = null, ativo = false, inicio = 0, relogio = null, travaTela = null;
 let ctxMic = null, ctxSom = null, noMic = null, fluxo = null, proxTempo = 0, fontes = [], mudo = false;
-let uso = [], falaIgor = "", falaDele = "", reconectando = false, pendentes = new Set();
+let uso = [], falaIgor = "", falaTurno = "", falaDele = "", reconectando = false, pendentes = new Set();
 
 async function post(rota, corpo) {
   const r = await fetch(API + rota, { method: "POST", headers: { "content-type": "application/json", "x-ligar": "1" }, body: JSON.stringify(corpo || {}), credentials: "same-origin" });
@@ -80,7 +82,8 @@ async function conectar(retomada) {
       if (sc.interrupted) calar();
       if (sc.inputTranscription?.text) {
         falaIgor = (falaIgor + sc.inputTranscription.text).slice(-600);
-        if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${falaIgor.slice(-200)}`;
+        falaTurno = (falaTurno + sc.inputTranscription.text).slice(-300);
+        if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${(falaTurno || falaIgor).slice(-200)}`;
       }
       if (sc.outputTranscription?.text) {
         falaDele += sc.outputTranscription.text;
@@ -88,7 +91,7 @@ async function conectar(retomada) {
         pIgor = null;
       }
       for (const p of sc.modelTurn?.parts || []) if (p.inlineData?.data) tocar(p.inlineData.data, p.inlineData.mimeType);
-      if (sc.turnComplete) { pDele = null; falaDele = ""; }
+      if (sc.turnComplete) { pDele = null; falaDele = ""; falaTurno = ""; }   // falaTurno = só o que o Igor disse depois da última fala da voz
     };
   });
 }
@@ -106,12 +109,22 @@ async function retomar(motivo) {
   if (ativo) { legenda("A linha caiu e não voltou. Toque em Ligar de novo.", "sistema"); desligar(); }
 }
 
+// a transcrição da fala do Igor pode chegar um pouco depois do pedido de ferramenta: espera até 2 s
+async function confirmou() {
+  for (let i = 0; i < 10 && !falaTurno.trim(); i++) await new Promise((r) => setTimeout(r, 200));
+  const t = falaTurno;
+  return CONFIRMA.test(t) && !(NEGA.test(t) && !/\bsim\b/i.test(t));
+}
+
 async function ferramenta(fc) {
   estado("Consultando…", "pensando");
   let resposta;
   try {
     if (fc.name === "estado_empresa") {
       resposta = { resultado: (await post("estado")).resultado };
+    } else if (fc.name === "mandar_ao_salomao" && !(await confirmou())) {
+      // trava que não depende do modelo: só sai recado se a última fala do Igor foi uma confirmação
+      resposta = { erro: "O Igor ainda não confirmou em voz. Repita a ordem em uma frase, pergunte 'confirma?' e espere ele dizer sim. Nada foi enviado." };
     } else if (fc.name === "mandar_ao_salomao") {
       legenda(`Recado ao Salomão: ${String(fc.args?.texto || "").slice(0, 160)}`, "sistema");
       const r = await post("mandar", { texto: String(fc.args?.texto || ""), falaIgor });
@@ -155,7 +168,7 @@ async function ligar() {
   try {
     ctxSom = new AudioContext(); await ctxSom.resume();   // destrava o som no toque do usuário (iOS/Android)
     await abrirMic();
-    ativo = true; handle = null; uso = []; falaIgor = ""; inicio = Date.now();
+    ativo = true; handle = null; uso = []; falaIgor = ""; falaTurno = ""; inicio = Date.now();
     await conectar(false);
     el.ligar.hidden = true; el.desligar.hidden = false; el.mudo.hidden = false; el.tempo.hidden = false;
     relogio = setInterval(cronometro, 1000); cronometro();

@@ -101,6 +101,7 @@ export const servidor = createServer(async (req, res) => {
       return json(res, 200, consultarPedido(b.id));
     }
     if (rota === "api/fim") {
+      if (!dentroDoLimite("fim", 10, 60e3)) return json(res, 429, { erro: "devagar" });
       const c = custoDaLigacao(b);
       try {
         mkdirSync(DIR_DADOS, { recursive: true, mode: 0o700 });
