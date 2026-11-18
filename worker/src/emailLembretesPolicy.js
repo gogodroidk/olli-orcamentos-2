@@ -58,6 +58,16 @@ export const LEMBRETE_OFERTA_PRO = Object.freeze({
   templateVersion: 'oferta_pro.v1',
   purpose: 'oferta_pro',
 });
+/**
+ * Aviso aos Grátis da mudança do plano (D-2267, 18/11/2026). O TEXTO não é digitado aqui nem guardado por conta:
+ * o renderer lê `avisoMudancaGratis(preço)` de `src/services/planosBase.ts` (título, o que muda, o que continua
+ * grátis, o que fica). Só por lista de contas Grátis (avisoGratis.js); nunca sai da régua automática.
+ */
+export const LEMBRETE_AVISO_GRATIS = Object.freeze({
+  template: 'aviso_gratis',
+  templateVersion: 'aviso_gratis.v1',
+  purpose: 'plan_change_notice',
+});
 export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado']);
 /**
  * Tipos de lembrete que a rodada pode enfileirar (sufixo de EMAIL_LEMBRETES_MODE, 07/10/2026):
