@@ -173,4 +173,5 @@ test("falas de atendimento/vendas/celular não entram no estado da voz", () => {
 });
 test("recado avisa que voz não autoriza zona de aprovação", () => {
   assert.match(F.montarRecado("x y z", "", "LABCDEF12"), /zona de aprovação.*Telegram/);
+  assert.match(F.montarRecado("x y z", "sim", "LABCDEF12", "Mando X, confirma?"), /voz leu para ele confirmar: "Mando X, confirma\?"/);
 });
