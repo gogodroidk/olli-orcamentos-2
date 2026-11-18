@@ -824,6 +824,21 @@ function CardPlano({
 		? precoNoPeriodo(preco, periodo)
 		: { valor: reais(0), sufixo: "", nota: null };
 
+	// Pix avulso: paga o período uma vez, sem renovar. Ao lado do Pix Automático, o rótulo diz isso.
+	// D-2151 #13: "secondary" (cinza sobre cinza) parecia desabilitado — contorno na cor da marca.
+	const botaoPix = (
+		<Button
+			variant="outline"
+			className="mt-2 min-h-[44px] w-full border-primary text-primary hover:bg-primary/5 hover:text-primary"
+			onClick={aoPagarComPix}
+			disabled={carregando}
+			data-opcao-pagamento="pix-avulso"
+		>
+			<QrCode className="size-4" aria-hidden />
+			{pixAutomaticoDisponivel ? "Pagar com Pix só este mês" : "Pagar com Pix"}
+		</Button>
+	);
+
 	// WhatsApp de fallback com o preço DERIVADO (nunca um R$ digitado).
 	const precoWhats = preco ? (periodo === "anual" ? `${reais(preco.anualCentavos)}/ano` : `${reais(preco.mensalCentavos)}/mês`) : "";
 	const msgWhats =
@@ -889,12 +904,29 @@ function CardPlano({
 					<p className="text-center text-xs text-text-secondary">Sempre disponível na sua conta.</p>
 				) : (
 					<>
+						{/* D-2171 (Igor, 18/11): com o Pix Automático disponível (Pro mensal) ele é a 1ª opção, o Pix avulso
+						    a 2ª e o cartão a 3ª. Sem ele, a ordem de sempre (cartão, depois Pix). */}
+						{pixAutomaticoDisponivel && (
+							<div data-opcao-pagamento="pix-automatico">
+								<Button className="h-auto min-h-[44px] w-full whitespace-normal py-2" onClick={aoPagarComPixAutomatico} disabled={carregando}>
+									<RefreshCw className="size-4" aria-hidden />
+									{ROTULO_PIX_AUTOMATICO}
+								</Button>
+								<p className="mt-1 text-center text-xs text-text-secondary">
+									{textoCurtoPixAutomatico(reais(precoDoPlano("pro")?.mensalCentavos ?? 0))}
+								</p>
+							</div>
+						)}
+
+						{pixAutomaticoDisponivel && pixDisponivel && botaoPix}
+
 						<Button
-							variant={plano.destaque ? "default" : "outline"}
-							className="min-h-[44px] w-full"
+							variant={plano.destaque && !pixAutomaticoDisponivel ? "default" : "outline"}
+							className={cn("min-h-[44px] w-full", pixAutomaticoDisponivel && "mt-2")}
 							onClick={aoAssinar}
 							disabled={carregando}
 							aria-busy={carregando}
+							data-opcao-pagamento="cartao"
 						>
 							{carregando ? (
 								<>
@@ -906,35 +938,7 @@ function CardPlano({
 							)}
 						</Button>
 
-						{pixDisponivel && (
-							<Button
-								variant="secondary"
-								className="mt-2 min-h-[44px] w-full"
-								onClick={aoPagarComPix}
-								disabled={carregando}
-							>
-								<QrCode className="size-4" aria-hidden />
-								Pagar com Pix
-							</Button>
-						)}
-
-						{/* Pix Automático: preço, "todo mês" e como cancelar escritos ANTES do clique (e de novo no diálogo). */}
-						{pixAutomaticoDisponivel && (
-							<>
-								<Button
-									variant="secondary"
-									className="mt-2 min-h-[44px] w-full"
-									onClick={aoPagarComPixAutomatico}
-									disabled={carregando}
-								>
-									<RefreshCw className="size-4" aria-hidden />
-									{ROTULO_PIX_AUTOMATICO}
-								</Button>
-								<p className="mt-1 text-center text-xs text-text-secondary">
-									{textoCurtoPixAutomatico(reais(precoDoPlano("pro")?.mensalCentavos ?? 0))}
-								</p>
-							</>
-						)}
+						{!pixAutomaticoDisponivel && pixDisponivel && botaoPix}
 
 						{/* Quais cartões o checkout aceita — dito ANTES do clique (ver notaCartao.ts). */}
 						<p className="mt-2 text-center text-xs text-text-secondary">{notaCartao(pixDisponivel)}</p>
@@ -1023,7 +1027,9 @@ function TabelaComparativo() {
 
 	return (
 		<Card className="min-w-0 max-w-full gap-0 overflow-hidden p-0">
-			<div className="w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain">
+			{/* D-2151 #1: `relative` prende aqui os filhos absolutos da tabela (ex.: a legenda `sr-only`); sem ele
+			    eles escapavam da rolagem e a página toda vazava de lado no celular (551px numa tela de 390). */}
+			<div className="relative w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain">
 				<table className="w-[560px] max-w-none border-collapse">
 					<caption className="sr-only">Comparativo de recursos incluídos em cada plano</caption>
 					<thead>

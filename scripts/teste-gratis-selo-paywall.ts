@@ -27,6 +27,8 @@ import {
   planoConfirmado,
   planoMinimoDoRecurso,
   planoParaRecurso,
+  temAcessoRecurso,
+  TRANCA_GRATIS_D2267,
   type Recurso,
 } from '../src/services/entitlements.ts';
 import {
@@ -127,7 +129,16 @@ console.log('\n2) três estados (entitlements.ts)');
   checar('membro de empresa Pro → hora de sair liberada', estadoAcessoRecurso(L('gratis', false, true, 'pro'), 'hora_de_sair'), 'liberado');
   checar('tenant NÃO vale para o selo do PDF (segue a conta)', estadoAcessoRecurso(L('gratis', false, true, 'empresa'), 'remove_olli_brand'), 'bloqueado');
   checar('tenant menor que a conta não rebaixa', planoParaRecurso('empresa', 'gratis', 'pmoc_contratos'), 'empresa');
-  checar('recursos de campo valem pelo tenant', [...RECURSOS_DO_TENANT].sort(), ['clima_visita', 'followup_automatico', 'hora_de_sair', 'pmoc_contratos', 'termometro_orcamento', 'vespera_garantia']);
+  checar('recursos de campo valem pelo tenant', [...RECURSOS_DO_TENANT].sort(), ['agenda', 'clima_visita', 'followup_automatico', 'hora_de_sair', 'ordem_servico', 'pmoc_contratos', 'recibos', 'termometro_orcamento', 'vespera_garantia']);
+  // D-2267: recibos, agenda, OS e importação em lote saíram do Grátis, com carência até TRANCA_GRATIS_D2267.
+  const antes = Date.parse(TRANCA_GRATIS_D2267) - 1;
+  const depois = Date.parse(TRANCA_GRATIS_D2267) + 1;
+  checar('D-2267: Grátis na carência ainda usa recibo/agenda/OS/lote', ['recibos', 'agenda', 'ordem_servico', 'importar_lote'].map((r) => temAcessoRecurso('gratis', r as Recurso, antes)), [true, true, true, true]);
+  checar('D-2267: Grátis depois da tranca → cadeado', ['recibos', 'agenda', 'ordem_servico', 'importar_lote'].map((r) => temAcessoRecurso('gratis', r as Recurso, depois)), [false, false, false, false]);
+  checar('D-2267: carência NÃO dá ao Grátis recurso que nunca foi dele', temAcessoRecurso('gratis', 'link_pagamento', antes), false);
+  checar('D-2267: Pro tem recibo/agenda/OS/lote sempre', ['recibos', 'agenda', 'ordem_servico', 'importar_lote'].map((r) => temAcessoRecurso('pro', r as Recurso, depois)), [true, true, true, true]);
+  checar('D-2267: nota fiscal é do Pro e é "em breve" (nunca vendida como pronta)', [temAcessoRecurso('pro', 'nota_fiscal'), RECURSOS_EM_BREVE.has('nota_fiscal'), temAcessoRecurso('gratis', 'nota_fiscal', antes)], [true, true, false]);
+  checar('D-2267: Grátis do cartão não promete mais recibo, agenda nem OS', RECURSOS_GRATIS.some((t) => /recibo|agenda|ordem de servi/i.test(t)), false);
 
   checar('serviço: Pro → liberado', acessoDeServico('pro', 'servidor', 'followup_automatico'), 'liberado');
   checar('serviço: Grátis do servidor → bloqueado', acessoDeServico('gratis', 'servidor', 'followup_automatico'), 'bloqueado');

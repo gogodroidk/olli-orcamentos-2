@@ -52,11 +52,11 @@ import { BotaoAbrirLinha, getStatusVariant, linhaClicavel, NameCell } from "@/ol
 import { clienteParaOrcamento } from "@/olli/components/SeletorCliente";
 import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import {
+	avisoLimiteEnvios,
 	cancelarReservaEnvioOrcamento,
 	confirmarEnvioOrcamento,
 	obterEstadoOfertaComercial,
 	reservarEnvioOrcamento,
-	avisoLimiteEnvios,
 } from "@/olli/cota-envios";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { ymdParaBr } from "@/olli/datas";
@@ -88,12 +88,12 @@ import { cn } from "@/utils";
  */
 const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
 
-import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 import { FaixaOrcamentoParado } from "./FaixaOrcamentoParado";
+import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
 import { dispensarFaixa, lerDispensados, prontosParados } from "./orcamentosParados";
 import { useEnviarWhatsApp } from "./useEnviarWhatsApp";
 import { useMarcarEnviado } from "./useMarcarEnviado";
-import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /**
  * A linha como ela vem do Supabase: colunas-espelho + o BLOB. Os nomes das colunas
@@ -193,7 +193,7 @@ function MenuDaLinha({
 					variant="ghost"
 					size="icon"
 					aria-label={`Ações do orçamento ${linha.numero ?? ""}`.trim()}
-					className="text-text-secondary"
+					className="text-text-secondary size-[44px] sm:size-9"
 				>
 					<MoreHorizontal className="size-4" />
 				</Button>
@@ -285,7 +285,8 @@ function AcoesDoOrcamento({
 			<Button
 				variant="ghost"
 				size="icon"
-				className="text-success"
+				// D-2151 #7: 44px no toque (WCAG 2.5.8 / Fitts), compacto a partir de `sm`.
+				className="text-success size-[44px] sm:size-9"
 				aria-label={`Enviar orçamento ${linha.numero ?? "sem número"} pelo WhatsApp`}
 				title="Enviar pelo WhatsApp"
 				disabled={semBlob || enviando}
@@ -296,7 +297,7 @@ function AcoesDoOrcamento({
 			<Button
 				variant="ghost"
 				size="icon"
-				className="text-text-secondary"
+				className="text-text-secondary size-[44px] sm:size-9"
 				aria-label={`Editar orçamento ${linha.numero ?? "sem número"}`}
 				title="Editar"
 				// Sem o documento não há o que editar — e o menu explica por quê.
@@ -589,7 +590,8 @@ export default function OrcamentosPage() {
 			() => {
 				if (linha.status !== "rascunho") return;
 				toast("O PDF é o seu arquivo — o cliente só recebe quando você envia", {
-					description: "Já mandou o orçamento? Marque como enviado, ou envie agora pelo WhatsApp com o link de aprovação.",
+					description:
+						"Já mandou o orçamento? Marque como enviado, ou envie agora pelo WhatsApp com o link de aprovação.",
 					duration: 20_000,
 					action: { label: "Enviar pelo WhatsApp", onClick: () => enviarPorWhatsApp(linha) },
 					cancel: { label: "Já enviei", onClick: () => void marcarEnviadoPorFora(linha) },
@@ -687,7 +689,7 @@ export default function OrcamentosPage() {
 						</p>
 					</div>
 
-					<Button onClick={abrirNovo}>
+					<Button onClick={abrirNovo} className="min-h-[44px]">
 						<Plus className="mr-2 size-4" />
 						Novo orçamento
 					</Button>
@@ -724,7 +726,10 @@ export default function OrcamentosPage() {
 							setFiltroManual(true);
 						}}
 					>
-						<SelectTrigger className="h-10 w-full rounded-full sm:w-56" aria-label="Filtrar por status">
+						<SelectTrigger
+							className="w-full rounded-full data-[size=default]:h-[44px] sm:w-56 sm:data-[size=default]:h-10"
+							aria-label="Filtrar por status"
+						>
 							<SelectValue placeholder="Status" />
 						</SelectTrigger>
 						<SelectContent>
