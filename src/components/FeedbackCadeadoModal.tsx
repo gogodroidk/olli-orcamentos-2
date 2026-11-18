@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Spacing, Typography, useCores, useEstilos, type Cores } from '../theme';
 import { OlliButton } from './OlliButton';
 import { COPY_FEEDBACK_CADEADO, OPCOES_MOTIVO, TEXTO_LIVRE_MAX, type OpcaoMotivo } from '../services/feedbackCadeadoCopy';
@@ -23,6 +24,7 @@ interface Props {
 export function FeedbackCadeadoModal({ visivel, estado, onEnviar, onAgoraNao, onNaoPerguntarMais, onFechar }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  const insets = useSafeAreaInsets();
   const [opcao, setOpcao] = useState<OpcaoMotivo | null>(null);
   const [texto, setTexto] = useState('');
   const c = COPY_FEEDBACK_CADEADO;
@@ -31,7 +33,7 @@ export function FeedbackCadeadoModal({ visivel, estado, onEnviar, onAgoraNao, on
   return (
     <Modal visible={visivel} transparent animationType="none" onRequestClose={estado === 'enviado' ? onFechar : onAgoraNao}>
       <View style={styles.fundo}>
-        <View style={styles.folha} accessibilityViewIsModal>
+        <View style={[styles.folha, { paddingBottom: Spacing.base + insets.bottom }]} accessibilityViewIsModal>
           {estado === 'enviado' ? (
             <View style={styles.centro}>
               <MaterialCommunityIcons name="check-circle-outline" size={36} color={cores.success} />
