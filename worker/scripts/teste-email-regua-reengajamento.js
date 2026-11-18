@@ -237,7 +237,8 @@ caso('parou d7/d14 citam a data do último orçamento e levam ao app', () => {
   const d7 = render({ tipo: 'parou', etapa: 'd7', ultimoOrcamentoEm: '2026-09-25T15:00:00.000Z' });
   assert.ok(d7.text.includes('25/09'));
   const d14 = render({ tipo: 'parou', etapa: 'd14', ultimoOrcamentoEm: '2026-09-18T15:00:00.000Z' });
-  assert.ok(d14.text.includes('último lembrete deste tipo'));
+  assert.equal(/último lembrete/i.test(d14.text), false); // D-2233: sem frase de saída
+  assert.ok(d14.text.includes('responda este e-mail'));
 });
 caso('todo e-mail da régua tem descadastro no HTML e no texto, sem PII', () => {
   for (const dados of [

@@ -12,7 +12,7 @@
  * falso. Desde 01/10/2026 (Grátis ilimitado) só a renovação vira e-mail.
  */
 
-import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_OFERTA_PRO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
+import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_CONVERSA, LEMBRETE_OFERTA_PRO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
 import { COBRANCA_ID_RE } from './pixVencePolicy.js';
 import { PRECO_PRO, DESCONTO_ANUAL_ROTULO, reais } from '../../src/services/precosPlanos.ts';
 import { FRASE_GRATIS, PREVIEW_EMAIL_GRATIS, frasePro } from '../../src/services/planosBase.ts';
@@ -137,7 +137,7 @@ function conteudoAtivacao(dados, appUrl) {
     return {
       subject: 'Seu primeiro orçamento na OLLI Orçamentos',
       preview: 'Sua conta está pronta. Falta só o primeiro orçamento.',
-      titulo: 'Vamos fazer o primeiro orçamento?',
+      titulo: 'Sua conta está pronta para o primeiro orçamento',
       paragrafos: ['Sua conta na OLLI Orçamentos está pronta, mas ainda não tem nenhum orçamento. Dá para começar agora:'],
       passos,
       cta,
@@ -155,7 +155,7 @@ function conteudoAtivacao(dados, appUrl) {
     ],
     passos,
     cta,
-    depois: ['Este é o último lembrete deste tipo. Se precisar de ajuda, responda este e-mail.'],
+    depois: ['Se precisar de ajuda, é só responder este e-mail.'],
     motivo: 'Você recebe este lembrete porque criou uma conta na OLLI Orçamentos e ainda não fez nenhum orçamento.',
   };
 }
@@ -239,7 +239,7 @@ function conteudoReengajamento(dados, appUrl) {
       ],
       passos: null,
       cta: { rotulo: 'Criar meu primeiro orçamento', href: urlCom(appUrl, '/') },
-      depois: ['Este é o último lembrete deste tipo. Se travou em alguma parte, responda este e-mail ou fale com o suporte.'],
+      depois: ['Se travou em alguma parte, responda este e-mail ou fale com o suporte.'],
       motivo: 'Você recebe este lembrete porque criou uma conta na OLLI Orçamentos e ainda não fez nenhum orçamento.',
     };
   }
@@ -276,7 +276,7 @@ function conteudoReengajamento(dados, appUrl) {
       ],
       passos: null,
       cta: novoOrcamento,
-      depois: ['Este é o último lembrete deste tipo. Se algo atrapalhou, responda este e-mail ou fale com o suporte.'],
+      depois: ['Se algo atrapalhou, responda este e-mail ou fale com o suporte.'],
       motivo,
     };
   }
@@ -377,6 +377,32 @@ function conteudoOfertaPro(dados, appUrl) {
   };
 }
 
+/**
+ * Limites do e-mail de conversa. Fica abaixo de 1 KB em bytes porque o catálogo do banco só dá 6 KB
+ * para `oferta_pro`; os outros templates têm 1 KB em `template_dados`.
+ */
+export const CONVERSA_LIMITES = Object.freeze({ assunto: 150, paragrafos: 5, paragrafo: 400, bytes: 900 });
+
+function conteudoConversa(dados, appUrl) {
+  chavesExatas(dados, ['assunto', 'paragrafos'], 'dados_invalidos');
+  const L = CONVERSA_LIMITES;
+  exigir(typeof dados.assunto === 'string' && dados.assunto.trim().length >= 5 && dados.assunto.length <= L.assunto && !/[\r\n<>]/.test(dados.assunto), 'dados_invalidos');
+  exigir(Array.isArray(dados.paragrafos) && dados.paragrafos.length >= 1 && dados.paragrafos.length <= L.paragrafos, 'dados_invalidos');
+  for (const p of dados.paragrafos) exigir(typeof p === 'string' && p.trim().length > 0 && p.length <= L.paragrafo && !/[<>]/.test(p), 'dados_invalidos');
+  urlCom(appUrl, '/'); // appUrl segue validado como nos outros tipos, mesmo sem botão
+  return {
+    subject: dados.assunto.trim(),
+    preview: dados.paragrafos[0].trim().slice(0, 110),
+    titulo: null, // sem título grande: o e-mail abre como mensagem de uma pessoa
+    paragrafos: dados.paragrafos.map((p) => p.trim()),
+    passos: null,
+    cta: null, // sem botão (nem de plano): a conversa é por resposta ao e-mail
+    depois: [],
+    motivo: 'Você recebe este e-mail porque tem uma conta na OLLI.',
+    rotuloDescadastro: 'Parar de receber e-mails da OLLI',
+  };
+}
+
 // ─── Layout ──────────────────────────────────────────────────────────────────
 // Exportado (com os validadores acima) para o resumo diário do dinheiro parado
 // (`resumoDinheiroTemplate.js`) sair com a MESMA casca — marca, contraste, botão de
@@ -390,6 +416,18 @@ export function montarHtml(c, { logoSrc, supportHref, unsubscribeHref }) {
     ? `<ol style="margin:0 0 24px;padding-left:24px;color:#344454;font-size:16px;line-height:1.7;">
                     ${c.passos.map((p) => `<li>${htmlTexto(p)}</li>`).join('\n                    ')}
                   </ol>`
+    : '';
+  const titulo = c.titulo
+    ? `<h1 style="margin:0 0 16px;color:#17212b;font-size:24px;line-height:1.3;text-align:center;">${htmlTexto(c.titulo)}</h1>`
+    : '';
+  const botao = c.cta
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" style="padding:4px 0 24px;">
+                        <a href="${atributoHtml(c.cta.href)}" style="display:inline-block;min-height:44px;line-height:44px;padding:0 24px;border-radius:10px;background:#075f5a;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;">${htmlTexto(c.cta.rotulo)}</a>
+                      </td>
+                    </tr>
+                  </table>`
     : '';
   const depois = c.depois
     .map((p) => `<p style="margin:0 0 12px;color:#344454;font-size:16px;line-height:1.6;">${htmlTexto(p)}</p>`)
@@ -416,16 +454,10 @@ export function montarHtml(c, { logoSrc, supportHref, unsubscribeHref }) {
               </tr>
               <tr>
                 <td style="padding:8px 28px 28px;">
-                  <h1 style="margin:0 0 16px;color:#17212b;font-size:24px;line-height:1.3;text-align:center;">${htmlTexto(c.titulo)}</h1>
+                  ${titulo}
                   ${paragrafos}
                   ${passos}
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                    <tr>
-                      <td align="center" style="padding:4px 0 24px;">
-                        <a href="${atributoHtml(c.cta.href)}" style="display:inline-block;min-height:44px;line-height:44px;padding:0 24px;border-radius:10px;background:#075f5a;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;">${htmlTexto(c.cta.rotulo)}</a>
-                      </td>
-                    </tr>
-                  </table>
+                  ${botao}
                   ${depois}
                   <p style="margin:0;color:#344454;font-size:16px;line-height:1.6;">Precisa de ajuda? <a href="${supportHref}" style="color:#075f5a;text-decoration:underline;">Falar com o suporte da OLLI Orçamentos</a>.</p>
                 </td>
@@ -443,12 +475,12 @@ export function montarHtml(c, { logoSrc, supportHref, unsubscribeHref }) {
 }
 
 export function montarTexto(c, { supportUrl, unsubscribeUrl }) {
-  const linhas = [c.titulo, '', ...c.paragrafos];
+  const linhas = c.titulo ? [c.titulo, '', ...c.paragrafos] : [...c.paragrafos];
   if (c.passos) {
     linhas.push('');
     c.passos.forEach((p, i) => linhas.push(`${i + 1}. ${p.charAt(0).toUpperCase()}${p.slice(1)}`));
   }
-  linhas.push('', `${c.cta.rotulo}: ${c.cta.href}`);
+  if (c.cta) linhas.push('', `${c.cta.rotulo}: ${c.cta.href}`);
   if (c.depois.length) linhas.push('', ...c.depois);
   linhas.push('', `Suporte da OLLI Orçamentos: ${supportUrl}`);
   linhas.push('', c.motivo, `${c.rotuloDescadastro ?? 'Parar de receber lembretes'}: ${unsubscribeUrl}`);
@@ -464,7 +496,7 @@ export function renderizarEmailLembrete(input = {}) {
   const eventId = idSeguro(input.eventId);
   exigir(eventId, 'event_id_invalido');
 
-  const catalogo = [LEMBRETE_ATIVACAO, LEMBRETE_ASSINATURA, LEMBRETE_REENGAJAMENTO, LEMBRETE_OFERTA_PRO]
+  const catalogo = [LEMBRETE_ATIVACAO, LEMBRETE_ASSINATURA, LEMBRETE_REENGAJAMENTO, LEMBRETE_OFERTA_PRO, LEMBRETE_CONVERSA]
     .find((c) => c.template === input.template) ?? null;
   exigir(catalogo, 'template_invalido');
   exigir(input.templateVersion === catalogo.templateVersion, 'template_version_divergente');
@@ -481,7 +513,9 @@ export function renderizarEmailLembrete(input = {}) {
       ? conteudoAssinatura(input.dados, appUrl)
       : catalogo === LEMBRETE_OFERTA_PRO
         ? conteudoOfertaPro(input.dados, appUrl)
-        : conteudoReengajamento(input.dados, appUrl);
+        : catalogo === LEMBRETE_CONVERSA
+          ? conteudoConversa(input.dados, appUrl)
+          : conteudoReengajamento(input.dados, appUrl);
   exigir(conteudo.subject.length <= 180 && !/[\r\n]/.test(conteudo.subject), 'subject_invalido');
 
   const html = montarHtml(conteudo, {

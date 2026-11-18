@@ -58,6 +58,16 @@ export const LEMBRETE_OFERTA_PRO = Object.freeze({
   templateVersion: 'oferta_pro.v1',
   purpose: 'oferta_pro',
 });
+/**
+ * Conversa (18/11/2026, D-2233): e-mail escrito por conta, no tom de vendedor humano, SEM botão de plano.
+ * Para quem ainda não é cliente do Pro (G1 conta nova sem orçamento, G2 orçamento parado). Só por lista
+ * explícita (ofertaPro.js, modelo 'conversa'); nunca sai da régua automática.
+ */
+export const LEMBRETE_CONVERSA = Object.freeze({
+  template: 'conversa',
+  templateVersion: 'conversa.v1',
+  purpose: 'conversa',
+});
 export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado']);
 /**
  * Tipos de lembrete que a rodada pode enfileirar (sufixo de EMAIL_LEMBRETES_MODE, 07/10/2026):

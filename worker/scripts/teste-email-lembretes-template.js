@@ -72,11 +72,15 @@ caso('D+3: convite ao primeiro orçamento, sem preço', () => {
   assert.ok(email.html.includes('Criar meu primeiro orçamento</a>'));
   assert.ok(email.text.includes('Criar meu primeiro orçamento: https://app.olliorcamentos.online/'));
   assert.equal(/R\$/.test(tudo(email)), false);
+  // D-2233: título não é pergunta de sim ou não.
+  assert.equal(tudo(email).includes('Vamos fazer o primeiro orçamento?'), false);
+  assert.equal(/\?<\/h1>/.test(email.html), false);
 });
-caso('D+7: último lembrete, diz que é o último', () => {
+caso('D+7: sem frase de saída ("último lembrete"), ainda oferece ajuda', () => {
   const email = renderizarEmailLembrete({ ...ATIVACAO, dados: { janela: 'activation_day_7' } });
   comum(email);
-  assert.ok(email.text.includes('Este é o último lembrete deste tipo.'));
+  assert.equal(/último lembrete/i.test(tudo(email)), false);
+  assert.ok(email.text.includes('é só responder este e-mail'));
 });
 caso('janela D+1 não tem e-mail (renderer recusa)', () => {
   assert.equal(erro(() => renderizarEmailLembrete({ ...ATIVACAO, dados: { janela: 'activation_day_1' } })), 'janela_invalida');
