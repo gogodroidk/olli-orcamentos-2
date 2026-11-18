@@ -103,7 +103,13 @@ try {
   await igorDiz("manda o pessoal priorizar a campanha da GR Tech amanhã");
   await emitir({ toolCall: { functionCalls: [{ id: "m3", name: "mandar_ao_salomao", args: { texto: "prioriza a campanha da GR Tech amanhã" } }] } });
   assert.match((await resposta("m3")).resultado, /PREPARADO/);
+  // eco: um "sim" colado no fim da fala da voz (< 700 ms) não vale
   await vozDiz("Vou mandar: prioriza a campanha da GR Tech amanhã. Confirma?");
+  await igorDiz("Sim, pode mandar."); await espera(1500);
+  assert.equal(chamadas().length, 0);
+  ok("eco no viva-voz: 'sim' que chega < 700 ms depois da fala da voz NÃO envia");
+  await vozDiz("Vou mandar: prioriza a campanha da GR Tech amanhã. Confirma?");
+  await espera(800);
   await igorDiz("Sim, pode mandar.");
   await pag.waitForFunction(() => window.__enviados.some((s) => s.includes("Feito, Igor.")), null, { timeout: 8000 });
   assert.equal(chamadas().length, 1);

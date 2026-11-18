@@ -31,6 +31,8 @@ let uso = [], falaIgor = "", falaTurno = "", falaDele = "", estadoDepois = false
 let ligacao = "";      // id da ligação aberto pelo servidor (preso ao login do Access)
 let pend = null;       // { pedido, token, texto, perguntado } — o token NUNCA vai ao modelo
 let timerVoz = null, timerPend = null;
+let fimVoz = 0, inicioIgor = 0; // eco no viva-voz (P3 LIVRE): "sim" que chega < 700 ms depois da fala da voz não vale
+const ECO_MS = 700;
 
 async function post(rota, corpo) {
   const r = await fetch(API + rota, { method: "POST", headers: { "content-type": "application/json", "x-ligar": "1" }, body: JSON.stringify({ ...(corpo || {}), ligacao }), credentials: "same-origin" });
@@ -101,6 +103,7 @@ async function conectar(retomada) {
       const sc = d.serverContent; if (!sc) return;
       if (sc.interrupted) calar();
       if (sc.inputTranscription?.text) {
+        if (!inicioIgor) inicioIgor = Date.now();
         falaIgor = (falaIgor + sc.inputTranscription.text).slice(-600);
         falaTurno = (falaTurno + sc.inputTranscription.text).slice(-300);
         if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${(falaTurno || falaIgor).slice(-200)}`;
@@ -116,7 +119,7 @@ async function conectar(retomada) {
       if (sc.turnComplete) {
         pDele = null;
         if (falaDele.trim()) {
-          falaTurno = ""; estadoDepois = false;
+          falaTurno = ""; estadoDepois = false; fimVoz = Date.now(); inicioIgor = 0;
           // a voz leu o pedido guardado e perguntou "confirma?": a partir daqui um "sim" do Igor vale
           if (pend && PERGUNTOU.test(falaDele) && cobre(falaDele, pend.texto)) pend.perguntado = falaDele;
         }
@@ -140,7 +143,7 @@ async function retomar(motivo) {
 }
 
 // "sim" falado: só depois de a voz ler o pedido guardado e perguntar "confirma?", sem leitura do estado no meio
-function vozConfirma(t) { return !estadoDepois && CONFIRMA.test(t) && !NEGA.test(t) && !PERGUNTA_DENTRO.test(t); }
+function vozConfirma(t) { return !estadoDepois && inicioIgor - fimVoz >= ECO_MS && CONFIRMA.test(t) && !NEGA.test(t) && !PERGUNTA_DENTRO.test(t); }
 function agendarVoz() {
   clearTimeout(timerVoz);
   if (!pend?.perguntado) return;
