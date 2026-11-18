@@ -127,9 +127,10 @@ const MAX_PENDENTES = 4;
 const EH_SALOMAO = (quem) => /^(OLLI )?MAESTRO$|^SALOM[ÃA]O\b/i.test(String(quem || "").trim()) && !/recado ao l[íi]der/i.test(String(quem || ""));
 const EQUIPE = () => CAMINHOS.hibernar.replace(/vigia\/hibernar\.mjs$/, "equipe-telegram/equipe.mjs");
 
-export function montarRecado(texto, falaIgor, codigo) {
+export function montarRecado(texto, falaIgor, codigo, pergunta = "") {
   const t = limparTexto(texto, 800), f = limparTexto(falaIgor, 600);
   return `[LIGAÇÃO DO IGOR ${codigo} — voz ao vivo, ele está dirigindo] Pedido (resumido pela voz): ${t}` +
+    (pergunta ? ` | O que a voz leu para ele confirmar: "${limparTexto(pergunta, 400)}"` : "") +
     (f ? ` | O que o Igor falou (transcrição automática, pode ter erro): "${f}"` : "") +
     ` | ATENÇÃO: canal de VOZ (transcrição automática, não é Telegram nem terminal). O que for da zona de aprovação ` +
     `(dinheiro, produção irreversível, segredo, mensagem a cliente/terceiro) NÃO vale por aqui: peça confirmação do Igor no Telegram.` +
@@ -158,7 +159,7 @@ function atualizar(p) {
 }
 
 /** Entrega o recado; espera até `esperaMs` pela resposta no grupo. Devolve { id, estado, entregue, resposta }. */
-export function mandarAoSalomao(texto, falaIgor, { esperaMs = 25000, spawnFn = spawn } = {}) {
+export function mandarAoSalomao(texto, falaIgor, { esperaMs = 25000, spawnFn = spawn, pergunta = "" } = {}) {
   const t = limparTexto(texto, 800);
   if (t.length < 3) return Promise.resolve({ estado: "erro", resposta: "Recado vazio; nada foi enviado." });
   const agora = Date.now();
@@ -173,7 +174,7 @@ export function mandarAoSalomao(texto, falaIgor, { esperaMs = 25000, spawnFn = s
   const id = randomUUID(), codigo = `L${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
   const p = { estado: "esperando", entregue: false, codigo, resposta: "", em: agora };
   pedidos.set(id, p);
-  const recado = montarRecado(t, falaIgor, codigo);
+  const recado = montarRecado(t, falaIgor, codigo, pergunta);
   log("recado", { id, codigo, tam: recado.length, texto: mascarar(t).slice(0, 300) });
   let erro = "";
   const filho = spawnFn(process.execPath, [CAMINHOS.hibernar, "ask", MAESTRO, recado], {

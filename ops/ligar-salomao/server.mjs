@@ -94,7 +94,7 @@ export const servidor = createServer(async (req, res) => {
         log("recado_sem_confirmacao", { texto: mascarar(limparTexto(b.texto, 200)) });
         return json(res, 200, { id: null, estado: "erro", resultado: "Não enviado: o Igor ainda não confirmou em voz. Repita a ordem e pergunte 'confirma?'." });
       }
-      const r = await mandarAoSalomao(limparTexto(b.texto, 800), limparTexto(b.falaIgor, 600));
+      const r = await mandarAoSalomao(limparTexto(b.texto, 800), limparTexto(b.falaIgor, 600), { pergunta: limparTexto(b.pergunta, 400) });
       const resultado = r.estado === "pronto" ? `Resposta do Salomão: ${r.resposta}`
         : r.estado === "esperando" ? "Recado enviado ao Salomão. Ele responde no grupo; aviso quando a resposta chegar."
         : r.resposta;
