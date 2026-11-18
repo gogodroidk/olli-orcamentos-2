@@ -206,7 +206,7 @@ export function FaixaRecursoPro({ recurso, uso, aoAssinar }: { recurso: Recurso;
 		<div className="mx-auto mb-3 flex w-full max-w-7xl flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
 			<Lock className="size-4 shrink-0 text-primary" aria-hidden="true" />
 			<p className="min-w-0 flex-1 text-text-primary">
-				{ROTULO_RECURSO[recurso].titulo} é do {nome}. O que você já criou continua aqui, para ver quando quiser.
+				{ROTULO_RECURSO[recurso].titulo}: disponível no {nome}. O que você já criou continua aqui, para ver quando quiser.
 			</p>
 			<Button size="sm" className="min-h-[40px]" onClick={aoAssinar}>
 				Ver o {nome}
