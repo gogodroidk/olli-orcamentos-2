@@ -47,6 +47,7 @@ import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { cancelarPlayDoUsuario } from './play.js';
 import { derivarEntitlement } from './entitlement.js';
 import { contextoContasInternas, origemParaLista, resumirReceita } from './assinaturasPagantes.js';
+import { orcamentoAtivo, orcamentoFechado } from './orcamentoFechado.js';
 import { classificarConta, ehUuid, montarPreviaOrg, particionarContas, soDeClientes, validarPedidoOrg } from './contasInternas.js';
 import {
   ADMIN_DATA_POLICY_VERSION,
@@ -336,7 +337,7 @@ async function metrics(env) {
     listAuthUsers(env),
     // NÚMERO DE NEGÓCIO: 3 estados (ver comentário de lerEstado). rest() devolveria [] numa falha e o painel mostraria
     // "R$ 0,00" / "0 orçamentos" como se fosse verdade.
-    lerEstado(env, 'orcamentos?select=user_id,valor_total,status,criado_em'),
+    lerEstado(env, 'orcamentos?select=user_id,valor_total,status,criado_em,excluido_em'),
     rest(env, 'clientes?select=id,user_id'),
     rest(env, 'agendamentos?select=id,user_id'),
     listarAtividades(env),
@@ -359,11 +360,11 @@ async function metrics(env) {
   });
   const particao = particionarContas(todosUsuarios, contextoInternas, internasLegiveis);
   const users = particao.clientes;
-  const orcs = soDeClientes(todosOrcs, particao.idsInternas);
+  const orcs = soDeClientes(todosOrcs, particao.idsInternas).filter(orcamentoAtivo);
   const clientes = soDeClientes(todosClientes, particao.idsInternas);
   const atividades = soDeClientes(todasAtividades, particao.idsInternas);
   const agend = soDeClientes(agendTodos, particao.idsInternas);
-  const aprovados = orcs.filter((o) => o.status === 'aprovado');
+  const aprovados = orcs.filter(orcamentoFechado);
   const faturamento = aprovados.reduce((s, o) => s + (Number(o.valor_total) || 0), 0);
   const ticket = aprovados.length ? faturamento / aprovados.length : 0;
   const conversao = orcs.length ? Math.round((aprovados.length / orcs.length) * 100) : 0;
@@ -445,7 +446,7 @@ async function users(env) {
   const [auth, empresasLeitura, orcsLeitura, assinaturasLeitura, atividades, exclusoes, admins] = await Promise.all([
     listAuthUsers(env),
     lerEstado(env, 'empresa?select=user_id,dados'),
-    lerEstado(env, 'orcamentos?select=user_id,status,valor_total'),
+    lerEstado(env, 'orcamentos?select=user_id,status,valor_total,excluido_em'),
     lerEstado(env, 'assinaturas?select=user_id,plano,status,current_period_end,stripe_subscription_id,stripe_customer_id,admin_plano_override,admin_override_ativo,admin_override_ate'),
     listarAtividades(env),
     lerEstado(env, 'funil_exclusoes?select=user_id,email'),
@@ -455,7 +456,7 @@ async function users(env) {
   const orcsOk = orcsLeitura.ok;
   const assinaturasOk = assinaturasLeitura.ok;
   const empresas = empresasOk ? empresasLeitura.dados : [];
-  const orcs = orcsOk ? orcsLeitura.dados : [];
+  const orcs = orcsOk ? orcsLeitura.dados.filter(orcamentoAtivo) : [];
   const assinaturas = assinaturasOk ? assinaturasLeitura.dados : [];
   const fontes = {
     empresa: empresasOk ? 'ok' : 'indisponivel',
@@ -482,7 +483,7 @@ async function users(env) {
   const apr = new Map();
   for (const o of orcs) {
     cnt.set(o.user_id, (cnt.get(o.user_id) || 0) + 1);
-    if (o.status === 'aprovado') {
+    if (orcamentoFechado(o)) {
       fat.set(o.user_id, (fat.get(o.user_id) || 0) + (Number(o.valor_total) || 0));
       apr.set(o.user_id, (apr.get(o.user_id) || 0) + 1);
     }
