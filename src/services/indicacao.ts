@@ -18,6 +18,8 @@ export interface MeuLinkIndicacao {
   /** Meses de Pro por lado; 0 = recompensa desligada. */
   meses: number;
   teto: number;
+  /** Indicador já paga o Pro: o prêmio dele não existe (só o colega ganha). */
+  indicadorPaga: boolean;
   resumo: { recompensadas: number; teto: number } | null;
 }
 
@@ -43,7 +45,7 @@ async function chamar(caminho: string, metodo: 'GET' | 'POST', corpo?: unknown):
 export async function obterMeuLinkIndicacao(): Promise<MeuLinkIndicacao | null> {
   const j = await chamar('/indicacao/meu', 'GET');
   if (!j || typeof j.codigo !== 'string' || typeof j.link !== 'string') return null;
-  return { codigo: j.codigo, link: j.link, meses: Number(j.meses) > 0 ? Number(j.meses) : 0, teto: Number(j.teto) > 0 ? Number(j.teto) : INDICACAO_TETO_PREMIADAS, resumo: j.resumo ?? null };
+  return { codigo: j.codigo, link: j.link, meses: Number(j.meses) > 0 ? Number(j.meses) : 0, indicadorPaga: j.indicadorPaga === true, teto: Number(j.teto) > 0 ? Number(j.teto) : INDICACAO_TETO_PREMIADAS, resumo: j.resumo ?? null };
 }
 
 export async function registrarEventoIndicacao(evento: 'cartao_visto' | 'compartilhada', momento: MomentoIndicacao, canal?: CanalIndicacao): Promise<void> {

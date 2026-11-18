@@ -21,6 +21,7 @@ checar('sem "crédito de IA" em lugar nenhum', !/crédito/i.test(textoPromessa(1
 checar('teto da copy = constante única', TETO_INDICACOES === INDICACAO_TETO_PREMIADAS);
 checar('mensagem desligada leva o link e nenhuma promessa', mensagemWhatsApp('https://x/?ref=ABC234', 0).includes('https://x/?ref=ABC234') && !/ganhamos/.test(mensagemWhatsApp('l', 0)));
 checar('mensagem ligada cita o ganho', mensagemWhatsApp('l', 1).includes('1 mês de Pro'));
+checar('indicador que paga: copy diz só que o colega ganha e que não soma', /ele ganha/.test(textoPromessa(1, 3, true)) && !/vocês dois/.test(textoPromessa(1, 3, true)) && /já paga/.test(textoPromessa(1, 3, true)) && !/nós dois/.test(mensagemWhatsApp('l', 1, true)));
 checar('resumo null (não sei) = null, não "0 colegas"', textoResumo(null) === null);
 checar('resumo sem recompensados = null', textoResumo({ recompensadas: 0 }) === null);
 checar('resumo 1 colega', textoResumo({ recompensadas: 1 }) === '1 colega já orçou');

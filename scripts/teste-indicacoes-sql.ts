@@ -172,7 +172,17 @@ const PG = await conta(100);
 await db.query(`insert into public.assinaturas (user_id, plano, status, stripe_customer_id, current_period_end) values ($1,'pro','active','cus_x', now() + interval '20 days')`, [PG]);
 await db.query(`select public.indicacao_conceder_pro($1, 1, 'teste pagante')`, [PG]);
 const oPG = await override(PG);
-checar('pagante: não mexe no que já pagou (status/stripe/período intactos)', oPG.status === 'active' && oPG.stripe_customer_id === 'cus_x' && oPG.current_period_end !== null);
+checar('pagante ativo: NÃO recebe override e nada do que pagou muda', oPG.status === 'active' && oPG.stripe_customer_id === 'cus_x' && oPG.current_period_end !== null && oPG.admin_override_ativo === false && oPG.admin_plano_override === null);
+checar('conceder_pro devolve false para pagante e true para os demais', (await um<boolean>(`select public.indicacao_conceder_pro($1,1,'x')`, [PG])) === false && (await um<boolean>(`select public.indicacao_conceder_pro($1,1,'x')`, [await conta(5)])) === true);
+const PV = await conta(100);
+await db.query(`insert into public.assinaturas (user_id, plano, status, stripe_customer_id, current_period_end) values ($1,'pro','active','cus_v', now() - interval '2 days')`, [PV]);
+checar('assinatura com período VENCIDO não é "paga": recebe', (await um<boolean>(`select public.indicacao_conceder_pro($1,1,'x')`, [PV])) === true);
+const PI = await conta(100); const PD = await conta(1);
+await db.query(`insert into public.assinaturas (user_id, plano, status, stripe_customer_id, current_period_end) values ($1,'pro','active','cus_i', now() + interval '10 days')`, [PI]);
+await vincular(PD, await codigoDe(PI)); await orc(PD, REAL);
+const rPI = await um<any>(`select public.indicacao_recompensar($1,$2,$3,$4)`, [PD, INDICACAO_MESES_PRO, INDICACAO_TETO_PREMIADAS, INDICACAO_TETO_DIARIO]);
+checar('indicador pagante: só o colega ganha', rPI.status === 'recompensado' && rPI.indicador_recebeu === false && rPI.indicado_recebeu === true && (await temPro(PD)) && !(await override(PI)).admin_override_ativo, JSON.stringify(rPI));
+checar('resumo avisa "paga" para o cartão', (await um<any>(`select public.indicacao_resumo($1,$2)`, [PI, INDICACAO_TETO_PREMIADAS])).paga === true && (await um<any>(`select public.indicacao_resumo($1,$2)`, [A, INDICACAO_TETO_PREMIADAS])).paga === false);
 
 console.log('teto por pessoa e teto diário');
 const T = await conta(100);

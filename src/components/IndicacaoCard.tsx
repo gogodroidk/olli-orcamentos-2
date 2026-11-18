@@ -61,7 +61,7 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
   async function compartilhar(canal: 'whatsapp' | 'copiar') {
     if (!dados) return;
     try {
-      const message = canal === 'whatsapp' ? mensagemWhatsApp(dados.link, dados.meses) : dados.link;
+      const message = canal === 'whatsapp' ? mensagemWhatsApp(dados.link, dados.meses, dados.indicadorPaga) : dados.link;
       await Share.share({ message });
       void registrarEventoIndicacao('compartilhada', momento, canal);
     } catch {
@@ -91,7 +91,7 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
             <ActivityIndicator color={cores.primary} style={styles.espera} />
           ) : dados ? (
             <View style={styles.corpo}>
-              <Text style={styles.texto}>{textoPromessa(dados.meses, dados.teto)}</Text>
+              <Text style={styles.texto}>{textoPromessa(dados.meses, dados.teto, dados.indicadorPaga)}</Text>
               <OlliButton label="Mandar no WhatsApp" icon={<MaterialCommunityIcons name="whatsapp" size={18} color="#fff" />} variant="gradient" fullWidth onPress={() => compartilhar('whatsapp')} />
               <View style={styles.linha}>
                 <OlliButton label="Copiar link" variant="outline" size="sm" onPress={() => compartilhar('copiar')} style={styles.meio} />

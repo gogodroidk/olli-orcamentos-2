@@ -148,6 +148,8 @@ export async function handleMeu(request, env) {
     meses,
     teto: INDICACAO_TETO_PREMIADAS,
     // Desligado: sem contador. Ligado: só recompensados contam.
+    // indicador que já paga: o cartão só promete o mês ao colega
+    indicadorPaga: meses > 0 && resumo.ok && resumo.data?.paga === true,
     resumo: meses > 0 && resumo.ok && resumo.data && typeof resumo.data === 'object' ? resumo.data : null,
   });
 }

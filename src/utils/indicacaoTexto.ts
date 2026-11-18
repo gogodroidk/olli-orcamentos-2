@@ -17,16 +17,19 @@ export function rotuloMeses(n: number): string {
 }
 
 /** Linha de apoio do cartão. */
-export function textoPromessa(meses: number, teto: number = TETO_INDICACOES): string {
+export function textoPromessa(meses: number, teto: number = TETO_INDICACOES, indicadorPaga = false): string {
   if (!(meses > 0)) {
     return 'Mande seu link para um colega que também faz orçamento. Ele testa o OLLI no próprio ritmo.';
+  }
+  if (indicadorPaga) {
+    return `Mande seu link: quando o colega se cadastrar e enviar o 1º orçamento de verdade, ele ganha ${rotuloMeses(meses)}. Como você já paga o Pro, o mês não se soma ao seu plano. Vale até ${teto} indicações premiadas por pessoa; cada colega só pode ser indicado uma vez. O mês de Pro não vale dinheiro e não pode ser transferido.`;
   }
   return `Mande seu link: quando o colega se cadastrar e enviar o 1º orçamento de verdade, vocês dois ganham ${rotuloMeses(meses)}. Vale até ${teto} indicações premiadas por pessoa; cada colega só pode ser indicado uma vez. O mês de Pro não vale dinheiro e não pode ser transferido.`;
 }
 
 /** Mensagem pronta de WhatsApp — sai da conta do próprio prestador, 1 a 1. */
-export function mensagemWhatsApp(link: string, meses: number): string {
-  const ganho = meses > 0 ? ` Quando você enviar o 1º orçamento, nós dois ganhamos ${rotuloMeses(meses)}.` : '';
+export function mensagemWhatsApp(link: string, meses: number, indicadorPaga = false): string {
+  const ganho = meses > 0 && indicadorPaga ? ` Quando você enviar o 1º orçamento, você ganha ${rotuloMeses(meses)}.` : meses > 0 ? ` Quando você enviar o 1º orçamento, nós dois ganhamos ${rotuloMeses(meses)}.` : '';
   return `Oi! Uso o OLLI para fazer orçamento rápido pelo celular. Se você também orça, dá uma olhada: ${link}${ganho}`;
 }
 

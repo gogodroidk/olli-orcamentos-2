@@ -191,7 +191,7 @@ grant execute on function public.indicacao_vincular(uuid, text, integer) to serv
 -- manual continua Empresa), nunca encurta vigência (sem data final continua sem data final),
 -- e soma os meses a partir do fim de uma concessão ainda vigente.
 create or replace function public.indicacao_conceder_pro(p_user uuid, p_meses integer, p_razao text)
-returns void
+returns boolean
 language plpgsql
 security definer
 set search_path to ''
@@ -207,6 +207,11 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_user::text, 0));
   select * into a from public.assinaturas x where x.user_id = p_user for update;
   v_tem := found;
+  -- Quem JÁ PAGA o Pro (assinatura ativa no gateway, período em dia) não recebe override como prêmio:
+  -- não soma ao Stripe/MP, então "ganha 1 mês" seria falso. Não concede e não conta.
+  if v_tem and a.status = 'active' and a.current_period_end is not null and a.current_period_end > now() then
+    return false;
+  end if;
   if v_tem then
     v_vigente := a.admin_override_ativo is true
       and a.admin_plano_override in ('pro', 'empresa')
@@ -235,6 +240,7 @@ begin
     admin_override_by = excluded.admin_override_by,
     admin_override_at = excluded.admin_override_at,
     atualizado_em = now();
+  return true;
 end;
 $$;
 revoke all on function public.indicacao_conceder_pro(uuid, integer, text) from public, anon, authenticated;
@@ -258,6 +264,8 @@ declare
   v_n integer;
   v_interno boolean;
   v_dia integer;
+  v_ind boolean;
+  v_ido boolean;
 begin
   if p_meses is null or p_meses <= 0 or p_teto is null or p_teto <= 0 or p_teto_dia is null or p_teto_dia <= 0 then
     return jsonb_build_object('status', 'desligado');
@@ -303,13 +311,14 @@ begin
    where estado = 'recompensado' and recompensado_em >= date_trunc('day', now());
   if v_dia >= p_teto_dia then return jsonb_build_object('status', 'teto_diario'); end if;
 
-  perform public.indicacao_conceder_pro(v.indicador_id, p_meses, 'Indicação: um colega enviou o 1º orçamento');
-  perform public.indicacao_conceder_pro(v.indicado_id,  p_meses, 'Bônus de indicação: seu 1º orçamento enviado');
+  v_ind := public.indicacao_conceder_pro(v.indicador_id, p_meses, 'Indicação: um colega enviou o 1º orçamento');
+  v_ido := public.indicacao_conceder_pro(v.indicado_id,  p_meses, 'Bônus de indicação: seu 1º orçamento enviado');
 
   update public.indicacoes
      set estado = 'recompensado', orcou_em = v_orc, recompensado_em = now(), meses_pro = p_meses
    where id = v.id;
-  return jsonb_build_object('status', 'recompensado', 'meses', p_meses, 'indicador_id', v.indicador_id);
+  return jsonb_build_object('status', 'recompensado', 'meses', case when v_ido then p_meses else 0 end,
+    'indicador_recebeu', v_ind, 'indicado_recebeu', v_ido, 'indicador_id', v.indicador_id);
 end;
 $$;
 revoke all on function public.indicacao_recompensar(uuid, integer, integer, integer) from public, anon, authenticated;
@@ -327,7 +336,10 @@ as $$
     -- só RECOMPENSADOS: cadastro sozinho é farmável (contas novas sem orçamento) e não
     -- pode inflar o contador do cartão.
     'recompensadas', count(*) filter (where estado = 'recompensado'),
-    'teto',          p_teto
+    'teto',          p_teto,
+    -- indicador que já paga o Pro: o cartão diz só que o COLEGA ganha (override não soma ao pago)
+    'paga',          exists (select 1 from public.assinaturas a where a.user_id = p_user
+                              and a.status = 'active' and a.current_period_end is not null and a.current_period_end > now())
   ) from public.indicacoes where indicador_id = p_user;
 $$;
 revoke all on function public.indicacao_resumo(uuid, integer) from public, anon, authenticated;

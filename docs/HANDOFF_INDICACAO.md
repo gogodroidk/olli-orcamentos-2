@@ -14,6 +14,11 @@ NÃO aplicada; nada publicado; recompensa DESLIGADA por flag. Último a mexer: B
 - Só premia depois do indicado ENVIAR orçamento real, com e-mail confirmado dos dois lados e teto diário global
   (pendente, volta a valer; não vira "sem recompensa").
 
+## Gate do CPO (18/11): APROVADO com 3 condições
+1. Quem já paga o Pro (status active, período em dia) não recebe override e não conta: feito (RPC + copy do cartão + teste SQL).
+2. Flag só liga com migration pelo roteiro, patch da política (docs/INDICACAO_POLITICA_PRIVACIDADE_patch.md), termo curto na tela e revisão do LIVRE.
+3. Contador do contador não bloqueia.
+
 ## Para ligar (nada disso foi feito)
 1. Parecer/gate do líder do andar (CPO) sobre "mês de Pro" (o parecer de 21/10 avisa que muda a análise; Paulo desligado).
 2. Pergunta ao contador sobre a contabilização do mês grátis (custo em caixa hoje = 0).
