@@ -20,7 +20,9 @@
  */
 import {
   IA_USOS_GRATIS_MES,
+  RECURSOS_COM_CARENCIA_GRATIS,
   RECURSOS_EM_BREVE,
+  TRANCA_GRATIS_D2267,
   RECURSOS_POR_PLANO,
   type PlanoId,
   type Recurso,
@@ -145,6 +147,32 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
     beneficio: 'Painel de gestão com a operação inteira.',
     curto: 'painel da empresa',
   },
+  // D-2267 (18/11): saíram do Grátis.
+  recibos: {
+    titulo: 'Recibos',
+    beneficio: 'Emita o recibo do serviço na hora e mande pelo WhatsApp.',
+    curto: 'recibos',
+  },
+  agenda: {
+    titulo: 'Agenda de visitas',
+    beneficio: 'Marque as visitas e veja o dia organizado num lugar só.',
+    curto: 'agenda de visitas',
+  },
+  ordem_servico: {
+    titulo: 'Ordem de serviço com checklist, fotos e assinatura',
+    beneficio: 'Ordem de serviço com checklist, fotos e a assinatura do cliente na tela.',
+    curto: 'ordem de serviço',
+  },
+  importar_lote: {
+    titulo: 'Importar clientes em lote (contatos, planilha ou vCard)',
+    beneficio: 'Traga todos os seus clientes de uma vez, da agenda do celular ou de uma planilha.',
+    curto: 'importar clientes em lote',
+  },
+  nota_fiscal: {
+    titulo: 'Nota fiscal',
+    beneficio: 'Emitir a nota fiscal do serviço pelo OLLI.',
+    curto: 'nota fiscal',
+  },
 };
 
 /**
@@ -247,11 +275,9 @@ export const RECURSOS_GRATIS: readonly string[] = [
     : LIMITE_EM_TODAS
       ? `Orçamentos: PDF, link e WhatsApp, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês`
       : `Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de ${dataCorteBR(CORTE_GRATIS_DATA)} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite`,
-  'Rascunhos, recibos, clientes e histórico sem limite',
+  'Rascunhos, clientes e histórico sem limite',
   'Catálogo de serviços e produtos',
-  'Clientes e agenda',
   'Diagnóstico por código de erro (offline)',
-  'Ordem de serviço com checklist, fotos e assinatura na tela',
   'Link do orçamento para o cliente aprovar',
   `IA de diagnóstico e voz: ${IA_USOS_GRATIS_MES} usos por mês`,
 ];
@@ -286,6 +312,7 @@ const BULLETS_PRO: readonly BulletPlano[] = [
   bullet(ROTULO_RECURSO.remove_olli_brand.titulo, ['remove_olli_brand']),
   bullet(ROTULO_RECURSO.followup_automatico.titulo, ['followup_automatico']),
   bullet(ROTULO_RECURSO.link_pagamento.titulo, ['link_pagamento']),
+  bullet('Recibos, agenda de visitas e ordem de serviço com checklist, fotos e assinatura', ['recibos', 'agenda', 'ordem_servico']),
   bullet('Inteligência de campo: aviso de chuva na visita, hora de sair estimada e rota do dia ordenada', ['clima_visita', 'hora_de_sair']),
   bullet(ROTULO_RECURSO.termometro_orcamento.titulo, ['termometro_orcamento']),
   bullet(ROTULO_RECURSO.vespera_garantia.titulo, ['vespera_garantia']),
@@ -293,6 +320,8 @@ const BULLETS_PRO: readonly BulletPlano[] = [
     'IA com uso justo diário, relatórios, metas, radar de clientes, relatório do dia e modelos premium de PDF',
     ['ia_ilimitada', 'relatorios', 'metas', 'radar_clientes', 'relatorio_dia', 'modelos_pdf_premium'],
   ),
+  bullet(ROTULO_RECURSO.importar_lote.titulo, ['importar_lote']),
+  bullet(ROTULO_RECURSO.nota_fiscal.titulo, ['nota_fiscal']),
   bullet('Suporte prioritário por WhatsApp', []),
 ];
 
@@ -374,3 +403,30 @@ function conferir(planoId: 'pro' | 'empresa', bullets: readonly BulletPlano[], b
 }
 conferir('pro', BULLETS_PRO, 'gratis');
 conferir('empresa', BULLETS_EMPRESA, 'pro');
+
+// ─── D-2267: aviso aos Grátis de hoje (mesma frase no app, no painel, no e-mail e no FAQ) ───
+/** Dia da tranca em dd/mm/aaaa, no fuso de Brasília. */
+export function dataTrancaGratisBR(): string {
+  return new Date(TRANCA_GRATIS_D2267).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+/** Os recursos que saíram do Grátis, em frase ("recibos, agenda de visitas, … e importar clientes em lote"). */
+export function recursosQueSairamDoGratis(): string {
+  const partes = [...RECURSOS_COM_CARENCIA_GRATIS].map((r) => ROTULO_RECURSO[r].curto);
+  return partes.length > 1 ? `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}` : partes.join('');
+}
+
+/**
+ * O aviso curto e honesto (CDC: o que muda, quando, o que continua grátis, o que acontece com o que já foi
+ * criado). `precoMensal` vem da fonte de preço (ex.: "R$ 39,00") — nunca digitado aqui.
+ */
+export function avisoMudancaGratis(precoMensal: string): { titulo: string; texto: string } {
+  return {
+    titulo: `A partir de ${dataTrancaGratisBR()}, o plano Grátis muda`,
+    texto:
+      `${recursosQueSairamDoGratis().replace(/^./, (c) => c.toUpperCase())} passam a ser do Pro (${precoMensal} por mês). ` +
+      `Criar e enviar orçamentos continua grátis, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês. ` +
+      'Tudo o que você já criou continua na sua conta, para ver quando quiser.',
+  };
+}
+

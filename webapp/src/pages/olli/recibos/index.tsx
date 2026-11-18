@@ -26,10 +26,12 @@ import {
 	Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { NameCell } from "@/olli/components/record-list-helpers";
 import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useContextoDeEscrita, useExcluir } from "@/olli/mutacoes";
+import { AvisoMudancaGratis, FaixaRecursoPro, usePortaoPro } from "@/olli/recursoPlano";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -61,6 +63,9 @@ interface ItemLista {
 export default function RecibosPage() {
 	const { data, isLoading, isError, error, refetch, isFetching } = useRecibos();
 	const excluir = useExcluir("recibos");
+	// D-2267: emitir/editar recibo é do Pro; a lista continua visível para todos.
+	const portao = usePortaoPro("recibos");
+	const navigate = useNavigate();
 
 	/**
 	 * GATE DE PAPEL: recibo é emitido pelo DONO (mesma regra do Meu Negócio). Membro
@@ -122,13 +127,17 @@ export default function RecibosPage() {
 	const semPdf = useMemo(() => filtrados.filter(({ recibo }) => recibo?.pdfEmitido === false).length, [filtrados]);
 
 	function abrirNovo() {
-		setEmEdicao(null);
-		setFormAberto(true);
+		portao.exigir(() => {
+			setEmEdicao(null);
+			setFormAberto(true);
+		});
 	}
 
 	function abrirEdicao(r: Recibo) {
-		setEmEdicao(r);
-		setFormAberto(true);
+		portao.exigir(() => {
+			setEmEdicao(r);
+			setFormAberto(true);
+		});
 	}
 
 	async function confirmarExclusao() {
@@ -182,12 +191,16 @@ export default function RecibosPage() {
 							disabled={!escritaLiberada}
 							title={permissaoDesconhecida ? "Verificando suas permissões…" : undefined}
 						>
-							<Plus aria-hidden="true" className="size-4" />
+							{portao.travado ? <Lock aria-label="Disponível no Pro" className="size-4" /> : <Plus aria-hidden="true" className="size-4" />}
 							Novo recibo
 						</Button>
 					)}
 				</div>
 			</div>
+
+			<AvisoMudancaGratis />
+			<FaixaRecursoPro recurso="recibos" uso={portao.uso} aoAssinar={() => navigate("/planos")} />
+			{portao.dialogo}
 
 			{/* Aviso SÓ para quem é, com certeza, membro não-dono: alarmar por "ainda não
 			    sei" seria mentir. No estado desconhecido não há aviso — o botão continua
