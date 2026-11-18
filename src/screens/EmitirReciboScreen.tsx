@@ -14,6 +14,8 @@ import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
+import { CartaoRecursoPlano } from '../components/RecursoPlano';
+import { useCadeado } from '../hooks/useCadeado';
 import { OlliCard } from '../components/OlliCard';
 import { EmptyState } from '../components/EmptyState';
 import { OverlayProgresso } from '../components/OverlayProgresso';
@@ -412,6 +414,12 @@ function EmitirReciboConteudo() {
 
   const semEmpresa = !carregandoEmpresa && !empresa;
 
+  // D-2267: emitir recibo novo é do Pro (com carência do Grátis). O que já foi emitido segue na aba "Emitidos";
+  // um pagamento já registrado que ainda não gerou o PDF termina normalmente (é dado do usuário, não recibo novo).
+  const cadeadoRecibo = useCadeado('recibos');
+  const reciboTrancado = cadeadoRecibo.trancado && !reciboPendente;
+  const cadeadoNota = useCadeado('nota_fiscal'); // nota fiscal: "em breve" no Pro, cadeado no Grátis
+
   return (
     <View style={styles.container}>
       <GradientHeader
@@ -424,7 +432,7 @@ function EmitirReciboConteudo() {
       {/* ABAS: Novo recibo / Emitidos (histórico) */}
       <View style={styles.tabsRow}>
         <TouchableOpacity style={[styles.tabBtn, aba === 'novo' && styles.tabBtnActive]} onPress={() => setAba('novo')} activeOpacity={0.85}>
-          <MaterialCommunityIcons name="file-plus-outline" size={16} color={aba === 'novo' ? cores.onPrimary : cores.onSurfaceVariant} />
+          <MaterialCommunityIcons name={reciboTrancado ? 'lock-outline' : 'file-plus-outline'} size={16} color={aba === 'novo' ? cores.onPrimary : cores.onSurfaceVariant} />
           <Text style={[styles.tabLabel, aba === 'novo' && styles.tabLabelActive]}>Novo</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[styles.tabBtn, aba === 'emitidos' && styles.tabBtnActive]} onPress={() => setAba('emitidos')} activeOpacity={0.85}>
@@ -433,7 +441,11 @@ function EmitirReciboConteudo() {
         </TouchableOpacity>
       </View>
 
-      {aba === 'novo' ? (
+      {aba === 'novo' && reciboTrancado ? (
+        <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: 40 + insets.bottom }}>
+          <CartaoRecursoPlano recurso="recibos" />
+        </ScrollView>
+      ) : aba === 'novo' ? (
         <ScrollView
           contentContainerStyle={{
             paddingTop: Spacing.base, paddingHorizontal: Spacing.base,
@@ -625,7 +637,7 @@ function EmitirReciboConteudo() {
                   activeOpacity={0.85}
                   accessibilityRole="button"
                 >
-                  <MaterialCommunityIcons name="file-certificate-outline" size={16} color={cores.primary} />
+                  <MaterialCommunityIcons name={cadeadoNota.trancado ? 'lock-outline' : 'file-certificate-outline'} size={16} color={cores.primary} />
                   <Text style={styles.reenviarBtnText}>Preparar nota fiscal</Text>
                 </TouchableOpacity>
               )}
@@ -665,7 +677,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   tabBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 9, borderRadius: BorderRadius.full,
+    minHeight: 44, paddingVertical: 9, borderRadius: BorderRadius.full,
     borderWidth: 1, borderColor: c.outline, backgroundColor: c.surfaceVariant,
   },
   tabBtnActive: { backgroundColor: c.primary, borderColor: c.primary },
@@ -706,7 +718,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   reenviarBtnText: { fontSize: 13, fontWeight: '700', color: c.primary },
   avaliacaoBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: c.outline,
+    marginTop: 8, paddingTop: 8, minHeight: 44, borderTopWidth: 1, borderTopColor: c.outline,
   },
   avaliacaoBtnText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
