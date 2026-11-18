@@ -1,0 +1,13 @@
+[Unit]
+Description=Resumo dos interessados, duas vezes por dia. NÃO ATIVAR sem ordem do Salomão.
+
+[Timer]
+# Seg–sáb, 9h e 17h30, horário de Brasília. O script não está ligado.
+OnCalendar=Mon..Sat 09:00 America/Sao_Paulo
+OnCalendar=Mon..Sat 17:30 America/Sao_Paulo
+AccuracySec=1min
+Persistent=false
+Unit=interessados-resumo.service
+
+[Install]
+WantedBy=timers.target

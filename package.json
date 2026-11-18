@@ -401,7 +401,8 @@
     "lint:base": "node scripts/checar-lint.mjs --atualizar-base",
     "deploy": "node scripts/janela-release.mjs --alvo producao && npm run export:web && wrangler deploy",
     "preview": "npm run export:web && wrangler dev",
-    "test:jev-verificador": "node scripts/teste-jev-verificador.ts"
+    "test:jev-verificador": "node scripts/teste-jev-verificador.ts",
+    "test:agencia-interessados": "node --test ops/agencia-interessados/*.test.mjs ops/agencia-demo/*.test.mjs"
   },
   "private": true,
   "overrides": {
