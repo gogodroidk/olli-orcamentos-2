@@ -59,7 +59,7 @@ export function validarJwt(token, cfg, chaves, agora = Date.now()) {
     if (p.nbf && Number(p.nbf) * 1000 > agora + 60e3) return { ok: false, motivo: "nbf" };
     const email = String(p.email || "").toLowerCase();
     if (!email || email !== cfg.email) return { ok: false, motivo: "email" };
-    return { ok: true, email };
+    return { ok: true, email, sub: String(p.sub || "") };
   } catch { return { ok: false, motivo: "erro" }; }
 }
 
@@ -99,7 +99,7 @@ const negar = (res, cod, msg) => {
 };
 
 /**
- * Chame no topo do handler. true = pode seguir; false = resposta de recusa já enviada.
+ * Chame no topo do handler. true = pode seguir (e põe req.identidade); false = resposta de recusa já enviada.
  * opcoes: { porta, buscar }
  */
 export async function guarda(req, res, opcoes = {}) {
@@ -110,6 +110,7 @@ export async function guarda(req, res, opcoes = {}) {
   const hostsLocais = [`127.0.0.1:${opcoes.porta}`, `localhost:${opcoes.porta}`];
   if (!remoto) {
     if (!hostsLocais.includes(host)) return negar(res, 421, "host inválido");
+    req.identidade = { via: "local", chave: "local" };
     return true;
   }
   if (!cfg) { log("remoto_sem_config"); return negar(res, 503, "acesso remoto não configurado"); }
@@ -127,6 +128,8 @@ export async function guarda(req, res, opcoes = {}) {
     return negar(res, v.motivo === "email" || v.motivo === "aud" ? 403 : 401, "login recusado");
   }
   falhas.delete(ip);
+  // identidade da ligação (P1 LIVRE): a ligação e o token de confirmação ficam presos a este login do Access
+  req.identidade = { via: "access", email: v.email, chave: `access:${v.email}:${v.sub}` };
   return true;
 }
 
