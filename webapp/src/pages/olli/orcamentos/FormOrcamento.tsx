@@ -667,7 +667,7 @@ function Editor({
 					{!orc.clienteId && (
 						<Campo
 							rotulo="Ou só o nome do cliente"
-							dica="Para começar sem cadastrar. Para enviar pelo WhatsApp, escolha ou cadastre o cliente (precisa do número)."
+							dica="Para começar sem cadastrar. Na hora de enviar, o OLLI pede o WhatsApp do cliente (ou você copia o link)."
 						>
 							<Input
 								value={orc.clienteNome}
