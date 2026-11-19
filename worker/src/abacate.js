@@ -200,16 +200,41 @@ const INICIO_MAX_MS = 400 * 864e5;
  * Falha ao ler a assinatura → começa agora (o cliente perde no máximo os dias que
  * faltavam; nunca ganha meses de graça).
  */
-async function inicioDoPeriodo(env, userId, planoAlvo) {
+export async function inicioDoPeriodo(env, userId, planoAlvo) {
   const agora = Date.now();
   const atual = await getAssinatura(env, userId);
-  if (!atual || atual.error) return new Date(agora).toISOString();
-  const fim = atual.current_period_end ? Date.parse(atual.current_period_end) : NaN;
-  const ativo = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status);
+  if (atual && atual.error) return new Date(agora).toISOString();
+  const fim = atual && atual.current_period_end ? Date.parse(atual.current_period_end) : NaN;
+  const ativo = !!atual && atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status);
   if (ativo && atual.plano === planoAlvo && Number.isFinite(fim) && fim > agora) {
     return new Date(fim).toISOString();
   }
+  // Regra da CPO (19/11): quem paga o Pro durante o TESTE do Pro não perde o resto do teste — o pago começa no fim dele.
+  if (planoAlvo === 'pro') {
+    const testeAte = await testeAteDaConta(env, userId);
+    if (testeAte && testeAte > agora && testeAte - agora <= INICIO_MAX_MS) return new Date(testeAte).toISOString();
+  }
   return new Date(agora).toISOString();
+}
+
+/**
+ * Fim do teste do Pro ATIVO da conta (ms) ou null. Falha de leitura = null (o pago começa agora: o cliente perde no
+ * máximo os dias de teste, nunca ganha meses). Teste é por tenant; o dono é `owner_user_id`.
+ */
+export async function testeAteDaConta(env, userId, agora = Date.now()) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const u = encodeURIComponent(userId);
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/trials_comerciais?owner_user_id=eq.${u}&estado=eq.active&select=termina_em&order=termina_em.desc&limit=1`, {
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+    });
+    if (!r.ok) return null;
+    const l = await r.json();
+    const fim = Array.isArray(l) && l[0] ? Date.parse(l[0].termina_em) : NaN;
+    return Number.isFinite(fim) && fim > agora ? fim : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Validade do QR Pix do plano: 24 h (testado na AbacatePay em 22/10). */

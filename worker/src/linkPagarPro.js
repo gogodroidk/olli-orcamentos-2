@@ -193,7 +193,9 @@ export function decidirVenda({ assinatura: a, paAtiva, testeAte, agora = Date.no
     return { bloqueia: false, proAte: fim, origem: 'pix_avulso_renovacao' };
   }
   if (testeAte && testeAte > agora && !VENDE_DURANTE_TESTE) return { bloqueia: true, plano: 'pro', ate: testeAte, origem: 'teste' };
-  return { bloqueia: false, proAte: null, origem: testeAte && testeAte > agora ? 'teste' : 'gratis' };
+  return testeAte && testeAte > agora
+    ? { bloqueia: false, proAte: null, testeAte, origem: 'teste' }
+    : { bloqueia: false, proAte: null, origem: 'gratis' };
 }
 
 /**
@@ -258,11 +260,20 @@ export function linhasDoPro() {
   return planoBase('pro').beneficios.filter((b) => b !== 'Tudo do plano Grátis').slice(0, 3);
 }
 
+/** Mesma conta da concessão (mercadopago.js#concederPlanoPeriodo: `setMonth(+meses)`, em UTC no worker). */
+export function somarMeses(ms, meses) {
+  const d = new Date(ms);
+  d.setUTCMonth(d.getUTCMonth() + meses);
+  return d.getTime();
+}
+
 function blocoPlano(plano, contaMascarada, sit) {
   const itens = linhasDoPro().map((b) => `<li>${esc(b)}</li>`).join('');
   const aviso = sit && sit.proAte
     ? `<p class="nota">Seu Pro vale até ${esc(data(sit.proAte))}. Se pagar agora, o novo ${plano.meses === 12 ? 'ano' : 'mês'} começa quando esse prazo terminar.</p>`
-    : '';
+    : sit && sit.testeAte
+      ? `<p class="nota">Seu teste do Pro vai até ${esc(data(sit.testeAte))}. Se pagar agora, você não perde nenhum dia: o Pro pago começa no fim do teste e vale até ${esc(data(somarMeses(sit.testeAte, plano.meses)))}.</p>`
+      : '';
   return `<div class="plano">
       <div class="nome">OLLI Pro · ${plano.meses === 12 ? 'anual' : 'mensal'}</div>
       <div class="preco">${esc(reais(plano.valor))}<span> por ${plano.meses === 12 ? '1 ano' : '1 mês'}, no Pix</span></div>
