@@ -10,7 +10,8 @@ let ok = 0; let falhas = 0;
 function checar(nome, c, d = '') { if (c) { console.log(`  ok   ${nome}`); ok++; } else { console.error(`  FALHA ${nome}${d ? `\n        ${d}` : ''}`); falhas++; } }
 
 const raiz = new URL('../../', import.meta.url);
-const doc = readFileSync(new URL('docs/CUPOM_ADMIN_PROCEDIMENTO.md', raiz), 'utf8');
+// CRLF → LF: com core.autocrlf=true o checkout vem com \r\n e a regex do bloco ```json:<nome>\n não acha nada (CI de 19/11).
+const doc = readFileSync(new URL('docs/CUPOM_ADMIN_PROCEDIMENTO.md', raiz), 'utf8').replace(/\r\n/g, '\n');
 const admin = readFileSync(new URL('worker/src/admin.js', raiz), 'utf8');
 const bloco = (nome) => { const m = doc.match(new RegExp('```json:' + nome + '\\n([\\s\\S]*?)```')); return m ? JSON.parse(m[1]) : null; };
 
