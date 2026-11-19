@@ -15,7 +15,7 @@ const PASTA = mkdtempSync(join(tmpdir(), 'ficha-teste-'));
 copyFileSync(join(aqui, 'teste', 'ficha-cliente.copia.mjs'), join(PASTA, 'ficha-cliente.mjs'));
 process.env.FICHA_CLIENTE = join(PASTA, 'ficha-cliente.mjs'); // clientes/ nasce em PASTA, longe do real
 process.env.CREDENCIAIS_ENV = join(PASTA, 'nao-existe.env'); // nada de ler credenciais reais
-const { anexarFicha, registrarFato, apagarFicha, tratarEventoParar, carregarFicha, motivoSensivel, MARCA } = await import('./ficha.mjs');
+const { anexarFicha, registrarFato, apagarFicha, pararContato, tratarEventoParar, carregarFicha, motivoSensivel, MARCA } = await import('./ficha.mjs');
 const ficha = await carregarFicha();
 after(() => rmSync(PASTA, { recursive: true, force: true }));
 
@@ -24,15 +24,22 @@ const TEL = (n) => `+55119123400${String(n).padStart(2, '0')}`;
 const conversas = new Map(); // id -> { id, inbox_id, labels, phone, msgs[] }
 let seqMsg = 0;
 const nova = (id, inbox, n, labels = []) => conversas.set(id, { id, inbox_id: inbox, labels, phone: n ? TEL(n) : null, msgs: [] });
-const vistaConv = (c) => ({ id: c.id, inbox_id: c.inbox_id, labels: c.labels, status: 'open', meta: { sender: { phone_number: c.phone, name: 'Cliente Teste' } } });
-const rota = async (metodo, caminho, corpo) => {
+const vistaConv = (c) => ({ id: c.id, inbox_id: c.inbox_id, labels: c.labels, status: 'open', meta: { sender: { id: c.phone ? 9000 + Number(c.phone.slice(-2)) : null, phone_number: c.phone, name: 'Cliente Teste' } } });
+const rota = async (metodo, caminhoCru, corpo) => {
+  const [caminho, query = ''] = caminhoCru.split('?');
   const m = caminho.replace(/^.*\/accounts\/2/, '');
+  const contato = m.match(/^\/contacts\/(\d+)\/conversations$/);
+  if (contato) return { payload: [...conversas.values()].filter((c) => c.phone && 9000 + Number(c.phone.slice(-2)) === Number(contato[1])).map(vistaConv) };
+  if (m === '/contacts/search') { const q = decodeURIComponent(query.replace(/^q=/, '')); return { payload: [...new Set([...conversas.values()].filter((c) => c.phone && c.phone.replace(/\D/g, '') === q).map((c) => c.phone))].map((ph) => ({ id: 9000 + Number(ph.slice(-2)), phone_number: ph })) }; }
   const conv = m.match(/^\/conversations\/(\d+)(\/[a-z]+)?(?:\/(\d+))?$/);
   if (conv) {
     const c = conversas.get(Number(conv[1]));
     const [, , sub, msgId] = conv;
     if (!sub && metodo === 'GET') return vistaConv(c);
-    if (sub === '/messages' && !msgId && metodo === 'GET') return { payload: c.msgs };
+    if (sub === '/messages' && !msgId && metodo === 'GET') { // 2 por página, de trás para frente, como o Chatwoot (?before=)
+      const antes = Number(new URLSearchParams(query).get('before') || Infinity);
+      return { payload: c.msgs.filter((x) => x.id < antes).slice(-2) };
+    }
     if (sub === '/messages' && !msgId && metodo === 'POST') {
       const msg = { id: ++seqMsg, content: corpo.content, private: !!corpo.private, content_attributes: {} };
       c.msgs.push(msg);
@@ -51,6 +58,7 @@ const rota = async (metodo, caminho, corpo) => {
 };
 const api = async (_tok, caminho, metodo = 'GET', corpo) => rota(metodo, caminho, corpo);
 const vivas = (id) => conversas.get(id).msgs.filter((x) => x.private && !x.content_attributes.deleted && x.content.startsWith(MARCA));
+const poeNota = (id, content, priv = true) => conversas.get(id).msgs.push({ id: ++seqMsg, content, private: priv, content_attributes: {} });
 const OLLI = 4, SERV = 3, GRTECH = 2, PESSOAL = 5;
 
 // ---------- 1. abrir conversa com ficha ----------
@@ -148,6 +156,66 @@ test('mensagem comum e nota interna com "sair-lgpd" escrita pelo agente NÃO apa
   assert.equal((await tratarEventoParar({ ...base, message_type: 'incoming', private: false, content: 'oi, quero saber do plano' }, { api, tok: 'x', ficha })).acao, 'nada');
   assert.equal((await tratarEventoParar({ ...base, message_type: 'outgoing', private: true, content: 'cliente disse sair-lgpd?' }, { api, tok: 'x', ficha })).acao, 'nada');
   assert.equal(ficha.ver(TEL(6)).length, 1);
+});
+
+
+// ---------- 4b. P2-1: parar apaga as notas [ficha] no Chatwoot (todas as conversas do contato) ----------
+test('parar-contato: contato com 2 conversas (caixas 4 e 3), cada uma com nota [ficha] → apaga as duas, a ficha local e bloqueia nova', async () => {
+  nova(401, OLLI, 20); nova(402, SERV, 20); nova(403, GRTECH, 20);
+  ficha.adicionar(TEL(20), 'Instala multi-split em prédio comercial', { origem: 'conversa Chatwoot #401', data: '2026-11-12' });
+  for (const id of [401, 402]) { poeNota(id, 'oi', false); assert.equal((await anexarFicha({ api, tok: 'x', c: vistaConv(conversas.get(id)), ficha })).acao, 'criada'); poeNota(id, 'conversa normal 1'); poeNota(id, 'conversa normal 2'); }
+  poeNota(403, `${MARCA} nota da caixa GR Tech: fora do escopo, não pode ser tocada`); // caixa 2 nunca entra (D-2412)
+  poeNota(402, 'Lembrete: ele Instala multi-split em prédio comercial, ligar sexta'); // outra nota nossa repetindo o fato da ficha
+  assert.equal(vivas(401).length + vivas(402).length, 2);
+  const ev = { event: 'conversation_updated', id: 401, inbox_id: OLLI, labels: ['parar-contato'], meta: { sender: conversas.get(401) && vistaConv(conversas.get(401)).meta.sender } };
+  const r = await tratarEventoParar(ev, { api, tok: 'x', ficha });
+  assert.equal(r.acao, 'apagada'); assert.equal(r.notas.apagadas, 3); assert.deepEqual(r.notas.falhas, []);
+  assert.equal(vivas(401).length + vivas(402).length, 0);
+  const sobra = (id) => conversas.get(id).msgs.filter((x) => !x.content_attributes.deleted && /multi-split/i.test(x.content));
+  assert.equal(sobra(401).length + sobra(402).length, 0, 'não sobra texto da ficha em nota nossa');
+  assert.equal(conversas.get(401).msgs.filter((x) => !x.content_attributes.deleted).length, 3); // "oi" + 2 normais intactas
+  assert.equal(vivas(403).length, 1, 'caixa 2 intocada');
+  assert.deepEqual(ficha.ver(TEL(20)), []); assert.equal(ficha.eSuprimido(TEL(20)), true);
+  assert.equal(registrarFato({ c: vistaConv(conversas.get(401)), fato: 'Voltou', ficha }).ok, false);
+  assert.equal((await anexarFicha({ api, tok: 'x', c: vistaConv(conversas.get(401)), ficha })).acao, 'nada'); // nova nota não nasce
+});
+test('parar-contato: sem id de contato na conversa, acha o contato pelo telefone; falha em uma conversa é reportada e não para as outras', async () => {
+  nova(411, OLLI, 21); nova(412, SERV, 21);
+  ficha.adicionar(TEL(21), 'Compra peça por atacado', { origem: 'conversa Chatwoot #411' });
+  for (const id of [411, 412]) await anexarFicha({ api, tok: 'x', c: vistaConv(conversas.get(id)), ficha });
+  const c = vistaConv(conversas.get(411)); c.meta.sender.id = undefined;
+  const apiQuebrada = async (tok, caminho, metodo, corpo) => { if (/conversations\/411\/messages\/\d+$/.test(caminho) && metodo === 'DELETE') throw new Error('500 de mentira'); return api(tok, caminho, metodo, corpo); };
+  const r = await pararContato({ api: apiQuebrada, tok: 'x', c, ficha });
+  assert.equal(r.ok, true); assert.equal(r.notas.conversas, 2); assert.equal(r.notas.apagadas, 1);
+  assert.equal(r.notas.falhas.length, 1); assert.match(r.notas.falhas[0], /conversa 411/);
+  assert.equal(vivas(412).length, 0); assert.equal(ficha.eSuprimido(TEL(21)), true);
+});
+
+// ---------- 4c. P3: falsos positivos passam, sensíveis continuam recusados ----------
+test('trava de sensível: "cano partido", "política de garantia" e "pagar no cartão" PASSAM', () => {
+  for (const f of ['Cano de cobre partido na instalação', 'Quer saber a política de garantia', 'Prefere pagar no cartão', 'Paga no crédito em 3x', 'Tem um pastor alemão', 'Telefone fixo 5511912340001'])
+    assert.equal(motivoSensivel(f), null, f);
+});
+test('trava de sensível: os 11 casos sensíveis seguem recusados (mesma lista do teste de recusa)', () => {
+  const onze = ['Está com depressão e toma remédio', 'É evangélico, vai à igreja aos domingos', 'Vota no Lula e é filiado a partido', 'Orientação sexual: homossexual',
+    'Cadastrou a biometria / impressão digital', 'CPF 123.456.789-09', 'Passou o cpf dele', 'A senha é 1234', 'Cartão 4111 1111 1111 1111', 'Tem diabetes', 'cartão de crédito final 4242'];
+  assert.equal(onze.length, 11);
+  for (const f of onze) assert.notEqual(motivoSensivel(f), null, f);
+});
+
+// ---------- 4d. laço do acordador: parar não gera evento que acorda ninguém ----------
+test('laço do acordador: nota privada [ficha] e conversation_updated não acordam; a etiqueta já posta encerra o ciclo (2º evento não repete nada)', async () => {
+  const { decidir } = await import('./decidir.mjs');
+  nova(421, OLLI, 22); ficha.adicionar(TEL(22), 'Atende em Jundiaí e região', { origem: 'conversa Chatwoot #421' });
+  const ev = { event: 'message_created', message_type: 'incoming', private: false, content: 'sair-lgpd', inbox: { id: OLLI }, sender: { phone_number: TEL(22) }, conversation: { id: 421, inbox_id: OLLI, labels: [], meta: { sender: vistaConv(conversas.get(421)).meta.sender } } };
+  assert.equal((await tratarEventoParar(ev, { api, tok: 'x', ficha })).acao, 'apagada');
+  const posts = []; const apiEspia = async (tok, caminho, metodo = 'GET', corpo) => { if (metodo !== 'GET') posts.push(`${metodo} ${caminho}`); return api(tok, caminho, metodo, corpo); };
+  // 2º evento: conversation_updated já com parar-contato (consequência do POST da etiqueta)
+  const ev2 = { event: 'conversation_updated', id: 421, inbox_id: OLLI, labels: ['parar-contato'], meta: { sender: vistaConv(conversas.get(421)).meta.sender } };
+  await tratarEventoParar(ev2, { api: apiEspia, tok: 'x', ficha });
+  assert.equal(posts.filter((p) => /labels|POST .*messages$/.test(p)).length, 0, `nenhuma escrita nova: ${posts.join(',')}`);
+  for (const e of [{ event: 'message_created', message_type: 'outgoing', private: true, content: `${MARCA} algo`, inbox: { id: OLLI }, conversation: { id: 421, inbox_id: OLLI } }, ev2])
+    assert.equal(decidir(e, new Map()).acao, 'ignorar', 'não acorda');
 });
 
 // ---------- 5. caixas 2 e 5 ----------

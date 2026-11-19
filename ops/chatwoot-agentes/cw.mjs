@@ -15,7 +15,7 @@
 // AGENTE = IRIS | CARTEIRA | ACOLHE | DESTRAVA | FECHA | SDR | PROSPECCAO | BRUNO (supervisor) — lista em agentes.json
 import { CFG, api, meuId, agentePorChave, tokenDe, carregarCredenciais, ehNumeroInterno, final4 } from './lib.mjs';
 import { motivosDeBarrar, ehTeste } from './travas.mjs';
-import { carregarFicha, anexarFicha, registrarFato, apagarFicha, pedidoDeParar } from './ficha.mjs';
+import { carregarFicha, anexarFicha, registrarFato, pararContato, pedidoDeParar } from './ficha.mjs';
 
 carregarCredenciais();
 const [cmd, quem, convArg, ...resto] = process.argv.slice(2);
@@ -126,8 +126,8 @@ if (cmd === 'fila') {
   await api(tok, `/conversations/${conv}/labels`, 'POST', { labels: novas });
   console.log(`ok: etiquetas ${novas.join(',')}`);
   if (pedidoDeParar({ labels: resto })) { // parar-contato: apaga a ficha, grava só o hash e bloqueia nova ficha (LGPD)
-    const r = apagarFicha({ c: { ...c, labels: novas }, ficha: await carregarFicha() });
-    console.log(r.ok ? `ficha apagada e bloqueada (apagou: ${r.apagou}). PARE de contatar este cliente.` : `ficha: nada apagado (${r.motivo}). PARE de contatar este cliente.`);
+    const r = await pararContato({ api, tok, c: { ...c, labels: novas }, ficha: await carregarFicha() });
+    console.log(r.ok ? `ficha apagada e bloqueada (apagou: ${r.apagou}); notas [ficha] apagadas no Chatwoot: ${r.notas.apagadas} em ${r.notas.conversas} conversa(s)${r.notas.falhas.length ? `; FALHAS: ${r.notas.falhas.join(' | ')}` : ''}. PARE de contatar este cliente.` : `ficha: nada apagado (${r.motivo}). PARE de contatar este cliente.`);
   }
 } else if (cmd === 'ficha') {
   const c = await pegarConversa();
