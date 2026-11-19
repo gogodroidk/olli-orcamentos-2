@@ -30,6 +30,18 @@
 
 set -u
 
+# UMA execução por vez na máquina toda (19/11/2026: 5 ci-local + build Android esgotaram a memória e atrasaram o
+# WhatsApp dos clientes). Quem chega espera a vez; nada é pulado. Escape consciente: OLLI_CI_SEM_TRAVA=1.
+# Lock do kernel (flock): some sozinho se o processo morrer, sem arquivo órfão travando a fila.
+if [ -z "${OLLI_CI_SEM_TRAVA:-}" ] && command -v flock >/dev/null 2>&1; then
+  exec 9>"${OLLI_CI_TRAVA:-/tmp/olli-ci-local.lock}"
+  if ! flock -n 9; then
+    echo ">>> ci-local: outro ci-local está rodando nesta máquina; esperando a vez (até 60 min)..."
+    flock -w 3600 9 || { echo ">>> ci-local: esperei 60 min e a vez não veio. Saio sem rodar (exit 75)."; exit 75; }
+    echo ">>> ci-local: minha vez."
+  fi
+fi
+
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RAIZ" || exit 2
 
