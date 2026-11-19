@@ -320,6 +320,7 @@ const BODY = String.raw`
    <section class="view hidden" id="v-usuarios" data-view="usuarios"></section>
    <section class="view hidden" id="v-organizacoes" data-view="organizacoes"></section>
    <section class="view hidden" id="v-funil" data-view="funil"></section>
+   <section class="view hidden" id="v-uso" data-view="uso"></section>
    <section class="view hidden" id="v-emails" data-view="emails"></section>
    <section class="view hidden" id="v-troca" data-view="troca"></section>
    <section class="view hidden" id="v-suporte" data-view="suporte"></section>
@@ -617,6 +618,7 @@ const NAV=[
  {id:'usuarios',rot:'Usuários',ico:'users',sub:'Todas as contas. Clique numa linha para abrir a ficha completa e as ferramentas.',cap:'admin'},
  {id:'organizacoes',rot:'Organizações',ico:'users',sub:'Marque uma organização inteira como interna (equipe, teste) — com prévia, confirmação e desfazer. Internas ficam fora de todos os números.',cap:'admin'},
  {id:'funil',rot:'Funil',ico:'funnel',sub:'Do cadastro ao pagamento, por semana de cadastro.',cap:'admin'},
+ {id:'uso',rot:'Funil de uso',ico:'funnel',sub:'Até onde as pessoas chegam dentro do app, passo a passo. Só contagens: nenhum nome, e-mail ou conta aparece aqui.',cap:'admin'},
  {id:'emails',rot:'E-mails',ico:'mail',sub:'Saúde dos e-mails automáticos e oferta do Pro para quem já usa o OLLI.',cap:'admin'},
  {id:'troca',rot:'Crédito de troca',ico:'gift',sub:'Quem veio de outro app e pediu meses de Pro grátis.',cap:'financeiro'},
  {id:'suporte',rot:'Suporte',ico:'chat',sub:'Mensagens, sugestões, denúncias e erros enviados pelo app.',cap:'suporte'},
@@ -643,7 +645,7 @@ function irPara(id){
  renderView();
  window.scrollTo(0,0);
 }
-function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,emails:carregarEmails,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
+function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,uso:carregarUso,emails:carregarEmails,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
 /* ── e-mails: saúde e oferta do Pro (D-1859) ── */
 let EMAILS=null,EMAILS_ERRO='',OFERTA=null,OFERTA_ERRO='',OFERTA_CORTADO=false,OFERTA_SEL=new Set();
 const MOTIVO_OFERTA={sairia:['Pode receber','ok'],enfileirado:['Enfileirado','ok'],conta_indisponivel:['E-mail indisponível','dng'],suprimido:['Descadastrou','warn'],excluido:['Conta interna',''],membro_equipe:['Membro de equipe',''],ja_assinou:['Já assinou','warn'],nao_e_gratis:['Pro ou teste ativo','info'],oferta_recente:['Oferta há menos de 30 dias',''],recebeu_email_24h:['E-mail nas últimas 24 h',''],duplicado:['Já enfileirado hoje',''],teto_diario:['Teto do dia','warn'],erro_rpc:['Erro ao enfileirar','dng'],sem_uso:['Sem uso','']};
@@ -1221,6 +1223,28 @@ async function carregarFunil(){
   tb.append(body);box.append(el('div',{className:'card tblWrap funil'},tb));
   box.append(el('div',{className:'nota'},'Semana = segunda a domingo, horário de Brasília. Para contas anteriores à ativação do funil, as datas de "perfil", "enviado", "aprovado" e "pagou" são aproximadas. '+notaExclusao(f)));
  }catch(e){if(e.status===401)return;limpar(box).append(el('div',{className:'card'},estado('erro','Funil indisponível.',(ERRO_FUNIL[e.codigo]||mensagemErro(e))+' Nenhum número foi zerado.')));}
+}
+
+/* ── FUNIL DE USO (CPO, TOP10 #2): passos dentro do app, só contagens ── */
+const ERRO_USO={banco_indisponivel:'Não consegui ler o banco agora.',contas_internas_ilegiveis:'Não consegui ler a lista de contas internas, então não dá para separar clientes de equipe.'};
+function fmtMin(m){if(m===null||m===undefined)return '—';if(m<60)return String(m).replace('.',',')+' min';const h=m/60;return h<48?(Math.round(h*10)/10+' h').replace('.',','):(Math.round(h/24*10)/10+' dias').replace('.',',');}
+async function carregarUso(){
+ const box=limpar($('v-uso'));box.append(el('div',{className:'card'},carregando(5)));
+ try{
+  const f=await api('funil-uso');limpar(box);
+  box.append(el('p',{className:'mut',style:'margin-bottom:16px'},'Cada linha é um passo da jornada dentro do app, contando cada conta uma vez só (a primeira vez que ela passou ali). A porcentagem mostra quantos dos que chegaram ao passo anterior chegaram a este: o passo com a menor porcentagem é onde as pessoas param.'));
+  if(!f.pessoas){box.append(el('div',{className:'card'},estado('','Ainda não há nenhum passo registrado.','O rastreio de telas está desligado no app e só liga 7 dias depois de a política de privacidade publicada explicar o que é medido. Quem desliga "Ajudar a melhorar o OLLI" no app fica fora.')));box.append(el('div',{className:'nota'},'Contas internas fora: '+f.internasFora+'.'));return;}
+  const tb=el('table'),body=el('tbody');
+  tb.append(el('thead',{},el('tr',{},el('th',{},'Passo'),el('th',{},'Contas'),el('th',{},'% do passo anterior'))));
+  f.passos.forEach(x=>body.append(el('tr',{},el('td',{},x.rotulo),el('td',{},el('b',{},String(x.pessoas))),el('td',{className:'mut'},x.pctAnterior===null?'—':String(x.pctAnterior).replace('.',',')+'%'))));
+  tb.append(body);box.append(el('div',{className:'card tblWrap'},tb));
+  const t=f.tempos||{};
+  box.append(el('div',{className:'card'},el('div',{className:'pad'},el('h3',{style:'font-size:16px;margin-bottom:8px'},'Tempo típico (mediana)'),
+   el('p',{},'Do cadastro ao 1º orçamento: ',el('b',{},fmtMin(t.minAte1oOrcamento))),
+   el('p',{},'Do cadastro ao 1º envio: ',el('b',{},fmtMin(t.minAte1oEnvio))),
+   el('p',{},'Do Pix gerado ao pagamento: ',el('b',{},fmtMin(t.minDoPixAoPagamento))))));
+  box.append(el('div',{className:'nota'},'Contas com algum passo: '+f.pessoas+'. Contas internas fora: '+f.internasFora+'. Os registros são apagados depois de 90 dias.'+(f.cortado?' Atenção: passou do teto de leitura; os números estão cortados.':'')));
+ }catch(e){if(e.status===401)return;limpar(box).append(el('div',{className:'card'},estado('erro','Funil de uso indisponível.',(ERRO_USO[e.codigo]||mensagemErro(e))+' Nenhum número foi zerado.')));}
 }
 
 /* ── CRÉDITO DE TROCA ── */
