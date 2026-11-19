@@ -289,4 +289,26 @@ assert.match(ler('../webapp/src/pages/olli/orcamentos/FormOrcamento.tsx'), /AVIS
 assert.match(ler('../webapp/tsconfig.json'), /"@ativacao": \["\.\.\/src\/services\/ativacao\.ts"\]/);
 assert.match(ler('../webapp/vite.config.ts'), /"@ativacao": ativacaoFonte/, 'alias de VALOR precisa estar no Vite também');
 
+// ─── CQ-ATIVA-1O-ORCAMENTO: lista de Orçamentos vazia guiada ───
+import { ativaPrimeiroOrcamentoLigada, decidirVazioOrcamentos } from '../src/services/ativacao.ts';
+for (const v of [undefined, null, '', '0', 'false', 'sim', 'ligado']) assert.equal(ativaPrimeiroOrcamentoLigada(v), false, `chave desligada para ${String(v)}`);
+for (const v of ['1', 'true', ' TRUE ']) assert.equal(ativaPrimeiroOrcamentoLigada(v), true);
+const base = { ligado: true, filtrado: false, totalConfirmado: 0, vertical: 'refrigeracao' as const };
+assert.equal(decidirVazioOrcamentos({ ...base, ligado: false }).tipo, 'padrao', 'chave desligada = tela de sempre');
+assert.equal(decidirVazioOrcamentos({ ...base, filtrado: true }).tipo, 'padrao', 'com busca/filtro não convida');
+assert.equal(decidirVazioOrcamentos({ ...base, totalConfirmado: null }).tipo, 'padrao', 'zero não confirmado não convida');
+assert.equal(decidirVazioOrcamentos({ ...base, totalConfirmado: 3 }).tipo, 'padrao', 'quem tem orçamento não vê convite');
+const comExemplo = decidirVazioOrcamentos(base);
+assert.equal(comExemplo.tipo, 'exemplo');
+assert.equal(comExemplo.tipo === 'exemplo' && comExemplo.vertical, 'refrigeracao');
+assert.equal(decidirVazioOrcamentos({ ...base, vertical: undefined }).tipo, 'pergunta', 'sem ofício, pergunta');
+const telaOrc = ler('../src/screens/OrcamentosScreen.tsx');
+assert.match(telaOrc, /ligado: ATIVA_1O_ORCAMENTO &&/, 'app só guia com a chave ligada');
+assert.match(telaOrc, /podePapel\('gerenciar_faturamento'\)/, 'só o dono vê o guia no app');
+assert.match(ler('../src/config.ts'), /EXPO_PUBLIC_ATIVA_1O_ORCAMENTO/, 'chave local do app');
+const painelOrc = ler('../webapp/src/pages/olli/orcamentos/index.tsx');
+assert.match(painelOrc, /ativaPrimeiroOrcamentoLigada\(import\.meta\.env\.VITE_ATIVA_1O_ORCAMENTO\)/, 'painel só guia com a chave ligada');
+assert.match(painelOrc, /ehDonoDaConta\(contextoEscrita/, 'só o dono vê o guia no painel');
+assert.match(painelOrc, /AVISO_EXEMPLO/, 'painel diz que o valor é exemplo');
+
 console.log('OK — ativação: exemplo por ofício, checklist em 3 estados e aviso do teste do Pro validados.');

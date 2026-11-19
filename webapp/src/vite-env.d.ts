@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+	/** Lista de Orçamentos vazia guiada (CQ-ATIVA-1O-ORCAMENTO). Só "1"/"true" liga; padrão desligado. */
+	readonly VITE_ATIVA_1O_ORCAMENTO?: string;
 	/** Default route path for the application */
 	readonly VITE_APP_DEFAULT_ROUTE: string;
 	/** Public path for static assets */

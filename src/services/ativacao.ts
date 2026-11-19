@@ -252,6 +252,41 @@ export function mostrarCartaoPrimeiroOrcamento(totalOrcamentos: number | null, d
   return downloadConfirmado && totalOrcamentos === 0;
 }
 
+/**
+ * CHAVE DA LISTA VAZIA GUIADA (CQ-ATIVA-1O-ORCAMENTO). Nasce DESLIGADA: só o texto
+ * "1" ou "true" liga (`EXPO_PUBLIC_ATIVA_1O_ORCAMENTO` no app, `VITE_ATIVA_1O_ORCAMENTO`
+ * no painel). Qualquer outra coisa, inclusive ausente, é desligado.
+ */
+export function ativaPrimeiroOrcamentoLigada(valor: string | null | undefined): boolean {
+  const v = (valor ?? '').trim().toLowerCase();
+  return v === '1' || v === 'true';
+}
+
+export type VazioOrcamentos =
+  | { tipo: 'padrao' }
+  | { tipo: 'exemplo'; vertical: VerticalId; exemplo: ExemploOrcamento }
+  | { tipo: 'pergunta' };
+
+/**
+ * O que a lista de Orçamentos mostra quando está vazia. Só guia (exemplo de 1 toque
+ * ou a pergunta do ofício) quando a chave está ligada, não há busca/filtro/cliente
+ * na tela e a leitura CONFIRMOU zero orçamentos (`null` = ainda não confirmou:
+ * nunca convidar quem pode ter 40). Em qualquer outro caso, a tela de sempre.
+ */
+export function decidirVazioOrcamentos(opts: {
+  ligado: boolean;
+  filtrado: boolean;
+  totalConfirmado: number | null;
+  vertical: VerticalId | undefined;
+}): VazioOrcamentos {
+  if (!opts.ligado || opts.filtrado || !mostrarCartaoPrimeiroOrcamento(opts.totalConfirmado)) {
+    return { tipo: 'padrao' };
+  }
+  const exemplo = exemploOrcamentoPara(opts.vertical);
+  if (exemplo && opts.vertical) return { tipo: 'exemplo', vertical: opts.vertical, exemplo };
+  return { tipo: 'pergunta' };
+}
+
 // ─── 2. Checklist de ativação ─────────────────────────────────────────────────
 
 /**
