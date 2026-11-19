@@ -115,10 +115,14 @@ caso('o envio sem número abre o campo no próprio diálogo (não é mais só um
   assert.match(envio, /Salvar e continuar/);
 });
 caso('o número é salvo no orçamento (blob fresco) e no cliente sem número válido', () => {
-  assert.match(envio, /from\("orcamentos"\)\.select\("dados"\)\.eq\("id", alvo\.orcamentoId\)/);
-  assert.match(envio, /mutateAsync\(\{ \.\.\.fresco, clienteTelefone: telefone/);
-  assert.match(envio, /if \(cli && !numeroParaWhatsApp\(cli\.telefone/);
-  assert.match(envio, /\.from\("clientes"\)\s*\.update\(\{ telefone/);
+  // Fora do hook do envio: lá o status só muda por useMarcarEnviado (teste-empurrao-envio).
+  const salvaNum = ler('webapp/src/pages/olli/orcamentos/useSalvarWhatsAppDoCliente.ts');
+  assert.match(envio, /await salvarWhatsApp\(alvo\.orcamentoId, telefone\)/);
+  assert.match(salvaNum, /from\("orcamentos"\)\.select\("dados"\)\.eq\("id", orcamentoId\)/);
+  assert.match(salvaNum, /mutateAsync\(\{ \.\.\.fresco, clienteTelefone: telefone/);
+  assert.match(salvaNum, /if \(cli && !numeroParaWhatsApp\(cli\.telefone/);
+  assert.match(salvaNum, /\.from\("clientes"\)\s*\.update\(\{ telefone/);
+  assert.doesNotMatch(salvaNum, /status\s*:/);
 });
 caso('"Copiar link" sem número segue no modo link e só "Já enviei" marca como enviado', () => {
   assert.match(envio, /await enviar\(alvo\.orcamentoId, alvo\.blob, "link"\)/);
@@ -131,7 +135,7 @@ caso('"Copiar link" sem número segue no modo link e só "Já enviei" marca como
 caso('a porta do cadastro continua valendo para o link (não foi afrouxada)', () => {
   const preparar = envio.slice(envio.indexOf('setPreparando(orcamentoId);'), envio.indexOf('const salvarNumeroEEnviar'));
   assert.match(preparar, /const empresa = await exigirCadastro\("orcamento"\);\s*if \(!empresa\) return;/);
-  assert.ok(preparar.indexOf('exigirCadastro("orcamento")') < preparar.indexOf('modo === "link"'));
+  assert.ok(preparar.indexOf('exigirCadastro("orcamento")') < preparar.indexOf('if (modo === "link")'));
 });
 
 /* ───────────── 3. eventos gravados ───────────── */

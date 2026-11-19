@@ -37,8 +37,7 @@ import { mascaraTelefone } from "@/olli/components/campos";
 import { avisoLimiteEnvios, cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
 import { conferirWhatsAppDigitado, type ModoEnvio, proximoPassoDoEnvio } from "@/olli/envioAtivacao";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
-import { linkWhatsApp, numeroParaWhatsApp } from "@/olli/linkWhatsApp";
-import { useSalvar } from "@/olli/mutacoes";
+import { linkWhatsApp } from "@/olli/linkWhatsApp";
 import { publicarLinkOrcamento } from "@/olli/publicarLink";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 import { Button } from "@/ui/button";
@@ -46,6 +45,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import { useMarcarEnviado } from "./useMarcarEnviado";
+import { useSalvarWhatsAppDoCliente } from "./useSalvarWhatsAppDoCliente";
 import { montarMensagemEnvioOrcamento, montarMensagemLinkOrcamento } from "../../../../../src/utils/mensagensOrcamento";
 
 interface Pendente {
@@ -77,11 +77,14 @@ async function copiarTexto(texto: string): Promise<boolean> {
 /** Alvo de toque de 44 px no celular (Fitts / WCAG 2.5.8); compacto a partir de `sm`. */
 const TOQUE = "min-h-[44px] sm:min-h-9";
 
+/** Id fixo do aviso "preparando": um só por vez, e some quando o diálogo abre. */
+const TOAST_PREPARANDO = "envio-preparando";
+
 export function useEnviarWhatsApp() {
 	const qc = useQueryClient();
 	const exigirCadastro = usePortaDoCadastro();
 	const marcarEnviado = useMarcarEnviado();
-	const salvarOrcamento = useSalvar("orcamentos");
+	const salvarWhatsApp = useSalvarWhatsAppDoCliente();
 	const [pendente, setPendente] = useState<Pendente | null>(null);
 	const [preparando, setPreparando] = useState<string | null>(null);
 	const [confirmando, setConfirmando] = useState(false);
@@ -111,6 +114,9 @@ export function useEnviarWhatsApp() {
 				return;
 			}
 			setPreparando(orcamentoId);
+			// Retorno em menos de 400 ms: conferir cadastro e criar o link leva alguns segundos e, vindo do
+			// passo "Enviar para o cliente", a linha do orçamento pode nem estar na tela ainda.
+			toast.loading(modo === "link" ? "Criando o link…" : "Preparando a mensagem…", { id: TOAST_PREPARANDO, position: "top-center" });
 			try {
 				// 2) Porta do cadastro: o documento sai com os dados do negócio.
 				const empresa = await exigirCadastro("orcamento");
@@ -156,6 +162,7 @@ export function useEnviarWhatsApp() {
 				setPendente({ orcamentoId, blob, reserva, modo, linkWa, url, mensagem, abriu: false, copiou: false });
 			} finally {
 				setPreparando(null);
+				toast.dismiss(TOAST_PREPARANDO);
 			}
 		},
 		[exigirCadastro, preparando],
@@ -179,28 +186,8 @@ export function useEnviarWhatsApp() {
 		setErroNumero(null);
 		let salvo = false;
 		try {
-			const { data, error } = await supabase.from("orcamentos").select("dados").eq("id", alvo.orcamentoId).maybeSingle();
-			if (error) throw error;
-			const fresco = data?.dados as Orcamento | null | undefined;
-			if (!fresco || typeof fresco !== "object") throw new Error("orçamento não encontrado");
-			await salvarOrcamento.mutateAsync({ ...fresco, clienteTelefone: telefone, atualizadoEm: new Date().toISOString() });
+			await salvarWhatsApp(alvo.orcamentoId, telefone);
 			salvo = true;
-			if (fresco.clienteId) {
-				// Best-effort: o orçamento já tem o número; o cadastro do cliente é um bônus.
-				try {
-					const { data: cli } = await supabase.from("clientes").select("telefone").eq("id", fresco.clienteId).maybeSingle();
-					if (cli && !numeroParaWhatsApp(cli.telefone as string | null)) {
-						await supabase
-							.from("clientes")
-							.update({ telefone, atualizado_em: new Date().toISOString() })
-							.eq("id", fresco.clienteId);
-						void qc.invalidateQueries({ queryKey: ["olli", "clientes"] });
-					}
-				} catch {
-					// o envio segue com o número salvo no orçamento
-				}
-			}
-			void qc.invalidateQueries({ queryKey: ["olli", "orcamentos"] });
 		} catch {
 			// Erro nunca vira silêncio: o diálogo fica aberto e diz o que fazer.
 			setErroNumero("Não consegui salvar o número agora. Confira a internet e toque em “Salvar e continuar” de novo.");
@@ -211,7 +198,7 @@ export function useEnviarWhatsApp() {
 		// Fora do try: uma falha do ENVIO tem a mensagem própria e não pode virar "não consegui salvar".
 		setSemNumero(null);
 		await enviar(alvo.orcamentoId, { ...alvo.blob, clienteTelefone: telefone }, "whatsapp");
-	}, [semNumero, salvandoNumero, numero, salvarOrcamento, qc, enviar]);
+	}, [semNumero, salvandoNumero, numero, salvarWhatsApp, enviar]);
 
 	/** "Copiar link" sem número: fecha o pedido do número e segue no modo `link`. */
 	const copiarLinkSemNumero = useCallback(async () => {
