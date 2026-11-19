@@ -97,8 +97,21 @@ function limparValor(bruto: unknown, max: number = TAMANHO_MAXIMO_VALOR): string
 	return valor === "" ? null : valor;
 }
 
-function limiteDoParametro(chave: string): number {
-	return CHAVES_CLICK_ID.has(chave) ? TAMANHO_MAXIMO_CLICK_ID : TAMANHO_MAXIMO_VALOR;
+/**
+ * Identificador opaco (fbclid, gclid, _fbp, _fbc) só vale INTEIRO: acima do teto, descarta em vez de
+ * cortar (um id cortado é um id inválido que parece válido; o worker aplica a mesma regra, #405).
+ */
+function idInteiro(bruto: unknown, max: number): string | null {
+	const valor = limparValor(bruto, Number.MAX_SAFE_INTEGER);
+	return valor && valor.length <= max ? valor : null;
+}
+
+/** Tetos dos cookies do Pixel: `_fbc` = 'fb.1.<13 dígitos>.' (19) + fbclid de até 500, com folga (= worker, #405). */
+const TAMANHO_MAXIMO_FBP = 200;
+const TAMANHO_MAXIMO_FBC = 600;
+
+function lerParametro(chave: string, bruto: unknown): string | null {
+	return CHAVES_CLICK_ID.has(chave) ? idInteiro(bruto, TAMANHO_MAXIMO_CLICK_ID) : limparValor(bruto, TAMANHO_MAXIMO_VALOR);
 }
 
 /** Lê os parâmetros de campanha de uma query string. `null` = visita sem campanha. */
@@ -107,7 +120,7 @@ export function lerToqueDaUrl(search: string, pagina: string | undefined, agora:
 	const toque: Toque = { ts: agora };
 	let achou = false;
 	for (const chave of PARAMETROS_ATRIBUICAO) {
-		const valor = limparValor(params.get(chave), limiteDoParametro(chave));
+		const valor = lerParametro(chave, params.get(chave));
 		if (valor) {
 			toque[chave] = valor;
 			achou = true;
@@ -129,7 +142,7 @@ function toqueValido(bruto: unknown, agora: number): Toque | null {
 	const toque: Toque = { ts };
 	let achou = false;
 	for (const chave of PARAMETROS_ATRIBUICAO) {
-		const valor = limparValor(candidato[chave], limiteDoParametro(chave));
+		const valor = lerParametro(chave, candidato[chave]);
 		if (valor) {
 			toque[chave] = valor;
 			achou = true;
@@ -336,10 +349,10 @@ export function montarOrigemUtm(atribuicao: Atribuicao, cookies: string): Origem
 	if (atribuicao.primeiro) origem.primeiro_toque = exportarToque(atribuicao.primeiro);
 	if (atribuicao.ultimo) origem.ultimo_toque = exportarToque(atribuicao.ultimo);
 
-	const fbp = limparValor(lerCookie(cookies, "_fbp"));
+	const fbp = idInteiro(lerCookie(cookies, "_fbp"), TAMANHO_MAXIMO_FBP);
 	if (fbp) origem.fbp = fbp;
 
-	let fbc = limparValor(lerCookie(cookies, "_fbc"));
+	let fbc = idInteiro(lerCookie(cookies, "_fbc"), TAMANHO_MAXIMO_FBC);
 	if (!fbc) {
 		const clique = atribuicao.ultimo?.fbclid ? atribuicao.ultimo : atribuicao.primeiro?.fbclid ? atribuicao.primeiro : null;
 		if (clique?.fbclid) fbc = `fb.1.${clique.ts}.${clique.fbclid}`;
