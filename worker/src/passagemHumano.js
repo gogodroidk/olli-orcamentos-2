@@ -7,7 +7,7 @@
  */
 
 export const FRASE_IA =
-  'Sim. Eu sou o assistente virtual da OLLI e sou uma IA. Uma pessoa da equipe assume daqui. Se não quiser mais mensagens, fala SAIR.';
+  'Sim. Eu sou o assistente virtual da OLLI e sou uma IA. A equipe da OLLI assume daqui. Se não quiser mais mensagens, fala SAIR.';
 
 const ACENTO = {
   á: 'a', à: 'a', â: 'a', ã: 'a', ä: 'a',
