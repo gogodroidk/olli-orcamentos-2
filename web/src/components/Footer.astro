@@ -1,30 +1,10 @@
 ---
 /**
- * Footer.astro — rodapé único do site (LANDING_BRIEF/auditoria G2: 4 rodapés
- * escritos à mão e divergentes entre si — link "Início" vs "Entrar", com/sem
- * "Ajuda", com/sem copyright, com/sem link de volta).
+ * Rodapé do site. A variante minimal fica nas páginas de anúncio e onde o
+ * visitante ainda não deve ver o mapa inteiro no meio da decisão — mesmo assim
+ * ela leva as páginas principais e os links legais.
  *
- * `variante`:
- *   'completo' — logo + navegação + os 6 ofícios. Usado nas páginas "hub":
- *                home, ajuda, legal/*.
- *   'minimal'  — enxuto, para as páginas de CONVERSÃO (/para/[oficio]) e a 404,
- *                onde a navegação completa seria distração antes do CTA.
- *
- * DUAS CORREÇÕES QUE ESTE ARQUIVO CARREGA (e que não podem regredir):
- *
- * 1. A variante `minimal` tinha SÓ "← Voltar" e copyright — ou seja, as 6 páginas
- *    /para/[oficio] e a 404, que são exatamente as páginas para onde o SEO por
- *    ofício manda tráfego FRIO, eram as únicas sem Privacidade, Termos e
- *    identidade da empresa. Quem chegou por "app de orçamento para eletricista"
- *    não tinha como descobrir quem é a OLLI sem voltar para a home. Link legal em
- *    rodapé não compete com CTA — a economia visual continua, a lacuna não.
- *
- * 2. O rodapé não linkava /para/* em lugar nenhum do site (grep devolvia uma
- *    única ocorrência, e era comentário). /ajuda/, /legal/* e a 404 eram becos
- *    sem saída: não passavam autoridade nenhuma para as 6 páginas que convertem.
- *
- * `class` (mesmo padrão de OlliLogo.astro) deixa cada página manter a largura do
- * próprio conteúdo — a home é max-w-7xl, ajuda é max-w-4xl, legal é max-w-3xl.
+ * /servicos/ (segundo andar) passa o WhatsApp e a marca dele. O padrão é o do app.
  */
 import {
 	EMPRESA,
@@ -32,6 +12,8 @@ import {
 	identidadePublicavel,
 } from "../data/empresa";
 import { OFICIOS, SLUG_POR_OFICIO } from "../data/oficios";
+import { PAGINAS_EMPRESA, PAGINAS_HEADER } from "../data/navegacao";
+import { APP_URL } from "../data/conteudoSite";
 import OlliLogo from "./OlliLogo.astro";
 
 interface Props {
@@ -51,103 +33,85 @@ const {
 	marca = "OLLI Orçamentos",
 } = Astro.props;
 
-const APP_URL = "https://app.olliorcamentos.online";
 const ano = new Date().getFullYear();
-/** Consulta pública do CNPJ. O número continua no texto, para copiar e colar. */
 const CONSULTA_CNPJ =
 	"https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp";
 
-/**
- * O GATE da identidade jurídica. `null` enquanto o dono não preencher
- * `web/src/data/empresa.ts` — e aí o bloco institucional simplesmente NÃO É
- * RENDERIZADO. O bloco publica razão social, CNPJ e canais reais. Endereço
- * residencial nunca entra; um endereço comercial futuro exige revisão própria.
- */
 const empresa = identidadePublicavel();
 const emailContato = emailContatoPublicavel();
 const whatsappUrl = `https://wa.me/${whatsapp}`;
-
-/**
- * `text-slate` (#475569), NÃO `text-muted` (#64748b): medido sobre `bg-paper`
- * (#f6f9fc), muted dá 4.50:1 — em cima da linha do AA, sem margem nenhuma — e
- * slate dá 7.17:1. Dado jurídico é o que o cético vai ler com atenção; não pode
- * ficar no fio do contraste.
- */
 const CLASSE_LEGAL = "text-slate";
 ---
 
-{variante === "completo" ? (
-  <footer class="border-t border-line bg-paper">
-    <div class={`mx-auto ${containerClass} px-6 py-10`}>
-      <div class="flex flex-col items-center justify-between gap-6 sm:flex-row">
-        <a href="/" aria-label="OLLI — início" class="inline-flex min-h-11 items-center"><OlliLogo size={32} /></a>
-        <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
-          <a href="/planos/" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Planos</a>
-          <a href="/#recursos" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Recursos</a>
-          <a href="/legal/privacidade/" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Privacidade</a>
-          <a href="/excluir-conta/" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Excluir conta</a>
-          <a href="/legal/termos/" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Termos</a>
-          <a href="/ajuda/" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Ajuda</a>
-          <a href="/admin/" class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Área administrativa</a>
-          <a href={APP_URL} class="inline-flex min-h-11 min-w-11 items-center justify-center transition hover:text-ink">Entrar</a>
-        </div>
-        <p class="text-sm text-muted">© {ano} {marca}</p>
-      </div>
+<footer class="border-t border-line bg-paper">
+	<div class={`mx-auto ${containerClass} px-5 py-12 sm:px-6`}>
+		{variante === "completo" ? (
+			<div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+				<div>
+					<a href="/" aria-label="OLLI — início" class="inline-flex min-h-11 items-center"><OlliLogo size={32} /></a>
+					<p class="mt-3 max-w-xs text-sm leading-relaxed text-slate">
+						Orçamento, ordem de serviço e recibo para quem trabalha com serviço, no celular e no computador.
+					</p>
+				</div>
+				<nav aria-label="Produto">
+					<p class="text-xs font-bold uppercase tracking-[0.12em] text-muted">Produto</p>
+					<ul class="mt-3 space-y-1">
+						{PAGINAS_HEADER.map((item) => (
+							<li><a class="rodape-link" href={item.href}>{item.rotulo}</a></li>
+						))}
+					</ul>
+				</nav>
+				<nav aria-label="Empresa">
+					<p class="text-xs font-bold uppercase tracking-[0.12em] text-muted">Empresa</p>
+					<ul class="mt-3 space-y-1">
+						{PAGINAS_EMPRESA.map((item) => (
+							<li><a class="rodape-link" href={item.href}>{item.rotulo}</a></li>
+						))}
+						<li><a class="rodape-link" href={APP_URL}>Entrar</a></li>
+					</ul>
+				</nav>
+				<nav aria-label="OLLI por ofício">
+					<p class="text-xs font-bold uppercase tracking-[0.12em] text-muted">Ofícios</p>
+					<ul class="mt-3 space-y-1">
+						{OFICIOS.map((o) => (
+							<li><a class="rodape-link" href={`/para/${SLUG_POR_OFICIO[o.id]}/`}>{o.label}</a></li>
+						))}
+					</ul>
+				</nav>
+			</div>
+		) : (
+			<nav aria-label="Páginas" class="flex flex-wrap gap-x-5 gap-y-2">
+				{PAGINAS_HEADER.map((item) => (
+					<a class="rodape-link" href={item.href}>{item.rotulo}</a>
+				))}
+				<a class="rodape-link" href="/sobre/">Sobre</a>
+				<a class="rodape-link" href="/perguntas/">Perguntas</a>
+			</nav>
+		)}
 
-      {/* Os 6 ofícios: é daqui que /ajuda/, /legal/* e a 404 passam a alcançar —
-          e a passar autoridade para — as páginas que efetivamente convertem. */}
-      <nav aria-label="OLLI por ofício" class="mt-8 border-t border-line pt-6">
-        <p class="text-xs font-bold uppercase tracking-[0.12em] text-muted">A OLLI no seu ofício</p>
-        <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-          {OFICIOS.map((o) => (
-            <a href={`/para/${SLUG_POR_OFICIO[o.id]}/`} class="inline-flex min-h-11 min-w-11 items-center text-slate transition hover:text-brand-fg">{o.label}</a>
-          ))}
-        </div>
-      </nav>
+		<div class={`mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-6 text-sm ${CLASSE_LEGAL}`}>
+			<a class="rodape-link" href="/legal/privacidade/">Privacidade</a>
+			<a class="rodape-link" href="/legal/termos/">Termos</a>
+			<a class="rodape-link" href="/excluir-conta/">Excluir conta</a>
+			<a class="rodape-link" href="/ajuda/">Ajuda</a>
+			<p class="text-sm text-muted">© {ano} {marca}</p>
+		</div>
 
-      {empresa && (
-        <address class={`mt-6 border-t border-line pt-6 text-xs not-italic leading-relaxed ${CLASSE_LEGAL}`}>
-          {/* Texto SELECIONÁVEL, nunca imagem: o CNPJ sai inteiro e o link abre
-              a consulta oficial, onde a pessoa cola o número. */}
-          <span class="font-semibold">{empresa.razaoSocial}</span>
-          <span> · CNPJ {empresa.cnpj}</span>
-          <span> · </span>
-          <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center underline-offset-2 transition hover:text-brand-fg hover:underline">Conferir na Receita Federal</a>
-          <br />
-           <a href={whatsappUrl} class="inline-flex min-h-11 items-center transition hover:text-brand-fg">WhatsApp {whatsappLegivel}</a>
-          {emailContato && (
-            <>
-              <span> · </span>
-               <a href={`mailto:${emailContato}`} class="inline-flex min-h-11 items-center transition hover:text-brand-fg">{emailContato}</a>
-            </>
-          )}
-        </address>
-      )}
-    </div>
-  </footer>
-) : (
-  <footer class="border-t border-line bg-paper">
-    <div class={`mx-auto ${containerClass} px-6 py-8`}>
-      <div class="flex flex-col items-center justify-between gap-3 text-sm text-muted sm:flex-row">
-        <a href="/" class="inline-flex min-h-11 items-center hover:text-brand-fg">← Voltar para o início</a>
-        <p>© {ano} {marca}</p>
-      </div>
-
-      {/* A segunda linha que faltava nas 7 páginas de conversão. Uma linha,
-          text-xs — a economia visual da variante continua de pé. */}
-      <div class={`mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs sm:justify-start ${CLASSE_LEGAL}`}>
-        {empresa && (
-          <>
-            <span class="font-semibold">{empresa.razaoSocial}</span>
-            <span>CNPJ {empresa.cnpj}</span>
-            <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Conferir na Receita Federal</a>
-          </>
-        )}
-        <a href="/legal/privacidade/" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Privacidade</a>
-        <a href="/excluir-conta/" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Excluir conta</a>
-        <a href="/legal/termos/" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Termos</a>
-        <a href="/ajuda/" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Ajuda</a>
-      </div>
-    </div>
-  </footer>
-)}
+		{empresa && (
+			<address class={`mt-4 text-xs not-italic leading-relaxed ${CLASSE_LEGAL}`}>
+				<span class="font-semibold">{empresa.razaoSocial}</span>
+				<span> · CNPJ {empresa.cnpj}</span>
+				<span> · </span>
+				<a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class="rodape-link underline-offset-2 hover:underline">Conferir na Receita Federal</a>
+				<br />
+				<a href={whatsappUrl} class="rodape-link">WhatsApp {whatsappLegivel}</a>
+				{emailContato && (
+					<>
+						<span> · </span>
+						<a href={`mailto:${emailContato}`} class="rodape-link">{emailContato}</a>
+					</>
+				)}
+			</address>
+		)}
+	</div>
+</footer>

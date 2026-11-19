@@ -230,13 +230,7 @@ const schemaFaq = {
 ---
 
 <Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]} ogImagem={ogImagem} canonicalPath={canonicalPath}>
-	<Header>
-		<a
-			href={APP_CADASTRO_URL}
-			class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
-			>Começar grátis</a
-		>
-	</Header>
+	<Header />
 
 	<main id="conteudo">
 		{/* ══════════ HERO DO OFÍCIO ══════════ */}
@@ -266,7 +260,7 @@ const schemaFaq = {
 				>
 				<a
 					href="/planos/"
-					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
+					class="rounded-acao border border-line bg-card px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
 					>Ver os planos</a
 				>
 			</div>
@@ -316,7 +310,7 @@ const schemaFaq = {
 
 					<ul class="mt-10 grid gap-4 sm:grid-cols-2">
 						{calculos.map((c) => (
-							<li class="rounded-cartao border border-line bg-white p-6">
+							<li class="rounded-cartao border border-line bg-card p-6">
 								<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
 									<Icone nome={ICONE_POR_MDI[c.icon] ?? ""} class="h-5 w-5" />
 								</div>
@@ -341,7 +335,7 @@ const schemaFaq = {
 				</p>
 				<ul class="mt-8 flex flex-wrap gap-3">
 					{oficio.documentos.map((d) => (
-						<li class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate">
+						<li class="rounded-full border border-line bg-card px-4 py-2 text-sm font-medium text-slate">
 							<span class="text-check">✓</span> {d}
 						</li>
 					))}
@@ -356,24 +350,24 @@ const schemaFaq = {
 					Do pedido do cliente ao recibo.
 				</h2>
 				<ol class="mt-8 grid gap-4 sm:grid-cols-3">
-					<li class="rounded-cartao border border-line bg-white p-6">
+					<li class="rounded-cartao border border-line bg-card p-6">
 						<div class="text-sm font-extrabold text-brand-fg tnum">01</div>
 						<h3 class="mt-2 font-bold text-ink">Orçamento</h3>
 						<p class="mt-1.5 text-sm text-slate">Monte o serviço com itens e preço: a OLLI gera o PDF e o link pro cliente aprovar.</p>
 					</li>
-					<li class="rounded-cartao border border-line bg-white p-6">
+					<li class="rounded-cartao border border-line bg-card p-6">
 						<div class="text-sm font-extrabold text-brand-fg tnum">02</div>
 						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
 						<p class="mt-1.5 text-sm text-slate">Aprovou, virou ordem de serviço: checklist, fotos e assinatura do cliente na tela.</p>
 					</li>
-					<li class="rounded-cartao border border-line bg-white p-6">
+					<li class="rounded-cartao border border-line bg-card p-6">
 						<div class="text-sm font-extrabold text-brand-fg tnum">03</div>
 						<h3 class="mt-2 font-bold text-ink">Recibo</h3>
 						<p class="mt-1.5 text-sm text-slate">Recebeu, emite o recibo. O histórico do cliente fica guardado pra próxima.</p>
 					</li>
 				</ol>
 
-				<div class="mt-12 rounded-cartao border border-line bg-white p-8 text-center">
+				<div class="mt-12 rounded-cartao border border-line bg-card p-8 text-center">
 					<p class="text-lg font-semibold text-ink">Comece de graça, {GRATIS_CONDICAO}.</p>
 					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
 						O plano grátis não tem prazo e não pede cartão. O que ele inclui hoje está na <a href="/planos/" class="underline">página de planos</a>.
@@ -394,7 +388,7 @@ const schemaFaq = {
 			</h2>
 			{/* Mesma caixa-que-agrupa do FAQ da home, mesmo `overflow-hidden` pelo
 			    mesmo motivo (raio aninhado com <details> sem padding lateral). */}
-			<div class="mt-8 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-white">
+			<div class="mt-8 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-card">
 				{faqs.map((f) => (
 					<details class="group">
 						<summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
@@ -448,7 +442,7 @@ const schemaFaq = {
 					<li>
 						<a
 							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-							class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
+							class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-card px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
 						>
 							<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
 						</a>

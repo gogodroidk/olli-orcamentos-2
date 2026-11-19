@@ -51,8 +51,14 @@ const LASTMOD = lastmodPorRota();
  * molde (`pages/para/[oficio].astro`).
  */
 const LASTMOD_PAGINAS = new Map([
-  ['/', '2026-10-01'],
-  ['/planos/', '2026-10-01'],
+  ['/', '2026-11-16'],
+  ['/planos/', '2026-11-03'],
+  ['/produto/', '2026-11-16'],
+  ['/catalogo/', '2026-11-05'],
+  ['/sobre/', '2026-11-03'],
+  ['/como-funciona/', '2026-11-03'],
+  ['/perguntas/', '2026-11-16'],
+  ['/contato/', '2026-11-03'],
   ['/ajuda/', '2026-10-02'],
   ['/legal/privacidade/', '2026-09-29'],
   ['/legal/termos/', '2026-09-29'],

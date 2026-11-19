@@ -233,9 +233,10 @@ for (const [i, c] of CASOS.entries()) {
   checar(`SQL = JS: ${c.nome}`, linha && linha.motivo === c.esperado, `SQL ${linha?.motivo}, esperado ${c.esperado}`);
 }
 
-// A view usa now(); em 04/10/2026 ou depois, os mesmos casos valem enquanto as
-// vigências de teste não vencem. Compara só o conjunto que a view devolve com
-// o que a função diz para now().
+// A view usa now(). As cópias de pagante (201–205) renovam a vigência para
+// now()+30 dias: o MES congelado (2026-11-04) já passou no relógio real e a
+// view deixaria de contá-los sem mudar a regra. Compara o conjunto da view
+// com o que a função diz para now().
 const view = await db.query<{ user_id: string }>('select user_id from public.assinaturas_pagantes order by user_id');
 const agoraReal = await db.query<{ user_id: string }>(
   `select user_id from public.assinaturas
@@ -263,7 +264,7 @@ for (const x of internos) {
   await db.query('insert into auth.users (id, email) values ($1, $2)', [id(x.n), x.email]);
   await db.query(
     `insert into public.assinaturas (user_id, plano, status, current_period_end, stripe_subscription_id, stripe_customer_id)
-     select $1, plano, status, current_period_end, stripe_subscription_id, stripe_customer_id
+     select $1, plano, status, now() + interval '30 days', stripe_subscription_id, stripe_customer_id
        from public.assinaturas where user_id = $2`,
     [id(x.n), id(STRIPE_REAL_IDX + 1)],
   );

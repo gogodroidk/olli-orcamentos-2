@@ -186,7 +186,7 @@ const jsonLd = [schemaOrganizacao, schemaWebSite, ...(ofertaDoApp ? [schemaApp] 
     {redirectUrl && <meta http-equiv="refresh" content={`0;url=${redirectUrl}`} />}
 
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="OLLI Orçamentos" />
+    <meta property="og:site_name" content={nomeDoSite} />
     <meta property="og:title" content={titulo} />
     <meta property="og:description" content={descricao} />
     <meta property="og:locale" content="pt_BR" />

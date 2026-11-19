@@ -1,0 +1,56 @@
+---
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import ListaFaq from "../components/site/ListaFaq.astro";
+import Layout from "../layouts/Layout.astro";
+import { faqProduto } from "../data/conteudoSite";
+import { faqPlanos } from "../data/faqPlanos";
+
+const produto = faqProduto();
+const planos = faqPlanos();
+const todas = [...produto, ...planos];
+const schemaFaq = {
+	"@context": "https://schema.org",
+	"@type": "FAQPage",
+	mainEntity: todas.map((f) => ({
+		"@type": "Question",
+		name: f.q,
+		acceptedAnswer: { "@type": "Answer", text: f.a },
+	})),
+};
+const schemaBreadcrumb = {
+	"@context": "https://schema.org",
+	"@type": "BreadcrumbList",
+	itemListElement: [
+		{ "@type": "ListItem", position: 1, name: "OLLI", item: Astro.site?.origin },
+		{ "@type": "ListItem", position: 2, name: "Perguntas", item: new URL("/perguntas/", Astro.site ?? "https://olliorcamentos.online").href },
+	],
+};
+---
+
+<Layout
+	titulo="Perguntas frequentes — OLLI Orçamentos"
+	descricao="Respostas sobre o plano Grátis, celular e computador, ofícios, PMOC, internet, Pix, cancelamento e o que acontece com os dados."
+	schemas={[schemaBreadcrumb, schemaFaq]}
+>
+	<Header />
+	<main id="conteudo">
+		<section class="mx-auto max-w-3xl px-5 py-12 sm:px-6 md:py-16">
+			<p class="text-sm text-muted"><a href="/" class="rodape-link">Início</a> <span aria-hidden="true">/</span> Perguntas</p>
+			<span class="eyebrow mt-4">Perguntas</span>
+			<h1 class="mt-4 text-4xl tracking-tight text-ink sm:text-5xl">Ainda na dúvida?</h1>
+			<p class="mt-4 text-lg text-slate">As respostas abaixo são as mesmas das páginas de produto e de preços. O passo a passo de uso está na <a href="/ajuda/" class="font-semibold text-brand-fg">Central de Ajuda</a>.</p>
+
+			<h2 class="mt-12 text-2xl text-ink">Sobre o produto</h2>
+			<div class="mt-4">
+				<ListaFaq itens={produto} />
+			</div>
+
+			<h2 class="mt-12 text-2xl text-ink">Sobre os planos</h2>
+			<div class="mt-4">
+				<ListaFaq itens={planos} />
+			</div>
+		</section>
+	</main>
+	<Footer />
+</Layout>
