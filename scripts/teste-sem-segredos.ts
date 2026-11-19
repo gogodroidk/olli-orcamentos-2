@@ -67,7 +67,9 @@ const PADROES: Padrao[] = [
   // A senha da demo começa pelo nome da empresa; o padrão pega qualquer token
   // `GrTech…` sem soletrá-la aqui (o e-mail `demo@grtech.com.br` não casa: `.` ≠ `\w`).
   // Sem diferenciar caixa: a senha em minúsculas ou maiúsculas continua sendo a senha.
-  { nome: 'senha da conta demo', re: /\bGrTech\w{4,}/gi },
+  // O hostname público grtechrefrigeracao.com.br casa o mesmo prefixo. Só esse
+  // rótulo, inteiro, passa. Qualquer outra continuação continua sendo senha.
+  { nome: 'senha da conta demo', re: /\bGrTech\w{4,}/gi, permitido: (trecho) => trecho.toLowerCase() === 'grtechrefrigeracao' },
   // `senha: "..."`, `"password": "..."`, `**Senha:** "..."` — a chave colada no `:`/`=`.
   // Atributo de form (`type="password"`, `placeholder="sua senha"`) não casa.
   // `(?<![A-Za-z0-9])` em vez de `\b`: `DEMO_PASSWORD="..."`/`DB_SENHA='...'` também é
@@ -191,6 +193,7 @@ const deveSoltar: [string, string][] = [
   ['atributo de input', '<input id="senha" type="password" autoComplete="new-password" placeholder="sua senha"/>'],
   ['doc que aponta pro cofre', 'senha (no cofre local)'],
   ['e-mail da conta demo', 'conta demo (`demo@grtech.com.br`)'],
+  ['domínio público da GR Tech', 'https://grtechrefrigeracao.com.br/sitemap.xml'],
 ];
 for (const [nome, amostra] of deveSoltar) {
   checar(`solta ${nome}`, varrerTexto('amostra', amostra).length === 0, JSON.stringify(varrerTexto('amostra', amostra)));

@@ -1,0 +1,3918 @@
+{
+ "servicos": {
+  "titulo": "Serviços de ar-condicionado em São Paulo · GR Tech",
+  "desc": "Instalação, limpeza e manutenção, conserto e atendimento a empresas, com VRF e refrigeração comercial. Orçamento por escrito via app OLLI.",
+  "h1": "O que a GR Tech faz.",
+  "olho": "Serviços",
+  "lead": "Ar-condicionado em casa e na empresa, e refrigeração comercial. Em todos, o mesmo jeito: visita, orçamento por escrito e serviço só depois do seu sim.",
+  "blocos": [
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Instalação com tubulação bem feita."
+     },
+     {
+      "t": "p",
+      "x": "Split, cassete, piso-teto e multi-split, para casa ou empresa. Tubulação isolada e acabamento limpo.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Split de 9.000 a 12.000 BTU com até 3 m de tubulação"
+     },
+     {
+      "t": "li",
+      "x": "Cassete e piso-teto com orçamento depois de ver o local"
+     },
+     {
+      "t": "li",
+      "x": "Visita de R$ 150 abatida do total"
+     },
+     {
+      "t": "h3",
+      "x": "Limpeza com o aparelho aberto."
+     },
+     {
+      "t": "p",
+      "x": "Filtro, turbina, serpentina e bandeja. Para casa, consultório e escritório.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Filtro, turbina e serpentina, camada por camada"
+     },
+     {
+      "t": "li",
+      "x": "Cheiro de mofo quando liga é sinal de sujeira lá dentro"
+     },
+     {
+      "t": "li",
+      "x": "Valor exato sai na visita"
+     },
+     {
+      "t": "h3",
+      "x": "Primeiro o diagnóstico, depois o conserto."
+     },
+     {
+      "t": "p",
+      "x": "Não gela, pinga, faz barulho ou não liga. O técnico mede, testa e passa o orçamento por escrito.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Peça e mão de obra separadas no orçamento"
+     },
+     {
+      "t": "li",
+      "x": "Nada é feito sem o seu sim"
+     },
+     {
+      "t": "li",
+      "x": "Carga de gás: combine no WhatsApp"
+     },
+     {
+      "t": "h3",
+      "x": "Comércio, escritório e VRF."
+     },
+     {
+      "t": "p",
+      "x": "Restaurante, loja, consultório e escritório. VRF, VRV, refrigeração comercial e contrato de manutenção.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Proposta por escrito depois do levantamento"
+     },
+     {
+      "t": "li",
+      "x": "Visitas mensais ou trimestrais"
+     },
+     {
+      "t": "li",
+      "x": "Geladeira e freezer de casa, não"
+     }
+    ]
+   },
+   {
+    "h2": "Instalação",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Split, cassete, piso-teto e multi-split. Tubulação isolada, dreno no caimento e acabamento limpo.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "A partir de R$ 1.000",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Ver instalação →",
+      "l": [
+       [
+        "Ver instalação →",
+        "/instalacao/"
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "h2": "Limpeza e manutenção",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Filtro, turbina, serpentina e bandeja, com o aparelho aberto. Para casa, consultório e escritório.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "A partir de R$ 450 por aparelho",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Ver limpeza e manutenção →",
+      "l": [
+       [
+        "Ver limpeza e manutenção →",
+        "/limpeza-e-manutencao/"
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "h2": "Conserto",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Não gela, pinga, faz barulho ou não liga. Diagnóstico no local e orçamento antes de mexer.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "O valor sai na visita técnica de R$ 150",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Ver conserto →",
+      "l": [
+       [
+        "Ver conserto →",
+        "/conserto/"
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "h2": "Empresas",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Comércio e escritório, VRF, VRV, refrigeração comercial e contrato de manutenção.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Proposta por escrito depois do levantamento",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Ver empresas →",
+      "l": [
+       [
+        "Ver empresas →",
+        "/empresas/"
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "h2": "Não sabe qual serviço é o seu?",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Conte o que o aparelho está fazendo. A gente diz o caminho.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "instalacao": {
+  "titulo": "Instalação de ar-condicionado em São Paulo · GR Tech",
+  "desc": "Instalação de split, cassete, piso-teto e multi-split em São Paulo. A partir de R$ 1.000 para split de 9.000 a 12.000 BTU, até 3 m de tubulação. Orçamento por escrito via app.",
+  "h1": "Instalação com tubulação bem feita e acabamento limpo.",
+  "olho": "Instalação",
+  "lead": "Split, cassete, piso-teto e multi-split, para casa ou empresa.",
+  "blocos": [
+   {
+    "h2": "A partir de R$ 1.000.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     },
+     {
+      "t": "preco",
+      "n": "Instalação de split",
+      "nota": "De 9.000 a 12.000 BTU, com até 3 m de tubulação. A visita técnica de R$ 150 é abatida desse total. Fora dessa condição, o valor sai da visita, por escrito.",
+      "v": "a partir de R$ 1.000"
+     },
+     {
+      "t": "preco",
+      "n": "Visita técnica",
+      "nota": "Ida e diagnóstico. Abatida se você fechar o serviço.",
+      "v": "R$ 150"
+     },
+     {
+      "t": "p",
+      "x": "O orçamento chega por escrito, via app OLLI Orçamentos, antes de qualquer serviço além da visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Três tipos de aparelho.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "O que a gente instala",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Split"
+     },
+     {
+      "t": "p",
+      "x": "Para quarto, sala e ambientes pequenos, em casa ou empresa.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Cassete e piso-teto"
+     },
+     {
+      "t": "p",
+      "x": "Para salão, loja e escritório, com orçamento depois de ver o local.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Multi-split"
+     },
+     {
+      "t": "p",
+      "x": "Uma condensadora do lado de fora e várias unidades dentro.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Instalações que fizemos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "No serviço",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Fotos reais de atendimentos nossos.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Sobre instalação.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa instalar um split?",
+      "a": "A partir de R$ 1.000 para split de 9.000 a 12.000 BTU, com até 3 m de tubulação. A visita de R$ 150 é abatida desse total. Fora dessa condição, o valor sai da visita, por escrito."
+     },
+     {
+      "t": "faq",
+      "q": "Preciso pagar sinal para marcar?",
+      "a": "Não. Você só paga depois da visita. A visita técnica é R$ 150 e, se você fechar o serviço, esse valor é abatido. O pagamento é por Pix, na conta da GR Tech (CNPJ 44.301.204/0001-38)."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     },
+     {
+      "t": "faq",
+      "q": "Posso mandar foto?",
+      "a": "Pode, e ajuda muito: do aparelho, da etiqueta e do defeito."
+     }
+    ]
+   },
+   {
+    "h2": "Vai instalar? Conte o ambiente e o aparelho.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa ou empresa, o bairro e o tipo de aparelho que você pensa em colocar.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "limpeza-e-manutencao": {
+  "titulo": "Limpeza e manutenção de ar-condicionado em São Paulo · GR Tech",
+  "desc": "Limpeza de filtro, turbina, serpentina e bandeja, com o aparelho aberto. Manutenção preventiva a partir de R$ 450 por aparelho em São Paulo e Grande São Paulo.",
+  "h1": "Cheiro ruim no ar-condicionado é sujeira lá dentro.",
+  "olho": "Limpeza e manutenção",
+  "lead": "Limpeza de filtro, turbina, serpentina e bandeja, com o aparelho aberto. Para casa, consultório e escritório.",
+  "blocos": [
+   {
+    "h2": "O que a limpeza tira.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Camada por camada",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Fotos de atendimentos nossos, de aparelhos diferentes.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Camada 1",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "O filtro"
+     },
+     {
+      "t": "p",
+      "x": "Poeira e pelo seguram o ar antes de ele entrar no aparelho.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Camada 2",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "A turbina"
+     },
+     {
+      "t": "p",
+      "x": "É ela que joga o ar no ambiente. A sujeira gruda nas pás.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Camada 3",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "A serpentina"
+     },
+     {
+      "t": "p",
+      "x": "É onde o ar esfria. Suja, troca menos calor e o aparelho trabalha mais.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "A partir de R$ 450 por aparelho.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     },
+     {
+      "t": "preco",
+      "n": "Manutenção preventiva com limpeza",
+      "nota": "Por aparelho. O valor exato sai na visita técnica, que é abatida se você fechar.",
+      "v": "a partir de R$ 450"
+     },
+     {
+      "t": "preco",
+      "n": "Visita técnica",
+      "nota": "Ida e diagnóstico. Abatida se você fechar o serviço.",
+      "v": "R$ 150"
+     },
+     {
+      "t": "p",
+      "x": "O orçamento chega por escrito, via app OLLI Orçamentos, antes de qualquer serviço além da visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Mesmo aparelho, mesmo dia.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Antes e depois",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Filtros do mesmo aparelho. Foto real de um atendimento nosso. Arraste ou use as setas.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Sinais de que está na hora.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quando chamar",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Cheiro quando liga"
+     },
+     {
+      "t": "p",
+      "x": "Cheiro de mofo ou de guardado assim que o aparelho começa a funcionar.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Ar fraco ou pingando"
+     },
+     {
+      "t": "p",
+      "x": "Filtro e serpentina sujos seguram o ar e podem entupir o dreno.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Parado há tempo"
+     },
+     {
+      "t": "p",
+      "x": "Antes de voltar a usar um aparelho que ficou parado, a limpeza é um bom começo.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Sobre limpeza.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a limpeza?",
+      "a": "A manutenção preventiva com limpeza é a partir de R$ 450 por aparelho. O valor exato sai na visita, que é abatida se você fechar."
+     },
+     {
+      "t": "faq",
+      "q": "Preciso pagar sinal para marcar?",
+      "a": "Não. Você só paga depois da visita. A visita técnica é R$ 150 e, se você fechar o serviço, esse valor é abatido. O pagamento é por Pix, na conta da GR Tech (CNPJ 44.301.204/0001-38)."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     },
+     {
+      "t": "faq",
+      "q": "Posso mandar foto?",
+      "a": "Pode, e ajuda muito: do aparelho, da etiqueta e do defeito."
+     }
+    ]
+   },
+   {
+    "h2": "Quantos aparelhos são?",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Diga a quantidade e o bairro. A gente combina a visita.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "conserto": {
+  "titulo": "Conserto de ar-condicionado em São Paulo · GR Tech",
+  "desc": "Ar-condicionado que não gela, pinga, faz barulho ou não liga. Diagnóstico no local e orçamento por escrito antes de mexer. Visita técnica R$ 150, abatida se você fechar.",
+  "h1": "Ar-condicionado com defeito? Primeiro o diagnóstico.",
+  "olho": "Conserto",
+  "lead": "O técnico mede, testa e só depois passa o orçamento por escrito, com peça e mão de obra separadas.",
+  "blocos": [
+   {
+    "h2": "O que costuma aparecer.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Sintomas",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Mande o sintoma, a marca e o modelo. Foto da etiqueta ajuda.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Não gela"
+     },
+     {
+      "t": "p",
+      "x": "Liga, sopra, mas o ambiente não esfria.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Pinga"
+     },
+     {
+      "t": "p",
+      "x": "Água escorrendo pela parede ou no piso.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Faz barulho"
+     },
+     {
+      "t": "p",
+      "x": "Ruído novo na unidade de dentro ou de fora.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Não liga"
+     },
+     {
+      "t": "p",
+      "x": "Sem resposta no controle ou desligando sozinho.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O valor sai da visita.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     },
+     {
+      "t": "preco",
+      "n": "Visita com diagnóstico",
+      "nota": "Se você fechar o conserto, a visita é abatida do valor. Peça e mão de obra vêm separadas no orçamento.",
+      "v": "R$ 150"
+     },
+     {
+      "t": "preco",
+      "n": "Carga de gás",
+      "nota": "Depende do aparelho e de haver vazamento.",
+      "v": "combine no WhatsApp"
+     },
+     {
+      "t": "p",
+      "x": "O orçamento chega por escrito, via app OLLI Orçamentos, antes de qualquer serviço além da visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Sobre conserto.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Atendem hoje?",
+      "a": "Mande o caso no WhatsApp. A gente responde e combina o horário da visita, de segunda a sábado, das 8h às 18h."
+     },
+     {
+      "t": "faq",
+      "q": "E se eu não fechar o serviço?",
+      "a": "Você paga só a visita técnica, de R$ 150, pela ida e pelo diagnóstico."
+     },
+     {
+      "t": "faq",
+      "q": "Atendem qualquer marca?",
+      "a": "Mande a marca e o modelo. A gente diz se atende antes de marcar a visita."
+     },
+     {
+      "t": "faq",
+      "q": "Posso mandar foto?",
+      "a": "Pode, e ajuda muito: do aparelho, da etiqueta e do defeito."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a carga de gás?",
+      "a": "Depende do tipo e da potência do aparelho e de haver vazamento. Combine pelo WhatsApp."
+     }
+    ]
+   },
+   {
+    "h2": "Conte o que o aparelho está fazendo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Sintoma, marca, modelo e bairro. A gente responde e combina a visita.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "empresas": {
+  "titulo": "Ar-condicionado para empresas, VRF e contrato de manutenção · GR Tech",
+  "desc": "Restaurante, loja, consultório e escritório em São Paulo. Piso-teto, cassete, split comercial, VRF, VRV e refrigeração comercial. Contrato de manutenção com proposta por escrito.",
+  "h1": "Ar parado no horário de pico custa caro.",
+  "olho": "Empresas",
+  "lead": "Restaurante, loja, consultório e escritório. Instalação, preventiva e conserto, com orçamento por escrito antes de começar.",
+  "blocos": [
+   {
+    "h2": "Situações que a gente resolve.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "O que costuma acontecer",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Para de gelar no movimento"
+     },
+     {
+      "t": "p",
+      "x": "Ar parado no pico pesa para quem trabalha e para quem está no salão.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Pinga no salão"
+     },
+     {
+      "t": "p",
+      "x": "Dreno entupido ou instalação fora de nível pode molhar piso e mesa.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quebra sem aviso"
+     },
+     {
+      "t": "p",
+      "x": "Sem preventiva, a falha costuma aparecer quando o aparelho está no limite.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Atendemos. Geladeira e freezer de casa, não.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "VRF, VRV e refrigeração comercial",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Diga a marca e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Vários aparelhos, um só controle.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Contrato de manutenção",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Como a proposta é montada"
+     },
+     {
+      "t": "p",
+      "x": "Pela quantidade e pelo tipo de equipamentos, pela frequência e pelo local. Levantamento feito, a proposta chega por escrito.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "O que entra"
+     },
+     {
+      "t": "p",
+      "x": "Visitas preventivas, corretivas e peças são definidas na proposta, antes de você contratar.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Visita de levantamento"
+     },
+     {
+      "t": "p",
+      "x": "Custa R$ 150, abatida se você fechar.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Frequência"
+     },
+     {
+      "t": "p",
+      "x": "Mensal ou trimestral, conforme o uso dos equipamentos e a rotina do seu negócio.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Sobre empresas.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Como é definido o valor do contrato de manutenção?",
+      "a": "Pela quantidade e pelo tipo de equipamentos, pela frequência das visitas e pelo local. Fazemos o levantamento e enviamos a proposta por escrito."
+     },
+     {
+      "t": "faq",
+      "q": "Qual a frequência das visitas do contrato?",
+      "a": "Mensal ou trimestral, conforme o uso dos equipamentos e a rotina do seu negócio."
+     },
+     {
+      "t": "faq",
+      "q": "Atendem VRF, VRV e câmara fria?",
+      "a": "Atendem. Diga a marca e o que está acontecendo."
+     },
+     {
+      "t": "faq",
+      "q": "Consertam geladeira ou freezer de casa?",
+      "a": "Não. A GR Tech trabalha com ar-condicionado e refrigeração comercial."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     }
+    ]
+   },
+   {
+    "h2": "Mande a lista dos equipamentos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Com marca e modelo, se souber, e o bairro. A gente agenda o levantamento.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "precos": {
+  "titulo": "Preços · GR Tech Refrigeração",
+  "desc": "Visita técnica R$ 150, abatida se você fechar. Manutenção preventiva a partir de R$ 450 por aparelho. Instalação a partir de R$ 1.000. Orçamento por escrito via app OLLI.",
+  "h1": "A tabela, sem letra miúda.",
+  "olho": "Preços",
+  "lead": "O que não está nela sai da visita técnica, por escrito, via app OLLI Orçamentos.",
+  "blocos": [
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Visita técnica",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "R$ 150 ida e diagnóstico",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Se você fechar o serviço, esse valor sai do total. Não pedimos sinal.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Limpeza e preventiva",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "R$ 450 a partir de, por aparelho",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Filtro, turbina, serpentina e bandeja. O valor exato sai na visita.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Instalação de split",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "R$ 1.000 a partir de",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "De 9.000 a 12.000 BTU, até 3 m de tubulação. A visita é abatida desse total.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "preco",
+      "n": "Visita técnica",
+      "nota": "Ida e diagnóstico. Abatida do serviço se você fechar. Não pedimos sinal.",
+      "v": "R$ 150"
+     },
+     {
+      "t": "preco",
+      "n": "Manutenção preventiva e limpeza",
+      "nota": "Por aparelho. O valor exato sai na visita.",
+      "v": "a partir de R$ 450"
+     },
+     {
+      "t": "preco",
+      "n": "Instalação de split",
+      "nota": "De 9.000 a 12.000 BTU, até 3 m de tubulação. A visita é abatida desse total.",
+      "v": "a partir de R$ 1.000"
+     },
+     {
+      "t": "preco",
+      "n": "Conserto",
+      "nota": "Peça e mão de obra separadas no orçamento.",
+      "v": "sai na visita"
+     },
+     {
+      "t": "preco",
+      "n": "Carga de gás",
+      "nota": "Depende do aparelho e de haver vazamento.",
+      "v": "combine no WhatsApp"
+     },
+     {
+      "t": "preco",
+      "n": "Contrato de manutenção",
+      "nota": "Proposta por escrito depois do levantamento.",
+      "v": "sob proposta"
+     },
+     {
+      "t": "p",
+      "x": "Pagamento por Pix, na conta da GR Tech (CNPJ 44.301.204/0001-38), depois da visita ou, se você fechar, depois do serviço feito.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Quanto custa o meu serviço?",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Simule",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Como o orçamento chega.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "O orçamento",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "1 O link chega no WhatsApp Depois da visita, o orçamento da GR Tech chega como um link, feito no app OLLI Orçamentos."
+     },
+     {
+      "t": "li",
+      "x": "2 Você abre no celular ou no computador Itens, peça e mão de obra separados, com as condições escritas. Dá para guardar o PDF."
+     },
+     {
+      "t": "li",
+      "x": "3 Você decide com calma Aprova pelo próprio link ou responde no WhatsApp. Nada além da visita é feito sem o seu sim."
+     },
+     {
+      "t": "p",
+      "x": "Seu orçamento está pronto. Toque para abrir.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Ilustração do formato. Os valores do seu caso saem da visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Sobre valores.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Preciso pagar sinal para marcar?",
+      "a": "Não. Você só paga depois da visita. A visita técnica é R$ 150 e, se você fechar o serviço, esse valor é abatido. O pagamento é por Pix, na conta da GR Tech (CNPJ 44.301.204/0001-38)."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a visita técnica?",
+      "a": "R$ 150, com ida e diagnóstico. Se você fechar o serviço, os R$ 150 são abatidos do total."
+     },
+     {
+      "t": "faq",
+      "q": "E se eu não fechar o serviço?",
+      "a": "Você paga só a visita técnica, de R$ 150, pela ida e pelo diagnóstico."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     },
+     {
+      "t": "faq",
+      "q": "O que é o OLLI Orçamentos?",
+      "a": "É o aplicativo de orçamentos que a GR Tech usa: itens, peça e mão de obra separados, num documento que você recebe e guarda. A OLLI nasceu dentro da GR Tech."
+     }
+    ]
+   },
+   {
+    "h2": "Quer saber o valor do seu caso?",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Conte o aparelho e o que precisa. O orçamento chega por escrito.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "como-funciona": {
+  "titulo": "Como funciona · GR Tech Refrigeração",
+  "desc": "Você conta no WhatsApp, o técnico faz a visita (R$ 150, abatida se você fechar), o orçamento chega por escrito via app OLLI Orçamentos e você decide.",
+  "h1": "Do WhatsApp ao serviço feito, sem surpresa no caminho.",
+  "olho": "Como funciona",
+  "lead": "Você vê o valor por escrito antes de qualquer serviço além da visita. Não pedimos sinal.",
+  "blocos": [
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "li",
+      "x": "Passo 1 Você conta No WhatsApp: casa ou empresa, o bairro e o que está acontecendo. Foto da etiqueta do aparelho ajuda."
+     },
+     {
+      "t": "li",
+      "x": "Passo 2 A gente combina A primeira resposta vem do nosso atendimento com IA, que já marca o dia da visita."
+     },
+     {
+      "t": "li",
+      "x": "Passo 3 O técnico vai até você Olha o aparelho e o local. A visita é R$ 150 e é abatida se você fechar o serviço."
+     },
+     {
+      "t": "li",
+      "x": "Passo 4 O orçamento chega por escrito Feito no app OLLI Orçamentos, com peça e mão de obra separadas. Você lê com calma e decide."
+     },
+     {
+      "t": "li",
+      "x": "Passo 5 Serviço feito, pagamento depois Pix na conta da GR Tech, depois do serviço. Se não fechar, você paga só a visita."
+     }
+    ]
+   },
+   {
+    "h2": "Do primeiro oi ao horário marcado.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "A primeira resposta vem do nosso atendimento com IA, que já pede o que o técnico precisa saber. A visita, o orçamento e o serviço são do técnico da GR Tech.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Foto do aparelho e da etiqueta ajuda muito"
+     },
+     {
+      "t": "li",
+      "x": "Você pode pedir para falar com uma pessoa a qualquer momento"
+     },
+     {
+      "t": "li",
+      "x": "O orçamento chega por escrito, via app OLLI"
+     },
+     {
+      "t": "li",
+      "x": "Oi, vim pelo site da GR Tech. É apartamento, o ar da sala está pingando."
+     },
+     {
+      "t": "li",
+      "x": "Oi! Aqui é o atendimento com IA da GR Tech. Qual é o bairro? E, se puder, mande uma foto da etiqueta do aparelho."
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé. Mandei a foto."
+     },
+     {
+      "t": "li",
+      "x": "Obrigado. A visita técnica é R$ 150 e é abatida se você fechar o serviço. Qual dia e horário ficam bons para você?"
+     },
+     {
+      "t": "li",
+      "x": "Amanhã de manhã."
+     },
+     {
+      "t": "li",
+      "x": "Combinado. Depois da visita, o orçamento chega por escrito pelo app OLLI. Se quiser falar com uma pessoa, é só pedir."
+     },
+     {
+      "t": "p",
+      "x": "Exemplo ilustrativo de conversa. Dia e horário são combinados no WhatsApp.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Como o orçamento chega até você.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "O orçamento",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "1 O link chega no WhatsApp Depois da visita, o orçamento da GR Tech chega como um link, feito no app OLLI Orçamentos."
+     },
+     {
+      "t": "li",
+      "x": "2 Você abre no celular ou no computador Itens, peça e mão de obra separados, com as condições escritas. Dá para guardar o PDF."
+     },
+     {
+      "t": "li",
+      "x": "3 Você decide com calma Aprova pelo próprio link ou responde no WhatsApp. Nada além da visita é feito sem o seu sim."
+     },
+     {
+      "t": "p",
+      "x": "Seu orçamento está pronto. Toque para abrir.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Ilustração do formato. Os valores do seu caso saem da visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Via app OLLI Orçamentos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "O app",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "É o app de orçamentos que nasceu dentro da GR Tech. Depois da visita, ele monta o documento que você recebe.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itens, peça e mão de obra separados"
+     },
+     {
+      "t": "li",
+      "x": "Documento que você recebe e guarda"
+     },
+     {
+      "t": "li",
+      "x": "Nada além da visita sem o seu sim"
+     },
+     {
+      "t": "p",
+      "x": "Como a gente cobra",
+      "l": []
+     },
+     {
+      "t": "preco",
+      "n": "Visita técnica",
+      "nota": "",
+      "v": "R$ 150 abatida se você fechar o serviço"
+     },
+     {
+      "t": "preco",
+      "n": "Sinal",
+      "nota": "",
+      "v": "Não pedimos"
+     },
+     {
+      "t": "preco",
+      "n": "Orçamento",
+      "nota": "",
+      "v": "Via app OLLI, por escrito"
+     },
+     {
+      "t": "preco",
+      "n": "Pagamento",
+      "nota": "",
+      "v": "Pix, depois"
+     }
+    ]
+   },
+   {
+    "h2": "Atendimento com IA, serviço com o técnico.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quem é quem",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "No WhatsApp"
+     },
+     {
+      "t": "p",
+      "x": "A primeira resposta vem do nosso atendimento com inteligência artificial. Você pode pedir uma pessoa a qualquer momento.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Na sua casa ou empresa"
+     },
+     {
+      "t": "p",
+      "x": "A visita, o orçamento e o serviço são do técnico da GR Tech.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "O que ajuda"
+     },
+     {
+      "t": "p",
+      "x": "Foto do aparelho, da etiqueta e do defeito, junto com o bairro.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Começa pelo WhatsApp.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa ou empresa, o bairro e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "sobre": {
+  "titulo": "Sobre a GR Tech Refrigeração",
+  "desc": "A GR Tech é uma empresa de ar-condicionado e refrigeração em São Paulo. Quem atende é o técnico da GR Tech, do diagnóstico ao serviço feito. A OLLI Orçamentos nasceu aqui.",
+  "h1": "Uma empresa de campo, em São Paulo.",
+  "olho": "Sobre",
+  "lead": "A GR Tech instala, limpa e conserta ar-condicionado e atende refrigeração comercial na capital e na Grande São Paulo.",
+  "blocos": [
+   {
+    "h2": "Quem vai até você é quem faz o serviço.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Como a gente trabalha",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Um técnico do começo ao fim"
+     },
+     {
+      "t": "p",
+      "x": "A visita, o diagnóstico, o orçamento e o serviço são feitos pelo técnico da GR Tech.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Tudo por escrito"
+     },
+     {
+      "t": "p",
+      "x": "O orçamento sai via app OLLI Orçamentos, antes de qualquer serviço além da visita.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Sem sinal"
+     },
+     {
+      "t": "p",
+      "x": "Você paga depois, por Pix, na conta da GR Tech.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "A OLLI Orçamentos nasceu aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "GR Tech + OLLI",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Cansada de orçamento no caderno e foto perdida no grupo do WhatsApp, a GR Tech criou o próprio app. Esse app é a OLLI Orçamentos.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Mesma casa, mesmo cuidado. Conheça a OLLI →",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "São Paulo (capital) e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Área de atendimento",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Visitas de segunda a sábado, das 8h às 18h. Alguns bairros onde a gente atende:",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi"
+     },
+     {
+      "t": "li",
+      "x": "Moema"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco"
+     },
+     {
+      "t": "p",
+      "x": "Não achou o seu? A gente atende toda a região. Ver onde atendemos",
+      "l": [
+       [
+        "Ver onde atendemos",
+        "/atendimento/"
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "h2": "GR Tech Refrigeração.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dados da empresa",
+      "l": []
+     },
+     {
+      "t": "preco",
+      "n": "CNPJ",
+      "nota": "",
+      "v": "44.301.204/0001-38"
+     },
+     {
+      "t": "preco",
+      "n": "Região",
+      "nota": "",
+      "v": "São Paulo (capital) e Grande São Paulo"
+     },
+     {
+      "t": "preco",
+      "n": "Visitas",
+      "nota": "",
+      "v": "Segunda a sábado, das 8h às 18h"
+     },
+     {
+      "t": "preco",
+      "n": "Contato",
+      "nota": "",
+      "v": "(11) 95875-8030 · contato@grtechrefrigeracao.com.br"
+     }
+    ]
+   },
+   {
+    "h2": "Conte o que precisa.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "A gente responde no WhatsApp e combina a visita.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "duvidas": {
+  "titulo": "Dúvidas frequentes · GR Tech Refrigeração",
+  "desc": "Sinal, visita técnica, orçamento por escrito via app, instalação, limpeza, conserto, VRF e contrato de manutenção: as respostas da GR Tech.",
+  "h1": "Antes de chamar.",
+  "olho": "Dúvidas",
+  "lead": "As perguntas que mais chegam no WhatsApp, com a resposta que damos lá.",
+  "blocos": [
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "faq",
+      "q": "Preciso pagar sinal para marcar?",
+      "a": "Não. Você só paga depois da visita. A visita técnica é R$ 150 e, se você fechar o serviço, esse valor é abatido. O pagamento é por Pix, na conta da GR Tech (CNPJ 44.301.204/0001-38)."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a visita técnica?",
+      "a": "R$ 150, com ida e diagnóstico. Se você fechar o serviço, os R$ 150 são abatidos do total."
+     },
+     {
+      "t": "faq",
+      "q": "E se eu não fechar o serviço?",
+      "a": "Você paga só a visita técnica, de R$ 150, pela ida e pelo diagnóstico."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     },
+     {
+      "t": "faq",
+      "q": "O que é o OLLI Orçamentos?",
+      "a": "É o aplicativo de orçamentos que a GR Tech usa: itens, peça e mão de obra separados, num documento que você recebe e guarda. A OLLI nasceu dentro da GR Tech."
+     },
+     {
+      "t": "faq",
+      "q": "Quem responde no WhatsApp?",
+      "a": "A primeira resposta vem do nosso atendimento com inteligência artificial. A visita, o orçamento e o serviço são do técnico da GR Tech. Você pode pedir para falar com uma pessoa a qualquer momento."
+     },
+     {
+      "t": "faq",
+      "q": "Atendem hoje?",
+      "a": "Mande o caso no WhatsApp. A gente responde e combina o horário da visita, de segunda a sábado, das 8h às 18h."
+     },
+     {
+      "t": "faq",
+      "q": "Atendem onde?",
+      "a": "São Paulo (capital) e Grande São Paulo."
+     },
+     {
+      "t": "faq",
+      "q": "Posso mandar foto?",
+      "a": "Pode, e ajuda muito: do aparelho, da etiqueta e do defeito."
+     },
+     {
+      "t": "faq",
+      "q": "Atendem qualquer marca?",
+      "a": "Mande a marca e o modelo. A gente diz se atende antes de marcar a visita."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa instalar um split?",
+      "a": "A partir de R$ 1.000 para split de 9.000 a 12.000 BTU, com até 3 m de tubulação. A visita de R$ 150 é abatida desse total. Fora dessa condição, o valor sai da visita, por escrito."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a limpeza?",
+      "a": "A manutenção preventiva com limpeza é a partir de R$ 450 por aparelho. O valor exato sai na visita, que é abatida se você fechar."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a carga de gás?",
+      "a": "Depende do tipo e da potência do aparelho e de haver vazamento. Combine pelo WhatsApp."
+     },
+     {
+      "t": "faq",
+      "q": "Atendem VRF, VRV e câmara fria?",
+      "a": "Atendem. Diga a marca e o que está acontecendo."
+     },
+     {
+      "t": "faq",
+      "q": "Consertam geladeira ou freezer de casa?",
+      "a": "Não. A GR Tech trabalha com ar-condicionado e refrigeração comercial."
+     },
+     {
+      "t": "faq",
+      "q": "Como é definido o valor do contrato de manutenção?",
+      "a": "Pela quantidade e pelo tipo de equipamentos, pela frequência das visitas e pelo local. Fazemos o levantamento e enviamos a proposta por escrito."
+     },
+     {
+      "t": "faq",
+      "q": "Qual a frequência das visitas do contrato?",
+      "a": "Mensal ou trimestral, conforme o uso dos equipamentos e a rotina do seu negócio."
+     }
+    ]
+   },
+   {
+    "h2": "Não achou a sua?",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Pergunte no WhatsApp.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "contato": {
+  "titulo": "Contato · GR Tech Refrigeração",
+  "desc": "WhatsApp (11) 95875-8030 e contato@grtechrefrigeracao.com.br. Visitas de segunda a sábado, das 8h às 18h, em São Paulo e Grande São Paulo.",
+  "h1": "Fale com a GR Tech.",
+  "olho": "Contato",
+  "lead": "O caminho mais rápido é o WhatsApp. Mande foto do aparelho e da etiqueta, se puder.",
+  "blocos": [
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "p",
+      "x": "WhatsApp",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "(11) 95875-8030",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "A primeira resposta vem do nosso atendimento com IA.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Telefone",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "(11) 95875-8030",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Mesmo número do WhatsApp.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "E-mail",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "contato@grtechrefrigeracao.com.br",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Para proposta de empresa e contrato.",
+      "l": []
+     },
+     {
+      "t": "preco",
+      "n": "Visitas",
+      "nota": "",
+      "v": "Segunda a sábado, das 8h às 18h"
+     },
+     {
+      "t": "preco",
+      "n": "Região",
+      "nota": "",
+      "v": "São Paulo (capital) e Grande São Paulo"
+     },
+     {
+      "t": "preco",
+      "n": "Visita técnica",
+      "nota": "",
+      "v": "R$ 150, abatida se você fechar"
+     },
+     {
+      "t": "preco",
+      "n": "Empresa",
+      "nota": "",
+      "v": "GR Tech Refrigeração · CNPJ 44.301.204/0001-38"
+     }
+    ]
+   },
+   {
+    "h2": "Ligue, ou peça para a gente chamar.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Prefere falar?",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "O número é o mesmo do WhatsApp: (11) 95875-8030. Se preferir, deixe o melhor horário e a gente retorna.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Do primeiro oi ao horário marcado.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "A primeira resposta vem do nosso atendimento com IA, que já pede o que o técnico precisa saber. A visita, o orçamento e o serviço são do técnico da GR Tech.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Foto do aparelho e da etiqueta ajuda muito"
+     },
+     {
+      "t": "li",
+      "x": "Você pode pedir para falar com uma pessoa a qualquer momento"
+     },
+     {
+      "t": "li",
+      "x": "O orçamento chega por escrito, via app OLLI"
+     },
+     {
+      "t": "li",
+      "x": "Oi, vim pelo site da GR Tech. É apartamento, o ar da sala está pingando."
+     },
+     {
+      "t": "li",
+      "x": "Oi! Aqui é o atendimento com IA da GR Tech. Qual é o bairro? E, se puder, mande uma foto da etiqueta do aparelho."
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé. Mandei a foto."
+     },
+     {
+      "t": "li",
+      "x": "Obrigado. A visita técnica é R$ 150 e é abatida se você fechar o serviço. Qual dia e horário ficam bons para você?"
+     },
+     {
+      "t": "li",
+      "x": "Amanhã de manhã."
+     },
+     {
+      "t": "li",
+      "x": "Combinado. Depois da visita, o orçamento chega por escrito pelo app OLLI. Se quiser falar com uma pessoa, é só pedir."
+     },
+     {
+      "t": "p",
+      "x": "Exemplo ilustrativo de conversa. Dia e horário são combinados no WhatsApp.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "São Paulo (capital) e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Área de atendimento",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Visitas de segunda a sábado, das 8h às 18h. Alguns bairros onde a gente atende:",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi"
+     },
+     {
+      "t": "li",
+      "x": "Moema"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco"
+     },
+     {
+      "t": "p",
+      "x": "Não achou o seu? A gente atende toda a região. Ver onde atendemos",
+      "l": [
+       [
+        "Ver onde atendemos",
+        "/atendimento/"
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "h2": "Mande o seu caso agora.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa ou empresa, o bairro e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "segmentos": {
+  "titulo": "Para quem a GR Tech atende: casa, comércio, escritório e VRF",
+  "desc": "Ar-condicionado para casa, apartamento e condomínio, loja e restaurante, escritório e consultório, câmara fria e refrigeração comercial, VRF e VRV em São Paulo.",
+  "h1": "Cada lugar pede um cuidado.",
+  "olho": "Para quem",
+  "lead": "Escolha o seu caso para ver os serviços, as dúvidas mais comuns e falar no WhatsApp com a mensagem pronta.",
+  "blocos": [
+   {
+    "h2": "Capital e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Onde atendemos",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Alguns bairros com página própria.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Não achou o seu caso?",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Conte o que precisa no WhatsApp.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "casa": {
+  "titulo": "Casa: ar-condicionado em São Paulo · GR Tech",
+  "desc": "Instalação, limpeza e conserto de ar-condicionado em casa, em São Paulo. Visita técnica R$ 150, abatida se você fechar. Orçamento por escrito.",
+  "h1": "Ar-condicionado para casa, do jeito certo.",
+  "olho": "Casa",
+  "lead": "Instalação, limpeza e conserto em casa e sobrado. Você vê o valor por escrito antes de qualquer serviço além da visita.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Onde fica a condensadora numa casa?"
+     },
+     {
+      "t": "p",
+      "x": "Em um lugar ventilado e com acesso para manutenção, o mais perto possível da unidade de dentro. O lugar exato é definido na visita, junto com o caminho da tubulação.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Dá para colocar um ar em cada quarto?"
+     },
+     {
+      "t": "p",
+      "x": "Dá. Pode ser um split por ambiente ou um multi-split, com uma condensadora para várias unidades. A escolha depende da casa e sai na visita, com o orçamento por escrito.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa instalar um split em casa?"
+     },
+     {
+      "t": "p",
+      "x": "A partir de R$ 1.000 para split de 9.000 a 12.000 BTU, com até 3 m de tubulação. A visita de R$ 150 é abatida desse total. Fora dessa condição, o valor sai na visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que a GR Tech faz aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Serviços",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Instalação",
+      "p": "Split e multi-split, com a tubulação e o lugar da condensadora definidos na visita.",
+      "href": "/instalacao/"
+     },
+     {
+      "t": "card",
+      "h": "Limpeza e manutenção",
+      "p": "Filtro, turbina, serpentina e bandeja, com o aparelho aberto.",
+      "href": "/limpeza-e-manutencao/"
+     },
+     {
+      "t": "card",
+      "h": "Conserto",
+      "p": "Não gela, pinga, faz barulho ou não liga: primeiro o diagnóstico.",
+      "href": "/conserto/"
+     },
+     {
+      "t": "p",
+      "x": "* Instalação: a partir de R$ 1.000 para split de 9.000 a 12.000 BTU, com até 3 m de tubulação. Fora dessa condição, o valor sai na visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Quer ver o valor do seu caso?"
+     },
+     {
+      "t": "p",
+      "x": "O estimador usa só a tabela da GR Tech e monta a mensagem para o WhatsApp.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Também perguntam.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a limpeza?",
+      "a": "A manutenção preventiva com limpeza é a partir de R$ 450 por aparelho. O valor exato sai na visita, que é abatida se você fechar."
+     },
+     {
+      "t": "faq",
+      "q": "Posso mandar foto?",
+      "a": "Pode, e ajuda muito: do aparelho, da etiqueta e do defeito."
+     },
+     {
+      "t": "faq",
+      "q": "Preciso pagar sinal para marcar?",
+      "a": "Não. Você só paga depois da visita. A visita técnica é R$ 150 e, se você fechar o serviço, esse valor é abatido. O pagamento é por Pix, na conta da GR Tech (CNPJ 44.301.204/0001-38)."
+     }
+    ]
+   },
+   {
+    "h2": "Capital e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Onde atendemos",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Alguns bairros com página própria.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Veja também.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Outros casos",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Mande o seu caso com a mensagem pronta.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "É só completar os campos entre colchetes.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "apartamento-e-condominio": {
+  "titulo": "Apartamento e condomínio: ar-condicionado em São Paulo · GR Tech",
+  "desc": "Ar-condicionado em apartamento e condomínio em São Paulo, dentro da regra do prédio. Visita R$ 150, abatida se fechar. Orçamento por escrito.",
+  "h1": "Ar-condicionado em apartamento, dentro da regra do prédio.",
+  "olho": "Apartamento e condomínio",
+  "lead": "Instalação, limpeza e conserto em apartamento. A posição da condensadora segue o que o condomínio permite.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Preciso de autorização do condomínio para instalar?"
+     },
+     {
+      "t": "p",
+      "x": "Muitos condomínios têm regras para a posição da condensadora e para horário de obra. Vale conferir o regulamento com o síndico antes. A gente adapta a instalação ao que o prédio permite.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Meu prédio tem varanda técnica. Ajuda?"
+     },
+     {
+      "t": "p",
+      "x": "Ajuda. Com o espaço reservado para a condensadora, a instalação tende a ser mais simples. Mande uma foto do local no WhatsApp.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "O técnico precisa ser agendado com a portaria?"
+     },
+     {
+      "t": "p",
+      "x": "Se o prédio pedir, sim. A gente combina com você o dia e o horário pelo WhatsApp, e você avisa a portaria.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que a GR Tech faz aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Serviços",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Instalação",
+      "p": "Split na varanda técnica ou onde o regulamento do prédio permitir.",
+      "href": "/instalacao/"
+     },
+     {
+      "t": "card",
+      "h": "Limpeza",
+      "p": "Cheiro de mofo e ar fraco costumam ser sujeira dentro do aparelho.",
+      "href": "/limpeza-e-manutencao/"
+     },
+     {
+      "t": "card",
+      "h": "Conserto",
+      "p": "Pingando na parede, sem gelar ou com barulho novo.",
+      "href": "/conserto/"
+     },
+     {
+      "t": "p",
+      "x": "* Instalação: a partir de R$ 1.000 para split de 9.000 a 12.000 BTU, com até 3 m de tubulação. Fora dessa condição, o valor sai na visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Quer ver o valor do seu caso?"
+     },
+     {
+      "t": "p",
+      "x": "O estimador usa só a tabela da GR Tech e monta a mensagem para o WhatsApp.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Também perguntam.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa instalar um split?",
+      "a": "A partir de R$ 1.000 para split de 9.000 a 12.000 BTU, com até 3 m de tubulação. A visita de R$ 150 é abatida desse total. Fora dessa condição, o valor sai da visita, por escrito."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a limpeza?",
+      "a": "A manutenção preventiva com limpeza é a partir de R$ 450 por aparelho. O valor exato sai na visita, que é abatida se você fechar."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     }
+    ]
+   },
+   {
+    "h2": "Capital e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Onde atendemos",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Alguns bairros com página própria.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Veja também.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Outros casos",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Mande o seu caso com a mensagem pronta.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "É só completar os campos entre colchetes.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "lojas-e-restaurantes": {
+  "titulo": "Lojas e restaurantes: ar-condicionado em São Paulo · GR Tech",
+  "desc": "Preventiva, conserto e contrato de ar-condicionado para loja e restaurante em São Paulo. Orçamento por escrito antes de começar.",
+  "h1": "Ar-condicionado para loja e restaurante.",
+  "olho": "Lojas e restaurantes",
+  "lead": "Salão cheio com ar parado custa caro. Preventiva, conserto e contrato, com orçamento por escrito antes de começar.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "O ar do salão está pingando. O que pode ser?"
+     },
+     {
+      "t": "p",
+      "x": "Costuma ser dreno entupido, sujeira na bandeja ou instalação fora de nível. O técnico confirma no diagnóstico, na visita de R$ 150, abatida se você fechar o conserto.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Vocês trabalham com piso-teto e cassete?"
+     },
+     {
+      "t": "p",
+      "x": "Trabalhamos: instalação, limpeza e conserto de split, cassete e piso-teto comercial.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Dá para fazer a manutenção fora do horário de pico?"
+     },
+     {
+      "t": "p",
+      "x": "As visitas são de segunda a sábado, das 8h às 18h. Diga no WhatsApp qual horário atrapalha menos o seu movimento e a gente combina.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que a GR Tech faz aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Serviços",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Preventiva",
+      "p": "Limpeza com o aparelho aberto, antes do movimento e do calor.",
+      "href": "/limpeza-e-manutencao/"
+     },
+     {
+      "t": "card",
+      "h": "Conserto",
+      "p": "Para de gelar no pico, pinga no salão ou desarma.",
+      "href": "/conserto/"
+     },
+     {
+      "t": "card",
+      "h": "Contrato de manutenção",
+      "p": "Visitas mensais ou trimestrais, com proposta por escrito.",
+      "href": "/empresas/"
+     }
+    ]
+   },
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Quer ver o valor do seu caso?"
+     },
+     {
+      "t": "p",
+      "x": "O estimador usa só a tabela da GR Tech e monta a mensagem para o WhatsApp.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Também perguntam.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Como é definido o valor do contrato de manutenção?",
+      "a": "Pela quantidade e pelo tipo de equipamentos, pela frequência das visitas e pelo local. Fazemos o levantamento e enviamos a proposta por escrito."
+     },
+     {
+      "t": "faq",
+      "q": "Qual a frequência das visitas do contrato?",
+      "a": "Mensal ou trimestral, conforme o uso dos equipamentos e a rotina do seu negócio."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     }
+    ]
+   },
+   {
+    "h2": "Capital e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Onde atendemos",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Alguns bairros com página própria.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Veja também.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Outros casos",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Mande o seu caso com a mensagem pronta.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "É só completar os campos entre colchetes.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "camara-fria-e-refrigeracao-comercial": {
+  "titulo": "Câmara fria e refrigeração comercial: ar-condicionado em São Paulo · GR Tech",
+  "desc": "Conserto e manutenção de câmara fria e refrigeração comercial em São Paulo. Diagnóstico no local e orçamento por escrito.",
+  "h1": "Câmara fria e refrigeração comercial.",
+  "olho": "Câmara fria e refrigeração comercial",
+  "lead": "Unidade condensadora, compressor e câmara fria de comércio. Diagnóstico no local e orçamento por escrito.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Atendem câmara fria?"
+     },
+     {
+      "t": "p",
+      "x": "Atendemos câmara fria e refrigeração comercial. Diga a marca e o que está acontecendo no WhatsApp.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "A câmara não segura a temperatura. O que fazer?"
+     },
+     {
+      "t": "p",
+      "x": "Mande no WhatsApp o que aparece no controlador, a marca e uma foto da unidade de fora. O técnico confirma o defeito na visita e o orçamento chega por escrito.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Consertam geladeira e freezer de casa?"
+     },
+     {
+      "t": "p",
+      "x": "Não. A GR Tech trabalha com ar-condicionado e refrigeração comercial.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que a GR Tech faz aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Serviços",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Conserto",
+      "p": "Não segura a temperatura, desarma ou faz barulho.",
+      "href": "/conserto/"
+     },
+     {
+      "t": "card",
+      "h": "Manutenção e contrato",
+      "p": "Preventiva com frequência definida na proposta.",
+      "href": "/empresas/"
+     },
+     {
+      "t": "card",
+      "h": "Limpeza da condensadora",
+      "p": "Serpentina limpa troca mais calor e o equipamento trabalha menos.",
+      "href": "/limpeza-e-manutencao/"
+     }
+    ]
+   },
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Quer ver o valor do seu caso?"
+     },
+     {
+      "t": "p",
+      "x": "O estimador usa só a tabela da GR Tech e monta a mensagem para o WhatsApp.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Também perguntam.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     },
+     {
+      "t": "faq",
+      "q": "E se eu não fechar o serviço?",
+      "a": "Você paga só a visita técnica, de R$ 150, pela ida e pelo diagnóstico."
+     },
+     {
+      "t": "faq",
+      "q": "Posso mandar foto?",
+      "a": "Pode, e ajuda muito: do aparelho, da etiqueta e do defeito."
+     }
+    ]
+   },
+   {
+    "h2": "Capital e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Onde atendemos",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Alguns bairros com página própria.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Veja também.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Outros casos",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Mande o seu caso com a mensagem pronta.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "É só completar os campos entre colchetes.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "vrf-vrv": {
+  "titulo": "VRF e VRV: ar-condicionado em São Paulo · GR Tech",
+  "desc": "Manutenção e conserto de VRF e VRV em São Paulo. Diga a marca e o sintoma; diagnóstico na visita e orçamento por escrito.",
+  "h1": "VRF e VRV: manutenção e conserto.",
+  "olho": "VRF e VRV",
+  "lead": "Sistemas centrais de prédio comercial e residencial. Diga a marca e o que está acontecendo, e a gente combina a visita.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Atendem VRF e VRV?"
+     },
+     {
+      "t": "p",
+      "x": "Atendemos. Diga a marca, o número de unidades e o que está acontecendo.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "O sistema mostra um código de erro. Ajuda mandar?"
+     },
+     {
+      "t": "p",
+      "x": "Ajuda muito. Mande o código, a marca e uma foto da etiqueta no WhatsApp. O diagnóstico é confirmado na visita.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa a manutenção de VRF?"
+     },
+     {
+      "t": "p",
+      "x": "Depende do número de unidades, do acesso e da frequência. Para VRF, o valor sai na visita ou na proposta por escrito depois do levantamento.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que a GR Tech faz aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Serviços",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Conserto e diagnóstico",
+      "p": "Código de erro, unidade sem gelar ou condensadora desarmando.",
+      "href": "/conserto/"
+     },
+     {
+      "t": "card",
+      "h": "Contrato de manutenção",
+      "p": "Preventiva mensal ou trimestral, com proposta por escrito.",
+      "href": "/empresas/"
+     },
+     {
+      "t": "card",
+      "h": "Limpeza das unidades",
+      "p": "Evaporadoras limpas, com o aparelho aberto.",
+      "href": "/limpeza-e-manutencao/"
+     }
+    ]
+   },
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Quer ver o valor do seu caso?"
+     },
+     {
+      "t": "p",
+      "x": "O estimador usa só a tabela da GR Tech e monta a mensagem para o WhatsApp.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Também perguntam.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Como é definido o valor do contrato de manutenção?",
+      "a": "Pela quantidade e pelo tipo de equipamentos, pela frequência das visitas e pelo local. Fazemos o levantamento e enviamos a proposta por escrito."
+     },
+     {
+      "t": "faq",
+      "q": "Qual a frequência das visitas do contrato?",
+      "a": "Mensal ou trimestral, conforme o uso dos equipamentos e a rotina do seu negócio."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     }
+    ]
+   },
+   {
+    "h2": "Capital e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Onde atendemos",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Alguns bairros com página própria.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Veja também.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Outros casos",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Mande o seu caso com a mensagem pronta.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "É só completar os campos entre colchetes.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "quanto-custa": {
+  "titulo": "Quanto custa o meu serviço de ar-condicionado? · GR Tech",
+  "desc": "Estimador com a tabela da GR Tech: visita R$ 150 (abatida se fechar), limpeza a partir de R$ 450 por aparelho e instalação de split a partir de R$ 1.000. O resto, valor na visita.",
+  "h1": "Quanto custa o meu serviço?",
+  "olho": "Quanto custa",
+  "lead": "Escolha o serviço, o aparelho e o bairro. O valor vem só da tabela da GR Tech; o que não está nela aparece como valor na visita.",
+  "blocos": [
+   {
+    "h2": "De onde vêm os valores.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "A tabela",
+      "l": []
+     },
+     {
+      "t": "preco",
+      "n": "Visita técnica",
+      "nota": "Ida e diagnóstico. Abatida do serviço se você fechar. Não pedimos sinal.",
+      "v": "R$ 150"
+     },
+     {
+      "t": "preco",
+      "n": "Manutenção preventiva e limpeza",
+      "nota": "Por aparelho. O valor exato sai na visita.",
+      "v": "a partir de R$ 450"
+     },
+     {
+      "t": "preco",
+      "n": "Instalação de split",
+      "nota": "De 9.000 a 12.000 BTU, até 3 m de tubulação. A visita é abatida desse total.",
+      "v": "a partir de R$ 1.000"
+     },
+     {
+      "t": "preco",
+      "n": "Conserto",
+      "nota": "Peça e mão de obra separadas no orçamento.",
+      "v": "sai na visita"
+     },
+     {
+      "t": "preco",
+      "n": "Carga de gás",
+      "nota": "Depende do aparelho e de haver vazamento.",
+      "v": "combine no WhatsApp"
+     },
+     {
+      "t": "preco",
+      "n": "Contrato de manutenção",
+      "nota": "Proposta por escrito depois do levantamento.",
+      "v": "sob proposta"
+     }
+    ]
+   },
+   {
+    "h2": "Como o orçamento chega.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "O orçamento",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "1 O link chega no WhatsApp Depois da visita, o orçamento da GR Tech chega como um link, feito no app OLLI Orçamentos."
+     },
+     {
+      "t": "li",
+      "x": "2 Você abre no celular ou no computador Itens, peça e mão de obra separados, com as condições escritas. Dá para guardar o PDF."
+     },
+     {
+      "t": "li",
+      "x": "3 Você decide com calma Aprova pelo próprio link ou responde no WhatsApp. Nada além da visita é feito sem o seu sim."
+     },
+     {
+      "t": "p",
+      "x": "Seu orçamento está pronto. Toque para abrir.",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Ilustração do formato. Os valores do seu caso saem da visita.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Ligue, ou peça para a gente chamar.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Prefere falar?",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "O número é o mesmo do WhatsApp: (11) 95875-8030. Se preferir, deixe o melhor horário e a gente retorna.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Sobre valores.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Dúvidas",
+      "l": []
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a visita técnica?",
+      "a": "R$ 150, com ida e diagnóstico. Se você fechar o serviço, os R$ 150 são abatidos do total."
+     },
+     {
+      "t": "faq",
+      "q": "Preciso pagar sinal para marcar?",
+      "a": "Não. Você só paga depois da visita. A visita técnica é R$ 150 e, se você fechar o serviço, esse valor é abatido. O pagamento é por Pix, na conta da GR Tech (CNPJ 44.301.204/0001-38)."
+     },
+     {
+      "t": "faq",
+      "q": "E se eu não fechar o serviço?",
+      "a": "Você paga só a visita técnica, de R$ 150, pela ida e pelo diagnóstico."
+     },
+     {
+      "t": "faq",
+      "q": "Quanto custa a carga de gás?",
+      "a": "Depende do tipo e da potência do aparelho e de haver vazamento. Combine pelo WhatsApp."
+     },
+     {
+      "t": "faq",
+      "q": "O orçamento é por escrito?",
+      "a": "É. Ele é feito no app OLLI Orçamentos e chega para você antes de qualquer serviço além da visita."
+     }
+    ]
+   },
+   {
+    "h2": "Prefere perguntar direto?",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Mande o aparelho e o que precisa.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "resumo-para-ia": {
+  "titulo": "Resumo da GR Tech Refrigeração (para buscadores e assistentes de IA)",
+  "desc": "Fatos da GR Tech Refrigeração: CNPJ, região, horário de visita, tabela de preços, como funciona o orçamento e contato.",
+  "h1": "GR Tech Refrigeração em uma página.",
+  "olho": "Resumo",
+  "lead": "Os fatos que buscadores e assistentes de IA precisam para responder sobre a GR Tech, sem marketing.",
+  "blocos": [
+   {
+    "h2": "",
+    "itens": [
+     {
+      "t": "preco",
+      "n": "Empresa",
+      "nota": "",
+      "v": "GR Tech Refrigeração (GR Tech), CNPJ 44.301.204/0001-38"
+     },
+     {
+      "t": "preco",
+      "n": "O que faz",
+      "nota": "",
+      "v": "Instalação, limpeza e manutenção, conserto de ar-condicionado; VRF, VRV, câmara fria e refrigeração comercial"
+     },
+     {
+      "t": "preco",
+      "n": "Região",
+      "nota": "",
+      "v": "São Paulo (capital) e Grande São Paulo"
+     },
+     {
+      "t": "preco",
+      "n": "Visitas",
+      "nota": "",
+      "v": "Segunda a sábado, das 8h às 18h"
+     },
+     {
+      "t": "preco",
+      "n": "Visita técnica",
+      "nota": "",
+      "v": "R$ 150, abatida se o cliente fechar o serviço. Sem sinal"
+     },
+     {
+      "t": "preco",
+      "n": "Limpeza e preventiva",
+      "nota": "",
+      "v": "A partir de R$ 450 por aparelho"
+     },
+     {
+      "t": "preco",
+      "n": "Instalação de split",
+      "nota": "",
+      "v": "A partir de R$ 1.000 (9.000 a 12.000 BTU, até 3 m de tubulação)"
+     },
+     {
+      "t": "preco",
+      "n": "Outros valores",
+      "nota": "",
+      "v": "Conserto, carga de gás, VRF e contrato: valor na visita ou proposta por escrito"
+     },
+     {
+      "t": "preco",
+      "n": "Orçamento",
+      "nota": "",
+      "v": "Por escrito, como link pelo app OLLI Orçamentos, antes de qualquer serviço além da visita"
+     },
+     {
+      "t": "preco",
+      "n": "Pagamento",
+      "nota": "",
+      "v": "Pix, na conta da GR Tech, depois do serviço"
+     },
+     {
+      "t": "preco",
+      "n": "Atendimento",
+      "nota": "",
+      "v": "Primeira resposta no WhatsApp com IA; visita, orçamento e serviço com o técnico da GR Tech"
+     },
+     {
+      "t": "preco",
+      "n": "Não faz",
+      "nota": "",
+      "v": "Conserto de geladeira e freezer doméstico"
+     },
+     {
+      "t": "preco",
+      "n": "Contato",
+      "nota": "",
+      "v": "WhatsApp e telefone (11) 95875-8030 · contato@grtechrefrigeracao.com.br"
+     },
+     {
+      "t": "p",
+      "x": "Esta página é um resumo factual para buscadores e assistentes de IA. A versão em texto puro está em /llms.txt .",
+      "l": [
+       [
+        "/llms.txt",
+        "/llms.txt"
+       ]
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "atendimento": {
+  "titulo": "Onde a GR Tech atende · São Paulo e Grande São Paulo",
+  "desc": "A GR Tech atende ar-condicionado e refrigeração comercial em São Paulo (capital) e na Grande São Paulo, com visita de segunda a sábado, das 8h às 18h.",
+  "h1": "São Paulo (capital) e Grande São Paulo.",
+  "olho": "Onde atendemos",
+  "lead": "Visitas de segunda a sábado, das 8h às 18h. A visita técnica é R$ 150 em toda a região e é abatida se você fechar.",
+  "blocos": [
+   {
+    "h2": "Alguns bairros com página própria.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Bairros",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Não achou o seu? A gente atende toda a capital e a Grande São Paulo. Mande o bairro no WhatsApp.",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "São Paulo (capital) e Grande São Paulo.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Área de atendimento",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Visitas de segunda a sábado, das 8h às 18h. Alguns bairros onde a gente atende:",
+      "l": []
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi"
+     },
+     {
+      "t": "li",
+      "x": "Moema"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco"
+     },
+     {
+      "t": "p",
+      "x": "Não achou o seu? A gente atende toda a região. Ver onde atendemos",
+      "l": [
+       [
+        "Ver onde atendemos",
+        "/atendimento/"
+       ]
+      ]
+     }
+    ]
+   },
+   {
+    "h2": "Mande o seu bairro.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "A gente confirma e combina a visita.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "atendimento/itaim-bibi": {
+  "titulo": "Ar-condicionado no Itaim Bibi (Zona Oeste, SP) · GR Tech",
+  "desc": "Instalação, limpeza e conserto de ar-condicionado no Itaim Bibi, Zona Oeste de SP. Visita técnica R$ 150, abatida se você fechar.",
+  "h1": "Ar-condicionado no Itaim Bibi.",
+  "olho": "Zona Oeste",
+  "lead": "O Itaim Bibi mistura torres de escritório perto da Faria Lima, restaurantes e bares na Joaquim Floriano e no entorno, e prédios residenciais. A GR Tech atende o bairro de segunda a sábado, das 8h às 18h.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Atendem escritório no Itaim Bibi em horário comercial?"
+     },
+     {
+      "t": "p",
+      "x": "Atendemos. As visitas são de segunda a sábado, das 8h às 18h, e o horário é combinado no WhatsApp. Para empresa com vários aparelhos, a proposta de contrato vem por escrito depois do levantamento.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa a visita técnica no Itaim Bibi?"
+     },
+     {
+      "t": "p",
+      "x": "R$ 150, o mesmo valor em toda a região. Se você fechar o serviço, ela é abatida do total. Não pedimos sinal.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Como chega o orçamento?"
+     },
+     {
+      "t": "p",
+      "x": "Depois da visita, chega um link no WhatsApp, feito no app OLLI Orçamentos, com peça e mão de obra separadas. Você decide com calma.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que mais aparece por aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "No bairro",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Cada tipo de imóvel tem a sua página, com serviços e dúvidas.",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Escritório em andar corporativo",
+      "p": "Cassete, piso-teto e VRF são comuns em laje corporativa. Para vários aparelhos, o caminho é o contrato de manutenção com proposta por escrito.",
+      "href": "/escritorios/"
+     },
+     {
+      "t": "card",
+      "h": "Restaurante e bar",
+      "p": "Cozinha e salão cheios pedem preventiva antes do movimento. Dreno entupido no salão é um chamado típico de conserto.",
+      "href": "/lojas-e-restaurantes/"
+     },
+     {
+      "t": "card",
+      "h": "Apartamento",
+      "p": "Em prédio, a posição da condensadora segue a regra do condomínio. A gente confere isso na visita.",
+      "href": "/apartamento-e-condominio/"
+     }
+    ]
+   },
+   {
+    "h2": "O valor no Itaim Bibi.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Bairros vizinhos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Perto daqui",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Também atendemos Brooklin e Moema , e toda a capital e a Grande São Paulo.",
+      "l": [
+       [
+        "Brooklin",
+        "/atendimento/brooklin/"
+       ],
+       [
+        "Moema",
+        "/atendimento/moema/"
+       ]
+      ]
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Está no Itaim Bibi? Mande o seu caso.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa, apartamento ou empresa, e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "atendimento/brooklin": {
+  "titulo": "Ar-condicionado no Brooklin (Zona Sul, SP) · GR Tech",
+  "desc": "Instalação, limpeza e conserto de ar-condicionado no Brooklin, Zona Sul de SP. Visita técnica R$ 150, abatida se você fechar.",
+  "h1": "Ar-condicionado no Brooklin.",
+  "olho": "Zona Sul",
+  "lead": "O Brooklin tem torres comerciais na região da Berrini e da Chucri Zaidan e muitos prédios residenciais, com ruas de casas no Brooklin Velho. A GR Tech atende o bairro de segunda a sábado, das 8h às 18h.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Meu prédio no Brooklin tem varanda técnica. Isso muda a instalação?"
+     },
+     {
+      "t": "p",
+      "x": "Ajuda. Com espaço reservado para a condensadora, a instalação tende a ser mais simples. O valor de split de 9.000 a 12.000 BTU com até 3 m de tubulação é a partir de R$ 1.000; fora disso, o valor sai na visita, por escrito.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa a visita técnica no Brooklin?"
+     },
+     {
+      "t": "p",
+      "x": "R$ 150, o mesmo valor em toda a região. Se você fechar o serviço, ela é abatida do total. Não pedimos sinal.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Como chega o orçamento?"
+     },
+     {
+      "t": "p",
+      "x": "Depois da visita, chega um link no WhatsApp, feito no app OLLI Orçamentos, com peça e mão de obra separadas. Você decide com calma.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que mais aparece por aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "No bairro",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Cada tipo de imóvel tem a sua página, com serviços e dúvidas.",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Sala comercial e laje corporativa",
+      "p": "De um split na sala de reunião ao VRF do andar inteiro. Orçamento por escrito antes de qualquer serviço.",
+      "href": "/escritorios/"
+     },
+     {
+      "t": "card",
+      "h": "Apartamento com varanda técnica",
+      "p": "Prédio novo costuma ter espaço reservado para a condensadora. Mande a foto do local no WhatsApp.",
+      "href": "/apartamento-e-condominio/"
+     },
+     {
+      "t": "card",
+      "h": "Casa",
+      "p": "Na casa, a tubulação e o lugar da condensadora são definidos na visita, com o caminho mais limpo.",
+      "href": "/casa/"
+     }
+    ]
+   },
+   {
+    "h2": "O valor no Brooklin.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Bairros vizinhos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Perto daqui",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Também atendemos Itaim Bibi e Moema , e toda a capital e a Grande São Paulo.",
+      "l": [
+       [
+        "Itaim Bibi",
+        "/atendimento/itaim-bibi/"
+       ],
+       [
+        "Moema",
+        "/atendimento/moema/"
+       ]
+      ]
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Está no Brooklin? Mande o seu caso.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa, apartamento ou empresa, e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "atendimento/morumbi": {
+  "titulo": "Ar-condicionado no Morumbi (Zona Oeste, SP) · GR Tech",
+  "desc": "Instalação, limpeza e conserto de ar-condicionado no Morumbi, Zona Oeste de SP. Visita técnica R$ 150, abatida se você fechar.",
+  "h1": "Ar-condicionado no Morumbi.",
+  "olho": "Zona Oeste",
+  "lead": "O Morumbi tem casas grandes, condomínios fechados e prédios residenciais altos, muitos com mais de um aparelho por imóvel. A GR Tech atende o bairro de segunda a sábado, das 8h às 18h.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Tenho vários aparelhos em casa no Morumbi. Como fica a limpeza?"
+     },
+     {
+      "t": "p",
+      "x": "A manutenção preventiva com limpeza é a partir de R$ 450 por aparelho. Diga quantos são no WhatsApp; o valor exato sai na visita, que é abatida se você fechar.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa a visita técnica no Morumbi?"
+     },
+     {
+      "t": "p",
+      "x": "R$ 150, o mesmo valor em toda a região. Se você fechar o serviço, ela é abatida do total. Não pedimos sinal.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Como chega o orçamento?"
+     },
+     {
+      "t": "p",
+      "x": "Depois da visita, chega um link no WhatsApp, feito no app OLLI Orçamentos, com peça e mão de obra separadas. Você decide com calma.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que mais aparece por aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "No bairro",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Cada tipo de imóvel tem a sua página, com serviços e dúvidas.",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Casa com vários ambientes",
+      "p": "Multi-split ou um split por ambiente: a escolha depende do imóvel e é feita na visita.",
+      "href": "/casa/"
+     },
+     {
+      "t": "card",
+      "h": "Condomínio e prédio alto",
+      "p": "Regras de fachada e de horário de obra do condomínio entram no planejamento da instalação.",
+      "href": "/apartamento-e-condominio/"
+     },
+     {
+      "t": "card",
+      "h": "Sistemas maiores",
+      "p": "Atendemos VRF e VRV. Diga a marca e o que está acontecendo.",
+      "href": "/vrf-vrv/"
+     }
+    ]
+   },
+   {
+    "h2": "O valor no Morumbi.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Bairros vizinhos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Perto daqui",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Também atendemos Brooklin e Itaim Bibi , e toda a capital e a Grande São Paulo.",
+      "l": [
+       [
+        "Brooklin",
+        "/atendimento/brooklin/"
+       ],
+       [
+        "Itaim Bibi",
+        "/atendimento/itaim-bibi/"
+       ]
+      ]
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Está no Morumbi? Mande o seu caso.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa, apartamento ou empresa, e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "atendimento/moema": {
+  "titulo": "Ar-condicionado no Moema (Zona Sul, SP) · GR Tech",
+  "desc": "Instalação, limpeza e conserto de ar-condicionado no Moema, Zona Sul de SP. Visita técnica R$ 150, abatida se você fechar.",
+  "h1": "Ar-condicionado no Moema.",
+  "olho": "Zona Sul",
+  "lead": "Moema é um bairro residencial de prédios, perto do Parque Ibirapuera, com comércio de rua nas avenidas Ibirapuera e Moema e na região das alamedas. A GR Tech atende o bairro de segunda a sábado, das 8h às 18h.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Meu prédio em Moema exige agendar com a portaria. Tudo bem?"
+     },
+     {
+      "t": "p",
+      "x": "Tudo bem. A gente combina com você o dia e o horário da visita pelo WhatsApp, e você avisa a portaria ou o síndico.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa a visita técnica no Moema?"
+     },
+     {
+      "t": "p",
+      "x": "R$ 150, o mesmo valor em toda a região. Se você fechar o serviço, ela é abatida do total. Não pedimos sinal.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Como chega o orçamento?"
+     },
+     {
+      "t": "p",
+      "x": "Depois da visita, chega um link no WhatsApp, feito no app OLLI Orçamentos, com peça e mão de obra separadas. Você decide com calma.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que mais aparece por aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "No bairro",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Cada tipo de imóvel tem a sua página, com serviços e dúvidas.",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Apartamento",
+      "p": "Split no quarto e na sala é o mais comum. Limpeza periódica evita cheiro e gotejamento.",
+      "href": "/apartamento-e-condominio/"
+     },
+     {
+      "t": "card",
+      "h": "Loja e restaurante de rua",
+      "p": "Piso-teto e cassete no salão, com preventiva antes do calor.",
+      "href": "/lojas-e-restaurantes/"
+     },
+     {
+      "t": "card",
+      "h": "Consultório e escritório",
+      "p": "Para consultório, a limpeza com o aparelho aberto tira a sujeira de filtro, turbina e serpentina.",
+      "href": "/escritorios/"
+     }
+    ]
+   },
+   {
+    "h2": "O valor no Moema.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Bairros vizinhos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Perto daqui",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Também atendemos Itaim Bibi e Brooklin , e toda a capital e a Grande São Paulo.",
+      "l": [
+       [
+        "Itaim Bibi",
+        "/atendimento/itaim-bibi/"
+       ],
+       [
+        "Brooklin",
+        "/atendimento/brooklin/"
+       ]
+      ]
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Está no Moema? Mande o seu caso.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa, apartamento ou empresa, e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "atendimento/tatuape": {
+  "titulo": "Ar-condicionado no Tatuapé (Zona Leste, SP) · GR Tech",
+  "desc": "Instalação, limpeza e conserto de ar-condicionado no Tatuapé, Zona Leste de SP. Visita técnica R$ 150, abatida se você fechar.",
+  "h1": "Ar-condicionado no Tatuapé.",
+  "olho": "Zona Leste",
+  "lead": "O Tatuapé tem muitos prédios residenciais altos e comércio forte na Rua Tuiuti, na Praça Silvio Romero e no entorno. A GR Tech atende o bairro de segunda a sábado, das 8h às 18h.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Atendem no Tatuapé, na Zona Leste?"
+     },
+     {
+      "t": "p",
+      "x": "Atendemos. As visitas são de segunda a sábado, das 8h às 18h. A visita técnica é R$ 150 e é abatida se você fechar o serviço.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa a visita técnica no Tatuapé?"
+     },
+     {
+      "t": "p",
+      "x": "R$ 150, o mesmo valor em toda a região. Se você fechar o serviço, ela é abatida do total. Não pedimos sinal.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Como chega o orçamento?"
+     },
+     {
+      "t": "p",
+      "x": "Depois da visita, chega um link no WhatsApp, feito no app OLLI Orçamentos, com peça e mão de obra separadas. Você decide com calma.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que mais aparece por aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "No bairro",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Cada tipo de imóvel tem a sua página, com serviços e dúvidas.",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Apartamento em prédio alto",
+      "p": "Instalação respeitando a regra do condomínio para a condensadora. Foto do local ajuda a adiantar.",
+      "href": "/apartamento-e-condominio/"
+     },
+     {
+      "t": "card",
+      "h": "Comércio de rua",
+      "p": "Loja, restaurante e salão: preventiva, conserto e contrato com proposta por escrito.",
+      "href": "/lojas-e-restaurantes/"
+     },
+     {
+      "t": "card",
+      "h": "Casa e sobrado",
+      "p": "Split ou multi-split, com a tubulação definida na visita.",
+      "href": "/casa/"
+     }
+    ]
+   },
+   {
+    "h2": "O valor no Tatuapé.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Bairros vizinhos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Perto daqui",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Também atendemos Anália Franco , e toda a capital e a Grande São Paulo.",
+      "l": [
+       [
+        "Anália Franco",
+        "/atendimento/analia-franco/"
+       ]
+      ]
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Está no Tatuapé? Mande o seu caso.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa, apartamento ou empresa, e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ },
+ "atendimento/analia-franco": {
+  "titulo": "Ar-condicionado no Anália Franco (Zona Leste, SP) · GR Tech",
+  "desc": "Instalação, limpeza e conserto de ar-condicionado no Anália Franco, Zona Leste de SP. Visita técnica R$ 150, abatida se você fechar.",
+  "h1": "Ar-condicionado no Anália Franco.",
+  "olho": "Zona Leste",
+  "lead": "O Jardim Anália Franco é residencial, com condomínios de prédios e casas, e comércio no entorno do shopping e das avenidas da região. A GR Tech atende o bairro de segunda a sábado, das 8h às 18h.",
+  "blocos": [
+   {
+    "h2": "Respostas rápidas",
+    "itens": [
+     {
+      "t": "h3",
+      "x": "Atendem condomínio no Anália Franco?"
+     },
+     {
+      "t": "p",
+      "x": "Atendemos. Mande o bairro, o tipo de aparelho e uma foto do local no WhatsApp. O orçamento chega por escrito, via app OLLI, depois da visita.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Quanto custa a visita técnica no Anália Franco?"
+     },
+     {
+      "t": "p",
+      "x": "R$ 150, o mesmo valor em toda a região. Se você fechar o serviço, ela é abatida do total. Não pedimos sinal.",
+      "l": []
+     },
+     {
+      "t": "h3",
+      "x": "Como chega o orçamento?"
+     },
+     {
+      "t": "p",
+      "x": "Depois da visita, chega um link no WhatsApp, feito no app OLLI Orçamentos, com peça e mão de obra separadas. Você decide com calma.",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "O que mais aparece por aqui.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "No bairro",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Cada tipo de imóvel tem a sua página, com serviços e dúvidas.",
+      "l": []
+     },
+     {
+      "t": "card",
+      "h": "Condomínio de prédios",
+      "p": "A posição da condensadora segue o regulamento do condomínio. A gente confere na visita.",
+      "href": "/apartamento-e-condominio/"
+     },
+     {
+      "t": "card",
+      "h": "Casa",
+      "p": "Instalação, limpeza e conserto, com orçamento por escrito via app OLLI.",
+      "href": "/casa/"
+     },
+     {
+      "t": "card",
+      "h": "Loja e restaurante",
+      "p": "Preventiva e conserto de split, cassete e piso-teto comercial.",
+      "href": "/lojas-e-restaurantes/"
+     }
+    ]
+   },
+   {
+    "h2": "O valor no Anália Franco.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Quanto custa",
+      "l": []
+     }
+    ]
+   },
+   {
+    "h2": "Bairros vizinhos.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Perto daqui",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Também atendemos Tatuapé , e toda a capital e a Grande São Paulo.",
+      "l": [
+       [
+        "Tatuapé",
+        "/atendimento/tatuape/"
+       ]
+      ]
+     },
+     {
+      "t": "li",
+      "x": "Itaim Bibi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Brooklin Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Morumbi Zona Oeste"
+     },
+     {
+      "t": "li",
+      "x": "Moema Zona Sul"
+     },
+     {
+      "t": "li",
+      "x": "Tatuapé Zona Leste"
+     },
+     {
+      "t": "li",
+      "x": "Anália Franco Zona Leste"
+     }
+    ]
+   },
+   {
+    "h2": "Está no Anália Franco? Mande o seu caso.",
+    "itens": [
+     {
+      "t": "p",
+      "x": "Próximo passo",
+      "l": []
+     },
+     {
+      "t": "p",
+      "x": "Casa, apartamento ou empresa, e o que está acontecendo.",
+      "l": []
+     }
+    ]
+   }
+  ]
+ }
+}
