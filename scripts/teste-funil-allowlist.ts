@@ -23,6 +23,18 @@ const permitidos = new Set([...bloco.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]))
 const faltando = eventosPainel.filter((e) => !permitidos.has(e));
 assert.deepEqual(faltando, [], `eventos do painel fora da allowlist de ${ultima}`);
 for (const e of ['planos_visto', 'plano_pagar_clicado']) assert.ok(permitidos.has(e), `${e} medido`);
+
+// A CHECK da tabela também filtra: evento aceito pela função mas barrado pela CHECK some do mesmo jeito
+// (planos_visto/plano_pagar_clicado ficaram assim de 30/10 a 19/11).
+const ultimaCheck = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+  .filter((f) => /add constraint user_activity_log_evento_check/i.test(readFileSync(new URL(f, dir), 'utf8'))).at(-1);
+assert.ok(ultimaCheck, 'existe migration que define a CHECK');
+const sqlCheck = readFileSync(new URL(ultimaCheck!, dir), 'utf8');
+const iniCheck = sqlCheck.search(/add constraint user_activity_log_evento_check/i);
+const blocoCheck = sqlCheck.slice(iniCheck, sqlCheck.indexOf(';', iniCheck));
+const naCheck = new Set([...blocoCheck.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+const foraDaCheck = [...permitidos].filter((e) => !naCheck.has(e));
+assert.deepEqual(foraDaCheck, [], `eventos da função (${ultima}) barrados pela CHECK de ${ultimaCheck}`);
 const planos = readFileSync(new URL('webapp/src/pages/olli/planos/index.tsx', raiz), 'utf8');
 assert.match(planos, /registrarEtapaAtivacao\("planos_visto"\)/, 'tela de Planos registra a visita');
 assert.equal((planos.match(/registrarEtapaAtivacao\("plano_pagar_clicado"\)/g) || []).length, 3, 'cartão, Pix e Pix Automático registram o clique');
