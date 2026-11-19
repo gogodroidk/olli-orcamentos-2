@@ -536,7 +536,7 @@ function CardStatus({
 			<Faixa
 				tom="success"
 				titulo="Seu teste Pro está ativo"
-				texto={`${quando ? `Você tem os recursos Pro até ${quando}. Se assinar agora, não perde nenhum dia: o Pro pago começa em ${quando}, quando o teste acaba. ` : ""}Sem cartão e sem cobrança automática; ao terminar, seus dados permanecem salvos.`}
+				texto={`${quando ? `Você tem os recursos Pro até ${quando}. Se assinar agora por Pix ou cartão, mensal ou anual, não perde nenhum dia: o Pro pago começa em ${quando}, quando o teste acaba (o Pix Automático e o cartão em 12x começam no dia do pagamento). ` : ""}Sem cartão e sem cobrança automática; ao terminar, seus dados permanecem salvos.`}
 			/>
 		);
 	}
