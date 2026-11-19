@@ -61,17 +61,21 @@ export async function assinarPayloadLinkPro(segredo, payload) {
   return `${corpo}.${base64Url(await hmac(segredo, `linkpro.v1.${corpo}`))}`;
 }
 
-/** Gera o token do Pro mensal para a conta `uid`, válido por 14 dias a partir de `agoraS`. */
-export async function assinarLinkPro(segredo, { uid, agoraS = Math.floor(Date.now() / 1000), validadeS = LINK_PRO_VALIDADE_S }) {
+/** Períodos do Pro que o link vende (19/11: o 1º cliente do dia escolheu o anual). */
+export const PERIODOS_LINK_PRO = Object.freeze(['mensal', 'anual']);
+
+/** Gera o token do Pro (mensal por padrão, ou anual) para a conta `uid`, válido por 14 dias a partir de `agoraS`. */
+export async function assinarLinkPro(segredo, { uid, periodo = 'mensal', agoraS = Math.floor(Date.now() / 1000), validadeS = LINK_PRO_VALIDADE_S }) {
   const id = typeof uid === 'string' ? uid.trim().toLowerCase() : '';
   if (!UUID_RE.test(id)) throw new Error('link_pro_uid_invalido');
   if (!(validadeS > 0 && validadeS <= LINK_PRO_VALIDADE_S)) throw new Error('link_pro_validade_invalida');
-  return assinarPayloadLinkPro(segredo, { v: LINK_PRO_VERSAO, uid: id, plano: 'pro', periodo: 'mensal', exp: agoraS + validadeS });
+  if (!PERIODOS_LINK_PRO.includes(periodo)) throw new Error('link_pro_periodo_invalido');
+  return assinarPayloadLinkPro(segredo, { v: LINK_PRO_VERSAO, uid: id, plano: 'pro', periodo, exp: agoraS + validadeS });
 }
 
 /**
  * Confere o token. `{ ok:true, uid, exp }` ou `{ ok:false, motivo }`, motivo:
- *   'formato' | 'assinatura' (adulterado ou outro segredo) | 'plano' (não é Pro mensal) | 'vencido'.
+ *   'formato' | 'assinatura' (adulterado ou outro segredo) | 'plano' (não é Pro mensal nem anual) | 'vencido'.
  * A assinatura é conferida ANTES de ler o conteúdo: nada do token é confiado sem ela.
  */
 export async function verificarLinkPro(segredo, token, agoraS = Math.floor(Date.now() / 1000)) {
@@ -89,8 +93,8 @@ export async function verificarLinkPro(segredo, token, agoraS = Math.floor(Date.
   if (!p || typeof p !== 'object' || p.v !== LINK_PRO_VERSAO || typeof p.uid !== 'string' || !UUID_RE.test(p.uid)) {
     return { ok: false, motivo: 'formato' };
   }
-  if (p.plano !== 'pro' || p.periodo !== 'mensal') return { ok: false, motivo: 'plano' };
+  if (p.plano !== 'pro' || !PERIODOS_LINK_PRO.includes(p.periodo)) return { ok: false, motivo: 'plano' };
   if (!Number.isInteger(p.exp) || p.exp > agoraS + LINK_PRO_VALIDADE_S + FOLGA_EXP_S) return { ok: false, motivo: 'formato' };
   if (p.exp <= agoraS) return { ok: false, motivo: 'vencido' };
-  return { ok: true, uid: p.uid, exp: p.exp };
+  return { ok: true, uid: p.uid, periodo: p.periodo, exp: p.exp };
 }

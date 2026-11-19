@@ -57,7 +57,8 @@
     "ABACATE_PIX_AUTOMATICO": "true",
     // Link de pagamento do Pro por conta (/pagar/pro/<token>, CQ-LINK-PAGAR-PRO). "true" liga; precisa
     // também do segredo LINK_PAGAMENTO_SECRET (wrangler secret put). Desligado = 404.
-    "LINK_PAGAMENTO_PRO": "false",
+    // LIGADO em produção em 19/11 09:39 (CTO; #411+#418, LIVRE sem P1, segredo posto).
+    "LINK_PAGAMENTO_PRO": "true",
     // E-mail REAL ligado (dono autorizou em 29/09/2026). Só linhas novas da
     // outbox nascem scope=production (config no banco, migration 20260929200000);
     // as boas-vindas antigas presas em hold foram descartadas sem envio.
