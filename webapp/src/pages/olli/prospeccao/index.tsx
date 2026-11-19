@@ -1,5 +1,6 @@
 /**
- * PROSPECÇÃO no painel (D-1438 G19).
+ * MAPA DE CLIENTES no painel (D-1438 G19; nome novo e partida guiada em CQ-MAPA-LEVA2).
+ * A rota continua /prospeccao para não quebrar link antigo.
  *
  * Esquema dos clientes da própria conta: raio, rota e nicho. As coordenadas
  * são as que o cadastro já tem. Este desenho não pede tile e não manda o
@@ -8,7 +9,7 @@
 import type { Empresa } from "@dominio";
 import { CATEGORIAS_HVAC } from "@dominio";
 import { MapPinned, RefreshCw } from "lucide-react";
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { cn } from "@/utils";
@@ -32,6 +33,16 @@ import {
 
 // Leaflet só entra no bundle desta tela.
 const MapaProspeccao = lazy(() => import("./MapaProspeccao"));
+
+// Alvo de toque de 44 px (min-h-11) e foco visível por teclado. Sem animação nova.
+const CLASSE_ALVO = "inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+const CLASSE_BOTAO = `${CLASSE_ALVO} px-5 font-semibold`;
+/** Leva a Meu negócio já no campo de endereço (âncora tratada lá). */
+const ROTA_ENDERECO_BASE = "/meu-negocio#endereco";
+const TEXTO_PEDINDO_POSICAO =
+	"Seu cadastro ainda não tem o endereço da base. Vou pedir a sua posição agora para medir a distância até os clientes. Ela fica só nesta tela e não é salva.";
+const TEXTO_ESCOLHA_PARTIDA =
+	"Sem um ponto de partida o raio não corta a lista. Use a posição deste aparelho ou cadastre o endereço da sua base em Meu negócio (um toque leva você direto ao campo).";
 
 const CATALOGO: Record<string, string> = Object.fromEntries(CATEGORIAS_HVAC.map((c) => [c.id, c.label]));
 
@@ -94,6 +105,8 @@ export default function ProspeccaoPage() {
 	const [avisoGps, setAvisoGps] = useState<string | null>(null);
 	const [buscandoGps, setBuscandoGps] = useState(false);
 	const [selecionado, setSelecionado] = useState<string | null>(null);
+	const pediuAutomatico = useRef(false);
+	const [pedidoAutomaticoFeito, setPedidoAutomaticoFeito] = useState(false);
 
 	const dadosEmpresa = (empresaQ.data?.dados ?? null) as Partial<Empresa> | null;
 	const baseLat = dadosEmpresa?.baseLat;
@@ -161,13 +174,33 @@ export default function ProspeccaoPage() {
 		const ponto = await pedirPosicao();
 		setBuscandoGps(false);
 		if (!ponto) {
-			setAvisoGps("Não consegui ler a posição deste navegador. Continuo na base do cadastro, se ela existir.");
+			setAvisoGps(base ? "Não consegui ler a posição deste navegador (ou o acesso foi negado). Continuo na base do cadastro." : "Não consegui ler a posição deste navegador (ou o acesso foi negado).");
 			setFonte("base");
 			return;
 		}
 		setAparelho(ponto);
 		setFonte("aparelho");
 	}
+
+	// Sem base no cadastro: pede "Onde estou" logo ao abrir (uma vez). Se negar ou
+	// falhar, a tela mostra "Escolha de onde partir" — nunca uma lista muda.
+	const semBase = !carregando && !empresaQ.isError && !base;
+	useEffect(() => {
+		if (!semBase || pediuAutomatico.current) return;
+		pediuAutomatico.current = true;
+		setBuscandoGps(true);
+		void pedirPosicao().then((ponto) => {
+			setBuscandoGps(false);
+			setPedidoAutomaticoFeito(true);
+			if (!ponto) {
+				setAvisoGps("Não consegui ler a posição deste navegador (ou o acesso foi negado).");
+				return;
+			}
+			setAparelho(ponto);
+			setFonte("aparelho");
+		});
+	}, [semBase]);
+	const precisaEscolher = semBase && !origem && !buscandoGps && pedidoAutomaticoFeito;
 
 	function abrirRota() {
 		if (!rota.url) return;
@@ -187,7 +220,7 @@ export default function ProspeccaoPage() {
 					<MapPinned className="size-6" aria-hidden="true" />
 				</div>
 				<div>
-					<h1 className="text-2xl font-bold tracking-tight text-text-primary">Prospecção</h1>
+					<h1 className="text-2xl font-bold tracking-tight text-text-primary">Mapa de clientes</h1>
 					<p className="mt-1 max-w-2xl text-sm leading-6 text-text-secondary">{TEXTO_SO_CADASTRO}</p>
 				</div>
 			</header>
@@ -205,6 +238,23 @@ export default function ProspeccaoPage() {
 				</div>
 			) : (
 				<>
+					{semBase && !origem && !pedidoAutomaticoFeito ? (
+						<output className="block rounded-xl bg-muted px-3 py-2 text-sm text-text-primary">{TEXTO_PEDINDO_POSICAO}</output>
+					) : null}
+					{precisaEscolher ? (
+						<section aria-labelledby="escolha-partida" className="rounded-2xl border border-border bg-card p-4 md:p-5">
+							<h2 id="escolha-partida" className="text-base font-bold text-text-primary">Escolha de onde partir</h2>
+							<p className="mt-1 text-sm leading-6 text-text-secondary">{TEXTO_ESCOLHA_PARTIDA}</p>
+							<div className="mt-3 flex flex-wrap gap-2">
+								<button type="button" onClick={() => { void usarOndeEstou(); }} className={cn(CLASSE_BOTAO, "bg-primary text-primary-foreground")}>
+									Usar onde estou
+								</button>
+								<Link to={ROTA_ENDERECO_BASE} className={cn(CLASSE_BOTAO, "border border-border bg-card text-primary")}>
+									Informar o endereço da base
+								</Link>
+							</div>
+						</section>
+					) : null}
 					<p className="text-sm leading-6 text-text-secondary">{rotuloOrigem}</p>
 					{avisoGps ? <output className="block rounded-xl bg-muted px-3 py-2 text-sm text-text-primary">{avisoGps}</output> : null}
 					{equipamentosQ.isError ? (
@@ -224,7 +274,7 @@ export default function ProspeccaoPage() {
 						<Chip ativo={fonte === "aparelho" && !!aparelho} desabilitado={buscandoGps} onClick={() => { void usarOndeEstou(); }}>
 							{buscandoGps ? "Lendo posição…" : "Onde estou"}
 						</Chip>
-						{!base ? <Link to="/meu-negocio" className="inline-flex min-h-10 items-center rounded-full border border-border px-4 text-sm font-medium text-primary">Completar em Meu negócio</Link> : null}
+						{!base ? <Link to={ROTA_ENDERECO_BASE} className={cn(CLASSE_BOTAO, "border border-border font-medium text-primary")}>Completar em Meu negócio</Link> : null}
 					</fieldset>
 
 					<fieldset className="m-0 min-w-0 border-0 p-0">
@@ -369,7 +419,7 @@ function Chip({
 			aria-pressed={!!ativo}
 			onClick={onClick}
 			className={cn(
-				"inline-flex min-h-10 items-center rounded-full border px-4 text-sm font-medium disabled:opacity-45",
+				CLASSE_ALVO + " border px-4 font-medium disabled:opacity-45",
 				ativo ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-text-secondary",
 			)}
 		>

@@ -132,7 +132,7 @@ function nomeDaTela(pathname: string): string {
 		"/inicio": "Início",
 		"/orcamentos": "Orçamentos",
 		"/clientes": "Clientes",
-		"/prospeccao": "Prospecção",
+		"/prospeccao": "Mapa de clientes",
 		"/produtos": "Produtos",
 		"/servicos": "Serviços",
 		"/agenda": "Agenda",

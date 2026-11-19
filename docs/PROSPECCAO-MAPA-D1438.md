@@ -29,3 +29,12 @@ Onde aparece:
 ## Quando o Igor quiser gente nova no mapa
 
 Aí para. Precisa de decisão dele para pagar um provedor e de parecer do Dr. Paulo antes de guardar dado de quem não é cliente. Até lá, o protótipo não tem botão que prometa essa busca.
+
+## Segunda leva (CQ-MAPA-LEVA2, 19/11/2026)
+
+- A tela agora se chama **Mapa de clientes** (h1, menu, assistente). A rota `/prospeccao` continua valendo.
+- Sem base no cadastro: ao abrir, pede "Onde estou" com uma frase explicando o porquê. Se negar ou falhar, mostra "Escolha de onde partir" com 2 botões (Usar onde estou / Informar o endereço da base). Nunca lista muda.
+- "Informar o endereço da base" leva a `/meu-negocio#endereco`, que rola e foca o campo de endereço.
+- Backfill dos clientes sem ponto: `node scripts/backfill-geo-clientes.mjs` (ENSAIO, só conta), `--aplicar` grava lat/lon/geo_precisao
+  (só onde lat e lon são nulos e há CEP ou cidade+UF; nunca sobrescreve; lotes de 20 com pausa; arquivo de rollback JSONL),
+  `--reverter <arquivo>` volta a nulo. Variáveis: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Teste: `npm run test:backfill-geo-clientes`.
