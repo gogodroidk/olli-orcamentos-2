@@ -20,6 +20,7 @@ import { getMinhasOrdens, atualizarStatusOS } from '../services/ordemServico';
 import { getCurrentUser } from '../services/supabase';
 import { getEmpresa } from '../database/database';
 import { onSyncAplicado } from '../services/cloudSync';
+import { useCadeado } from '../hooks/useCadeado';
 import type { OrdemServico, StatusOS, Empresa } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -46,6 +47,8 @@ const mesmoDia = (a: Date, b: Date) =>
  */
 export default function TecnicoHomeScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: mudar o status da OS é edição de OS (Pro, com carência do Grátis; técnico de empresa Pro entra pelo plano da empresa).
+  const cadeadoOS = useCadeado('ordem_servico');
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -131,6 +134,7 @@ export default function TecnicoHomeScreen() {
    * `comPendencia` alimenta a BarraOffline com a contagem em voo.
    */
   async function avancarStatus(ordem: OrdemServico, proximo: StatusOS) {
+    if (cadeadoOS.trancado) { cadeadoOS.abrirGate(); return; }
     vibrar('medio');
     setAvancandoId(ordem.id);
     const statusAnterior = ordem.status;

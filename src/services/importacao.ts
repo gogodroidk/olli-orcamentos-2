@@ -30,6 +30,7 @@
  * no Metro (app) e no Vite (painel).
  */
 import { UNIDADES, type Cliente, type ProdutoItem, type ServicoItem } from '../types/index.ts';
+import { numeroWhatsAppBR } from '../utils/telefoneWhatsapp.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. Primitivas de planilha (movidas do painel — mesmo comportamento)
@@ -777,8 +778,12 @@ function previaClientes(linhas: LinhaBruta[], mapeamento: Record<string, string>
 		else if (cep) avisos.push(`CEP inválido (${cepBruto}) — não foi importado.`);
 
 		const nomeNorm = normalizarChave(nome);
+		// Mesma régua do WhatsApp (`numeroWhatsAppBR`): "+55 (11) 99999-0000", "011 99999-0000" e
+		// "11999990000" são a MESMA pessoa — comparar só os dígitos crus deixava passar o cliente repetido.
+		const alvoWhats = tel.digitos.length >= 10 ? numeroWhatsAppBR(tel.digitos) : null;
 		const noCadastro = atuais.find((c) => {
 			if (tel.digitos.length >= 10 && soDigitos(c.telefone) === tel.digitos) return true;
+			if (alvoWhats && numeroWhatsAppBR(c.telefone) === alvoWhats) return true;
 			if (documento && (soDigitos(c.cpf) === documento || soDigitos(c.cnpj) === documento)) return true;
 			return normalizarChave(c.nome) === nomeNorm;
 		});

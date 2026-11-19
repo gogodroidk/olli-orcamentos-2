@@ -1078,7 +1078,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // pra servir de fundo de badge). `textoSobre` escolhe branco/tinta pela
   // razão de contraste real contra o próprio `accentLight`: 5.17:1 no claro,
   // 8.42:1 no escuro — os dois passam AA.
-  planoPopularTexto: { fontSize: 10, fontFamily: Fonts.extraBold, color: textoSobre(c.accentLight), letterSpacing: 0.5 },
+  planoPopularTexto: { fontSize: 13, fontFamily: Fonts.extraBold, color: textoSobre(c.accentLight), letterSpacing: 0.5 },
   planoNome: { fontSize: 20, fontFamily: Fonts.extraBold, color: c.onSurface, marginTop: Spacing.sm },
   planoTagline: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
   planoPrecoLinha: { flexDirection: 'row', alignItems: 'flex-end', marginTop: Spacing.lg },
@@ -1166,7 +1166,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   footerLinks: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.lg, justifyContent: 'center' },
   footerLink: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
   footerLinkTexto: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.onSurfaceVariant },
-  footerCopy: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceMuted, textAlign: 'center' },
+  footerCopy: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceMuted, textAlign: 'center' },
 
   // CTA FIXA (irmã absoluta da ScrollView — ver comentário em CtaFixaLanding)
   ctaFixaWrap: {

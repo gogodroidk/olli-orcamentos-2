@@ -102,7 +102,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   temp: { fontSize: 16, fontWeight: '800', color: c.onSurface },
   textos: { flex: 1 },
   resumo: { fontSize: 12.5, fontWeight: '600', color: c.onSurface },
-  credito: { fontSize: 10, color: c.onSurfaceMuted, marginTop: 1 },
+  credito: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 1 },
   indisponivel: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
   acao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 });

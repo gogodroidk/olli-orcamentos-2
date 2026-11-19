@@ -165,7 +165,7 @@ const criarEstilos = (c: Cores) =>
     texto: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
     textoForte: { fontWeight: '800' },
     linha: { color: c.onSurfaceVariant, fontSize: 12, marginTop: Spacing.xs, marginLeft: Spacing.xs },
-    credito: { color: c.onSurfaceMuted, fontSize: 11, marginTop: 2, marginLeft: Spacing.xs },
+    credito: { color: c.onSurfaceMuted, fontSize: 13, marginTop: 2, marginLeft: Spacing.xs },
   });
 
 /**

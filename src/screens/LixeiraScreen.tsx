@@ -349,13 +349,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   cardSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  cardMeta: { fontSize: 11.5, color: c.onSurfaceMuted },
+  cardMeta: { fontSize: 13, color: c.onSurfaceMuted },
 
   prazoBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2,
   },
-  prazoText: { fontSize: 10.5, fontWeight: '800' },
+  prazoText: { fontSize: 13, fontWeight: '800' },
 
   actions: { flexDirection: 'row', gap: 10, borderTopWidth: 1, borderTopColor: c.outline, marginTop: 12, paddingTop: 10 },
   actionBtn: {

@@ -531,7 +531,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   nomeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   nome: { fontSize: 15.5, fontWeight: '800', color: c.onSurface },
   badgePadrao: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: c.primary, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  badgePadraoText: { fontSize: 10.5, fontWeight: '800', color: c.onPrimary },
+  badgePadraoText: { fontSize: 13, fontWeight: '800', color: c.onPrimary },
   desc: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   quando: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginTop: 4 },
   badgeSugestao: {
@@ -539,7 +539,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full,
     paddingHorizontal: 8, paddingVertical: 2,
   },
-  badgeSugestaoText: { fontSize: 11, fontWeight: '700', color: c.onSurface },
+  badgeSugestaoText: { fontSize: 13, fontWeight: '700', color: c.onSurface },
   verBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     marginTop: 4, marginLeft: 64, alignSelf: 'flex-start', minHeight: 44,

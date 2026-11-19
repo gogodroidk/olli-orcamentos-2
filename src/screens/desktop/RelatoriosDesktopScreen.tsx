@@ -208,8 +208,8 @@ export default function RelatoriosDesktopScreen() {
                     xAxisColor={cores.outline}
                     rulesColor={cores.outline}
                     rulesType="dashed"
-                    yAxisTextStyle={{ color: cores.onSurfaceMuted, fontSize: 10 }}
-                    xAxisLabelTextStyle={{ color: cores.onSurfaceVariant, fontSize: 10 }}
+                    yAxisTextStyle={{ color: cores.onSurfaceMuted, fontSize: 13 }}
+                    xAxisLabelTextStyle={{ color: cores.onSurfaceVariant, fontSize: 13 }}
                     yAxisLabelWidth={30}
                     curved
                     isAnimated

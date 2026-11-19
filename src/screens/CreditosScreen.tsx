@@ -397,7 +397,7 @@ const criarEstilos = (c: Cores) =>
     pixCreditos: { fontSize: 14, fontFamily: Fonts.semiBold, color: c.onSurface },
     pixInstr: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center' },
     codeBox: { alignSelf: 'stretch', backgroundColor: c.background, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.md },
-    code: { fontSize: 11, fontFamily: 'monospace', color: c.onSurface, lineHeight: 16 },
+    code: { fontSize: 13, fontFamily: 'monospace', color: c.onSurface, lineHeight: 17 },
     cta: { alignSelf: 'stretch', marginTop: Spacing.xs },
     aguardando: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
     aguardandoTxt: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
@@ -414,7 +414,7 @@ const criarEstilos = (c: Cores) =>
     extDesc: { fontSize: 12, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
     extDir: { alignItems: 'flex-end' },
     extDelta: { fontSize: 15, fontFamily: Fonts.semiBold },
-    extData: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
+    extData: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant },
     extVazioTitulo: { fontSize: 14.5, fontFamily: Fonts.semiBold, color: c.onSurface, textAlign: 'center', marginBottom: Spacing.xs },
     extErro: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.sm },
   });

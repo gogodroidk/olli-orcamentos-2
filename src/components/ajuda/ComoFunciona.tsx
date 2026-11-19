@@ -138,7 +138,7 @@ const criarEstilos = (c: Cores) =>
       borderWidth: 1,
       borderColor: c.strokeGlow,
     },
-    numeroTexto: { fontSize: 10.5, fontWeight: '800', color: c.accentLight },
+    numeroTexto: { fontSize: 13, fontWeight: '800', color: c.accentLight },
     passoTexto: { ...Typography.body, flex: 1, color: c.onSurface, lineHeight: 20 },
     extra: { marginTop: Spacing.sm },
   });

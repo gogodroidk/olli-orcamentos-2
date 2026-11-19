@@ -394,7 +394,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   nome: { fontSize: 15, fontWeight: '700', color: c.onSurface, flexShrink: 1 },
   // Pílula sutil sobre o card: rgba(255,255,255,0.10) some no claro (rule 8) — usa c.outline.
   papelChip: { backgroundColor: c.outline, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  papelChipText: { fontSize: 10.5, fontWeight: '800', color: c.onSurfaceVariant },
+  papelChipText: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   metaText: { fontSize: 12, color: c.onSurfaceMuted },
 

@@ -11,10 +11,13 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '../services/entitlements';
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
 import { vendaPlayConfirmada } from '../services/playBilling';
+import { iphoneSoInforma, podeOferecerPlanoPara, recursoVendavel, rotuloDisponibilidade } from '../services/cadeadoRecurso';
+import { fechouCadeadoSemAssinar } from '../services/feedbackCadeado';
 import { track, Eventos } from '../services/analytics';
+import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 
 /**
- * RECURSO DO PLANO — o paywall reposicionado (Grátis ilimitado, 01/10/2026).
+ * RECURSO DO PLANO — o paywall reposicionado (Grátis, desde 01/10/2026).
  *
  * O Grátis não tem mais cota de orçamentos: o que o Pro vende são RECURSOS (sem o
  * selo, follow-up automático, link com pagamento, inteligência de campo) e o
@@ -43,10 +46,9 @@ import { track, Eventos } from '../services/analytics';
 
 /** Onde o app pode oferecer o plano (ver "LOJAS" acima). */
 function podeOferecerPlano(): boolean {
-  if (Platform.OS === 'web') return true;
   // Leitura síncrona e conservadora: antes da 1ª resposta do servidor, ou depois
-  // de um erro, é false — a peça só informa.
-  return Platform.OS === 'android' && vendaPlayConfirmada();
+  // de um erro, é false — a peça só informa. A regra é pura (`podeOferecerPlanoPara`) e tem teste.
+  return podeOferecerPlanoPara(Platform.OS, Platform.OS === 'android' && vendaPlayConfirmada());
 }
 
 export interface UsoRecursoPlano {
@@ -120,7 +122,16 @@ export function RecursoPlanoChip({ recurso, children }: PropsChip) {
     );
   }
   // bloqueado
-  const texto = `${rotulo.titulo} · Disponível no ${NOME_PLANO[planoMinimo]}`;
+  if (!recursoVendavel(recurso)) {
+    // "em breve" não vende: só informa, sem toque que leve ao plano
+    return (
+      <View style={styles.chip} accessibilityRole="text">
+        <MaterialCommunityIcons name="clock-outline" size={14} color={cores.onSurfaceVariant} />
+        <Text style={styles.chipTxt} numberOfLines={1}>{rotulo.titulo} · Em breve no {NOME_PLANO[planoMinimo]}</Text>
+      </View>
+    );
+  }
+  const texto = `${rotulo.titulo} · ${rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoMinimo])}`;
   if (!podeOferecerPlano()) {
     return (
       <View style={styles.chip} accessibilityRole="text">
@@ -202,15 +213,33 @@ export function CartaoRecursoPlano({ recurso, beneficio, titulo }: PropsCartao) 
       </View>
     );
   }
+  if (!recursoVendavel(recurso)) {
+    // "em breve" não vende (CPO, A7): só o texto "Em breve no Pro", sem botão, sem preço e sem data inventada
+    return (
+      <View style={styles.cartao}>
+        <View style={styles.selo}>
+          <MaterialCommunityIcons name="clock-outline" size={14} color={cores.onSurfaceVariant} />
+          <Text style={styles.seloTxt}>EM BREVE NO {nome.toUpperCase()}</Text>
+        </View>
+        <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
+        <Text style={styles.texto}>Em breve no {nome}.</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.cartao}>
       <View style={[styles.selo, styles.seloPlano]}>
         <MaterialCommunityIcons name="crown-outline" size={14} color={cores.accentLight} />
-        <Text style={[styles.seloTxt, { color: cores.accentLight }]}>DISPONÍVEL NO {nome.toUpperCase()}</Text>
+        <Text style={[styles.seloTxt, { color: cores.accentLight }]}>{rotuloDisponibilidade(Platform.OS, nome).toUpperCase()}</Text>
       </View>
       <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
       {/* Nas lojas (APK/iOS) o benefício padrão sai sem Pix: ver `beneficioLoja`. */}
       <Text style={styles.texto}>{beneficio ?? (Platform.OS === 'web' ? beneficioRecurso(recurso) : beneficioRecursoLoja(recurso))}</Text>
+      {/* D-2267: "Disponível no Pro: R$ 39 por mês" — o preço sai de `precosPlanos` (nunca digitado). */}
+      {/* iPhone: sem preço (Guideline 3.1.1(a); CPO 19/11) — o cartão só informa "Recurso do plano Pro". */}
+      {iphoneSoInforma(Platform.OS) ? null : (
+        <Text style={styles.preco}>{nome}: {reais((planoMinimo === 'empresa' ? PRECO_EMPRESA : PRECO_PRO).mensalCentavos)} por mês</Text>
+      )}
       <Text style={styles.nota}>Seus dados continuam salvos, em qualquer plano.</Text>
       {podeOferecerPlano() ? (
         <OlliPressable onPress={irParaPlanos} haptic="light" style={styles.botao} accessibilityRole="button">
@@ -244,6 +273,10 @@ export function TelaRecursoPlano({ recurso, titulo, children }: PropsTela) {
   const { estado } = useRecursoPlano(recurso);
   const nav = useNavigation<any>();
   const styles = useEstilos(criarEstilos);
+  // Saiu da tela trancada sem assinar: popup "o que faltou?" (D-2267; a regra de frequência fica no host).
+  const estadoRef = useRef(estado);
+  estadoRef.current = estado;
+  useEffect(() => () => fechouCadeadoSemAssinar(recurso, estadoRef.current), [recurso]);
   if (estado === 'liberado' || estado === 'em_breve') return <>{children}</>;
   return (
     <View style={styles.tela}>
@@ -307,6 +340,7 @@ const criarEstilos = (c: Cores) =>
       ...Typography.h3,
       color: c.onSurface,
     },
+    preco: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginTop: Spacing.sm },
     texto: {
       ...Typography.body,
       color: c.onSurfaceVariant,

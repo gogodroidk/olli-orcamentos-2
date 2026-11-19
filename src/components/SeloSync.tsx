@@ -236,5 +236,5 @@ const estilos = StyleSheet.create({
     borderRadius: BorderRadius.full,
     borderWidth: 1,
   },
-  seloFotoTexto: { fontSize: 10, fontWeight: '700', flexShrink: 1 },
+  seloFotoTexto: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
 });

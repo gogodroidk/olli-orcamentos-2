@@ -189,5 +189,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   comprovanteSelecionado: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: Spacing.sm, padding: Spacing.sm, borderRadius: BorderRadius.md, backgroundColor: c.surfaceVariant, borderWidth: 1, borderColor: c.outline },
   comprovanteThumb: { width: 42, height: 42, borderRadius: BorderRadius.sm, backgroundColor: c.surfaceElevated },
   comprovanteNome: { color: c.onSurface, fontSize: 12.5, fontWeight: '700' },
-  comprovanteHash: { color: c.onSurfaceMuted, fontSize: 10.5, marginTop: 2 },
+  comprovanteHash: { color: c.onSurfaceMuted, fontSize: 13, marginTop: 2 },
 });

@@ -19,6 +19,8 @@ import { TimePickerModal, DatePickerModal } from 'react-native-paper-dates';
 import { Spacing, BorderRadius, useCores, useGradientes, useEstilos, sombrasDe, textoSobre, corCategoriaEmChip, type Cores } from '../theme';
 import { DURACAO, duracaoAcessivel, useReduzirMovimento } from '../theme/motion';
 import { OlliButton } from '../components/OlliButton';
+import { CartaoRecursoPlano } from '../components/RecursoPlano';
+import { useCadeado } from '../hooks/useCadeado';
 import { OlliInput } from '../components/OlliInput';
 import { FieldLabel } from '../components/FieldLabel';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
@@ -148,6 +150,8 @@ const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um :
 export default function AgendaScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<AgendaRoute>();
+  // D-2267: agendar/editar visita é do Pro (com carência do Grátis). Ver o que já existe nunca tranca.
+  const cadeadoAgenda = useCadeado('agenda');
   const insets = useSafeAreaInsets();
   const cores = useCores();
   // O conteúdo do <GradientHeader> não se pinta com tokens de SUPERFÍCIE: o fundo
@@ -450,6 +454,7 @@ export default function AgendaScreen() {
   }
 
   function abrirNovo(prefill?: Partial<EditState>) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     vibrar('leve');
     // Hoje: próximo meio-hora (às 15h o padrão era 09:00, um horário já passado e
     // sem lembrete). Outro dia: 09:00. O fim já vem com a duração do tipo.
@@ -669,6 +674,7 @@ export default function AgendaScreen() {
   }
 
   async function salvar(e: EditState) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const m = montarAgendamento(e, escopo.status === 'propria' ? escopo.userId : undefined);
     if ('erro' in m) {
       toast.erro(m.erro);
@@ -737,6 +743,7 @@ export default function AgendaScreen() {
   }
 
   async function remover(e: EditState) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     if (!e.id) return;
     const id = e.id;
     const nome = e.titulo.trim() || TIPO_AGENDAMENTO_LABELS[e.tipo];
@@ -808,6 +815,7 @@ export default function AgendaScreen() {
   // antes de gravar (série: o alcance; avulso: sim/não), avisa conflito do mesmo
   // técnico e deixa desfazer. Resolve `false` se não remarcou (o bloco volta).
   async function remarcarArrastando(item: OcorrenciaAgendamento, novoIniMin: number): Promise<boolean> {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return false; }
     const novo = remarcarNoDia(item, novoIniMin);
     if (!novo) return false;
     const horaTxt = minutosParaHHMM(novoIniMin);
@@ -1334,7 +1342,7 @@ export default function AgendaScreen() {
         <Reanimated.View style={[styles.fabWrap, { bottom: insets.bottom + 20 }, estiloFab]} pointerEvents="box-none">
           {/* haptic={false}: abrirNovo() já vibra (leve) — não dobrar o retorno. */}
           <OlliPressable style={styles.fab} onPress={() => abrirNovo()} haptic={false} accessibilityLabel="Agendar visita">
-            <MaterialCommunityIcons name="calendar-plus" size={20} color={textoSobre(cores.accentLight)} />
+            <MaterialCommunityIcons name={cadeadoAgenda.trancado ? 'lock-outline' : 'calendar-plus'} size={20} color={textoSobre(cores.accentLight)} />
             <Text style={styles.fabText}>Agendar visita</Text>
           </OlliPressable>
         </Reanimated.View>
@@ -1357,6 +1365,7 @@ export default function AgendaScreen() {
             podeEscolherResponsavel={podeVerEquipe}
             equipe={equipe}
             salvando={salvando}
+            somenteLeitura={cadeadoAgenda.trancado}
             onChange={setEditing}
             voltarRef={voltarDoForm}
             onClose={() => setEditing(null)}
@@ -1598,7 +1607,7 @@ function combinarDataHora(data: Date, hora: string): Date {
 }
 
 function AgendamentoForm({
-  state, clientes, podeEscolherResponsavel, equipe, voltarRef, salvando, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
+  state, clientes, podeEscolherResponsavel, equipe, voltarRef, salvando, somenteLeitura = false, onChange, onClose, onSave, onDelete, onAbrirOrcamento, onVerCliente,
 }: {
   state: EditState;
   clientes: Cliente[];
@@ -1609,6 +1618,8 @@ function AgendamentoForm({
   /** A tela pergunta aqui, no voltar do Android, se o form fechou uma camada interna. */
   voltarRef?: React.MutableRefObject<(() => boolean) | null>;
   salvando: boolean;
+  /** D-2267: Grátis depois da carência vê a visita (legível) mas não edita; o cartão "Disponível no Pro" aparece no topo. */
+  somenteLeitura?: boolean;
   onChange: (s: EditState) => void;
   onClose: () => void;
   onSave: (s: EditState) => void;
@@ -1747,6 +1758,11 @@ function AgendamentoForm({
       </View>
 
       <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
+        {somenteLeitura ? (
+          <View style={{ marginBottom: Spacing.base }}>
+            <CartaoRecursoPlano recurso="agenda" titulo="Editar a agenda" />
+          </View>
+        ) : null}
         {state.ocorrenciaId ? (
           <View style={styles.avisoSerie}>
             <MaterialCommunityIcons name="repeat" size={16} color={cores.accentLight} />
@@ -1773,6 +1789,8 @@ function AgendamentoForm({
           </View>
         )}
 
+        {/* Somente leitura (D-2267): os campos aparecem e se leem, mas não recebem toque. */}
+        <View pointerEvents={somenteLeitura ? 'none' : 'auto'}>
         {/* TIPO */}
         <FieldLabel>Tipo</FieldLabel>
         <View style={styles.tipoGrid}>
@@ -2050,7 +2068,9 @@ function AgendamentoForm({
           </>
         )}
 
-        {onDelete && (
+        </View>
+
+        {onDelete && !somenteLeitura && (
           <TouchableOpacity style={[styles.deleteBtn, salvando && { opacity: 0.5 }]} onPress={onDelete} activeOpacity={0.8} disabled={salvando}>
             <MaterialCommunityIcons name="trash-can-outline" size={18} color={cores.danger} />
             <Text style={styles.deleteText}>{state.ocorrenciaId ? 'Excluir…' : 'Excluir agendamento'}</Text>
@@ -2059,14 +2079,18 @@ function AgendamentoForm({
       </ScrollView>
 
       <View style={[styles.formFooter, { paddingBottom: insets.bottom + 16 }]}>
-        <OlliButton
-          label={state.id ? 'Salvar alterações' : 'Confirmar agendamento'}
-          variant="gradient" size="lg" fullWidth
-          onPress={() => onSave(state)}
-          loading={salvando}
-          disabled={salvando}
-          icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />}
-        />
+        {somenteLeitura ? (
+          <OlliButton label="Fechar" variant="outline" size="lg" fullWidth onPress={onClose} />
+        ) : (
+          <OlliButton
+            label={state.id ? 'Salvar alterações' : 'Confirmar agendamento'}
+            variant="gradient" size="lg" fullWidth
+            onPress={() => onSave(state)}
+            loading={salvando}
+            disabled={salvando}
+            icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />}
+          />
+        )}
       </View>
 
       {/* BUSCA DE CLIENTE — camada por cima do formulário (não outro Modal):
@@ -2146,7 +2170,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
   // Textos/hairlines brancos abaixo pertencem ao GradientHeader (não migrado): o
   // header é sempre um banner colorido/escuro nos dois modos, então branco fixo
@@ -2167,7 +2191,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   weekStrip: { flexDirection: 'row', alignItems: 'stretch', gap: 4 },
   weekDay: { flex: 1, minHeight: 62, borderRadius: BorderRadius.md, alignItems: 'center', justifyContent: 'center', paddingVertical: 7, borderWidth: 1, borderColor: 'transparent' },
   weekDaySelected: { backgroundColor: c.accentLight, borderColor: c.accentLight },
-  weekDayName: { fontSize: 10, fontWeight: '800', color: c.onSurfaceMuted },
+  weekDayName: { fontSize: 13, fontWeight: '800', color: c.onSurfaceMuted },
   weekDayNumber: { fontSize: 17, lineHeight: 22, fontWeight: '800', color: c.onSurface, marginTop: 2 },
   weekDayToday: { color: c.accentLight },
   weekDayTextSelected: { color: textoSobre(c.accentLight) },
@@ -2176,7 +2200,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Bolinha sobre o dia selecionado (fundo accent): um aro da cor do texto para não sumir.
   dayMarkerRing: { borderWidth: 1, borderColor: textoSobre(c.accentLight) },
   monthWeekNames: { flexDirection: 'row', marginBottom: 4 },
-  monthWeekName: { width: '14.2857%', textAlign: 'center', fontSize: 9.5, fontWeight: '800', color: c.onSurfaceMuted },
+  monthWeekName: { width: '14.2857%', textAlign: 'center', fontSize: 13, fontWeight: '800', color: c.onSurfaceMuted },
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   monthDayCell: { width: '14.2857%', alignItems: 'center', paddingVertical: 2 },
   monthDay: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
@@ -2192,7 +2216,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   googleCardRow: { flexDirection: 'row', alignItems: 'center' },
   googleCardTitle: { fontSize: 14, fontWeight: '700', color: c.onSurface },
   googleCardHint: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
-  googleCardFooter: { fontSize: 11.5, color: c.onSurfaceMuted, marginTop: 10 },
+  googleCardFooter: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 10 },
 
   // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   routeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(52,198,217,0.12)', borderWidth: 1, borderColor: 'rgba(52,198,217,0.30)', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
@@ -2220,15 +2244,15 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   itemBar: { width: 4, alignSelf: 'stretch', borderRadius: 4, marginRight: 12 },
   itemTime: { width: 48, marginRight: 8 },
   itemHour: { fontSize: 15, fontWeight: '800', color: c.onSurface },
-  itemHourEnd: { fontSize: 11, color: c.onSurfaceMuted, marginTop: 1 },
+  itemHourEnd: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 1 },
   itemDiaTodo: { fontSize: 12, lineHeight: 15, fontWeight: '800', color: c.accentLight },
   itemTitle: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   itemClient: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   itemMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' },
   tipoChip: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2 },
-  tipoChipText: { fontSize: 11, fontWeight: '800' },
+  tipoChipText: { fontSize: 13, fontWeight: '800' },
   addrRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
-  addrText: { fontSize: 11.5, color: c.onSurfaceMuted, flex: 1 },
+  addrText: { fontSize: 13, color: c.onSurfaceMuted, flex: 1 },
   statusLinha: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   itemClima: { marginTop: 8 },
   statusText: { fontSize: 12, fontWeight: '700' },

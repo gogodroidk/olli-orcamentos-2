@@ -370,7 +370,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     ...Typography.label,
     color: c.onSurfaceVariant,
     textTransform: 'uppercase',
-    fontSize: 11,
+    fontSize: 13,
   },
   tituloHeaderAtivo: {
     color: c.onSurface,

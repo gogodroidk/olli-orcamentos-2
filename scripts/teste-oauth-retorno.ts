@@ -361,7 +361,7 @@ ok(/criarCapturaRetorno\(/.test(nativo) && /captura\.esperar\(/.test(nativo), 'n
 ok(/oauthNativoEmAndamento/.test(nativo) && /'em_andamento'/.test(nativo), 'nativo trava sessão concorrente');
 ok(/falhar\('navegador_falhou'\)/.test(nativo), 'falha ao abrir navegador não vira cancelado');
 const entrar = ler('../src/screens/EntrarScreen.tsx');
-ok(/res === 'cancelado'[\s\S]{0,80}Alert\.alert/.test(entrar), 'app avisa quando o login não conclui');
+ok(/res === 'cancelado'[\s\S]{0,80}(?:Alert\.alert|setErros\(\{ geral: mensagemErroOAuth)/.test(entrar), 'app avisa quando o login não conclui');
 const traduz = ler('../src/utils/authErrors.ts');
 ok(/ErroOAuth/.test(traduz) && /mensagemUsuario/.test(traduz), 'traduzirErroAuth mostra a mensagem do ErroOAuth');
 const botoes = ler('../webapp/src/pages/sys/login/components/OAuthButtons.tsx');

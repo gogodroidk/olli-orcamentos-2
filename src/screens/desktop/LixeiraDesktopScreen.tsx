@@ -451,7 +451,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 3,
     alignSelf: 'flex-start',
   },
-  prazoTexto: { fontSize: 11, fontWeight: '800' },
+  prazoTexto: { fontSize: 13, fontWeight: '800' },
 
   acoesLinha: {
     flexDirection: 'row',

@@ -283,7 +283,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, backgroundColor: comAlfa(c.primary, 0.09),
     paddingHorizontal: 9, paddingVertical: 5, marginBottom: 8,
   },
-  revisionPillText: { fontSize: 11.5, fontWeight: '800', color: c.primary },
+  revisionPillText: { fontSize: 13, fontWeight: '800', color: c.primary },
   summaryRow: {
     flexDirection: 'row', justifyContent: 'space-between', gap: 12,
     paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: c.outline,
@@ -317,9 +317,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     width: 48, height: 48, borderRadius: BorderRadius.md,
     borderWidth: 1, alignItems: 'center', justifyContent: 'center',
   },
-  brandEyebrow: { fontSize: 10.5, fontWeight: '800', color: c.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.4 },
+  brandEyebrow: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.4 },
   brandName: { fontSize: 15, fontWeight: '800', color: c.onSurface, marginTop: 1 },
-  brandDetail: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 2 },
+  brandDetail: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   colorDot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: c.outlineDark },
   previewActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 9, marginBottom: Spacing.lg },
   switchRow: {
@@ -329,7 +329,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingHorizontal: Spacing.md, paddingVertical: 9, marginBottom: 8,
   },
   switchLabel: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
-  switchHint: { fontSize: 11.5, color: c.onSurfaceVariant, lineHeight: 16, marginTop: 2 },
+  switchHint: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 17, marginTop: 2 },
   nextNote: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
     marginTop: 8, padding: Spacing.md, borderRadius: BorderRadius.lg,

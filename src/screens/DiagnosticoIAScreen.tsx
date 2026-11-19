@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity,
+  View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity, Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -176,7 +176,7 @@ export default function DiagnosticoIAScreen() {
         : undefined;
   const limiteDiarioFechado = motivoErro === 'limite_diario' || motivoErro === 'limite_global';
   const onAcaoErro = avisoCota
-    ? () => nav.navigate('Planos')
+    ? (Platform.OS === 'ios' ? undefined : () => nav.navigate('Planos'))
     : motivoErro && !limiteDiarioFechado
       ? pedirDiagnostico
       : undefined;
@@ -481,9 +481,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Cyan/amarelo fixos (base #7FE9F5 / warning do handoff): decorativos, sem chave semântica exata.
   originIa: { backgroundColor: 'rgba(127,233,245,0.10)', borderColor: 'rgba(127,233,245,0.3)' },
   originBase: { backgroundColor: 'rgba(247,178,59,0.10)', borderColor: 'rgba(247,178,59,0.3)' },
-  originText: { fontSize: 11.5, fontWeight: '800' },
+  originText: { fontSize: 13, fontWeight: '800' },
   confBadge: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 5 },
-  confText: { fontSize: 11.5, fontWeight: '800' },
+  confText: { fontSize: 13, fontWeight: '800' },
 
   avisoCard: { marginBottom: 12, paddingVertical: Spacing.base },
 

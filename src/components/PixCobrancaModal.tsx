@@ -106,7 +106,7 @@ const criarEstilos = (c: Cores) =>
     valor: { fontSize: 26, fontFamily: Fonts.serifBold, color: c.accentLight, marginTop: Spacing.xs },
     instr: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center' },
     codeBox: { alignSelf: 'stretch', backgroundColor: c.background, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.md },
-    code: { fontSize: 11, fontFamily: 'monospace', color: c.onSurface, lineHeight: 16 },
+    code: { fontSize: 13, fontFamily: 'monospace', color: c.onSurface, lineHeight: 17 },
     cta: { alignSelf: 'stretch', marginTop: Spacing.xs },
     nota: { fontSize: 12, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center', lineHeight: 17 },
   });

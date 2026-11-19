@@ -446,13 +446,13 @@ const criarEstilos = (c: Cores) =>
     cardTitulo: { fontSize: 16, fontWeight: '800', color: c.onSurface },
     cardCliente: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
     badge: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
-    badgeTexto: { fontSize: 11, fontWeight: '800' },
+    badgeTexto: { fontSize: 13, fontWeight: '800' },
     metaLinha: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     meta: {
       flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '100%',
       backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 4,
     },
-    metaTexto: { fontSize: 11, color: c.onSurfaceVariant, fontWeight: '600' },
+    metaTexto: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600' },
     rodape: { flexDirection: 'row', alignItems: 'center', gap: 6, borderTopWidth: 1, borderTopColor: c.outline, paddingTop: 8 },
     proximas: { flex: 1, fontSize: 13, color: c.accentLight, fontWeight: '600' },
     cobrarBtn: {

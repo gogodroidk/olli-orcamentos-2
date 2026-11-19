@@ -18,12 +18,14 @@ import { vibrar } from '../utils/haptico';
 import { comCentroDesktop } from '../components/web/CentroDesktop';
 import { SidebarNav } from '../components/web/SidebarNav';
 import type { Recurso } from '../services/entitlements';
+import { uiV2Nav, rotuloAbaMobile } from '../services/uiFlags';
 import type { VerticalId } from '../services/verticais';
 
 // Screens
 import HomeScreen from '../screens/HomeScreen';
 import OrcamentosScreen from '../screens/OrcamentosScreen';
 import NovoOrcamentoScreen from '../screens/NovoOrcamentoScreen';
+import { limiteDeTela } from '../components/ErrorBoundary';
 import DiagnosticoScreen from '../screens/DiagnosticoScreen';
 import DiagnosticoIAScreen from '../screens/DiagnosticoIAScreen';
 import MeuNegocioScreen from '../screens/MeuNegocioScreen';
@@ -43,6 +45,7 @@ import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
 import AutopilotScreen from '../screens/AutopilotScreen';
 import ImportarScreen from '../screens/ImportarScreen';
+import RecursoTrancadoScreen from '../screens/RecursoTrancadoScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import PrepararNotaScreen from '../screens/PrepararNotaScreen';
@@ -134,6 +137,8 @@ export type RootStackParamList = {
   // manter navigate('Tabs', { screen, params }) tipado, é o que o `linking` da
   // v4 exige para aceitar `screens` aninhados no PathConfig de Tabs.
   Tabs: NavigatorScreenParams<TabParamList> | undefined;
+  /** Hoje como tela (v1.3, flag ui_v2_nav); sem a flag Hoje segue como aba. */
+  HojeDia: undefined;
   Onboarding: undefined;
   Entrar: undefined;
   // NovoOrcamento aceita um modelo, OU pré-seleção de cliente, OU 1 item pré-carregado
@@ -168,7 +173,10 @@ export type RootStackParamList = {
   OlliChat: undefined;
   Autopilot: undefined;
   // Troque em 5 minutos: contatos (.vcf/CSV), planilha CSV/XLSX e foto de orçamento antigo (IA).
-  Importar: undefined;
+  // `origem: 'contatos'` abre já na porta "Contatos do celular" (botão "Importar dos contatos" em Clientes).
+  Importar: { origem?: 'contatos' } | undefined;
+  // D-2267: o cadeado de um recurso do Pro abre "Disponível no Pro" (planosBase). O que já foi criado segue visível.
+  RecursoTrancado: { recurso: Recurso };
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
   // Comprovante de controle de pragas (RDC 622, art. 19) do ofício de dedetização (gate `vertical: 'dedetizacao'`).
@@ -243,6 +251,8 @@ export type TabParamList = {
   Orcar: undefined;     // botão central elevado → abre NovoOrcamento (stack)
   Hoje: undefined;
   Conta: undefined;
+  /** Aba Orçamentos do celular (v1.3, só com a flag ui_v2_nav). */
+  OrcamentosLista?: { clienteId?: string; clienteNome?: string } | undefined;
   // ─── Abas SOMENTE-desktop (v4) ──────────────────────────────────────────
   // Registradas condicionalmente sob `ehDesktop`; no mobile/APK nunca montam.
   // Vivem DENTRO do shell (com a sidebar visível), em vez de cobrirem-na como
@@ -512,8 +522,25 @@ function TabNavigator() {
       ? TecnicoHomeScreen
       : HomeComAvisoCadastro;
 
+  // v1.3: flag ui_v2_nav só muda o CELULAR aqui (o desktop muda na SidebarNav).
+  const navV2 = uiV2Nav() && !ehDesktop;
+  const abaAgenda = (
+    <Tab.Screen
+      name="Agenda"
+      // Desktop: grade de semana (AgendaDesktopScreen); mobile: AgendaScreen atual.
+      component={ehDesktop ? AgendaDesktopScreen : AgendaScreen}
+      options={{
+        tabBarLabel: 'Agenda',
+        tabBarIcon: ({ color, size }) => (
+          <MaterialCommunityIcons name="calendar-month-outline" color={color} size={size} />
+        ),
+      }}
+    />
+  );
+
   return (
     <Tab.Navigator
+      screenLayout={limiteDeTela}
       screenOptions={{
         headerShown: false,
         ...transicaoAba,
@@ -542,7 +569,10 @@ function TabNavigator() {
               paddingTop: 10,
               // sem position absolute: mantém o layout estável na web (PWA)
             },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '800', letterSpacing: 0 },
+        tabBarLabelStyle: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
+        // Com fonte do sistema em 130% "Orçamentos" virava "Orçamen…" (S20, 19/11). O rótulo fica
+        // em 13 fixo ao lado do ícone; o leitor de tela lê o nome da aba do mesmo jeito.
+        tabBarAllowFontScaling: false,
         tabBarHideOnKeyboard: true,
       }}
       // Sidebar permanente no desktop: substitui a tab bar inferior por completo.
@@ -568,17 +598,22 @@ function TabNavigator() {
           ),
         }}
       />
-      <Tab.Screen
-        name="Agenda"
-        // Desktop: grade de semana (AgendaDesktopScreen); mobile: AgendaScreen atual.
-        component={ehDesktop ? AgendaDesktopScreen : AgendaScreen}
-        options={{
-          tabBarLabel: 'Agenda',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="calendar-month-outline" color={color} size={size} />
-          ),
-        }}
-      />
+      {/* v1.3 (ui_v2_nav): Orçamentos vira aba no celular, logo depois do Início. */}
+      {navV2 && (
+        <Tab.Screen
+          name="OrcamentosLista"
+          component={OrcamentosScreen}
+          options={{
+            tabBarLabel: 'Orçamentos',
+            tabBarAccessibilityLabel: 'Orçamentos',
+            tabBarIcon: ({ color, size }) => (
+              <MaterialCommunityIcons name="file-document-outline" color={color} size={size} />
+            ),
+          }}
+        />
+      )}
+      {/* Com a flag a Agenda vem DEPOIS do ＋ (ordem: Início · Orçamentos · ＋ · Agenda · Mais). */}
+      {!navV2 && abaAgenda}
       {/* Aba central "Orcar" (botão elevado) — só existe no mobile. No desktop o
           botão '+ Novo orçamento' vive na SidebarNav, que ignora este item. O
           técnico não vê atalho de orçamento (fluxo de campo é OS, não venda).
@@ -601,6 +636,7 @@ function TabNavigator() {
           }}
         />
       )}
+      {navV2 && abaAgenda}
       {/* ─── Abas SOMENTE-desktop: vivem dentro do shell com a sidebar. ─────── */}
       {ehDesktop && (
         <>
@@ -662,7 +698,7 @@ function TabNavigator() {
       )}
       {/* Hoje só existe no mobile: no desktop a sidebar não a lista (o resumo
           do dia vive no dashboard) e a tela mobile esticada ficaria estranha. */}
-      {!ehDesktop && (
+      {!ehDesktop && !navV2 && (
       <Tab.Screen
         name="Hoje"
         component={HojeScreen}
@@ -678,9 +714,10 @@ function TabNavigator() {
         name="Conta"
         component={ContaScreen}
         options={{
-          tabBarLabel: 'Conta',
+          // Com ui_v2_nav a Conta vira "Mais" (mesma tela: ajustes, ferramentas, ajuda).
+          tabBarLabel: rotuloAbaMobile('Conta', navV2),
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="account-circle-outline" color={color} size={size} />
+            <MaterialCommunityIcons name={navV2 ? 'dots-horizontal-circle-outline' : 'account-circle-outline'} color={color} size={size} />
           ),
         }}
       />
@@ -713,6 +750,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
   const capa = opcoesTransicao('fade', reduzir);
   return (
     <Stack.Navigator
+      screenLayout={limiteDeTela}
       initialRouteName={initialRouteName ?? 'Tabs'}
       screenOptions={{
         headerShown: false,
@@ -768,6 +806,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
       <Stack.Screen name="Autopilot" component={AutopilotCentro} />
       <Stack.Screen name="Importar" component={ImportarCentro} />
+      <Stack.Screen name="RecursoTrancado" component={RecursoTrancadoScreen} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />
@@ -777,6 +816,8 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="Planos" component={PlanosCentro} />
       <Stack.Screen name="VimDeOutroApp" component={VimDeOutroAppCentro} />
       {/* Relatório do dia falado — chegável pela Home/Hoje ("Como foi seu dia?"). */}
+      {/* v1.3 (ui_v2_nav): Hoje deixa de ser aba e abre a partir do Início. */}
+      {uiV2Nav() && <Stack.Screen name="HojeDia" component={HojeScreen} />}
       <Stack.Screen name="RelatorioDia" component={RelatorioDiaCentro} />
       {/* Onda I3 — confirmação de véspera e garantia que se cuida sozinha. */}
       <Stack.Screen name="ConfirmarVisitas" component={ConfirmarVisitasCentro} />
@@ -830,6 +871,6 @@ const criarEstilos = (c: Cores) => {
       shadowColor: glowCyan.shadowColor, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 14,
       elevation: 8,
     },
-    centerLabel: { fontSize: 11, fontWeight: '800', color: c.tabActive, marginTop: 3 },
+    centerLabel: { fontSize: 13, fontWeight: '800', color: c.tabActive, marginTop: 3 },
   });
 };

@@ -242,5 +242,5 @@ const criarEstilos = (c: Cores) =>
     itemTitulo: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.onSurface },
     remover: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.danger },
     cta: { marginTop: Spacing.base, alignSelf: 'stretch' },
-    aviso: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 16 },
+    aviso: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.sm, lineHeight: 17 },
   });

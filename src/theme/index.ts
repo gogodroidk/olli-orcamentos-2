@@ -211,7 +211,7 @@ export const Typography = {
   body: { fontSize: 14, fontFamily: Fonts.regular },
   bodySmall: { fontSize: 13, fontFamily: Fonts.regular },
   caption: { fontSize: 12, fontFamily: Fonts.regular },
-  label: { fontSize: 11, fontFamily: Fonts.extraBold, letterSpacing: 0 },
+  label: { fontSize: 13, fontFamily: Fonts.extraBold, letterSpacing: 0 },
   button: { fontSize: 15, fontFamily: Fonts.extraBold },
   // Valores em dinheiro / destaque (serifada Spectral)
   value: { fontFamily: Fonts.serifBold, fontSize: 24 },
