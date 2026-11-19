@@ -129,12 +129,13 @@ case "$ALVO" in
     (cd worker && "${WR[@]}" deploy --message "$MSG") || barra "o wrangler deploy do worker falhou (o que estava no ar continua)."
     ;;
   landing)
-    (cd web && npm run build) || barra "o build da landing falhou."
+    (cd web && CI=true npm run build) || barra "o build da landing falhou."
     (cd site && "${WR[@]}" deploy --message "$MSG") || barra "o wrangler deploy da landing falhou (o que estava no ar continua)."
     ;;
   painel)
     export OLLI_BUILD_ID="$CURTO-$(date -u +%Y%m%dT%H%MZ)"
-    (cd webapp && pnpm run build) || barra "o build do painel falhou."
+    # CI=true: sem isso o vite abre o relatório de tamanho (stats.html) numa aba do Chrome do Igor (19/11).
+    (cd webapp && CI=true pnpm run build) || barra "o build do painel falhou."
     (cd webapp && "${WR[@]}" pages deploy dist --project-name olli-painel-web --branch main --commit-hash "$HASH" --commit-message "$MSG") \
       || barra "o pages deploy do painel falhou (o que estava no ar continua)."
     diz "Painel enviado (OLLI_BUILD_ID=$OLLI_BUILD_ID). Espero 90 s sem abrir, para a borda não guardar HTML no lugar do JS."
