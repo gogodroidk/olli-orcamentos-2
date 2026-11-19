@@ -82,6 +82,16 @@ function diasAte(iso: string | null | undefined, agora: Date): number | null {
   return Math.ceil((t - agora.getTime()) / DIA_MS);
 }
 
+/**
+ * Dias de CALENDÁRIO (Brasília, UTC−3 fixo) entre hoje e o vencimento. `diasAte` arredonda
+ * pra cima e dizia "vence amanhã" na manhã do próprio dia do vencimento; o aviso de
+ * renovação usa este, que fala "hoje" no dia certo. O portão (<= 5) continua em `diasAte`.
+ */
+function diasCalendarioBrasilia(iso: string, agora: Date): number {
+  const dia = (ms: number) => Math.floor((ms - 3 * 60 * 60 * 1000) / DIA_MS);
+  return dia(Date.parse(iso)) - dia(agora.getTime());
+}
+
 function quando(dias: number): string {
   if (dias <= 0) return 'hoje';
   if (dias === 1) return 'amanhã';
@@ -110,15 +120,16 @@ export function lembreteAssinatura(e: EntradaLembrete): Lembrete | null {
     const dias = diasAte(assinatura.proximaCobranca, agora);
     if (dias !== null && dias <= 5) {
       const nome = NOME_PLANO[assinatura.planoEfetivo];
+      const diasCal = diasCalendarioBrasilia(assinatura.proximaCobranca as string, agora);
       return {
         id: `renovar_pix:${assinatura.proximaCobranca}`,
         tipo: 'renovar_pix',
-        urgencia: dias <= 1 ? 'critico' : dias <= 3 ? 'atencao' : 'info',
-        titulo: `Seu ${nome} vence ${quando(dias)}`,
+        urgencia: diasCal <= 1 ? 'critico' : diasCal <= 3 ? 'atencao' : 'info',
+        titulo: `Seu ${nome} vence ${quando(diasCal)}`,
         texto: 'O Pix não renova sozinho. Renove agora para não perder o acesso — os dias que faltam não se perdem.',
         cta: { rotulo: 'Renovar com Pix', acao: 'renovar_pix' },
         ctaSecundario: null,
-        dispensavelPorHoras: dias > 2 ? 24 : null,
+        dispensavelPorHoras: diasCal > 2 ? 24 : null,
       };
     }
     return null;
