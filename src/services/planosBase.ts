@@ -172,7 +172,7 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
   nota_fiscal: {
     // D-2267 (CPO 19/11): "Preparar nota fiscal" (copiar dados p/ o emissor do governo) é ABERTO a todos.
     // O recurso Pro é só a emissão AUTOMÁTICA pela OLLI, que ainda não existe (RECURSOS_EM_BREVE): nunca vendido como pronto.
-    titulo: 'Emissão automática da nota fiscal pela OLLI',
+    titulo: 'Nota fiscal automática pela OLLI',
     beneficio: 'A OLLI emite a nota fiscal do serviço para você, sem copiar dados para o portal.',
     curto: 'emissão automática da nota fiscal',
   },
