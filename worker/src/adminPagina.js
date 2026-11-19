@@ -1233,7 +1233,7 @@ async function carregarUso(){
  try{
   const f=await api('funil-uso');limpar(box);
   box.append(el('p',{className:'mut',style:'margin-bottom:16px'},'Cada linha é um passo da jornada dentro do app, contando cada conta uma vez só (a primeira vez que ela passou ali). A porcentagem mostra quantos dos que chegaram ao passo anterior chegaram a este: o passo com a menor porcentagem é onde as pessoas param.'));
-  if(!f.pessoas){box.append(el('div',{className:'card'},estado('','Ainda não há nenhum passo registrado.','O rastreio de telas está desligado no app e só liga 7 dias depois de a política de privacidade publicada explicar o que é medido. Quem desliga "Ajudar a melhorar o OLLI" no app fica fora.')));box.append(el('div',{className:'nota'},'Contas internas fora: '+f.internasFora+'.'));return;}
+  if(!f.pessoas){box.append(el('div',{className:'card'},estado('','Rastreio desligado, ainda sem dados.','Isto não é zero de uso: o rastreio de telas ainda não foi ligado no app. Ele só liga 7 dias depois da publicação da política de privacidade que explica o que é medido, e com o app novo na loja. Quem desliga "Ajudar a melhorar o OLLI" no app fica fora.')));box.append(el('div',{className:'nota'},'Contas internas fora: '+f.internasFora+'.'));return;}
   const tb=el('table'),body=el('tbody');
   tb.append(el('thead',{},el('tr',{},el('th',{},'Passo'),el('th',{},'Contas'),el('th',{},'% do passo anterior'))));
   f.passos.forEach(x=>body.append(el('tr',{},el('td',{},x.rotulo),el('td',{},el('b',{},String(x.pessoas))),el('td',{className:'mut'},x.pctAnterior===null?'—':String(x.pctAnterior).replace('.',',')+'%'))));

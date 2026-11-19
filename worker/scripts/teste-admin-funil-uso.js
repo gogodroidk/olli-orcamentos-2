@@ -86,6 +86,7 @@ await caso('tela: aba "Funil de uso" na navegação, no roteamento, e o script d
   assert.ok(script.includes("{id:'uso',rot:'Funil de uso'") && script.includes('uso:carregarUso'));
   assert.ok(html.includes('id="v-uso"'));
   assert.ok(script.includes("api('funil-uso')"));
+  assert.ok(script.includes('Rastreio desligado, ainda sem dados.'), 'vazio nunca aparece como zero de uso');
 });
 
 console.log(`\n${ok} casos ok`);
