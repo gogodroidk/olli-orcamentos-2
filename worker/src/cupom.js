@@ -132,7 +132,7 @@ export async function reservarCupom(env, { userId, codigo, plano, canal }) {
   return { ok: true, pct, codigo: r.data.codigo };
 }
 
-/** Guarda a cobrança gerada na reserva (para o pedido repetido devolver a mesma). Falha não derruba a venda. */
+/** Guarda a cobrança gerada na reserva (para o pedido repetido tratar a mesma). Falha não derruba a venda. */
 export async function anexarCupom(env, userId, cobranca, expiraEm) {
   const r = await rpc(env, 'cupom_anexar', { p_user: userId, p_cobranca: cobranca, p_expira: expiraEm || new Date(Date.now() + 24 * 3600 * 1000).toISOString() });
   if (!r.ok || r.data !== true) console.error('[olli-cupom] cobrança não anexada à reserva — pedido repetido pode gerar outra');
@@ -147,14 +147,14 @@ export async function liberarCupom(env, userId) {
 
 /**
  * Pagamento confirmado: a reserva vira uso (idempotente por cobrança). Um 2º pagamento com desconto na
- * mesma conta (corrida) vira devolução pendente + ALARME: nunca fica como desconto duplo silencioso.
+ * mesma conta (corrida) vira diferença pendente + ALARME: nunca fica como desconto duplo silencioso.
  * Falha aqui não perde o pagamento (a conta já foi creditada). Retorna o resultado ou null (não sei).
  */
 export async function confirmarCupom(env, userId, cobrancaId, descontoCentavos) {
   const r = await rpc(env, 'cupom_confirmar', { p_user: userId, p_cobranca_id: String(cobrancaId || ''), p_desconto_centavos: Math.max(0, Math.round(Number(descontoCentavos) || 0)) });
   if (!r.ok || !r.data) return null;
   if (r.data.resultado === 'desconto_duplicado' || r.data.resultado === 'sem_reserva') {
-    console.error(`[olli-cupom] ALARME: desconto pago sem ser o 1º uso (${r.data.resultado}) — devolução pendente no admin`, String(cobrancaId));
+    console.error(`[olli-cupom] ALARME: desconto pago sem ser o 1º uso (${r.data.resultado}) — diferença pendente no admin`, String(cobrancaId));
   }
   return r.data.resultado;
 }

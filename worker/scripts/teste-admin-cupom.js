@@ -4,7 +4,7 @@
  * Prende: validação ANTES de auditar; auditoria antes de gravar (sem auditoria = 503 e nada gravado);
  * limites espelham a migration; a atribuição só traz código e contagens; "não sei" = 503.
  */
-import { criarCupom, desativarCupom, resolverDevolucao, rotaListarDevolucoes, rotaListarCupons, CUPOM_USOS_MAX, CUPOM_VALIDADE_DIAS_MAX } from '../src/adminCupom.js';
+import { criarCupom, desativarCupom, resolverDiferenca, rotaListarDiferencas, rotaListarCupons, CUPOM_USOS_MAX, CUPOM_VALIDADE_DIAS_MAX } from '../src/adminCupom.js';
 import { CUPOM_USOS_MAX as USOS_APP, CUPOM_VALIDADE_DIAS_MAX as DIAS_APP } from '../../src/services/limitesComerciais.ts';
 
 let ok = 0; let falhas = 0;
@@ -71,20 +71,20 @@ reset();
 r = await rotaListarCupons(env, { fetchImpl });
 checar('lista com banco fora = 503 (não sei ≠ lista vazia)', r.status === 503);
 
-reset(); rpcs.cupom_devolucoes_listar = [{ cobranca_id: 'bill_2', codigo: 'ANA10', desconto_centavos: 390, motivo: 'desconto_duplicado', estado: 'pendente', criado_em: '2026-11-19T12:00:00Z' }];
-r = await rotaListarDevolucoes(env, { fetchImpl }); j = await r.json();
-checar('devoluções pendentes: cobrança, código, valor e motivo; sem dado pessoal', r.status === 200 && j.devolucoes[0].desconto_centavos === 390 && !('user_id' in j.devolucoes[0]) && !('email' in j.devolucoes[0]));
+reset(); rpcs.cupom_diferencas_listar = [{ cobranca_id: 'bill_2', codigo: 'ANA10', desconto_centavos: 390, motivo: 'desconto_duplicado', estado: 'pendente', criado_em: '2026-11-19T12:00:00Z' }];
+r = await rotaListarDiferencas(env, { fetchImpl }); j = await r.json();
+checar('diferenças pendentes: cobrança, código, valor e motivo; sem dado pessoal', r.status === 200 && j.diferencas[0].desconto_centavos === 390 && !('user_id' in j.diferencas[0]) && !('email' in j.diferencas[0]));
 reset();
-r = await rotaListarDevolucoes(env, { fetchImpl });
-checar('devoluções com banco fora = 503 (não sei ≠ nada a devolver)', r.status === 503);
-reset(); rpcs.cupom_devolucao_resolver = true;
-r = await resolverDevolucao(env, admin, { cobrancaId: 'bill_2', motivo: 'devolvido pelo painel do gateway' }, { auditar, fetchImpl }); j = await r.json();
-checar('baixa da devolução: auditada antes e gravada', r.status === 200 && j.baixada === true && auditorias[0].acao === 'cupom_devolucao_resolver' && rpcFeita('cupom_devolucao_resolver').body.p_cobranca_id === 'bill_2');
+r = await rotaListarDiferencas(env, { fetchImpl });
+checar('diferenças com banco fora = 503 (não sei ≠ nada a tratar)', r.status === 503);
+reset(); rpcs.cupom_diferenca_resolver = true;
+r = await resolverDiferenca(env, admin, { cobrancaId: 'bill_2', motivo: 'resolvido pelo painel do gateway' }, { auditar, fetchImpl }); j = await r.json();
+checar('baixa da diferença: auditada antes e gravada', r.status === 200 && j.baixada === true && auditorias[0].acao === 'cupom_diferenca_resolver' && rpcFeita('cupom_diferenca_resolver').body.p_cobranca_id === 'bill_2');
 reset();
-r = await resolverDevolucao(env, admin, { cobrancaId: 'bill_2' }, { auditar, fetchImpl });
+r = await resolverDiferenca(env, admin, { cobrancaId: 'bill_2' }, { auditar, fetchImpl });
 checar('baixa sem motivo = 400 e nada gravado', r.status === 400 && !chamadas.length);
 reset(); auditoriaOk = false;
-r = await resolverDevolucao(env, admin, { cobrancaId: 'bill_2', motivo: 'devolvido' }, { auditar, fetchImpl });
+r = await resolverDiferenca(env, admin, { cobrancaId: 'bill_2', motivo: 'resolvido' }, { auditar, fetchImpl });
 checar('baixa sem auditoria = 503 e nada gravado', r.status === 503 && !chamadas.length);
 
 console.log(`\n${ok} ok, ${falhas} falha(s)`);

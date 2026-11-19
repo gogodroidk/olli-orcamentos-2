@@ -353,7 +353,11 @@ export async function handleCheckout(request, env) {
     const r = await reservarCupom(env, { userId: user.id, codigo: codigoCupom, plano, canal: 'stripe' });
     if (!r.ok) return json({ ok: false, erro: 'cupom_recusado', status: r.status, texto: r.texto }, r.status === 'indisponivel' ? 503 : 409);
     // UMA reserva aberta por conta: pedido repetido devolve a MESMA sessão, nunca abre outra com desconto.
-    if (r.reaproveitar && r.cobranca.url) return json({ ok: true, url: r.cobranca.url });
+    if (r.reaproveitar) {
+      if (r.cobranca.url) return json({ ok: true, url: r.cobranca.url });
+      // Reserva aberta sem a sessão guardada: NÃO abre outra com desconto (uma reserva aberta por conta).
+      return json({ ok: false, erro: 'cupom_recusado', status: 'em_andamento', texto: 'Estamos gerando seu pagamento com desconto. Aguarde um instante e tente de novo.' }, 409);
+    }
     const cup = await stripePost(env, '/coupons', {
       percent_off: String(r.pct), duration: 'once', max_redemptions: '1',
       name: `OLLI cupom ${r.codigo}`.slice(0, 40), 'metadata[user_id]': user.id, 'metadata[cupom]': r.codigo,

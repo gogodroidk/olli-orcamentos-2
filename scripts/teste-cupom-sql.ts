@@ -104,21 +104,21 @@ checar('teto de usos: 3ª conta = esgotado (reservas abertas contam)', (await re
 await db.query(`update public.cupom_usos set criado_em = now() - interval '3 minutes' where user_id = $1`, [b]);
 checar('reserva sem cobrança há +2 min (gateway não respondeu) libera a vaga', (await reservar(c, 'ANA10')).status === 'ok');
 
-// confirmar: 1º pagamento = uso; repetido = idempotente; 2º pagamento com desconto = devolução
+// confirmar: 1º pagamento = uso; repetido = idempotente; 2º pagamento com desconto = diferença
 await db.query(`update public.cupom_usos set estado='reservado', expira_em = now() + interval '1 hour', cobranca=$2::jsonb where user_id=$1`, [a, JSON.stringify(PIX)]);
 const conf1: any = await um('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_1', 390]);
 checar('confirmar: o 1º pagamento vira uso pago', conf1.resultado === 'confirmado' && (await um<string>('select estado from public.cupom_usos where user_id=$1', [a])) === 'pago');
 checar('confirmar o MESMO pagamento de novo é idempotente', (await um<any>('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_1', 390])).resultado === 'ja_confirmado');
 const dup: any = await um('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_2', 390]);
 checar('2º pagamento com desconto (corrida) = desconto_duplicado, NUNCA silencioso', dup.resultado === 'desconto_duplicado');
-const dev = (await db.query<any>(`select * from public.cupom_devolucoes where cobranca_id='bill_2'`)).rows[0];
-checar('devolução marcada: cobrança, conta, desconto e estado pendente', dev && dev.user_id === a && dev.desconto_centavos === 390 && dev.estado === 'pendente' && dev.motivo === 'desconto_duplicado', JSON.stringify(dev));
+const dev = (await db.query<any>(`select * from public.cupom_diferencas where cobranca_id='bill_2'`)).rows[0];
+checar('diferença marcada: cobrança, conta, desconto e estado pendente', dev && dev.user_id === a && dev.desconto_centavos === 390 && dev.estado === 'pendente' && dev.motivo === 'desconto_duplicado', JSON.stringify(dev));
 await um('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_2', 390]);
-checar('o mesmo 2º pagamento reprocessado não duplica a devolução', (await um<number>(`select count(*)::int from public.cupom_devolucoes where cobranca_id='bill_2'`)) === 1);
-checar('admin lista a devolução pendente', (await db.query<any>('select * from public.cupom_devolucoes_listar()')).rows.some((r: any) => r.cobranca_id === 'bill_2' && r.estado === 'pendente'));
-checar('admin dá baixa na devolução (1x)', (await um<boolean>(`select public.cupom_devolucao_resolver('bill_2')`)) === true && (await um<boolean>(`select public.cupom_devolucao_resolver('bill_2')`)) === false);
+checar('o mesmo 2º pagamento reprocessado não duplica a diferença', (await um<number>(`select count(*)::int from public.cupom_diferencas where cobranca_id='bill_2'`)) === 1);
+checar('admin lista a diferença pendente', (await db.query<any>('select * from public.cupom_diferencas_listar()')).rows.some((r: any) => r.cobranca_id === 'bill_2' && r.estado === 'pendente'));
+checar('admin dá baixa na diferença (1x)', (await um<boolean>(`select public.cupom_diferenca_resolver('bill_2')`)) === true && (await um<boolean>(`select public.cupom_diferenca_resolver('bill_2')`)) === false);
 const semRes: any = await um('select public.cupom_confirmar($1,$2,$3)', [await conta(), 'bill_x', 100]);
-checar('pagamento com desconto sem reserva = sem_reserva e devolução marcada', semRes.resultado === 'sem_reserva' && (await um<number>(`select count(*)::int from public.cupom_devolucoes where cobranca_id='bill_x'`)) === 1);
+checar('pagamento com desconto sem reserva = sem_reserva e diferença marcada', semRes.resultado === 'sem_reserva' && (await um<number>(`select count(*)::int from public.cupom_diferencas where cobranca_id='bill_x'`)) === 1);
 checar('só a 1ª cobrança: quem já usou = ja_usou', (await reservar(a, 'ANA10')).status === 'ja_usou');
 checar('uso pago não é sobrescrito', (await um<string>('select estado from public.cupom_usos where user_id=$1', [a])) === 'pago');
 
@@ -179,13 +179,13 @@ checar('admin desativa e o código vira invalido', (await um<boolean>(`select pu
 checar('desativar de novo = false (idempotente)', (await um<boolean>(`select public.cupom_desativar('NOVO10')`)) === false);
 
 // permissões: só service_role
-for (const fn of ['cupom_reservar(uuid,text,integer,text,text)', 'cupom_verificar(uuid,text,integer)', 'cupom_confirmar(uuid,text,integer)', 'cupom_anexar(uuid,jsonb,timestamptz)', 'cupom_liberar(uuid)', 'cupom_devolucoes_listar()', 'cupom_devolucao_resolver(text)', 'cupom_atribuicao()', 'cupom_usou(uuid)', 'cupom_criar(text,integer,integer)', 'cupom_desativar(text)']) {
+for (const fn of ['cupom_reservar(uuid,text,integer,text,text)', 'cupom_verificar(uuid,text,integer)', 'cupom_confirmar(uuid,text,integer)', 'cupom_anexar(uuid,jsonb,timestamptz)', 'cupom_liberar(uuid)', 'cupom_diferencas_listar()', 'cupom_diferenca_resolver(text)', 'cupom_atribuicao()', 'cupom_usou(uuid)', 'cupom_criar(text,integer,integer)', 'cupom_desativar(text)']) {
   const anon = await um<boolean>(`select has_function_privilege('anon', '${fn}', 'execute')`);
   const auth = await um<boolean>(`select has_function_privilege('authenticated', '${fn}', 'execute')`);
   const sr = await um<boolean>(`select has_function_privilege('service_role', '${fn}', 'execute')`);
   checar(`permissão ${fn}: só service_role`, !anon && !auth && sr);
 }
-checar('tabelas sem acesso direto de anon/authenticated', !(await um<boolean>(`select has_table_privilege('authenticated','public.cupom_usos','select') or has_table_privilege('authenticated','public.cupom_devolucoes','select') or has_table_privilege('anon','public.cupons_influenciador','select')`)));
+checar('tabelas sem acesso direto de anon/authenticated', !(await um<boolean>(`select has_table_privilege('authenticated','public.cupom_usos','select') or has_table_privilege('authenticated','public.cupom_diferencas','select') or has_table_privilege('anon','public.cupons_influenciador','select')`)));
 
 void INDICACAO_TETO_DIARIO;
 console.log(`\n${ok} ok, ${falhas} falha(s)`);

@@ -24,14 +24,16 @@ Respostas: `200 {ok:true, codigo}`; `409 codigo_existe`; `400` com o campo invá
 ```
 Quem já pagou com o código não é afetado; quem tinha o Pix aberto ainda paga o valor já gerado.
 
-## 4. Devolução de desconto duplicado (se aparecer)
-Se duas cobranças com desconto forem pagas na mesma conta (corrida), o sistema **marca para devolução** e escreve um alarme no log; nunca fica silencioso.
-- `GET /admin/api/cupons/devolucoes` → cobrança, código, valor do desconto (centavos) e estado `pendente`.
-- Devolva a diferença pelo painel do gateway e dê baixa:
+## 4. Desconto pago em duplicidade (se aparecer): a diferença é perda da OLLI, NUNCA estorno
+Se duas cobranças com desconto forem pagas na mesma conta (corrida), o cliente recebeu os dois períodos pagando menos do que devia. **Quem perdeu foi a OLLI.** O sistema mantém a venda, **marca a diferença** e escreve um alarme no log; nunca fica silencioso.
+- **Não estorne nada no gateway:** estorno vai para o cliente e dobraria a perda.
+- Decisão da CPO, caso a caso: **registrar a perda** ou **cobrar a diferença do cliente, com aviso claro**.
+- `GET /admin/api/cupons/diferencas` → cobrança, código, valor da diferença (centavos) e estado `pendente`.
+- Depois de decidir e tratar, dê baixa (estado `resolvido`):
 ```json:resolver
-{ "cobrancaId": "bill_123", "motivo": "diferença devolvida pelo painel do gateway" }
+{ "cobrancaId": "bill_123", "motivo": "perda registrada por decisão da CPO" }
 ```
-`POST /admin/api/cupons/devolucoes/resolver`.
+`POST /admin/api/cupons/diferencas/resolver`.
 
 ## Conferência antes de divulgar um código (staging)
 1. Criar o código (passo 1) e conferir na lista (passo 2): `ativo=true`, `reservados=0`, `pagos=0`.

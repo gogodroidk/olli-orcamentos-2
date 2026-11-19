@@ -68,22 +68,22 @@ export async function desativarCupom(env, actor, body, { auditar, fetchImpl = fe
   return resp({ ok: true, codigo, desativado: r.dados === true });
 }
 
-/** GET /admin/api/cupons/devolucoes → descontos pagos em duplicidade (corrida), pendentes de devolução. Sem dado pessoal. */
-export async function rotaListarDevolucoes(env, { fetchImpl = fetch } = {}) {
-  const r = await rpc(env, 'cupom_devolucoes_listar', {}, fetchImpl);
+/** GET /admin/api/cupons/diferencas → descontos pagos em duplicidade (corrida), pendentes de diferença. Sem dado pessoal. */
+export async function rotaListarDiferencas(env, { fetchImpl = fetch } = {}) {
+  const r = await rpc(env, 'cupom_diferencas_listar', {}, fetchImpl);
   if (!r.ok || !Array.isArray(r.dados)) return resp({ ok: false, erro: r.status === 404 ? 'cupom_sem_migration' : 'cupom_indisponivel' }, 503);
-  return resp({ ok: true, devolucoes: r.dados });
+  return resp({ ok: true, diferencas: r.dados });
 }
 
-/** POST /admin/api/cupons/devolucoes/resolver { cobrancaId, motivo } — dá baixa depois de devolver a diferença. */
-export async function resolverDevolucao(env, actor, body, { auditar, fetchImpl = fetch } = {}) {
+/** POST /admin/api/cupons/diferencas/resolver { cobrancaId, motivo } — dá baixa depois de tratar a diferença. */
+export async function resolverDiferenca(env, actor, body, { auditar, fetchImpl = fetch } = {}) {
   const cobrancaId = typeof body?.cobrancaId === 'string' ? body.cobrancaId.trim() : '';
   const motivo = typeof body?.motivo === 'string' ? body.motivo.trim() : '';
   if (!cobrancaId || cobrancaId.length > 120) return resp({ ok: false, erro: 'cobranca_invalida' }, 400);
   if (motivo.length < 3 || motivo.length > 200) return resp({ ok: false, erro: 'motivo_invalido' }, 400);
-  const auditoria = await auditar(env, actor, { acao: 'cupom_devolucao_resolver', motivo, depois: { cobrancaId }, requestId: reqId(body) });
+  const auditoria = await auditar(env, actor, { acao: 'cupom_diferenca_resolver', motivo, depois: { cobrancaId }, requestId: reqId(body) });
   if (!auditoria) return resp({ ok: false, erro: 'auditoria_indisponivel' }, 503);
-  const r = await rpc(env, 'cupom_devolucao_resolver', { p_cobranca_id: cobrancaId }, fetchImpl);
+  const r = await rpc(env, 'cupom_diferenca_resolver', { p_cobranca_id: cobrancaId }, fetchImpl);
   if (!r.ok) return resp({ ok: false, erro: r.status === 404 ? 'cupom_sem_migration' : 'cupom_indisponivel' }, 503);
   return resp({ ok: true, cobrancaId, baixada: r.dados === true });
 }

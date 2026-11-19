@@ -82,7 +82,7 @@ import {
 } from './adminFerramentas.js';
 import { adminHtml } from './adminPagina.js';
 import { enviarOfertaPro, rotaCandidatasOfertaPro, rotaResumoEmails } from './adminEmails.js';
-import { criarCupom, desativarCupom, resolverDevolucao, rotaListarCupons, rotaListarDevolucoes } from './adminCupom.js';
+import { criarCupom, desativarCupom, resolverDiferenca, rotaListarCupons, rotaListarDiferencas } from './adminCupom.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -532,7 +532,7 @@ async function userDetail(env, id, actor) {
   const assinaturaSelect = camposAdmin(papel, 'assinatura');
   const podeFaturas = ['financeiro', 'admin', 'owner'].includes(papel);
   // O customer id é uma dependência interna para listar faturas autorizadas;
-  // ele nunca é devolvido pela projeção ao navegador.
+  // ele nunca é resolvido pela projeção ao navegador.
   if (assinaturaSelect.length && podeFaturas && !assinaturaSelect.includes('stripe_customer_id')) assinaturaSelect.push('stripe_customer_id');
   // Vínculos de gateway: lidos só para virar booleanos (stripeVinculado,
   // mercadoPagoVinculado, playVinculado). `projetarLinhas` filtra pela política,
@@ -1190,11 +1190,11 @@ export async function handleAdmin(request, env, url) {
     if (m === 'POST' && p === '/admin/api/cupons/criar') {
       return exigir(user, 'admin', { aal2: true }) || criarCupom(env, user, body, { auditar });
     }
-    if (m === 'GET' && p === '/admin/api/cupons/devolucoes') {
-      return exigir(user, 'admin', { aal2: true }) || rotaListarDevolucoes(env);
+    if (m === 'GET' && p === '/admin/api/cupons/diferencas') {
+      return exigir(user, 'admin', { aal2: true }) || rotaListarDiferencas(env);
     }
-    if (m === 'POST' && p === '/admin/api/cupons/devolucoes/resolver') {
-      return exigir(user, 'admin', { aal2: true }) || resolverDevolucao(env, user, body, { auditar });
+    if (m === 'POST' && p === '/admin/api/cupons/diferencas/resolver') {
+      return exigir(user, 'admin', { aal2: true }) || resolverDiferenca(env, user, body, { auditar });
     }
     if (m === 'POST' && p === '/admin/api/cupons/desativar') {
       return exigir(user, 'admin', { aal2: true }) || desativarCupom(env, user, body, { auditar });

@@ -228,6 +228,9 @@ r = await checkout({ plano: 'pro', cupom: 'ANA10' }); j = await r.json();
 checar('cartão: pedido repetido devolve a MESMA sessão (sem novo cupom nem sessão)', r.status === 200 && j.url === 'https://checkout.stripe.test/c/1'
   && chamadas.filter((c) => c.url.includes('/v1/coupons')).length === 1 && chamadas.filter((c) => c.url.includes('/checkout/sessions')).length === 1);
 checar('a sessão do cartão ficou guardada na reserva', est3.cobranca && est3.cobranca.url === 'https://checkout.stripe.test/c/1');
+reset(); rpcs.cupom_reservar = { status: 'ok', codigo: 'ANA10', pct: 10, reaproveitar: true, cobranca: {} };
+r = await checkout({ plano: 'pro', cupom: 'ANA10' });
+checar('cartão: reserva aberta SEM sessão guardada recusa (409) e NÃO abre outra com desconto', r.status === 409 && !chamadas.some((c) => c.url.includes('/checkout/sessions')) && !cupomStripe());
 
 console.log('2º pagamento com desconto (corrida que escapou): nunca silencioso');
 const erros = [];
@@ -238,7 +241,7 @@ await status();
 console.error = errOrig;
 const confB = rpcChamado('cupom_confirmar') && JSON.parse(rpcChamado('cupom_confirmar').init.body);
 checar('o webhook manda a cobrança e o desconto (R$ 3,90 = 390 centavos) ao banco', confB && confB.p_cobranca_id === 'bill_1' && confB.p_desconto_centavos === 390 && confB.p_user === USER.id, JSON.stringify(confB));
-checar('resultado desconto_duplicado vira ALARME no log (devolução pendente no admin)', erros.some((e) => /ALARME/.test(e) && /desconto_duplicado/.test(e) && /devolução pendente/.test(e)), erros.join(' | '));
+checar('resultado desconto_duplicado vira ALARME no log (diferença pendente no admin)', erros.some((e) => /ALARME/.test(e) && /desconto_duplicado/.test(e) && /diferença pendente/.test(e)), erros.join(' | '));
 
 console.log('Cartão (Stripe) com cupom');
 reset();
