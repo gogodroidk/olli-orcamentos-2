@@ -7,6 +7,7 @@
  * prometer nada — texto de produto não pode afirmar o que o servidor não paga.
  * Valor e teto NUNCA são digitados aqui: vêm do servidor (que lê limitesComerciais.ts).
  */
+import { AVISO_CUPOM_E_INDICACAO } from './cupomTexto.ts';
 import { INDICACAO_TETO_PREMIADAS } from '../services/limitesComerciais.ts';
 
 export const TETO_INDICACOES = INDICACAO_TETO_PREMIADAS;
@@ -17,14 +18,16 @@ export function rotuloMeses(n: number): string {
 }
 
 /** Linha de apoio do cartão. */
-export function textoPromessa(meses: number, teto: number = TETO_INDICACOES, indicadorPaga = false): string {
+export function textoPromessa(meses: number, teto: number = TETO_INDICACOES, indicadorPaga = false, cupomLigado = false): string {
   if (!(meses > 0)) {
     return 'Mande seu link para um colega que também faz orçamento. Ele testa o OLLI no próprio ritmo.';
   }
+  // Cupom de influenciador e indicação não acumulam: com o cupom ligado, a tela diz isso ANTES (regra de produto, 19/11).
+  const naoSoma = cupomLigado ? ` ${AVISO_CUPOM_E_INDICACAO}` : '';
   if (indicadorPaga) {
-    return `Mande seu link: quando o colega se cadastrar e enviar o 1º orçamento de verdade, ele ganha ${rotuloMeses(meses)}. Como você já paga o Pro, o mês não se soma ao seu plano. Vale até ${teto} indicações premiadas por pessoa; cada colega só pode ser indicado uma vez. O mês de Pro não vale dinheiro e não pode ser transferido.`;
+    return `Mande seu link: quando o colega se cadastrar e enviar o 1º orçamento de verdade, ele ganha ${rotuloMeses(meses)}. Como você já paga o Pro, o mês não se soma ao seu plano. Vale até ${teto} indicações premiadas por pessoa; cada colega só pode ser indicado uma vez. O mês de Pro não vale dinheiro e não pode ser transferido.${naoSoma}`;
   }
-  return `Mande seu link: quando o colega se cadastrar e enviar o 1º orçamento de verdade, vocês dois ganham ${rotuloMeses(meses)}. Vale até ${teto} indicações premiadas por pessoa; cada colega só pode ser indicado uma vez. O mês de Pro não vale dinheiro e não pode ser transferido.`;
+  return `Mande seu link: quando o colega se cadastrar e enviar o 1º orçamento de verdade, vocês dois ganham ${rotuloMeses(meses)}. Vale até ${teto} indicações premiadas por pessoa; cada colega só pode ser indicado uma vez. O mês de Pro não vale dinheiro e não pode ser transferido.${naoSoma}`;
 }
 
 /** Mensagem pronta de WhatsApp — sai da conta do próprio prestador, 1 a 1. */

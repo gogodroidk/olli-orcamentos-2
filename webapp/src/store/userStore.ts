@@ -5,6 +5,7 @@ import type { UserInfo, UserToken } from "#/entity";
 import type { SignInReq } from "@/api/services/userService";
 import { supabase } from "@/lib/supabase";
 import { esquecerValoresVistos } from "@/components/animate/memoria-visto";
+import { vincularIndicacaoPendente } from "@/lib/indicacaoRef";
 import { registrarNovaContaSocial } from "@/lib/marketing";
 import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint";
 import { resetBrandColor } from "@/olli/branding";
@@ -282,6 +283,7 @@ export function useAuthSync() {
 			// do callback: chamar o Supabase de dentro dele, com a sessão travada, trava.
 			if (session && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
 				window.setTimeout(() => void registrarNovaContaSocial(session.user), 0);
+				window.setTimeout(() => void vincularIndicacaoPendente(session), 0);
 			}
 		});
 		return () => {

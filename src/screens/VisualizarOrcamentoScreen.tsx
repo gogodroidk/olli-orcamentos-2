@@ -108,7 +108,6 @@ import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { eventoDoStatusOrcamento, type EventoDica } from '../services/dicasRoteiro';
 import { registrarEventoDica } from '../services/dicasRoteiroStore';
 import { IndicacaoCard } from '../components/IndicacaoCard';
-import { obterMeuLinkIndicacao } from '../services/indicacao';
 
 // Recurso que remove o selo OLLI do PDF (Pro/Empresa). Frente C adiciona
 // 'remove_olli_brand' ao type Recurso; codificamos contra o NOME do contrato.
@@ -628,13 +627,11 @@ export default function VisualizarOrcamentoScreen() {
         // updateStatus nunca lança e, se não gravar, avisa e mantém o status antigo.
         if (orc.status === 'rascunho') await updateStatus('enviado');
         // Momento A da indicação: no máximo 1 convite por sessão do app (não vira insistência).
-        // Só abre se o servidor já devolver o link: sem rota/rede, o cartão não aparece
-        // (melhor calar do que mostrar erro logo depois de um envio que deu certo).
         if (!convidouIndicacaoNestaSessao) {
-          convidouIndicacaoNestaSessao = true;
-          void obterMeuLinkIndicacao().then((link) => {
-            if (link) setTimeout(() => setIndicacaoAberta(true), ESPERA_MODAL_SAIR_MS);
-          });
+          setTimeout(() => {
+            convidouIndicacaoNestaSessao = true;
+            setIndicacaoAberta(true);
+          }, ESPERA_MODAL_SAIR_MS);
         }
       } finally {
         setConfirmandoEnvio(false);

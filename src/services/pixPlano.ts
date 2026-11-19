@@ -25,6 +25,8 @@ export interface CobrancaPixPlano {
   brCodeBase64: string;
   expiresAt: string | null;
   plano: { id: PlanoPixKey; nome: string; meses: number; valor: number };
+  /** Cupom de influenciador aplicado: o desconto ESCRITO e o valor cobrado (`por`). Ausente = sem cupom. */
+  desconto?: { codigo: string; pct: number; de: number; por: number; texto: string };
 }
 
 export interface StatusPixPlano {
@@ -72,7 +74,11 @@ export async function pixPlanoDisponivel(): Promise<boolean> {
   }
 }
 
-export async function criarPixPlano(plano: PlanoPixKey): Promise<CobrancaPixPlano | null> {
+/**
+ * `cupom` (opcional) pede o desconto de influenciador. Recusado (esgotado, expirado, já usou, indicação…),
+ * o servidor NÃO gera Pix: `aoRecusa` recebe o motivo em palavras e o retorno é null (nunca cobra cheio escondido).
+ */
+export async function criarPixPlano(plano: PlanoPixKey, cupom?: string | null, aoRecusa?: (texto: string) => void): Promise<CobrancaPixPlano | null> {
   if (!PAGAMENTOS_URL) return null;
   const token = await getToken();
   if (!token) return null;
@@ -80,9 +86,15 @@ export async function criarPixPlano(plano: PlanoPixKey): Promise<CobrancaPixPlan
     const r = await fetchComTimeout(`${PAGAMENTOS_URL}/abacate/plano/pix`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ plano }),
+      body: JSON.stringify(cupom ? { plano, cupom } : { plano }),
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      if (cupom && r.status === 409) {
+        const e: any = await r.json().catch(() => null);
+        if (e?.erro === 'cupom_recusado' && typeof e.texto === 'string') aoRecusa?.(e.texto);
+      }
+      return null;
+    }
     const d = await r.json();
     if (d?.ok !== true || typeof d.id !== 'string' || typeof d.brCode !== 'string' || !d.brCode) return null;
     if (!d.plano || typeof d.plano.valor !== 'number' || typeof d.plano.meses !== 'number') return null;
@@ -93,6 +105,7 @@ export async function criarPixPlano(plano: PlanoPixKey): Promise<CobrancaPixPlan
       brCodeBase64: typeof d.brCodeBase64 === 'string' ? d.brCodeBase64 : '',
       expiresAt: typeof d.expiresAt === 'string' ? d.expiresAt : null,
       plano: d.plano,
+      ...(d.desconto && typeof d.desconto.por === 'number' && typeof d.desconto.texto === 'string' ? { desconto: d.desconto } : {}),
     };
   } catch {
     return null;

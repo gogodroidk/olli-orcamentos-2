@@ -3,16 +3,13 @@ import type { PlanoId } from './entitlements';
 /**
  * CONTRATO COMERCIAL DO ENVIO DE ORÇAMENTOS — fonte única.
  *
- * ═══ GRÁTIS = ATÉ 5 ORÇAMENTOS ENVIADOS POR MÊS (em produção desde 07/11/2026, D-1827) ═══
+ * ═══ GRÁTIS = ORÇAMENTOS ILIMITADOS (decisão do dono, 01/10/2026) ═══
  *
- * Histórico: até 01/10/2026 o Grátis tinha cota de 5 envios/mês; de 01/10 a
- * 06/11/2026 ficou sem teto. Desde 07/11/2026 o limite de 5 envios por mês vale
- * de novo para TODAS as contas do Grátis, controlado no servidor pela tabela
- * `limite_gratis_config` (`corte` para contas novas, `corte_antigas` para as
- * anteriores). A copy das telas sai de `planosBase.ts` (`CORTE_GRATIS_DATA`,
- * `CORTE_ANTIGAS_DATA`, `LIMITE_ENVIOS_GRATIS_MES`). O Grátis também leva o selo
- * discreto "Feito com OLLI" no PDF, no recibo e no link (ver `src/utils/marcaOlli.ts`);
- * o Pro tira o limite e o selo.
+ * Até 01/10/2026 o Grátis tinha uma cota de 5 orçamentos enviados por mês. O
+ * diagnóstico de 29/09 mostrou que ninguém batia nela, e a avaliação mais curtida
+ * contra o concorrente era exatamente "só faz 5 orçamento por mês? to fora". A
+ * cota saiu. O que o Grátis paga agora é o SELO discreto "Feito com OLLI" no PDF,
+ * no recibo e no link (ver `src/utils/marcaOlli.ts`); o Pro tira o selo.
  *
  * ═══ O QUE CONTINUA EXISTINDO (e por quê) ═══
  *
@@ -55,6 +52,19 @@ export const INDICACAO_MESES_PRO = 1;
 export const INDICACAO_TETO_PREMIADAS = 3;
 /** Prêmios por dia no sistema todo (antifraude: acima disso fica pendente para o dia seguinte). */
 export const INDICACAO_TETO_DIARIO = 20;
+
+/**
+ * Cupom de influenciador: desconto % só na 1ª cobrança, FIXO aqui (o código não carrega percentual).
+ * Teto de usos e validade vivem por código (tabela cupons_influenciador), com estes limites duros.
+ * Não acumula com a indicação. Nasce desligado (worker: CUPOM_INFLUENCER_ATIVO='1').
+ * Sem preço novo: o valor com desconto sai do preço de tabela (PLANO_PIX / price da Stripe) × (100 − %).
+ * Paridade: worker/src/cupom.js (espelho) + migration 20261119090000_cupom_influenciador.sql.
+ */
+export const CUPOM_PERCENTUAL = 10;
+/** Teto duro de usos por código (a migration também limita em 500). */
+export const CUPOM_USOS_MAX = 500;
+/** Validade máxima de um código, em dias a partir da criação. */
+export const CUPOM_VALIDADE_DIAS_MAX = 90;
 
 export type CanalEnvioOrcamento = 'pdf' | 'link' | 'whatsapp';
 export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';
@@ -102,7 +112,7 @@ export type InicioTrialPro =
 
 export interface ReservaEnvioOrcamento {
   /**
-   * `true` quase sempre: falha de registro NUNCA barra o envio.
+   * `true` quase sempre: o Grátis é ilimitado e falha de registro NUNCA barra o envio.
    * A ÚNICA recusa é `cota_esgotada` com `permitido:false` vinda do servidor — conta
    * nova do Grátis que já usou o limite do mês (P0-09; o servidor só devolve isso
    * quando o corte está ligado em `limite_gratis_config`). Toda tela que envia
