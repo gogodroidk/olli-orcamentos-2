@@ -4,7 +4,7 @@ set -eu
 ORIGEM=$(cd "$(dirname "$0")" && pwd)
 DEST=/home/igor/chatwoot-central/agentes
 mkdir -p "$DEST" "$HOME/.config/systemd/user"
-for f in lib.mjs agentes.json travas.mjs decidir.mjs cw.mjs acordador.mjs sincronizar.mjs conferir-pendentes.mjs \
+for f in lib.mjs agentes.json travas.mjs decidir.mjs nucleo.mjs cw.mjs acordador.mjs sincronizar.mjs conferir-pendentes.mjs \
          criar-agentes.mjs criar-usuarios.rb registrar-webhook.mjs funil-e-respostas.mjs; do
   cp "$ORIGEM/$f" "$DEST/$f"
 done

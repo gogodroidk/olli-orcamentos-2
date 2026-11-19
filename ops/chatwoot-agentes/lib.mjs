@@ -28,10 +28,30 @@ export const tokenDe = (chave) => process.env[`CHATWOOT_TOKEN_${chave}`] || '';
 
 /** Só dígitos; tira o "+" e o sufixo do JID. */
 export const digitos = (s) => String(s || '').split('@')[0].replace(/\D/g, '');
-export function ehNumeroInterno(tel) {
-  const d = digitos(tel);
-  if (!d) return false;
-  return CFG.numerosInternos.some((n) => d === n || d.endsWith(n.slice(-10)) || n.endsWith(d.slice(-10)));
+
+/** Lista viva dos números da casa (CQ-CHATWOOT-100-FIX). Fica FORA do código: lida do arquivo a cada consulta,
+ *  para número novo valer na hora, sem reinstalar. Caminho trocável por NUMEROS_INTERNOS (testes). */
+export const arqNumerosInternos = () => process.env.NUMEROS_INTERNOS || '/home/igor/chatwoot-central/data/numeros-internos.json';
+
+/** Forma comparável de um telefone BR: sem 55 e sem o 9 extra do celular → DDD + 8 dígitos. Outros países: só dígitos. */
+export function telCanonico(tel) {
+  let d = digitos(tel);
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) d = d.slice(2);
+  if (d.length === 11 && d[2] === '9') d = d.slice(0, 2) + d.slice(3);
+  return d;
+}
+
+/** Lê a lista agora. Lança erro se o arquivo sumir ou estiver torto (quem chama decide: o acordador fecha a porta). */
+export function numerosInternos(arq = arqNumerosInternos()) {
+  const lista = JSON.parse(readFileSync(arq, 'utf8'));
+  if (!Array.isArray(lista)) throw new Error(`${arq}: esperado um array de números`);
+  return lista.map(digitos).filter((d) => d.length >= 10);
+}
+
+export function ehNumeroInterno(tel, lista = numerosInternos()) {
+  const c = telCanonico(tel);
+  if (c.length < 10) return false; // @lid/identificador curto não casa por sufixo
+  return lista.some((n) => telCanonico(n) === c);
 }
 
 /** Chamada à API do Chatwoot com o token dado. Lança erro com status em falha. */
