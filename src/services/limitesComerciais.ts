@@ -39,6 +39,33 @@ export const CREDITO_TROCA_MESES_MAX = 3;
 /** Pedidos no total por conta (recusado por print ilegível pode reenviar). */
 export const CREDITO_TROCA_PEDIDOS_MAX = 3;
 
+/**
+ * Indicação "colega indica colega": recompensa = meses de Pro para os DOIS lados, só depois
+ * de o indicado ENVIAR um orçamento de verdade. FONTE ÚNICA do valor e dos tetos — a copy
+ * (src/utils/indicacaoTexto.ts) e o worker (worker/src/indicacao.js, espelho) leem daqui;
+ * ninguém digita "1 mês" nem o teto em texto. Benefício de uso: sem dinheiro, intransferível.
+ * Paridade: migration 20261010100000_indicacoes.sql (recebe os valores por parâmetro) e
+ * teste scripts/teste-indicacoes-sql.ts.
+ */
+export const INDICACAO_MESES_PRO = 1;
+/** Indicações premiadas por pessoa (e vagas de vínculo). */
+export const INDICACAO_TETO_PREMIADAS = 3;
+/** Prêmios por dia no sistema todo (antifraude: acima disso fica pendente para o dia seguinte). */
+export const INDICACAO_TETO_DIARIO = 20;
+
+/**
+ * Cupom de influenciador: desconto % só na 1ª cobrança, FIXO aqui (o código não carrega percentual).
+ * Teto de usos e validade vivem por código (tabela cupons_influenciador), com estes limites duros.
+ * Não acumula com a indicação. Nasce desligado (worker: CUPOM_INFLUENCER_ATIVO='1').
+ * Sem preço novo: o valor com desconto sai do preço de tabela (PLANO_PIX / price da Stripe) × (100 − %).
+ * Paridade: worker/src/cupom.js (espelho) + migration 20261119090000_cupom_influenciador.sql.
+ */
+export const CUPOM_PERCENTUAL = 10;
+/** Teto duro de usos por código (a migration também limita em 500). */
+export const CUPOM_USOS_MAX = 500;
+/** Validade máxima de um código, em dias a partir da criação. */
+export const CUPOM_VALIDADE_DIAS_MAX = 90;
+
 export type CanalEnvioOrcamento = 'pdf' | 'link' | 'whatsapp';
 export type TrialEstado = 'unstarted' | 'eligible' | 'active' | 'ended' | 'converted' | 'revoked';
 

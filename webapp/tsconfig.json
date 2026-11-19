@@ -89,6 +89,7 @@
 			// (`web/src/lib`), para o ID do Pixel e as regras de first/last-touch não
 			// divergirem entre os dois sites. TypeScript puro, zero imports.
 			"@atribuicao": ["../web/src/lib/atribuicao.ts"],
+			"@indicacaoRef": ["../web/src/lib/indicacaoRef.ts"],
 			"@meta-pixel": ["../web/src/lib/metaPixel.ts"],
 			"@consentimento": ["../web/src/lib/consentimento.ts"],
 			"@google-tag": ["../web/src/lib/googleTag.ts"],

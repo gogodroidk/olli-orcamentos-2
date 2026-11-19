@@ -54,7 +54,7 @@ const PLANOS_IA_ILIMITADA = new Set(['pro', 'empresa']);
 // enviado como Bearer; a chave opaca moderna `sb_secret_...` NAO e JWT e deve ir
 // somente em `apikey` (como exige a documentacao atual do Supabase). Envia-la em
 // Authorization faz o gateway devolver `Invalid JWT` antes de chegar ao PostgREST.
-function sbHeaders(env, extra = {}) {
+export function sbHeaders(env, extra = {}) {
   const serviceRole = typeof env?.SUPABASE_SERVICE_ROLE_KEY === 'string'
     ? env.SUPABASE_SERVICE_ROLE_KEY.trim()
     : '';

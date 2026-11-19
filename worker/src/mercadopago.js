@@ -38,6 +38,7 @@
 import { lancarCreditos } from './creditos.js';
 import { cabeNoTeto, checarLimite, deixaPassar, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 import { upsertAssinatura, getAssinatura } from './stripe.js';
+import { reservarCupom, anexarCupom, liberarCupom, confirmarCupom, valorComDesconto, textoDesconto } from './cupom.js';
 
 const MP_API = 'https://api.mercadopago.com';
 
@@ -204,17 +205,38 @@ async function criarPixPlano(request, env) {
   const plano = PLANO_PIX[body && body.plano];
   if (!plano) return json({ ok: false, erro: 'plano_invalido' }, 400);
 
+  // Cupom de influenciador (opcional; desligado por flag). Só na 1ª cobrança, % fixo na constante, o
+  // valor com desconto sai do preço de TABELA (nenhum preço novo) e a resposta traz o desconto ESCRITO
+  // para o app mostrar antes de pagar. Recusa nunca cai em "cobra cheio": o app decide o que fazer.
+  let valorReais = plano.valor;
+  let desconto = null;
+  const codigoCupom = body && typeof body.cupom === 'string' && body.cupom.trim() ? body.cupom : null;
+  if (codigoCupom) {
+    const r = await reservarCupom(env, { userId: user.id, codigo: codigoCupom, plano: plano.id, canal: 'pix' });
+    if (!r.ok) return json({ ok: false, erro: 'cupom_recusado', status: r.status, texto: r.texto }, r.status === 'indisponivel' ? 503 : 409);
+    // UMA reserva aberta por conta: pedido repetido devolve o MESMO Pix, nunca cria outro com desconto.
+    if (r.reaproveitar) return json({ ok: true, ...r.cobranca });
+    valorReais = valorComDesconto(plano.valor, r.pct);
+    desconto = { codigo: r.codigo, pct: r.pct, de: plano.valor, por: valorReais, texto: textoDesconto({ pct: r.pct, de: plano.valor, por: valorReais }) };
+  }
+
   const pedidoId = crypto.randomUUID();
-  const externalRef = `olli:pl:${user.id}:${pedidoId}:${plano.id}`;
+  // 6º campo `c` = pedido com cupom (o webhook confere o piso do valor e confirma o uso).
+  const externalRef = `olli:pl:${user.id}:${pedidoId}:${plano.id}${desconto ? ':c' : ''}`;
   const res = await criarPagamentoPix(env, {
-    valorReais: plano.valor,
+    valorReais,
     descricao: plano.nome,
     email: user.email,
     externalRef,
     itemId: plano.id,
   });
-  if (!res.ok) return json({ ok: false, erro: 'falha_criar_pix' }, 502);
-  return json({ ok: true, ...res.pix, plano: { id: plano.id, nome: plano.nome, meses: plano.meses } });
+  if (!res.ok) {
+    if (desconto) await liberarCupom(env, user.id); // a cobrança não saiu: solta a reserva
+    return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  }
+  const resposta = { ...res.pix, plano: { id: plano.id, nome: plano.nome, meses: plano.meses }, ...(desconto ? { desconto } : {}) };
+  if (desconto) await anexarCupom(env, user.id, resposta, res.pix && res.pix.expiresAt ? res.pix.expiresAt : null);
+  return json({ ok: true, ...resposta });
 }
 
 /** Cria um pagamento Pix no MP e extrai o QR. Retorna { ok, pix:{ id, brCode, brCodeBase64, status, expiresAt } }.
@@ -640,7 +662,19 @@ async function webhook(request, env, url) {
     const key = partes[4];
     if (!userId) return json({ ok: true, sem_vinculo: true });
     if (kind === 'cr') return concederCredito(env, { userId, pacoteKey: key, paymentId: String(data.id) });
-    if (kind === 'pl') return concederPlanoPeriodo(env, { userId, planoKey: key, dataAprovacao: data.date_approved || data.date_created });
+    if (kind === 'pl') {
+      const comCupom = partes[5] === 'c';
+      const cfgPl = PLANO_PIX[key];
+      // Pedido com cupom: o valor pago não pode ficar abaixo do piso (teto de desconto = 50%). Abaixo disso
+      // o pedido não bate com a tabela: não libera e vira alarme (nunca silêncio).
+      if (comCupom && cfgPl && Number(data.transaction_amount) < valorComDesconto(cfgPl.valor, 50) - 0.005) {
+        console.error('[olli-mp] ALARME: Pix com cupom abaixo do piso — não libera', key, data.transaction_amount);
+        return json({ ok: true, valor_divergente: true });
+      }
+      const resp = await concederPlanoPeriodo(env, { userId, planoKey: key, dataAprovacao: data.date_approved || data.date_created });
+      if (comCupom && resp.status < 300) await confirmarCupom(env, userId, String(data.id), Math.round((cfgPl.valor - Number(data.transaction_amount)) * 100));
+      return resp;
+    }
     // `as` = cobrança gerada por uma preapproval (assinatura por CARTÃO no MP). O
     // tópico `payments` do MP entrega a mesma renovação também por aqui, então este
     // ramo é o irmão do `subscription_authorized_payment` lá embaixo — e pela mesma

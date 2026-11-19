@@ -104,6 +104,7 @@ import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
 import { eventoDoStatusOrcamento, type EventoDica } from '../services/dicasRoteiro';
 import { registrarEventoDica } from '../services/dicasRoteiroStore';
+import { IndicacaoCard } from '../components/IndicacaoCard';
 
 // Recurso que remove o selo OLLI do PDF (Pro/Empresa). Frente C adiciona
 // 'remove_olli_brand' ao type Recurso; codificamos contra o NOME do contrato.
@@ -145,6 +146,9 @@ const ESPERA_MODAL_SAIR_MS = 450;
 type EnvioPendente =
   | { tipo: 'orcamento'; reserva: ReservaEnvioOrcamento; semLink: boolean }
   | { tipo: 'cobranca'; ofertarCodigo: boolean; semLink: boolean };
+
+/** Convite de indicação: 1 por sessão do app (módulo vive até o processo morrer). */
+let convidouIndicacaoNestaSessao = false;
 
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
@@ -211,6 +215,7 @@ export default function VisualizarOrcamentoScreen() {
   const [enviandoWhats, setEnviandoWhats] = useState(false);
   const [cobrando, setCobrando] = useState(false);
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
+  const [indicacaoAberta, setIndicacaoAberta] = useState(false);
   const [confirmandoEnvio, setConfirmandoEnvio] = useState(false);
   const [qrAberto, setQrAberto] = useState(false);
   const [pagamentoAberto, setPagamentoAberto] = useState(false);
@@ -576,6 +581,13 @@ export default function VisualizarOrcamentoScreen() {
         void registrarAtividadeUsuario('orcamento_enviado');
         // updateStatus nunca lança e, se não gravar, avisa e mantém o status antigo.
         if (orc.status === 'rascunho') await updateStatus('enviado');
+        // Momento A da indicação: no máximo 1 convite por sessão do app (não vira insistência).
+        if (!convidouIndicacaoNestaSessao) {
+          setTimeout(() => {
+            convidouIndicacaoNestaSessao = true;
+            setIndicacaoAberta(true);
+          }, ESPERA_MODAL_SAIR_MS);
+        }
       } finally {
         setConfirmandoEnvio(false);
         setEnvioPendente(null);
@@ -1869,6 +1881,7 @@ export default function VisualizarOrcamentoScreen() {
           referencia={`Orçamento nº ${formatarNumeroExibicao(orc.numero)} · ${orc.clienteNome}`}
         />
       )}
+      <IndicacaoCard visivel={indicacaoAberta} momento="apos_envio" aoFechar={() => setIndicacaoAberta(false)} />
       <ConfirmarEnvioSheet
         visivel={!!envioPendente}
         ocupado={confirmandoEnvio}

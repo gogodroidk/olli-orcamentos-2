@@ -20,6 +20,7 @@ import {
 	capturarAtribuicao,
 	HOST_APP,
 } from "../lib/atribuicao";
+import { ambienteRefDoNavegador, capturarRef } from "../lib/indicacaoRef";
 import { mostrarBannerConsentimento } from "../lib/consentimento";
 import { iniciarGoogleTag } from "../lib/googleTag";
 import { iniciarPixel, pageView, rastrear } from "../lib/metaPixel";
@@ -50,6 +51,13 @@ function iniciar(): void {
 	if (!ambiente) return;
 
 	const atribuicao = capturarAtribuicao(ambiente);
+	// Código de indicação (?ref=): funcional, não depende do banner (ver lib/indicacaoRef.ts).
+	try {
+		const ambienteRef = ambienteRefDoNavegador();
+		if (ambienteRef) capturarRef(ambienteRef, window.location.search, Date.now());
+	} catch {
+		// Sem o código, a landing funciona igual.
+	}
 
 	for (const link of document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
 		const original = link.getAttribute("href") ?? "";

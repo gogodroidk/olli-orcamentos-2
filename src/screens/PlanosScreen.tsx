@@ -40,6 +40,8 @@ import {
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
+import { CupomCampo } from '../components/CupomCampo';
+import { CUPOM_PERMITIDO_NA_PLATAFORMA } from '../services/cupom';
 import { track, Eventos } from '../services/analytics';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { PlanosAudioIaCard } from '../components/PlanosAudioIaCard';
@@ -323,6 +325,8 @@ export default function PlanosScreen() {
   }, []);
 
   const [periodo, setPeriodo] = useState<Periodo>('mensal');
+  // Cupom de influenciador já conferido pelo servidor (null = sem cupom). Reservado ao gerar o Pix/checkout.
+  const [cupom, setCupom] = useState<string | null>(null);
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
   const [origemPlano, setOrigemPlano] = useState<'gratis' | 'pagamento' | 'admin' | 'trial' | undefined>('gratis');
   const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
@@ -516,10 +520,18 @@ export default function PlanosScreen() {
       const r = await fetch(`${PAGAMENTOS_URL}/stripe/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body ?? {}),
+        body: JSON.stringify(cupom ? { ...(body ?? {}), cupom } : body ?? {}),
       });
       status = r.status;
       if (!r.ok) {
+        // Cupom recusado pelo servidor: diz o motivo em palavras e NÃO abre checkout (nunca cobra cheio escondido).
+        if (cupom && r.status === 409) {
+          const e: any = await r.json().catch(() => null);
+          if (e?.erro === 'cupom_recusado' && typeof e.texto === 'string') {
+            Alert.alert('Cupom não aplicado', e.texto);
+            return;
+          }
+        }
         Alert.alert('Ops', mensagemErroPagamento(status, false));
         return;
       }
@@ -639,7 +651,7 @@ export default function PlanosScreen() {
     vibrar('selecao');
     setPixEmAndamento(p.id);
     try {
-      const c = await criarPixPlano(chave);
+      const c = await criarPixPlano(chave, cupom, (texto) => Alert.alert('Cupom não aplicado', texto));
       if (!c) {
         Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
         return;
@@ -653,7 +665,7 @@ export default function PlanosScreen() {
 
   // Pix Automático: só o Pro mensal. A confirmação mostra preço, que renova sozinho e como cancelar ANTES de abrir o banco.
   async function pagarComPixAutomatico(p: Plano) {
-    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixAutoLigado || p.id !== 'pro' || periodo !== 'mensal') return;
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixAutoLigado || cupom || p.id !== 'pro' || periodo !== 'mensal') return;
     if (!acoesPlanoDisponiveis) {
       Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
       return;
@@ -736,7 +748,7 @@ export default function PlanosScreen() {
     setPixPendente(null);
     void esquecerPixPendente();
     if (!atual) return;
-    const c = await criarPixPlano(atual.plano.id);
+    const c = await criarPixPlano(atual.plano.id, atual.desconto?.codigo ?? null, (texto) => Alert.alert('Cupom não aplicado', texto));
     if (!c) {
       Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
       return;
@@ -941,6 +953,11 @@ export default function PlanosScreen() {
     </View>
   );
 
+  // Campo de cupom: só com compra no app fora da Play, e o próprio componente some com o recurso desligado.
+  const campoCupom = CUPOM_PERMITIDO_NA_PLATAFORMA ? (
+    <CupomCampo plano={chavePixPlano('pro', periodo)} aoMudar={setCupom} />
+  ) : null;
+
   /** "Restaurar compras da Google Play" — com ou sem a venda ligada no servidor. */
   const botaoRestaurarPlay = (
     <TouchableOpacity
@@ -1087,6 +1104,7 @@ export default function PlanosScreen() {
                 <Text style={styles.introTitle}>Trocar de plano pela Google Play</Text>
                 <Text style={styles.introSub}>{TEXTO_TROCA_PLAY}</Text>
                 {abasPeriodo}
+                {campoCupom}
                 <View style={ehDesktop ? styles.cardsRow : undefined}>
                   {planos.filter((p) => p.id === 'pro' || p.id === 'empresa').map((p) => (
                     <View key={p.id} style={ehDesktop ? styles.cardCell : undefined}>
@@ -1149,6 +1167,7 @@ export default function PlanosScreen() {
         BUILD_PLAY_SEM_COMPRA_EXTERNA && molduraPlay !== true ? null : (
         <AnimatedEntrance index={1}>
           {abasPeriodo}
+          {campoCupom}
         </AnimatedEntrance>
         )
         )}
@@ -1170,7 +1189,7 @@ export default function PlanosScreen() {
                 pixLigado={pixLigado}
                 carregandoPix={pixEmAndamento === p.id}
                 onPagarPix={() => { void pagarComPix(p); }}
-                pixAutoLigado={pixAutoLigado && !pixAutoEstado?.ativa && !pixAutoAguardando}
+                pixAutoLigado={pixAutoLigado && !cupom && !pixAutoEstado?.ativa && !pixAutoAguardando}
                 carregandoPixAuto={pixAutoEmAndamento}
                 onPagarPixAuto={() => { void pagarComPixAutomatico(p); }}
                 vendaPlay={vendaPlayDoCard(p)}
