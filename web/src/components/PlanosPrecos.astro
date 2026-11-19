@@ -31,6 +31,7 @@ import {
 	precoNoPeriodo,
 	reais,
 } from "../data/planos";
+import IdentificacaoEmpresa from "./IdentificacaoEmpresa.astro";
 import { PIX_PLANO_LIGADO } from "../data/pix";
 import { TRIAL_PRO_DIAS } from "../../../src/services/entitlements";
 import { FRASE_GRATIS_CURTA, planoBase } from "../data/recursos";
@@ -231,4 +232,7 @@ const cartoes: Cartao[] = [
 			Pro e Empresa também podem ser pagos <strong class="text-ink">no Pix</strong>, pelo mesmo preço, por 1 mês ou 1 ano — sem renovação automática.
 		</p>
 	)}
+
+	{/* Identificação do fornecedor junto ao preço (Decreto 7.962/2013) */}
+	<IdentificacaoEmpresa class="mt-8 text-center" />
 </div>

@@ -26,12 +26,9 @@
  * `class` (mesmo padrão de OlliLogo.astro) deixa cada página manter a largura do
  * próprio conteúdo — a home é max-w-7xl, ajuda é max-w-4xl, legal é max-w-3xl.
  */
-import {
-	EMPRESA,
-	emailContatoPublicavel,
-	identidadePublicavel,
-} from "../data/empresa";
+import { EMPRESA } from "../data/empresa";
 import { OFICIOS, SLUG_POR_OFICIO } from "../data/oficios";
+import IdentificacaoEmpresa from "./IdentificacaoEmpresa.astro";
 import OlliLogo from "./OlliLogo.astro";
 
 interface Props {
@@ -53,20 +50,6 @@ const {
 
 const APP_URL = "https://app.olliorcamentos.online";
 const ano = new Date().getFullYear();
-/** Consulta pública do CNPJ. O número continua no texto, para copiar e colar. */
-const CONSULTA_CNPJ =
-	"https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp";
-
-/**
- * O GATE da identidade jurídica. `null` enquanto o dono não preencher
- * `web/src/data/empresa.ts` — e aí o bloco institucional simplesmente NÃO É
- * RENDERIZADO. O bloco publica razão social, CNPJ e canais reais. Endereço
- * residencial nunca entra; um endereço comercial futuro exige revisão própria.
- */
-const empresa = identidadePublicavel();
-const emailContato = emailContatoPublicavel();
-const whatsappUrl = `https://wa.me/${whatsapp}`;
-
 /**
  * `text-slate` (#475569), NÃO `text-muted` (#64748b): medido sobre `bg-paper`
  * (#f6f9fc), muted dá 4.50:1 — em cima da linha do AA, sem margem nenhuma — e
@@ -105,24 +88,7 @@ const CLASSE_LEGAL = "text-slate";
         </div>
       </nav>
 
-      {empresa && (
-        <address class={`mt-6 border-t border-line pt-6 text-xs not-italic leading-relaxed ${CLASSE_LEGAL}`}>
-          {/* Texto SELECIONÁVEL, nunca imagem: o CNPJ sai inteiro e o link abre
-              a consulta oficial, onde a pessoa cola o número. */}
-          <span class="font-semibold">{empresa.razaoSocial}</span>
-          <span> · CNPJ {empresa.cnpj}</span>
-          <span> · </span>
-          <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 items-center underline-offset-2 transition hover:text-brand-fg hover:underline">Conferir na Receita Federal</a>
-          <br />
-           <a href={whatsappUrl} class="inline-flex min-h-11 items-center transition hover:text-brand-fg">WhatsApp {whatsappLegivel}</a>
-          {emailContato && (
-            <>
-              <span> · </span>
-               <a href={`mailto:${emailContato}`} class="inline-flex min-h-11 items-center transition hover:text-brand-fg">{emailContato}</a>
-            </>
-          )}
-        </address>
-      )}
+      <IdentificacaoEmpresa class="mt-6 border-t border-line pt-6" whatsapp={whatsapp} whatsappLegivel={whatsappLegivel} />
     </div>
   </footer>
 ) : (
@@ -135,14 +101,8 @@ const CLASSE_LEGAL = "text-slate";
 
       {/* A segunda linha que faltava nas 7 páginas de conversão. Uma linha,
           text-xs — a economia visual da variante continua de pé. */}
-      <div class={`mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs sm:justify-start ${CLASSE_LEGAL}`}>
-        {empresa && (
-          <>
-            <span class="font-semibold">{empresa.razaoSocial}</span>
-            <span>CNPJ {empresa.cnpj}</span>
-            <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Conferir na Receita Federal</a>
-          </>
-        )}
+      <IdentificacaoEmpresa variante="linha" class="mt-4" whatsapp={whatsapp} whatsappLegivel={whatsappLegivel} />
+      <div class={`mt-1.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-xs sm:justify-start ${CLASSE_LEGAL}`}>
         <a href="/legal/privacidade/" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Privacidade</a>
         <a href="/excluir-conta/" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Excluir conta</a>
         <a href="/legal/termos/" class="inline-flex min-h-11 min-w-11 items-center justify-center underline-offset-2 transition hover:text-brand-fg hover:underline">Termos</a>
