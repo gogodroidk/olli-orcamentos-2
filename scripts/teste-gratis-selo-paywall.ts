@@ -206,7 +206,7 @@ console.log('\n5) fiação do paywall');
   checar('lojas: só vende na web ou pela Play', /podeOferecerPlanoPara\(Platform\.OS, Platform\.OS === 'android' && vendaPlayConfirmada\(\)\)/.test(comp), true);
   const gate = semComentarios(ler('../src/components/GatePro.tsx'));
   checar('GatePro: leitura que falhou não vira muro', /estado === 'indeterminado'[\s\S]*CartaoRecursoPlano/.test(gate), true);
-  checar('GatePro: selo "Disponível no Pro"', gate.includes('DISPONÍVEL NO ${NOME_PLANO.pro.toUpperCase()}'), true);
+  checar('GatePro: selo "Disponível no Pro" (iPhone: "Recurso do plano Pro") vem da regra única', gate.includes('rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro).toUpperCase()'), true);
 }
 
 console.log('\n6) nenhuma ponta sobrou com a cota de 5');
