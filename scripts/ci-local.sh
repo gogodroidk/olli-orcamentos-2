@@ -41,6 +41,10 @@ if [ -z "${OLLI_CI_SEM_TRAVA:-}" ] && command -v flock >/dev/null 2>&1; then
     echo ">>> ci-local: minha vez."
   fi
 fi
+# Prioridade baixa de CPU e disco (herdada por npm/vite/tsc/expo): o WhatsApp dos clientes (Chatwoot/Evolution)
+# roda nesta mesma máquina e tem de vencer qualquer build.
+renice -n 15 -p $$ >/dev/null 2>&1 || true
+ionice -c 3 -p $$ >/dev/null 2>&1 || true
 
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RAIZ" || exit 2
