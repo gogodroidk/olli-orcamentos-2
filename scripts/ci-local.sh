@@ -268,6 +268,12 @@ if [ "$FALHOU" -eq 0 ]; then
     echo "RESULTADO: VERDE — mas a árvore tinha mudança não commitada; commite e rode de novo antes de registrar no PR."
   else
     echo "RESULTADO: VERDE — registre no PR: \"ci-local.sh verde no commit $HASH\""
+    # Carimbo para scripts/publicar.sh: só rodada COMPLETA (todos os jobs), árvore limpa. Chave = hash da ÁRVORE, então
+    # um merge que não muda os arquivos (mesma árvore) herda o verde, e qualquer mudança exige CI de novo.
+    if [ "${#JOBS[@]}" -eq "${#TODOS_JOBS[@]}" ]; then
+      CARIMBOS="${OLLI_CI_CARIMBOS:-$HOME/.local/state/olli-ci/verde}"
+      mkdir -p "$CARIMBOS" && printf '%s %s\n' "$HASH" "$(date -u +%FT%TZ)" > "$CARIMBOS/$(git rev-parse 'HEAD^{tree}')"
+    fi
   fi
 else
   echo "RESULTADO: VERMELHO — não mescle."
