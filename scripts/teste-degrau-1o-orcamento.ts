@@ -48,6 +48,8 @@ assert.equal(ehRascunhoDoExemplo(NOME_CLIENTE_EXEMPLO), true);
 assert.equal(ehRascunhoDoExemplo(` ${NOME_CLIENTE_EXEMPLO} `), true);
 assert.equal(ehRascunhoDoExemplo('Maria'), false, 'renomeou = orçamento real');
 assert.equal(ehRascunhoDoExemplo(undefined), false);
+const iExemplo = envio.indexOf('if (ehRascunhoDoExemplo(blob.clienteNome))');
+assert.ok(iExemplo > 0 && iExemplo < envio.indexOf('reservarEnvioOrcamento(orcamentoId'), 'exemplo não é enviado com o nome do exemplo (vale também no fluxo do #379, que pede o número na hora)');
 assert.match(form, /if \(ehNovo && !ehRascunhoDoExemplo\(final\.clienteNome\)\) void registrarEtapaAtivacao\("quote_create"\);/, 'quote_create pula o exemplo');
 
 console.log('teste-degrau-1o-orcamento: ok');
