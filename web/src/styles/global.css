@@ -443,10 +443,6 @@ body {
 /* Estados BASE (fora dos guardas) — é isto que 100% dos visitantes veem se
    nada animar. `.olli-revela` não declara nada de propósito: seu estado base é
    simplesmente o elemento normal, opaco e no lugar. */
-.olli-barra {
-	transform: scaleX(0.82); /* os 82% corretos sem depender de animação */
-	transform-origin: left;
-}
 .olli-passo-linha {
 	transform-origin: left; /* base = escala 1 = linha inteira */
 }
@@ -573,14 +569,6 @@ body {
 			animation-range: cover;
 		}
 
-		/* Barra de confiança da IA: o preenchimento CONTA a história do produto
-		   (a IA calculando o grau de confiança) em vez de decorar. */
-		.olli-barra {
-			animation: olli-barra var(--olli-ease-scroll) both;
-			animation-timeline: view();
-			animation-range: entry 10% cover var(--olli-alcance-3);
-		}
-
 		/* Os 3 passos: a linha cresce = o progresso do fluxo que o texto
 		   descreve. Único lugar da página com stagger, e ele desloca INÍCIO e
 		   fim juntos — deslocar só o fim deixaria os itens seguintes mais
@@ -655,17 +643,6 @@ body {
 	}
 }
 
-/* scaleX e não width: animar width é reflow por frame e perde o compositor.
-   O trilho já tem overflow-hidden + rounded-full, então o filho pode ser
-   retangular e ainda aparecer com as pontas arredondadas. */
-@keyframes olli-barra {
-	from {
-		transform: scaleX(0);
-	}
-	to {
-		transform: scaleX(0.82);
-	}
-}
 @keyframes olli-passo-linha {
 	from {
 		transform: scaleX(0);

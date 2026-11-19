@@ -44,8 +44,12 @@ import { track, Eventos } from '../services/analytics';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { PlanosAudioIaCard } from '../components/PlanosAudioIaCard';
 import { planosAudioIaLigada } from '../services/planosAudioIa';
-import { chavePixPlano, checarPixPlano, criarPixPlano, pixPlanoDisponivel, type CobrancaPixPlano } from '../services/pixPlano';
+import {
+  cancelarPixAutomatico, chavePixPlano, checarPixAutomatico, checarPixPlano, criarPixAutomatico, criarPixPlano, estadoPixAutomatico,
+  pixAutomaticoDisponivel, pixPlanoDisponivel, type CobrancaPixPlano, type EstadoPixAutomatico,
+} from '../services/pixPlano';
 import { buscarPixPendente, esquecerPixPendente, guardarPixPendente } from '../services/pixPendente';
+import { ROTULO_CANCELAR_PIX_AUTOMATICO, ROTULO_PIX_AUTOMATICO, TEXTO_PIX_AUTOMATICO_ATIVO, textoAcordoPixAutomatico, textoCurtoPixAutomatico } from '../content/pixAutomatico';
 import { textoValidadePix } from '../utils/pixValidade';
 import {
   ESTADO_PLAY_BILLING,
@@ -339,6 +343,12 @@ export default function PlanosScreen() {
   // Geração da leitura do Pix guardado: resposta velha (lida antes de pagar) não traz o cartão de volta.
   const geracaoPixPendente = useRef(0);
   const [pixEmAndamento, setPixEmAndamento] = useState<PlanoId | null>(null);
+  // Pix Automático (renova sozinho): DESLIGADO por padrão no servidor. O botão só aparece quando o worker confirma.
+  const [pixAutoLigado, setPixAutoLigado] = useState(false);
+  const [pixAutoEstado, setPixAutoEstado] = useState<EstadoPixAutomatico | null>(null);
+  const [pixAutoEmAndamento, setPixAutoEmAndamento] = useState(false);
+  // Página de autorização aberta e ainda não confirmada: o app pergunta ao servidor até ele liberar o Pro.
+  const [pixAutoAguardando, setPixAutoAguardando] = useState<string | null>(null);
   // Google Play (só com VENDA_PELA_PLAY): ofertas com preço da loja, compra em curso
   // e restauração. Desligada, o estado nasce e fica em 'desligado'.
   const [ofertasPlay, setOfertasPlay] = useState<EstadoOfertasPlay>(
@@ -358,6 +368,7 @@ export default function PlanosScreen() {
     if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
     let vivo = true;
     pixPlanoDisponivel().then((ok) => { if (vivo) setPixLigado(ok); }).catch(() => {});
+    pixAutomaticoDisponivel().then((ok) => { if (vivo) setPixAutoLigado(ok); }).catch(() => {});
     return () => { vivo = false; };
   }, []);
 
@@ -419,14 +430,39 @@ export default function PlanosScreen() {
     setPixPendente(c);
   }, [carregarPlano]);
 
+  const carregarPixAuto = useCallback(async () => {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA) return;
+    const e = await estadoPixAutomatico();
+    if (e) setPixAutoEstado(e); // null = não deu para ler: mantém o último estado conhecido, nunca "inventa" ativa/inativa
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       carregarPlano();
       // Relê a Play a cada foco: cobre quem foi à Conta fazer login e voltou.
       void carregarPlay();
       void carregarPixPendente();
-    }, [carregarPlano, carregarPlay, carregarPixPendente]),
+      void carregarPixAuto();
+    }, [carregarPlano, carregarPlay, carregarPixPendente, carregarPixAuto]),
   );
+
+  // Depois de abrir a página de autorização do Pix Automático: pergunta ao servidor a cada 5 s (até 15 min).
+  useEffect(() => {
+    if (!pixAutoAguardando) return;
+    let ativo = true;
+    const limite = Date.now() + 15 * 60_000;
+    const tick = async () => {
+      if (Date.now() > limite) { if (ativo) setPixAutoAguardando(null); return; }
+      const st = await checarPixAutomatico(pixAutoAguardando);
+      if (!ativo || !st?.ativa) return;
+      setPixAutoAguardando(null);
+      void carregarPlano();
+      void carregarPixAuto();
+      Alert.alert('Pix Automático ativo', 'Pagamento confirmado: seu plano Pro já está ativo e renova sozinho todo mês.');
+    };
+    const iv = setInterval(tick, 5000);
+    return () => { ativo = false; clearInterval(iv); };
+  }, [pixAutoAguardando, carregarPlano, carregarPixAuto]);
 
   const planoConhecido = fontePlano === 'servidor' || fontePlano === 'cache_mesmo_usuario';
   const acoesPlanoDisponiveis = fontePlano === 'servidor' || fontePlano === 'sessao_ausente';
@@ -613,6 +649,75 @@ export default function PlanosScreen() {
     } finally {
       setPixEmAndamento(null);
     }
+  }
+
+  // Pix Automático: só o Pro mensal. A confirmação mostra preço, que renova sozinho e como cancelar ANTES de abrir o banco.
+  async function pagarComPixAutomatico(p: Plano) {
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixAutoLigado || p.id !== 'pro' || periodo !== 'mensal') return;
+    if (!acoesPlanoDisponiveis) {
+      Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
+      return;
+    }
+    const sessao = supabase ? (await supabase.auth.getSession()).data.session : null;
+    if (!sessao) {
+      Alert.alert('Faça login primeiro', `Para assinar o plano ${p.nome}, entre com sua conta OLLI.`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Ir para Conta', onPress: () => nav.navigate('Conta') },
+      ]);
+      return;
+    }
+    const valor = reais(PRECO_PRO.mensalCentavos);
+    Alert.alert('Pix Automático', textoAcordoPixAutomatico(valor), [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: `Autorizar ${valor}/mês`,
+        onPress: () => {
+          void (async () => {
+            vibrar('selecao');
+            setPixAutoEmAndamento(true);
+            try {
+              const r = await criarPixAutomatico();
+              if (!r.ok) {
+                const msg = r.erro === 'plano_ainda_ativo'
+                  ? 'Seu plano ainda está ativo por mais alguns dias. Assine o Pix Automático perto do vencimento, para não pagar em dobro.'
+                  : r.erro === 'assinatura_ja_ativa'
+                    ? 'Você já tem a renovação automática por Pix ativa.'
+                    : 'Verifique sua conexão e tente de novo. Nada foi cobrado.';
+                Alert.alert('Não deu para iniciar o Pix Automático', msg);
+                return;
+              }
+              setPixAutoAguardando(r.checkout.checkoutId);
+              await Linking.openURL(r.checkout.url).catch(() => {
+                Alert.alert('Não deu para abrir a página', 'Tente de novo em instantes. Nada foi cobrado.');
+              });
+            } finally {
+              setPixAutoEmAndamento(false);
+            }
+          })();
+        },
+      },
+    ]);
+  }
+
+  function cancelarRenovacaoPixAuto() {
+    Alert.alert(ROTULO_CANCELAR_PIX_AUTOMATICO, 'Nenhuma nova cobrança será feita. Seu Pro segue ativo até o fim do período já pago.', [
+      { text: 'Voltar', style: 'cancel' },
+      {
+        text: 'Cancelar renovação',
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            const r = await cancelarPixAutomatico();
+            if (!r) {
+              Alert.alert('Não deu para cancelar agora', 'Tente de novo em instantes. Se preferir, cancele a autorização no app do seu banco.');
+              return;
+            }
+            setPixAutoEstado({ ativa: false, pagoAte: r.ate });
+            void carregarPlano();
+          })();
+        },
+      },
+    ]);
   }
 
   const aoPixPago = useCallback(() => {
@@ -882,6 +987,18 @@ export default function PlanosScreen() {
           </View>
         ) : null}
 
+        {pixAutoEstado?.ativa ? (
+          <View style={styles.pixPendente} accessibilityRole="summary">
+            <MaterialCommunityIcons name="autorenew" size={22} color={cores.accentLight} />
+            <View style={styles.pixPendenteTxt}>
+              <Text style={styles.pixPendenteTitulo}>{TEXTO_PIX_AUTOMATICO_ATIVO}</Text>
+            </View>
+            <TouchableOpacity onPress={cancelarRenovacaoPixAuto} accessibilityRole="button" accessibilityLabel={ROTULO_CANCELAR_PIX_AUTOMATICO}>
+              <Text style={styles.cobrancaAvisoAcao}>{ROTULO_CANCELAR_PIX_AUTOMATICO}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {pixPendente && !cobrancaPix ? (
           <TouchableOpacity
             style={styles.pixPendente}
@@ -986,6 +1103,9 @@ export default function PlanosScreen() {
                         pixLigado={false}
                         carregandoPix={false}
                         onPagarPix={() => {}}
+                        pixAutoLigado={false}
+                        carregandoPixAuto={false}
+                        onPagarPixAuto={() => {}}
                         vendaPlay={vendaPlayDoCard(p)}
                       />
                     </View>
@@ -1050,6 +1170,9 @@ export default function PlanosScreen() {
                 pixLigado={pixLigado}
                 carregandoPix={pixEmAndamento === p.id}
                 onPagarPix={() => { void pagarComPix(p); }}
+                pixAutoLigado={pixAutoLigado && !pixAutoEstado?.ativa && !pixAutoAguardando}
+                carregandoPixAuto={pixAutoEmAndamento}
+                onPagarPixAuto={() => { void pagarComPixAutomatico(p); }}
                 vendaPlay={vendaPlayDoCard(p)}
               />
             );
@@ -1126,6 +1249,9 @@ function PlanoCard({
   pixLigado,
   carregandoPix,
   onPagarPix,
+  pixAutoLigado,
+  carregandoPixAuto,
+  onPagarPixAuto,
   vendaPlay,
 }: {
   plano: Plano;
@@ -1140,6 +1266,10 @@ function PlanoCard({
   pixLigado: boolean;
   carregandoPix: boolean;
   onPagarPix: () => void;
+  /** O worker confirmou o Pix Automático (desligado por padrão). Só o Pro mensal. */
+  pixAutoLigado: boolean;
+  carregandoPixAuto: boolean;
+  onPagarPixAuto: () => void;
   /** Venda pela Google Play deste card; `null` = desligada (comportamento anterior). */
   vendaPlay: VendaPlayCard | null;
 }) {
@@ -1302,6 +1432,24 @@ function PlanoCard({
           )}
         </TouchableOpacity>
       )}
+
+      {/* D-2171 (Igor, 18/11): o Pix Automático vem ANTES do Pix avulso. Pix Automático: débito mensal sozinho no banco. Só o Pro mensal, só com o servidor confirmando a flag.
+          Preço, "todo mês" e como cancelar ficam escritos AQUI e na confirmação antes de pagar. */}
+      {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && pixAutoLigado && !plano.atual && plano.id === 'pro' && periodo === 'mensal' && preco ? (
+        <>
+          <TouchableOpacity style={[styles.ctaOutline, styles.ctaPix, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagarPixAuto} activeOpacity={0.85} disabled={carregandoPixAuto || carregandoPlano || !acoesDisponiveis} accessibilityRole="button" accessibilityState={{ disabled: carregandoPixAuto || carregandoPlano || !acoesDisponiveis }}>
+            {carregandoPixAuto ? (
+              <ActivityIndicator size="small" color={cores.primaryLight} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="autorenew" size={17} color={cores.primaryLight} />
+                <Text style={styles.ctaOutlineText}>{`${ROTULO_PIX_AUTOMATICO} — ${reais(preco.mensalCentavos)}/mês`}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.pixAutoNota}>{textoCurtoPixAutomatico(reais(preco.mensalCentavos))}</Text>
+        </>
+      ) : null}
 
       {/* Pix (AbacatePay): paga o período da aba de uma vez, sem renovação
           automática. Só aparece com o Pix ligado de verdade no worker e onde há
@@ -1644,6 +1792,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   ctaGradText: { fontSize: 15, fontWeight: '800' },
   ctaOutline: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, borderWidth: 1.5, borderColor: c.primaryLight, backgroundColor: comAlfa(c.primaryLight, 0.10) },
   ctaPix: { marginTop: Spacing.sm },
+  pixAutoNota: { fontSize: 12, color: c.onSurfaceVariant, marginTop: Spacing.xs, lineHeight: 17, textAlign: 'center' },
   ctaOutlineText: { fontSize: 14.5, fontWeight: '800', color: c.primaryLight },
   ctaAtual: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: BorderRadius.md, paddingVertical: 13, marginTop: Spacing.lg, backgroundColor: c.successLight, borderWidth: 1, borderColor: comAlfa(c.success, 0.3) },
   ctaAtualText: { fontSize: 14.5, fontWeight: '800', color: c.success },

@@ -40,19 +40,19 @@ const recursos = [
 		icon: "clipboard-list",
 		titulo: "Ordem de serviço",
 		texto:
-			"Vire o orçamento em OS com checklist por ofício e assinatura do cliente na tela.",
+			"Vire o orçamento em ordem de serviço com checklist por ofício e assinatura do cliente na tela.",
 	},
 	{
 		icon: "brain",
 		titulo: "IA que entende o defeito",
 		texto:
-			"Diagnóstico de climatização por sintoma ou código de erro — não é só nota fiscal.",
+			"Diagnóstico de climatização por sintoma ou código de erro.",
 	},
 	{
 		icon: "calendar-check",
 		titulo: "PMOC (Lei 13.589)",
 		texto:
-			"Planos de manutenção, lembretes e documento de responsabilidade (ART) — a papelada da climatização resolvida.",
+			"Planos de manutenção, lembretes e o histórico de cada máquina. A ART continua sendo do responsável técnico.",
 	},
 	{
 		icon: "users",
@@ -63,7 +63,7 @@ const recursos = [
 		icon: "calculator",
 		titulo: "Calculadoras de ofício",
 		texto:
-			"BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, aterradas em norma.",
+			"BTU, carga de gás, caixa d'água, tinta, disjuntor… as contas do dia a dia, cada uma com a norma ou a fórmula daquele ofício.",
 	},
 	{
 		icon: "calendar",
@@ -101,7 +101,7 @@ const passos = [
 		n: "03",
 		titulo: "Envie e acompanhe",
 		texto:
-			"Compartilhe o link pelo WhatsApp. O cliente aprova, e você transforma o orçamento em OS e recibo, com tudo guardado.",
+			"Compartilhe o link pelo WhatsApp. O cliente aprova, e você transforma o orçamento em ordem de serviço e recibo, com tudo guardado.",
 	},
 ];
 
@@ -138,6 +138,10 @@ const faq = [
 		a: `Na OLLI: ${reais(0)} no plano Grátis, sem prazo pra acabar. O Pro custa ${reais(PRECO_PRO.mensalCentavos)}/mês e o Empresa ${reais(PRECO_EMPRESA.mensalCentavos)}/mês, com desconto no anual. O preço está nesta página, sem consultor no meio, e o Grátis não é teste de 7 dias.`,
 	},
 	{
+		q: "A OLLI emite nota fiscal?",
+		a: "Não. A OLLI não emite nota fiscal. No recibo, Preparar nota fiscal separa cliente, descrição, valor e município para você copiar no Emissor Nacional. Sem o número da NFS-e, a nota não foi emitida.",
+	},
+	{
 		q: "Existe app grátis de ordem de serviço?",
 		a: "Sim — o plano Grátis da OLLI faz ordem de serviço sem limite, com checklist, fotos e assinatura do cliente na tela. Não é teste de 7 dias: é grátis sem prazo, sem cartão e sem fidelidade. O PDF do Grátis sai com uma marca discreta da OLLI, que some no Pro.",
 	},
@@ -145,18 +149,18 @@ const faq = [
 		q: "Serve pra eletricista, encanador ou pintor?",
 		// A contagem (total e por ofício) era digitada à mão: a primeira calculadora
 		// nova no app faria esta resposta (e o FAQPage) mentir. Agora sai da fonte.
-		a: `Serve. A OLLI tem ${TOTAL_CALCULADORAS} calculadoras de campo divididas por ofício — ${CALCULADORAS_POR_OFICIO} — e mostra só as do seu. Ofício fora da lista continua usando orçamento, OS e recibo normalmente.`,
+		a: `Serve. A OLLI tem ${TOTAL_CALCULADORAS} calculadoras de campo divididas por ofício — ${CALCULADORAS_POR_OFICIO} — e mostra só as do seu. Ofício fora da lista continua usando orçamento, ordem de serviço e recibo normalmente.`,
 	},
 	{
 		q: "O que é PMOC e quem é obrigado a ter?",
-		a: "PMOC é o Plano de Manutenção, Operação e Controle exigido pela Lei 13.589/2018 de quem opera ambientes climatizados de uso coletivo. Na OLLI o PMOC é um módulo pronto: inventário dos equipamentos, etiqueta QR por máquina e as ordens de manutenção geradas na periodicidade certa.",
+		a: "PMOC é o Plano de Manutenção, Operação e Controle exigido pela Lei 13.589/2018 de quem opera ambientes climatizados de uso coletivo. Na OLLI você organiza equipamentos, planos, ordens e o histórico, com etiqueta QR por máquina. A OLLI não emite a ART: o número, quando existe, é informado pelo responsável técnico.",
 	},
 	{
 		q: "Funciona sem internet, no meio do serviço?",
 		// O offline é do APP Android (banco no próprio aparelho). O painel web é
 		// online-first — e é pra ele que todo CTA desta página leva. A resposta antiga
 		// ("Funciona.") virava FAQPage no Google prometendo o que o visitante não tem.
-		a: "Depende de onde você usa. No aplicativo Android (em teste fechado), orçamento, cliente e OS ficam guardados no próprio celular e sincronizam quando a rede volta. Pelo navegador — no celular ou no computador — a OLLI precisa de internet.",
+		a: "Depende de onde você usa. No aplicativo Android (em teste fechado), orçamento, cliente e ordem de serviço ficam guardados no próprio celular e sincronizam quando a rede volta. Pelo navegador — no celular ou no computador — a OLLI precisa de internet.",
 	},
 	// Pix só entra quando o worker confirmou no build que ele está ligado (data/pix.ts).
 	...(PIX_PLANO_LIGADO
@@ -235,16 +239,18 @@ const schemaFaq = {
          recusa a encolher abaixo do próprio conteúdo. O mockup do painel tem
          conteúdo largo, então ele esticava a coluna (446px numa tela de 390px) e
          empurrava o TÍTULO e os BOTÕES pra fora da tela no celular. */}
-    <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-16 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
-      <div class="min-w-0">
+    <div class="mx-auto grid max-w-7xl items-center gap-14 px-6 pb-24 pt-8 lg:grid-cols-[1.05fr_1fr] lg:pt-24">
+      <div class="min-w-0 flex flex-col">
         <span class="eyebrow"><span aria-hidden="true">●</span> Plataforma de orçamentos para qualquer negócio de serviço</span>
-        <h1 class="mt-5 text-[clamp(2.6rem,6vw,4.6rem)] font-extrabold leading-[1.02] tracking-tight text-ink">
+        <h1 class="mt-3 text-[clamp(1.85rem,6vw,4.6rem)] font-extrabold leading-[1.08] tracking-tight text-ink lg:mt-5 lg:leading-[1.02]">
           Troque o orçamento improvisado no WhatsApp por uma <span class="brand-text">plataforma com a sua marca.</span>
         </h1>
-        <p class="mt-6 max-w-xl text-lg leading-relaxed text-slate">
+        <p class="order-2 mt-3 max-w-xl text-base leading-relaxed text-slate lg:order-none lg:mt-6 lg:text-lg">
           Crie <strong class="text-ink">orçamentos profissionais em minutos</strong>, personalize com a sua identidade e envie um link para o cliente aprovar — no celular ou computador, seja qual for o serviço que você vende.
         </p>
-        <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+        {/* No celular o aviso de cookies cobre o fim da primeira tela. O botão
+            sobe para logo abaixo do título; no desktop a ordem do código volta. */}
+        <div class="order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none lg:mt-8">
           <a href={APP_CADASTRO_URL} class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong">
             Criar meu primeiro orçamento — grátis
           </a>
@@ -252,7 +258,7 @@ const schemaFaq = {
             Ver como funciona
           </a>
         </div>
-        <div id="android-em-teste" class="mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1">
+        <div id="android-em-teste" class="order-3 mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1 lg:order-none">
           <p class="text-sm leading-relaxed text-slate">
             <strong class="text-ink">Aplicativo Android em teste fechado.</strong>
             A instalação pela Google Play está restrita a testadores selecionados. Se a sua conta ainda não foi incluída, use a OLLI pelo navegador. Não há aplicativo para iPhone/iOS nesta versão.
@@ -277,7 +283,7 @@ const schemaFaq = {
         </div>
         {/* Chips de ofício: a multi-verticalidade plantada acima da dobra, sem
              mexer no H1 (que já é agnóstico). Derivados de verticais.ts. */}
-        <div class="mt-7 flex flex-wrap gap-2">
+        <div class="order-3 mt-7 flex flex-wrap gap-2 lg:order-none">
           {OFICIOS.map((o) => (
             <a
               href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
@@ -287,7 +293,7 @@ const schemaFaq = {
             </a>
           ))}
         </div>
-        <div class="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted">
+        <div class="order-3 mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted lg:order-none">
           <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</span>
           <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem fidelidade</span>
           <span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Celular + computador</span>
@@ -377,8 +383,8 @@ const schemaFaq = {
         A OLLI se veste do seu serviço.
       </h2>
       <p class="mt-5 text-lg leading-relaxed text-slate">
-        São <strong class="text-ink">{TOTAL_CALCULADORAS} calculadoras de campo</strong> aterradas em norma e
-        fórmula real — e você só vê as do seu ofício. O resto some da tela.
+        São <strong class="text-ink">{TOTAL_CALCULADORAS} calculadoras de campo</strong>, cada uma com a norma ou a
+        fórmula daquele ofício — e você só vê as do seu. O resto some da tela.
       </p>
     </div>
 
@@ -495,10 +501,8 @@ const schemaFaq = {
 
        Custo: zero. É a mesma pintura, com outra largura. */}
   <section class="zona-funda py-28 md:py-32">
-    {/* `overflow-clip`: este bloco e a trilha da barra abaixo sao ancestrais da
-        `.olli-barra`. Com `overflow-hidden` os dois viravam container de scroll
-        e a barra nascia com progresso travado em 1 — cheia, sem nunca encher.
-        Mesma troca, mesmo motivo do hero. */}
+    {/* `overflow-clip` e não `overflow-hidden`: o hidden virava container de
+        scroll e travava a animação da página. Mesma troca do hero. */}
     <div class="relative mx-auto max-w-7xl overflow-clip px-6">
       <div class="grid items-center gap-10 md:grid-cols-2">
         <div>
@@ -509,24 +513,13 @@ const schemaFaq = {
               para o SOL, não para o WCAG. O público lê esta página no celular em
               obra, e sob luz direta a régua que vale é luminância, não razão. */}
           <p class="mt-4 max-w-md text-white/78">
-            Descreva o sintoma ou informe o código de erro: a OLLI aponta o provável componente, a faixa da peça e um grau de confiança. São <strong class="text-white">698 códigos de erro</strong> de climatização e diagnóstico por sintoma — pra você chegar com a peça certa.
+            Informe o código ou descreva o sintoma. Nos <strong class="text-white">698 códigos de erro</strong> de climatização, a confiança vem em palavras: alta, média ou média/alta. No diagnóstico por sintoma, a peça entra como suspeita, sem porcentagem e sem a medida. Quem mede e troca é você.
           </p>
         </div>
         <div class="rounded-cartao bg-white/5 p-6 ring-1 ring-white/10">
-          <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Diagnóstico</div>
-          <p class="mt-3 text-sm text-white/80">Provável: <strong class="text-cyan">capacitor do compressor</strong> <span class="tnum">— 45/5 µF</span></p>
-          <div class="mt-3 flex items-center gap-3">
-            {/* width:82% virou scaleX(0.82) no CSS: animar `width` é reflow por
-                frame e perde o compositor. O filho é `w-full` e a escala faz os
-                82%; o trilho já tem overflow-hidden + rounded-full, então ele
-                clipa as pontas e o filho retangular ainda aparece arredondado —
-                sem a distorção de raio que scaleX normalmente causa.
-                O valor de base vive fora dos guardas: quem não anima vê 82%. */}
-            <div class="h-1.5 flex-1 overflow-clip rounded-full bg-white/10">
-              <div class="olli-barra h-full w-full brand-gradient"></div>
-            </div>
-            <span class="tnum text-xs text-white/78">confiança 82%</span>
-          </div>
+          <div class="text-xs font-semibold uppercase tracking-wider text-cyan">Exemplo da base</div>
+          <p class="mt-3 text-sm text-white/80">Daikin <span class="tnum">A6</span> · <strong class="text-cyan">falha no motor ventilador interno</strong></p>
+          <p class="mt-3 text-xs font-semibold uppercase tracking-wider text-white/78">Confiança alta</p>
         </div>
       </div>
     </div>
