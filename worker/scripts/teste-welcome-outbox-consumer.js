@@ -329,6 +329,83 @@ async function casoResumoSemNadaAcionavelNaoSai() {
   assert.equal(result.failed, 1);
 }
 
+// Aviso aos Grátis (D-2267) tem validade: 26/11/2026 03:00Z. Antes, sai normal; depois (inclusive reenvio atrasado de
+// quem ficou na fila ou voltou de uma falha), a fila marca dead_letter `aviso_vencido` SEM chamar a Resend.
+function claimAvisoGratis() {
+  const key = `aviso_gratis:${USER}:2026-11-24`;
+  return {
+    ...claim('pessoa@example.com'),
+    event_id: key,
+    idempotency_key: key,
+    template: 'aviso_gratis',
+    template_version: 'aviso_gratis.v1',
+    purpose: 'plan_change_notice',
+    dispatch_scope: 'production',
+    user_id: USER,
+    template_dados: { tipo: 'tranca_gratis_d2267' },
+  };
+}
+const depsEm = (fetchImpl, iso) => ({ ...deps(fetchImpl), now: () => new Date(iso) });
+
+async function casoAvisoGratisAntesDoCorteSai() {
+  const enviados = [];
+  const fetchImpl = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) return Response.json([claimAvisoGratis()]);
+    if (url === 'https://api.resend.com/emails') {
+      enviados.push(JSON.parse(init.body));
+      return Response.json({ id: 'email_aviso_1' }, { status: 200 });
+    }
+    assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'));
+    assert.equal(JSON.parse(init.body).p_status, 'sent');
+    return Response.json([{ applied: true, status: 'sent', attempts: 1 }]);
+  };
+  const result = await processarWelcomeOutbox(ENV_PROD, depsEm(fetchImpl, '2026-11-26T02:59:59.999Z'));
+  assert.equal(enviados.length, 1, 'um milissegundo antes do corte ainda envia');
+  assert.equal(result.sent, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(Object.hasOwn(result, 'expired'), false);
+}
+
+async function casoAvisoGratisReenvioAtrasadoVence() {
+  for (const iso of ['2026-11-26T03:00:00.000Z', '2026-11-27T10:00:00.000Z']) {
+    const settles = [];
+    const fetchImpl = async (url, init) => {
+      if (url.endsWith('/rpc/claim_email_welcome_outbox')) return Response.json([claimAvisoGratis()]);
+      assert.notEqual(url, 'https://api.resend.com/emails', 'aviso vencido não pode chegar à Resend');
+      assert.ok(url.endsWith('/rpc/settle_email_welcome_outbox'));
+      settles.push(JSON.parse(init.body));
+      return Response.json([{ applied: true, status: 'dead_letter', attempts: 1 }]);
+    };
+    const result = await processarWelcomeOutbox(ENV_PROD, depsEm(fetchImpl, iso));
+    assert.equal(settles.length, 1);
+    assert.equal(settles[0].p_status, 'dead_letter');
+    assert.equal(settles[0].p_error_code, 'aviso_vencido');
+    assert.equal(settles[0].p_provider_id, null);
+    assert.equal(result.sent, 0);
+    assert.equal(result.failed, 0, 'vencido não conta como falha');
+    assert.equal(result.expired, 1);
+  }
+  // reenvio atrasado de uma linha que já tinha falhado uma vez (attempts 2): mesmo destino
+  const fetchRetry = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) return Response.json([{ ...claimAvisoGratis(), attempts: 2 }]);
+    assert.notEqual(url, 'https://api.resend.com/emails');
+    assert.equal(JSON.parse(init.body).p_error_code, 'aviso_vencido');
+    assert.equal(JSON.parse(init.body).p_attempts, 2);
+    return Response.json([{ applied: true, status: 'dead_letter', attempts: 2 }]);
+  };
+  const r2 = await processarWelcomeOutbox(ENV_PROD, depsEm(fetchRetry, '2026-11-26T08:00:00.000Z'));
+  assert.equal(r2.expired, 1);
+  // o corte só vale para o aviso: um lembrete comum na mesma data segue o fluxo normal
+  const enviados = [];
+  const fetchLembrete = async (url, init) => {
+    if (url.endsWith('/rpc/claim_email_welcome_outbox')) return Response.json([claimLembrete()]);
+    if (url === 'https://api.resend.com/emails') { enviados.push(1); return Response.json({ id: 'e1' }, { status: 200 }); }
+    return Response.json([{ applied: true, status: 'sent', attempts: 1 }]);
+  };
+  await processarWelcomeOutbox(ENV_PROD, depsEm(fetchLembrete, '2026-11-27T10:00:00.000Z'));
+  assert.equal(enviados.length, 1, 'o corte não atrapalha os outros lembretes');
+}
+
 const originalLog = console.log;
 const originalError = console.error;
 console.log = () => {};
@@ -345,6 +422,8 @@ try {
   await casoSimuladorNaoEnviaLembreteReal();
   await casoResumoDinheiro();
   await casoResumoSemNadaAcionavelNaoSai();
+  await casoAvisoGratisAntesDoCorteSai();
+  await casoAvisoGratisReenvioAtrasadoVence();
 } finally {
   console.log = originalLog;
   console.error = originalError;

@@ -12,10 +12,10 @@
  * falso. Desde 01/10/2026 (Grátis ilimitado) só a renovação vira e-mail.
  */
 
-import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_OFERTA_PRO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
+import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_AVISO_GRATIS, LEMBRETE_OFERTA_PRO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
 import { COBRANCA_ID_RE } from './pixVencePolicy.js';
 import { PRECO_PRO, DESCONTO_ANUAL_ROTULO, reais } from '../../src/services/precosPlanos.ts';
-import { FRASE_GRATIS, PREVIEW_EMAIL_GRATIS, frasePro } from '../../src/services/planosBase.ts';
+import { FRASE_GRATIS, PREVIEW_EMAIL_GRATIS, avisoMudancaGratis, frasePro } from '../../src/services/planosBase.ts';
 
 export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-05.v3';
 export const EMAIL_LEMBRETES_BRAND = 'OLLI Orçamentos';
@@ -377,6 +377,28 @@ function conteudoOfertaPro(dados, appUrl) {
   };
 }
 
+/** Único valor aceito em `template_dados` do aviso: o texto vem da fonte, não do banco. */
+export const AVISO_GRATIS_TIPO = 'tranca_gratis_d2267';
+
+function conteudoAvisoGratis(dados, appUrl) {
+  chavesExatas(dados, ['tipo'], 'dados_invalidos');
+  exigir(dados.tipo === AVISO_GRATIS_TIPO, 'dados_invalidos');
+  // Título, o que muda, o que continua grátis e o que fica: tudo de avisoMudancaGratis (planosBase.ts).
+  // O preço vem de PRECO_PRO (precosPlanos.ts), nunca digitado.
+  const aviso = avisoMudancaGratis(reais(PRECO_PRO.mensalCentavos));
+  return {
+    subject: aviso.titulo,
+    preview: aviso.texto.slice(0, 110),
+    titulo: aviso.titulo,
+    paragrafos: [aviso.texto],
+    passos: null,
+    cta: { rotulo: 'Ver os planos', href: urlCom(appUrl, '/planos') },
+    depois: [],
+    motivo: 'Você recebe este aviso porque tem uma conta no plano Grátis da OLLI Orçamentos.',
+    rotuloDescadastro: 'Parar de receber e-mails da OLLI',
+  };
+}
+
 // ─── Layout ──────────────────────────────────────────────────────────────────
 // Exportado (com os validadores acima) para o resumo diário do dinheiro parado
 // (`resumoDinheiroTemplate.js`) sair com a MESMA casca — marca, contraste, botão de
@@ -464,7 +486,7 @@ export function renderizarEmailLembrete(input = {}) {
   const eventId = idSeguro(input.eventId);
   exigir(eventId, 'event_id_invalido');
 
-  const catalogo = [LEMBRETE_ATIVACAO, LEMBRETE_ASSINATURA, LEMBRETE_REENGAJAMENTO, LEMBRETE_OFERTA_PRO]
+  const catalogo = [LEMBRETE_ATIVACAO, LEMBRETE_ASSINATURA, LEMBRETE_REENGAJAMENTO, LEMBRETE_OFERTA_PRO, LEMBRETE_AVISO_GRATIS]
     .find((c) => c.template === input.template) ?? null;
   exigir(catalogo, 'template_invalido');
   exigir(input.templateVersion === catalogo.templateVersion, 'template_version_divergente');
@@ -481,7 +503,9 @@ export function renderizarEmailLembrete(input = {}) {
       ? conteudoAssinatura(input.dados, appUrl)
       : catalogo === LEMBRETE_OFERTA_PRO
         ? conteudoOfertaPro(input.dados, appUrl)
-        : conteudoReengajamento(input.dados, appUrl);
+        : catalogo === LEMBRETE_AVISO_GRATIS
+          ? conteudoAvisoGratis(input.dados, appUrl)
+          : conteudoReengajamento(input.dados, appUrl);
   exigir(conteudo.subject.length <= 180 && !/[\r\n]/.test(conteudo.subject), 'subject_invalido');
 
   const html = montarHtml(conteudo, {
