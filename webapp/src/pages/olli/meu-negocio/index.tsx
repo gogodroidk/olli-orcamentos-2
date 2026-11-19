@@ -230,18 +230,6 @@ export default function MeuNegocio() {
 
 	const cor = (form?.corMarca ?? "").trim();
 
-	// Atalho do Mapa de clientes: /meu-negocio#endereco cai direto no campo de endereço.
-	const pedeEndereco = location.hash === "#endereco";
-	const formPronto = !!form;
-	useEffect(() => {
-		if (!pedeEndereco || !formPronto) return;
-		const campo = document.getElementById("endereco");
-		if (!(campo instanceof HTMLInputElement)) return;
-		const semMovimento = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-		campo.scrollIntoView({ block: "center", behavior: semMovimento ? "auto" : "smooth" });
-		if (!campo.disabled) campo.focus({ preventScroll: true });
-	}, [pedeEndereco, formPronto]);
-
 	// PRÉVIA DA MARCA: a cor escolhida repinta o painel na hora — é o que a pessoa
 	// está comprando (white-label). `pickBrandColor` (olli/branding.ts) já olha
 	// `dados.corMarca` no blob, então o `useApplyBranding` do layout reaplica a
@@ -292,6 +280,18 @@ export default function MeuNegocio() {
 	const permissaoDesconhecida = contexto.isLoading || contexto.isError || !papel;
 	const somenteLeitura = !permissaoDesconhecida && !ehDono;
 	const bloqueado = permissaoDesconhecida || somenteLeitura;
+
+	// Atalho do Mapa de clientes: /meu-negocio#endereco cai direto no campo de endereço.
+	const pedeEndereco = location.hash === "#endereco";
+	const formPronto = !!form;
+	useEffect(() => {
+		if (!pedeEndereco || !formPronto) return;
+		const campo = document.getElementById("endereco");
+		if (!(campo instanceof HTMLInputElement)) return;
+		const semMovimento = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+		campo.scrollIntoView({ block: "center", behavior: semMovimento ? "auto" : "smooth" });
+		if (!bloqueado) campo.focus({ preventScroll: true });
+	}, [pedeEndereco, formPronto, bloqueado]);
 
 	const salvar = useMutation({
 		mutationFn: async (f: Empresa) => {

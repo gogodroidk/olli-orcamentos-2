@@ -34,8 +34,8 @@ import {
 // Leaflet só entra no bundle desta tela.
 const MapaProspeccao = lazy(() => import("./MapaProspeccao"));
 
-// Alvo de toque de 44 px (min-h-11) e foco visível por teclado. Sem animação nova.
-const CLASSE_ALVO = "inline-flex min-h-11 min-w-11 items-center justify-center rounded-full text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+// Alvo de toque de 44 px (min-h-[44px]; no painel 1rem = 14px, então a classe de 2,75rem daria só 39px) e foco visível por teclado. Sem animação nova.
+const CLASSE_ALVO = "inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const CLASSE_BOTAO = `${CLASSE_ALVO} px-5 font-semibold`;
 /** Leva a Meu negócio já no campo de endereço (âncora tratada lá). */
 const ROTA_ENDERECO_BASE = "/meu-negocio#endereco";
@@ -231,7 +231,7 @@ export default function ProspeccaoPage() {
 				<div className="rounded-2xl border border-border bg-card p-6" role="alert">
 					<p className="font-semibold text-text-primary">Não deu para carregar os clientes</p>
 					<p className="mt-1 text-sm text-text-secondary">O mapa não abre vazio no lugar de um erro. Tente de novo.</p>
-					<button type="button" onClick={() => { void clientesQ.refetch(); }} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground">
+					<button type="button" onClick={() => { void clientesQ.refetch(); }} className="mt-4 inline-flex min-h-[44px] items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground">
 						<RefreshCw className="size-4" aria-hidden="true" />
 						Tentar de novo
 					</button>
@@ -255,7 +255,7 @@ export default function ProspeccaoPage() {
 							</div>
 						</section>
 					) : null}
-					<p className="text-sm leading-6 text-text-secondary">{rotuloOrigem}</p>
+					{precisaEscolher ? null : <p className="text-sm leading-6 text-text-secondary">{rotuloOrigem}</p>}
 					{avisoGps ? <output className="block rounded-xl bg-muted px-3 py-2 text-sm text-text-primary">{avisoGps}</output> : null}
 					{equipamentosQ.isError ? (
 						<output className="block rounded-xl bg-muted px-3 py-2 text-sm text-text-primary">
@@ -270,7 +270,7 @@ export default function ProspeccaoPage() {
 
 					<fieldset className="m-0 flex min-w-0 flex-wrap gap-2 border-0 p-0">
 						<legend className="sr-only">De onde partir</legend>
-						<Chip ativo={fonte !== "aparelho"} desabilitado={!base} onClick={() => { setFonte("base"); setAvisoGps(null); }}>Base do cadastro</Chip>
+						<Chip ativo={fonte !== "aparelho" && !!base} desabilitado={!base} onClick={() => { setFonte("base"); setAvisoGps(null); }}>Base do cadastro</Chip>
 						<Chip ativo={fonte === "aparelho" && !!aparelho} desabilitado={buscandoGps} onClick={() => { void usarOndeEstou(); }}>
 							{buscandoGps ? "Lendo posição…" : "Onde estou"}
 						</Chip>
@@ -321,7 +321,7 @@ export default function ProspeccaoPage() {
 						type="button"
 						onClick={abrirRota}
 						disabled={!rota.url}
-						className="inline-flex min-h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+						className="inline-flex min-h-[44px] items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
 					>
 						{rota.url ? `Abrir rota no Google Maps (${rota.usadas})` : "Nenhum endereço para abrir a rota"}
 					</button>
@@ -381,13 +381,13 @@ export default function ProspeccaoPage() {
 							<h2 className="text-base font-bold text-text-primary">Sem ponto no mapa ({resultadoFinal.semPonto.length})</h2>
 							<p className="mt-1 text-sm text-text-secondary">
 								O ponto nasce quando o cadastro tem CEP ou cidade e UF. Sem isso, o cliente continua na lista e não some.{" "}
-								<Link to="/clientes" className="font-semibold text-primary">Abrir Clientes</Link>
+								<Link to="/clientes" className="inline-flex min-h-[44px] items-center font-semibold text-primary">Abrir Clientes</Link>
 							</p>
 							<ul className="mt-2 space-y-2 text-sm text-text-primary">
 								{resultadoFinal.semPonto.map((c) => (
 									<li key={c.id} className="flex flex-wrap items-center justify-between gap-2">
 										<span>{c.nome}</span>
-										<Link to={`/clientes?editar=${encodeURIComponent(c.id)}`} className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-semibold text-primary">
+										<Link to={`/clientes?editar=${encodeURIComponent(c.id)}`} className="inline-flex min-h-[44px] items-center rounded-full border border-border px-4 text-sm font-semibold text-primary">
 											Completar endereço
 										</Link>
 									</li>

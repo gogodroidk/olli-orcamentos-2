@@ -290,7 +290,9 @@ assert.ok(pagina.includes('pediuAutomatico') && pagina.includes('semBase'), 'sem
 assert.ok(pagina.includes('/meu-negocio#endereco'), 'atalho de 1 toque para o campo de endereço');
 const negocio = readFileSync('webapp/src/pages/olli/meu-negocio/index.tsx', 'utf8');
 assert.ok(negocio.includes('id="endereco"') && negocio.includes('"#endereco"'), 'Meu negócio trata a âncora #endereco');
-assert.equal(/min-h-10\b/.test(pagina), false, 'nenhum alvo abaixo de 44 px (min-h-11)');
+assert.equal(/min-h-1[01]\b/.test(pagina), false, 'min-h-10/11 rendem 39 px no painel (1rem = 14px): alvo é min-h-[44px]');
+assert.ok(pagina.includes('min-h-[44px]') && pagina.includes('min-w-[44px]'), 'alvo de 44 px explícito');
+assert.ok(mapaPainel.includes('leaflet-bar_a]:!h-[44px]'), 'zoom do mapa com alvo de 44 px');
 assert.ok(pagina.includes('focus-visible:outline'), 'foco visível por teclado');
 assert.ok(mapaPainel.includes('prefers-reduced-motion') && negocio.includes('prefers-reduced-motion'), 'menos movimento respeitado');
 assert.ok(rotas.includes('path: "prospeccao"'));
