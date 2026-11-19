@@ -341,6 +341,10 @@ console.log('\n7b. Pro vigente por TODAS as origens (regra da CPO 19/11): nunca 
     testes[USER] = new Date(Date.now() + 86400e3).toISOString();
     const r = await chamar(env, 'GET', TOKEN);
     checar('teste do Pro ativo: VENDE (é quem o link quer converter)', [r.status, r.corpo.includes('Gerar Pix')], [200, VENDE_DURANTE_TESTE]);
+    checar('no teste, a página diz as 2 datas antes de pagar (CPO 19/11)', [r.corpo.includes('Seu teste do Pro vai até'), r.corpo.includes('não perde nenhum dia')], [true, true]);
+    const p = await chamar(env, 'POST', TOKEN);
+    const inicio = JSON.stringify(criadas[0] ?? {}).match(/"inicio":"([^"]+)"/)?.[1];
+    checar('pagar no teste: o período pago começa no FIM do teste (não perde dias)', [p.status, criadas.length, inicio && Math.abs(Date.parse(inicio) - Date.parse(testes[USER])) < 1000], [303, 1, true]);
   }
   for (const alvo of ['/rest/v1/assinaturas', '/rest/v1/trials_comerciais', '/rest/v1/webhook_events']) {
     reset();
