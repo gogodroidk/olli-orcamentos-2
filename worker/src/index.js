@@ -62,6 +62,7 @@ import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
 import { handleMercadoPago, PLANO_PIX } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
+import { handleLinkPagarPro, LINK_PRO_PREFIXO } from './linkPagarPro.js';
 import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
 import { handleApple } from './appleRotas.js';
 import { cronPlayComBatimento } from './playBatimento.js';
@@ -946,6 +947,14 @@ const handler = {
     // ── PAINEL ADMIN (web + API protegida por super-admin) ──
     if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) {
       return handleAdmin(request, env, url);
+    }
+
+    // ── LINK DE PAGAMENTO DO PRO POR CONTA (CQ-LINK-PAGAR-PRO) ──
+    // Página pública /pagar/pro/<token assinado>: Pix do Pro mensal daquela conta, sem login.
+    // Chave LINK_PAGAMENTO_PRO + segredo LINK_PAGAMENTO_SECRET; sem os dois = 404.
+    // Reusa a criação e a liberação do Pix do plano (abacate.js). Ver linkPagarPro.js.
+    if (url.pathname.startsWith(LINK_PRO_PREFIXO)) {
+      return handleLinkPagarPro(request, env, url);
     }
 
     // ── PAGAMENTOS STRIPE (checkout/webhook/portal + páginas) ──
