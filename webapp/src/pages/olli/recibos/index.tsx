@@ -30,6 +30,7 @@ import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import { NameCell } from "@/olli/components/record-list-helpers";
 import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useContextoDeEscrita, useExcluir } from "@/olli/mutacoes";
+import { AvisoMudancaGratis } from "@/olli/recursoPlano";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -61,6 +62,8 @@ interface ItemLista {
 export default function RecibosPage() {
 	const { data, isLoading, isError, error, refetch, isFetching } = useRecibos();
 	const excluir = useExcluir("recibos");
+	// D-2267 (corte da CPO, 18/11): no painel o recibo é o REGISTRO do pagamento (o PDF/link é emitido no app) —
+	// registrar é básico, então esta tela segue Grátis. O cadeado do recibo vale para o PDF/link (app, #399).
 
 	/**
 	 * GATE DE PAPEL: recibo é emitido pelo DONO (mesma regra do Meu Negócio). Membro
@@ -188,6 +191,8 @@ export default function RecibosPage() {
 					)}
 				</div>
 			</div>
+
+			<AvisoMudancaGratis />
 
 			{/* Aviso SÓ para quem é, com certeza, membro não-dono: alarmar por "ainda não
 			    sei" seria mentir. No estado desconhecido não há aviso — o botão continua

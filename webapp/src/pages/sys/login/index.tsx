@@ -1,14 +1,14 @@
-import { Skeleton } from "@/ui/skeleton";
+import { destinoDoConvitePendente, extrairTokenConviteDaBusca, guardarConvitePendente } from "@convite-google";
 import { Navigate } from "react-router";
 import Logo from "@/components/logo";
 import { GLOBAL_CONFIG } from "@/global-config";
 import { useTituloDaAba } from "@/hooks/use-titulo-da-aba";
 import SettingButton from "@/layouts/components/setting-button";
-import { destinoDoConvitePendente, extrairTokenConviteDaBusca, guardarConvitePendente } from "@convite-google";
 import { destinoDepoisDoLogin, lerIntencaoPlano } from "@/olli/plano-intent";
 import { useAuthHydrated, useUserToken } from "@/store/userStore";
-import BrandHero from "./components/BrandHero";
+import { Skeleton } from "@/ui/skeleton";
 import CodigoForm from "./codigo-form";
+import BrandHero, { FRASE_MARCA } from "./components/BrandHero";
 import LoginForm from "./login-form";
 import { LoginProvider } from "./providers/login-provider";
 import RegisterForm from "./register-form";
@@ -59,6 +59,8 @@ function LoginPage() {
 						<span>{GLOBAL_CONFIG.appName}</span>
 					</div>
 				</div>
+				{/* D-2151 #5: no celular o painel azul (BrandHero) some e quem chega novo via só "Entrar". */}
+				<p className="text-center text-sm text-muted-foreground lg:hidden">{FRASE_MARCA}</p>
 				{/* Landmark `<main>`: o formulário é o conteúdo principal da página (leitor
 				    de tela pula direto para cá; Lighthouse cobra a ausência). */}
 				<main className="flex flex-1 items-start justify-center md:items-center">

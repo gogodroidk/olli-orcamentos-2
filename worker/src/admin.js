@@ -57,6 +57,7 @@ import {
   selectAdminDataset,
 } from './adminDataPolicy.js';
 import { montarFunil, semanasFunil } from './funilReceita.js';
+import { FUNIL_USO_MAX_LINHAS, resumirFunilUso } from './funilUso.js';
 import { CREDITO_TROCA_MESES_MAX, decidirPedidoTroca, listarPedidosTroca, urlComprovante } from './creditoTroca.js';
 import { saldoCreditos } from './creditos.js';
 import { PLANO_PIX } from './mercadopago.js';
@@ -438,6 +439,23 @@ async function metrics(env) {
     taxaAtivacao: orcamentosOk ? (users.length ? Math.round((ativados / users.length) * 100) : 0) : null,
     receita,
   });
+}
+
+async function funilUso(env) {
+  // Aba "Funil de uso" (CPO, TOP10 #2): só contagens e medianas, contas internas fora. Qualquer leitura que falhe vira
+  // erro explícito; "não consegui ler" nunca aparece como "0 pessoas".
+  const [linhas, todosUsuarios, exclusoes, admins] = await Promise.all([
+    lerEstado(env, `funil_uso?select=*&limit=${FUNIL_USO_MAX_LINHAS}`),
+    listAuthUsers(env),
+    lerEstado(env, 'funil_exclusoes?select=user_id,email'),
+    lerEstado(env, 'admin_memberships?select=user_id'),
+  ]);
+  if (!linhas.ok) return json({ ok: false, erro: 'banco_indisponivel' }, 503);
+  if (!exclusoes.ok || !admins.ok) return json({ ok: false, erro: 'contas_internas_ilegiveis' }, 503);
+  const contexto = contextoContasInternas({ emailsDono: emailsForaDoFunil(env), exclusoes: exclusoes.dados, admins: admins.dados });
+  const { idsInternas } = particionarContas(todosUsuarios, contexto, true);
+  const resumo = resumirFunilUso(linhas.dados, idsInternas, { cortado: linhas.dados.length >= FUNIL_USO_MAX_LINHAS });
+  return json({ ok: true, ...resumo });
 }
 
 async function users(env) {
@@ -1206,6 +1224,9 @@ export async function handleAdmin(request, env, url) {
     if (m === 'GET' && p === '/admin/api/metrics') {
       if ((gate = exigir(user, 'admin', { aal2: true }))) return gate;
       return metrics(env);
+    }
+    if (m === 'GET' && p === '/admin/api/funil-uso') {
+      return exigir(user, 'admin', { aal2: true }) || funilUso(env);
     }
     if (m === 'GET' && p === '/admin/api/users') {
       if ((gate = exigir(user, 'admin', { aal2: true }))) return gate;

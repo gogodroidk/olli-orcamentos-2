@@ -33,7 +33,13 @@ export type Recurso =
   | 'equipe'            // vários técnicos e papéis
   | 'mapa_equipe'       // equipe ao vivo no mapa
   | 'pmoc_contratos'    // PMOC e contratos de manutenção recorrentes
-  | 'dashboard_empresa'; // painel de gestão da empresa
+  | 'dashboard_empresa' // painel de gestão da empresa
+  // D-2267 (Igor, 18/11): "no free só o básico; o resto pago e com cadeado".
+  | 'recibos'           // emitir recibo (o que o Grátis já emitiu continua visível)
+  | 'agenda'            // agenda de visitas (criar/editar; o que já existe continua visível)
+  | 'ordem_servico'     // ordem de serviço com checklist, fotos e assinatura
+  | 'importar_lote'     // importar clientes em lote (contatos, planilha, vCard). Puxar 1 telefone no orçamento segue Grátis
+  | 'nota_fiscal';      // nota fiscal — ainda não existe: sempre "(em breve)"
 
 /**
  * A chave do entitlement "sem marca OLLI no documento" (D-07).
@@ -48,10 +54,10 @@ export const RECURSO_REMOVE_MARCA: Recurso = 'remove_olli_brand';
 /**
  * RECURSOS_POR_PLANO — o que cada plano libera (decisão do dono, 01/10/2026).
  *
- * gratis: orçamentos ILIMITADOS (PDF, link e WhatsApp, sem cota mensal), com o
- *   selo discreto "Feito com OLLI" no PDF, no recibo e no link; rascunhos,
- *   recibos, clientes, agenda e diagnóstico por código de erro. IA tem 3 usos/mês
- *   (cota, não plano). Nenhum recurso Pro/Empresa.
+ * gratis (D-2267, 18/11): SÓ o básico — criar e enviar orçamento (5 envios/mês), rascunhos,
+ *   clientes, catálogo, link para aprovar, diagnóstico por código de erro e IA com 3 usos/mês
+ *   (cota, não plano). Recibos, agenda, OS e importação em lote passaram para o Pro, com
+ *   carência até `TRANCA_GRATIS_D2267` para quem já era Grátis.
  * pro (R$ 39): sem o selo + follow-up automático + link com pagamento +
  *   inteligência de campo (clima na visita, hora de sair, termômetro do
  *   orçamento) + IA sem cota, relatórios, metas, radar e modelos premium.
@@ -64,6 +70,10 @@ const RECURSOS_PRO: readonly Recurso[] = [
   'remove_olli_brand',
   'followup_automatico',
   'link_pagamento',
+  // D-2267: depois dos 3 que abrem a frase "No Pro: …" (frasePro), que seguem os que mais vendem.
+  'recibos',
+  'agenda',
+  'ordem_servico',
   'clima_visita',
   'hora_de_sair',
   'termometro_orcamento',
@@ -74,6 +84,8 @@ const RECURSOS_PRO: readonly Recurso[] = [
   'radar_clientes',
   'relatorio_dia',
   'modelos_pdf_premium',
+  'importar_lote',
+  'nota_fiscal',
 ];
 
 const RECURSOS_SO_EMPRESA: readonly Recurso[] = [
@@ -102,6 +114,7 @@ export const RECURSOS_EM_BREVE: ReadonlySet<Recurso> = new Set<Recurso>([
   // migration 20261003102000_orcamento_eventos.sql, cartão no detalhe e chip na lista).
   'mapa_equipe',
   'dashboard_empresa',
+  'nota_fiscal', // D-2267: sem produto ainda — nunca vendido como pronto
 ]);
 
 /**
@@ -141,7 +154,26 @@ export const RECURSOS_DO_TENANT: ReadonlySet<Recurso> = new Set<Recurso>([
   'vespera_garantia',
   'followup_automatico',
   'pmoc_contratos',
+  // D-2267: o técnico de uma empresa Pro emite recibo, usa a agenda e a OS pela empresa.
+  'recibos',
+  'agenda',
+  'ordem_servico',
 ]);
+
+/**
+ * CARÊNCIA do D-2267: recibos, agenda, OS e importação em lote eram do Grátis. Quem é
+ * Grátis continua usando até esta data (aviso no app e por e-mail antes — CDC: mudança
+ * que tira o que a pessoa usa vem avisada). Depois dela, cadeado. O que a conta já criou
+ * continua VISÍVEL e legível sempre (isso é das telas, não daqui).
+ * Meia-noite de Brasília de 26/11/2026 = 7 dias depois da publicação prevista (19/11).
+ */
+export const TRANCA_GRATIS_D2267 = '2026-11-26T03:00:00.000Z';
+export const RECURSOS_COM_CARENCIA_GRATIS: ReadonlySet<Recurso> = new Set<Recurso>(['recibos', 'agenda', 'ordem_servico', 'importar_lote']);
+
+/** `true` enquanto a carência do Grátis vale para este recurso. */
+export function emCarenciaGratis(recurso: Recurso, agora: number = Date.now()): boolean {
+  return RECURSOS_COM_CARENCIA_GRATIS.has(recurso) && agora < Date.parse(TRANCA_GRATIS_D2267);
+}
 
 const PESO_PLANO: Record<PlanoId, number> = { gratis: 0, pro: 1, empresa: 2 };
 
@@ -204,8 +236,18 @@ export function estadoAcessoRecurso(leitura: LeituraPlano, recurso: Recurso): Es
 export type DisponibilidadeRecurso = 'nao_incluido' | 'em_breve' | 'disponivel';
 
 export function disponibilidadeRecurso(plano: PlanoId, recurso: Recurso): DisponibilidadeRecurso {
-  if (!temAcessoRecurso(plano, recurso)) return 'nao_incluido';
+  if (!planoIncluiRecurso(plano, recurso)) return 'nao_incluido';
   return RECURSOS_EM_BREVE.has(recurso) ? 'em_breve' : 'disponivel';
+}
+
+/**
+ * O que o PLANO inclui (a tabela publicada), SEM a carência do D-2267. É o que comparativos e
+ * landing mostram: a landing é estática (congela no build) e o aviso diz que recibos, agenda, OS e
+ * importação em lote "passam a ser do Pro" — mostrar ✓ no Grátis durante a carência seria promessa
+ * falsa depois da tranca. Quem decide ACESSO de verdade é `temAcessoRecurso`.
+ */
+export function planoIncluiRecurso(plano: PlanoId, recurso: Recurso): boolean {
+  return RECURSOS_POR_PLANO[plano]?.has(recurso) ?? false;
 }
 
 /**
@@ -213,8 +255,10 @@ export function disponibilidadeRecurso(plano: PlanoId, recurso: Recurso): Dispon
  * (nega por padrão: mais seguro do que liberar por engano). Empresa é
  * superconjunto do Pro pelo próprio mapa, então não precisa de cascata aqui.
  */
-export function temAcessoRecurso(plano: PlanoId, recurso: Recurso): boolean {
-  return RECURSOS_POR_PLANO[plano]?.has(recurso) ?? false;
+export function temAcessoRecurso(plano: PlanoId, recurso: Recurso, agora: number = Date.now()): boolean {
+  if (RECURSOS_POR_PLANO[plano]?.has(recurso)) return true;
+  // Carência do D-2267: só o Grátis, só os recursos que ERAM dele, só até a data.
+  return plano === 'gratis' && emCarenciaGratis(recurso, agora);
 }
 
 /**
