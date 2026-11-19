@@ -13,7 +13,7 @@
  *  5. Texto e preço só da fonte única (nada digitado à mão nas telas novas); alvos de toque >= 44 px.
  */
 import { readFileSync } from 'node:fs';
-import { RECURSOS_CADEADO_D2267, podeOferecerPlanoPara, recursoTrancado, recursoVendavel } from '../src/services/cadeadoRecurso.ts';
+import { RECURSOS_CADEADO_D2267, importacaoLoteTrancada, pdfReciboTrancado, podeOferecerPlanoPara, recursoTrancado, recursoVendavel } from '../src/services/cadeadoRecurso.ts';
 import { regrasDaLoja } from '../src/config/lojaRegras.ts';
 import { ROTULO_RECURSO, beneficioRecursoLoja } from '../src/services/planosBase.ts';
 import { TRANCA_GRATIS_D2267, disponibilidadeRecurso, estadoAcessoRecurso, temAcessoRecurso } from '../src/services/entitlements.ts';
@@ -180,6 +180,51 @@ const varrer = (dir: string) => {
 };
 for (const d of ['src/screens', 'src/screens/desktop', 'src/components', 'src/components/clima', 'src/components/encerramento', 'src/components/tecnico', 'src/steps']) varrer(d);
 ok(`varredura: toda tela/componente que escreve agenda/OS usa o cadeado${sobra.length ? ' — SEM: ' + sobra.join(', ') : ''}`, sobra.length === 0);
+
+// LIVRE P2 #1 (#399): PDF de recibo ainda NÃO emitido sai pelo mesmo cadeado 'recibos' em TODA tela que o gera.
+ok('regra pura: PDF pendente + recibos trancado tranca; já emitido (reenviar) e liberado seguem livres',
+  pdfReciboTrancado({ pdfEmitido: false }, true) && !pdfReciboTrancado({ pdfEmitido: true }, true)
+  && !pdfReciboTrancado({ pdfEmitido: false }, false) && !pdfReciboTrancado({}, true));
+const telasPdfRecibo = [
+  { arq: 'src/components/encerramento/EncerrarAtendimentoModal.tsx', onde: /async function gerarRecibo\(recibo: Recibo\) \{\s*if \(pdfReciboTrancado\(recibo, cadeadoRecibo\.trancado\)\) \{ cadeadoRecibo\.abrirGate\(\); return; \}/ },
+  { arq: 'src/screens/ClienteDetalheScreen.tsx', onde: /async function abrirRecibo\(id: string\) \{[\s\S]{0,200}if \(!recibo\) return;\s*if \(pdfReciboTrancado\(recibo, cadeadoRecibo\.trancado\)\) \{ cadeadoRecibo\.abrirGate\(\); return; \}/ },
+  { arq: 'src/screens/desktop/RecibosDesktopScreen.tsx', onde: /async \(r: Recibo\) => \{\s*if \(pdfReciboTrancado\(r, cadeadoRecibo\.trancado\)\) \{ cadeadoRecibo\.abrirGate\(\); return; \}/ },
+];
+for (const t of telasPdfRecibo) {
+  const c = semComentarios(ler(t.arq));
+  ok(`PDF de recibo pendente: portão 'recibos' antes de gerar (${t.arq.split('/').pop()})`, /useCadeado\('recibos'\)/.test(c) && t.onde.test(c));
+}
+// Varredura: quem monta o PDF do recibo e exporta precisa do portão (Emitir: aba 'novo' trancada; Modelos: só prévia de exemplo).
+const ISENTOS_PDF_RECIBO = new Set<string>(['src/screens/EmitirReciboScreen.tsx', 'src/screens/ModelosDocumentoScreen.tsx']);
+const semPortaoPdf: string[] = [];
+const varrerPdf = (dir: string) => {
+  for (const nome of readdirSync(new URL(`../${dir}`, import.meta.url))) {
+    const rel = `${dir}/${nome}`;
+    if (statSync(new URL(`../${rel}`, import.meta.url)).isDirectory()) { varrerPdf(rel); continue; }
+    if (!/\.tsx$/.test(nome) || ISENTOS_PDF_RECIBO.has(rel)) continue;
+    const c = semComentarios(ler(rel));
+    if (/montarHtmlRecibo\(/.test(c) && /exportarHtmlComoPdf\(/.test(c) && !/pdfReciboTrancado\(/.test(c)) semPortaoPdf.push(rel);
+  }
+};
+for (const d of ['src/screens', 'src/screens/desktop', 'src/components', 'src/components/encerramento']) varrerPdf(d);
+ok(`varredura: toda tela que gera o PDF do recibo usa o portão${semPortaoPdf.length ? ' — SEM: ' + semPortaoPdf.join(', ') : ''}`, semPortaoPdf.length === 0);
+ok('Emitir recibo: a aba "novo" fica trancada mesmo com pagamento já registrado (PDF pendente)', /const reciboTrancado = cadeadoRecibo\.trancado;/.test(semComentarios(ler('src/screens/EmitirReciboScreen.tsx'))));
+
+// LIVRE P2 #2 (#387): a trava do lote vale pelo tipo FINAL, conferida na hora de importar.
+ok('lote: trancado vale para contatos e planilha de clientes; catálogo e foto seguem Grátis',
+  importacaoLoteTrancada('contatos', 'clientes', true) && importacaoLoteTrancada('planilha', 'clientes', true)
+  && !importacaoLoteTrancada('planilha', 'catalogo', true) && !importacaoLoteTrancada('foto', 'clientes', true)
+  && !importacaoLoteTrancada(null, 'clientes', true) && !importacaoLoteTrancada('planilha', 'clientes', false));
+ok('lote: ler planilha como catálogo e TROCAR para clientes tranca (mesma planilha, tipo final decide)',
+  !importacaoLoteTrancada('planilha', 'catalogo', true) && importacaoLoteTrancada('planilha', 'clientes', true));
+{
+  const c = ler('src/screens/ImportarScreen.tsx') // bruto: o seletor usa '*/*' e confunde a limpeza de comentários;
+  ok('ImportarScreen: bloqueio e gravação usam a MESMA regra pura', /const bloqueioLote = importacaoLoteTrancada\(origem, tipo, loteTrancado\);/.test(c));
+  ok('ImportarScreen: importar() confere de novo o tipo final antes de gravar (antes de gravarImportacao)',
+    /async function importar\(\) \{[\s\S]*?if \(importacaoLoteTrancada\(origem, tipo, loteTrancado\)\) return;[\s\S]*?gravarImportacao\(/.test(c));
+  ok('ImportarScreen: com o lote trancado não há prévia nem botão (trocar o tipo com a planilha lida não vaza)',
+    /const fonteLiberada = temFonte && !bloqueioLote;/.test(c) && !/\{temFonte && existentes/.test(c) && (c.match(/\{fonteLiberada && existentes/g) ?? []).length === 4);
+}
 
 console.log(falhas ? `\nFALHOU: ${falhas}` : '\nPASSOU');
 process.exit(falhas ? 1 : 0);

@@ -45,6 +45,7 @@ import { lerArquivoImportacao, type FormatoImportacao } from '../services/import
 import { lerContatosDoCelular } from '../services/contatosCelular';
 import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
 import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
+import { importacaoLoteTrancada } from '../services/cadeadoRecurso';
 import { resumoImportacaoContatos } from '../services/contatosCelularNucleo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -383,6 +384,8 @@ export default function ImportarScreen() {
 
   async function importar() {
     if (!conferida || !selecionados.size || gravando || gravandoRef.current) return;
+    // Conferida na hora de gravar, pelo tipo FINAL (não só ao abrir): trocar o tipo com a planilha já lida não fura a trava.
+    if (importacaoLoteTrancada(origem, tipo, loteTrancado)) return;
     // Defesa em profundidade: o que já foi gravado nesta tela nunca grava de novo.
     const alvo = new Set([...selecionados].filter((chave) => !gravados.has(chave)));
     if (!alvo.size) return;
@@ -436,7 +439,9 @@ export default function ImportarScreen() {
 
   const temFonte = Boolean(arquivo || fotoIa);
   // Só importar CLIENTES é Pro; catálogo e foto ficam livres.
-  const bloqueioLote = loteTrancado && (origem === 'contatos' || (origem === 'planilha' && tipo === 'clientes'));
+  const bloqueioLote = importacaoLoteTrancada(origem, tipo, loteTrancado);
+  // Trancado: nem prévia nem botão de importar (a trava vale pelo tipo final, também depois de trocar o tipo com a planilha lida).
+  const fonteLiberada = temFonte && !bloqueioLote;
   const semPermissaoTipo = !papelCarregando && origem !== 'foto' && origem !== null && (tipo === 'clientes' ? !podeClientes : !podeCatalogo);
 
   return (
@@ -597,8 +602,8 @@ export default function ImportarScreen() {
         )}
 
         {/* 3. PRÉVIA */}
-        {temFonte && existentes === 'carregando' && <View style={styles.carregando}><ActivityIndicator color={cores.primary} /><Text style={styles.textoMudo}>Conferindo o que você já tem cadastrado…</Text></View>}
-        {temFonte && existentes !== 'carregando' && !conferida && !semPermissaoTipo && (
+        {fonteLiberada && existentes === 'carregando' && <View style={styles.carregando}><ActivityIndicator color={cores.primary} /><Text style={styles.textoMudo}>Conferindo o que você já tem cadastrado…</Text></View>}
+        {fonteLiberada && existentes !== 'carregando' && !conferida && !semPermissaoTipo && (
           <View style={[styles.aviso, styles.avisoErro]} accessibilityRole="alert">
             <MaterialCommunityIcons name="alert-circle-outline" size={19} color={cores.danger} />
             <View style={{ flex: 1 }}>
@@ -608,7 +613,7 @@ export default function ImportarScreen() {
           </View>
         )}
 
-        {temFonte && existentes !== 'carregando' && previa.length > 0 && (
+        {fonteLiberada && existentes !== 'carregando' && previa.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardTitulo}>Prévia antes de gravar</Text>
             <View style={styles.chips}>
@@ -657,7 +662,7 @@ export default function ImportarScreen() {
           </View>
         )}
 
-        {temFonte && existentes !== 'carregando' && previa.length === 0 && (
+        {fonteLiberada && existentes !== 'carregando' && previa.length === 0 && (
           <Aviso cores={cores} styles={styles} tom="erro" texto={fotoIa ? 'A IA não encontrou cliente, serviço nem produto nesta foto. Tente uma foto mais nítida.' : 'Nenhuma linha para conferir neste arquivo.'} />
         )}
 

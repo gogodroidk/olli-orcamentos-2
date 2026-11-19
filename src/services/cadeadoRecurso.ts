@@ -22,6 +22,23 @@ export const RECURSOS_CADEADO_D2267: readonly Recurso[] = ['recibos', 'agenda', 
  * Recurso "em breve" NÃO vende (CPO, A7): o cartão e o chip só dizem "Em breve no Pro" — sem botão "Ver o plano" e sem data
  * inventada. Vender o que o produto ainda não entrega é promessa cobrada em dinheiro.
  */
+/**
+ * PDF de recibo ainda NÃO emitido (`pdfEmitido === false`, pagamento já registrado) é emissão de documento: com o
+ * recurso `recibos` trancado, a 1ª emissão não sai (D-2267, corte do CPO). Reenviar o que já foi emitido segue livre.
+ */
+export function pdfReciboTrancado(recibo: { pdfEmitido?: boolean }, reciboTrancado: boolean): boolean {
+  return reciboTrancado && recibo.pdfEmitido === false;
+}
+
+/**
+ * Importar CLIENTES em lote (contatos, planilha, vCard) com `importar_lote` trancado. Vale pelo tipo FINAL escolhido:
+ * trocar o tipo depois de ler a planilha (ou um .vcf, que força 'clientes') não destranca. Catálogo e foto seguem Grátis.
+ * Conferir de novo na hora de gravar, não só ao abrir a tela.
+ */
+export function importacaoLoteTrancada(origem: string | null, tipo: string, loteTrancado: boolean): boolean {
+  return loteTrancado && (origem === 'contatos' || (origem === 'planilha' && tipo === 'clientes'));
+}
+
 export function recursoVendavel(recurso: Recurso): boolean {
   return !RECURSOS_EM_BREVE.has(recurso);
 }

@@ -214,7 +214,8 @@ await caso('D-2267: importar em lote passa pelo entitlement importar_lote (carê
 	]);
 	assert.match(importar, /useRecursoPlano\('importar_lote'\)/);
 	assert.ok(!/<TelaRecursoPlano/.test(importar), 'Importar não tranca a tela inteira: catálogo e foto seguem Grátis');
-	assert.match(importar, /origem === 'contatos' \|\| \(origem === 'planilha' && tipo === 'clientes'\)/, 'só importar CLIENTES é Pro');
+	assert.match(importar, /importacaoLoteTrancada\(origem, tipo, loteTrancado\)/, 'a trava usa a regra pura, pelo tipo final');
+	assert.match(await ler('services/cadeadoRecurso.ts'), /origem === 'contatos' \|\| \(origem === 'planilha' && tipo === 'clientes'\)/, 'só importar CLIENTES é Pro');
 	assert.match(clientes, /useRecursoPlano\('importar_lote'\)/);
 	assert.match(clientes, /lock-outline/, 'trancado, o atalho aparece com cadeado');
 	for (const [nome, fonte] of [['Step1Cliente', step1], ['VisualizarOrcamento', visualizar], ['puxarTelefone', puxar]] as const) {

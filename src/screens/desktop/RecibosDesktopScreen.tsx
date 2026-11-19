@@ -19,6 +19,8 @@ import { onSyncAplicado } from '../../services/cloudSync';
 import { exportarHtmlComoPdf, abrirWhatsApp } from '../../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../../utils/reciboPdf';
 import { usePlano } from '../../hooks/usePlano';
+import { useCadeado } from '../../hooks/useCadeado';
+import { pdfReciboTrancado } from '../../services/cadeadoRecurso';
 import { RECURSO_REMOVE_MARCA } from '../../services/planos';
 import { montarMensagemPedidoAvaliacao } from '../../utils/mensagensOrcamento';
 import { linkAvaliacaoUsavel } from '../../utils/identidadeVisual';
@@ -159,7 +161,10 @@ export default function RecibosDesktopScreen() {
   // Trava SÍNCRONA de toque duplo: o `await` da porta do cadastro abre uma janela
   // antes de `processandoId` valer (o estado só muda no próximo render).
   const ocupadoRef = useRef(false);
+  // PDF ainda não emitido é emissão de documento: com o cadeado 'recibos', abre o cartão do plano.
+  const cadeadoRecibo = useCadeado('recibos');
   const handleGerarOuReenviar = useCallback(async (r: Recibo) => {
+    if (pdfReciboTrancado(r, cadeadoRecibo.trancado)) { cadeadoRecibo.abrirGate(); return; }
     if (processandoId || ocupadoRef.current) return;
     ocupadoRef.current = true;
     try {
@@ -186,7 +191,7 @@ export default function RecibosDesktopScreen() {
     } finally {
       ocupadoRef.current = false;
     }
-  }, [empresa, processandoId, buildHtml, carregar]);
+  }, [empresa, processandoId, buildHtml, carregar, cadeadoRecibo.trancado, cadeadoRecibo.abrirGate]);
 
   // Pedir avaliação no Google pós-serviço (mestre 1.4): mesma regra da tela
   // mobile — reusa o abrirWhatsApp já existente, só aparece com o link
@@ -290,7 +295,7 @@ export default function RecibosDesktopScreen() {
       render: (r) => (
         <View style={styles.acoesLinha}>
           <AcaoIcone
-            icone={r.pdfEmitido === false ? 'file-pdf-box' : 'share-variant'}
+            icone={pdfReciboTrancado(r, cadeadoRecibo.trancado) ? 'lock-outline' : r.pdfEmitido === false ? 'file-pdf-box' : 'share-variant'}
             rotulo={r.pdfEmitido === false ? 'Gerar e compartilhar PDF' : 'Reenviar / compartilhar'}
             onPress={() => handleGerarOuReenviar(r)}
             carregando={processandoId === r.id}
@@ -308,7 +313,7 @@ export default function RecibosDesktopScreen() {
         </View>
       ),
     },
-  ], [styles, handleGerarOuReenviar, verOrcamento, processandoId, linkAvaliacao, handlePedirAvaliacao, prepararNota]);
+  ], [styles, handleGerarOuReenviar, verOrcamento, processandoId, linkAvaliacao, handlePedirAvaliacao, prepararNota, cadeadoRecibo.trancado]);
 
   return (
     <LayoutDesktop

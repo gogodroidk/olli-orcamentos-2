@@ -62,6 +62,8 @@ import { EXPO_PUBLIC_MAPS_KEY } from '../config';
 import { numeroWhatsAppBR } from '../utils/telefoneWhatsapp';
 import { abrirWhatsApp, exportarHtmlComoPdf } from '../utils/exportarDocumento';
 import { montarHtmlRecibo } from '../utils/reciboPdf';
+import { useCadeado } from '../hooks/useCadeado';
+import { pdfReciboTrancado } from '../services/cadeadoRecurso';
 import { retornoDoOficio } from '../utils/posVenda';
 import { formatCurrency } from '../utils/currency';
 import { formatDate, formatDateTime } from '../utils/date';
@@ -287,10 +289,13 @@ export default function ClienteDetalheScreen() {
   // Trava SÍNCRONA de toque duplo: o `await` da porta do cadastro abre uma janela
   // antes de `abrindoReciboId` valer (o estado só muda no próximo render).
   const abrindoReciboRef = useRef(false);
+  // PDF de recibo ainda não emitido é emissão: com o cadeado 'recibos', abre o cartão do plano (ver o já emitido segue livre).
+  const cadeadoRecibo = useCadeado('recibos');
   async function abrirRecibo(id: string) {
     const recibo = dados?.recibos.get(id);
     const empresa = dados?.empresa;
     if (!recibo) return;
+    if (pdfReciboTrancado(recibo, cadeadoRecibo.trancado)) { cadeadoRecibo.abrirGate(); return; }
     if (!empresa && dados?.empresaFalhou) {
       Alert.alert('Não deu para abrir', 'Não conseguimos ler os dados da sua empresa agora. Puxe a tela para atualizar e tente de novo.');
       return;

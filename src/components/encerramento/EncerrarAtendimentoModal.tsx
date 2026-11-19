@@ -52,6 +52,7 @@ import {
 import { saveAgendamento } from '../../services/agenda';
 import { CartaoRecursoPlano } from '../RecursoPlano';
 import { useCadeado } from '../../hooks/useCadeado';
+import { pdfReciboTrancado } from '../../services/cadeadoRecurso';
 import { RECURSO_REMOVE_MARCA } from '../../services/planos';
 import { usePlano } from '../../hooks/usePlano';
 import { useVerticais } from '../../hooks/useVerticais';
@@ -123,6 +124,8 @@ export function EncerrarAtendimentoModal({
   // D-2267: encerrar atendimento (fotos, assinatura, cobrança, recibo, próxima visita) é do Pro (com carência do Grátis):
   // sem o plano o fluxo aparece só para leitura, com o cartão do plano; nada é gravado.
   const trancado = useCadeado('ordem_servico').trancado;
+  // Recibo: registrar o pagamento segue Grátis, mas o PDF da 1ª emissão é do Pro (mesmo cadeado do app: 'recibos').
+  const cadeadoRecibo = useCadeado('recibos');
   const contouInicio = useRef(false);
   const retomado = useRef(!!ordem.encerramento);
   // O ofício chega depois do 1º render: o intervalo sugerido acompanha até o
@@ -249,6 +252,7 @@ export function EncerrarAtendimentoModal({
   }
 
   async function gerarRecibo(recibo: Recibo) {
+    if (pdfReciboTrancado(recibo, cadeadoRecibo.trancado)) { cadeadoRecibo.abrirGate(); return; }
     // Mesma porta do envio das telas (services/exigirCadastro.ts); aqui o motivo
     // aparece no próprio passo, sem abrir outra folha por cima do modal.
     const motivo = motivoEnvioSegurado(await conferirCadastroParaEnviar(), 'recibo');
