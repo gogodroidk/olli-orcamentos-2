@@ -170,9 +170,11 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
     curto: 'importar clientes em lote',
   },
   nota_fiscal: {
-    titulo: 'Nota fiscal',
-    beneficio: 'Emitir a nota fiscal do serviço pelo OLLI.',
-    curto: 'nota fiscal',
+    // D-2267 (CPO 19/11): "Preparar nota fiscal" (copiar dados p/ o emissor do governo) é ABERTO a todos.
+    // O recurso Pro é só a emissão AUTOMÁTICA pela OLLI, que ainda não existe (RECURSOS_EM_BREVE): nunca vendido como pronto.
+    titulo: 'Emissão automática da nota fiscal pela OLLI',
+    beneficio: 'A OLLI emite a nota fiscal do serviço para você, sem copiar dados para o portal.',
+    curto: 'emissão automática da nota fiscal',
   },
 };
 
@@ -428,7 +430,7 @@ export function avisoMudancaGratis(precoMensal: string): { titulo: string; texto
     titulo: `A partir de ${dataTrancaGratisBR()}, o plano Grátis muda`,
     texto:
       `${recursosQueSairamDoGratis().replace(/^./, (c) => c.toUpperCase())} passam a ser do Pro (${precoMensal} por mês). ` +
-      `Criar e enviar orçamentos continua grátis, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês. ` +
+      `Criar e enviar orçamentos continua grátis, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês, e registrar o pagamento recebido também. ` +
       'Tudo o que você já criou continua na sua conta, para ver quando quiser.',
   };
 }
