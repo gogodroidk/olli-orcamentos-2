@@ -42,6 +42,7 @@ import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/Selet
 import { calcularTotais, comTotais, subtotalDoItem } from "@/olli/components/totais";
 import { novoId } from "@/olli/contrato";
 import { useOlliList } from "@/olli/data";
+import { AVISO_NOME_EXEMPLO, chaveDegrauLigada, NOME_CLIENTE_EXEMPLO, usarNomeDoExemplo } from "@/olli/degrauExemplo";
 import { agoraIso, brParaIso, emDiasBr, hojeYmd } from "@/olli/datas";
 import { proximoNumeroDocumento, useSalvar } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -54,6 +55,9 @@ import { Separator } from "@/ui/separator";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
 import { registrarEtapaAtivacao } from "@/store/userStore";
+
+/** CQ-DEGRAU-1O-ORCAMENTO: chave desligada por padrão (ver `@/olli/degrauExemplo`). */
+const DEGRAU_1O_ORCAMENTO = chaveDegrauLigada(import.meta.env.VITE_DEGRAU_1O_ORCAMENTO);
 
 /* ═══════════════════════════════  A TRAVA  ═══════════════════════════════════ */
 
@@ -483,7 +487,9 @@ function Editor({
 		// Rascunho só precisa de um NOME (igual ao app: `nomeAvulso`). O cliente CADASTRADO (com WhatsApp)
 		// só é exigido na hora de ENVIAR pelo WhatsApp (useEnviarWhatsApp). Antes isto era o 1º campo e
 		// barrava quem só queria testar o orçamento (2 contas paradas aqui em 21/10).
-		if (!orc.clienteNome.trim()) return "Informe o cliente: escolha um cadastrado ou digite só o nome.";
+		// Exemplo da ativação com a chave ligada: sem nome não barra (salva como "Cliente do exemplo").
+		const nomeDoExemplo = usarNomeDoExemplo({ ligada: DEGRAU_1O_ORCAMENTO, exemplo, ehNovo, clienteNome: orc.clienteNome });
+		if (!orc.clienteNome.trim() && !nomeDoExemplo) return "Informe o cliente: escolha um cadastrado ou digite só o nome.";
 		if (orc.itens.length === 0) return "Adicione pelo menos um item — um orçamento sem itens não é um orçamento.";
 
 		const semNome = orc.itens.find((i) => !i.nome.trim());
@@ -532,7 +538,9 @@ function Editor({
 			//   • LOST UPDATE: entre abrir e salvar, o app do celular pode ter anexado foto,
 			//     assinatura ou sinal. Mesclamos os campos deste formulário SOBRE o blob
 			//     fresco, então o que a tela não edita é preservado em vez de apagado.
-			let base = orc;
+			let base = usarNomeDoExemplo({ ligada: DEGRAU_1O_ORCAMENTO, exemplo, ehNovo, clienteNome: orc.clienteNome })
+				? { ...orc, clienteNome: NOME_CLIENTE_EXEMPLO }
+				: orc;
 			if (!ehNovo) {
 				const { data: atual, error: erroLeitura } = await supabase
 					.from("orcamentos")
@@ -640,6 +648,7 @@ function Editor({
 						<Lightbulb aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-info" />
 						<p>
 							<strong className="font-medium text-text-primary">Orçamento de exemplo.</strong> {AVISO_EXEMPLO}
+							{DEGRAU_1O_ORCAMENTO && ` ${AVISO_NOME_EXEMPLO}`}
 						</p>
 					</div>
 				)}

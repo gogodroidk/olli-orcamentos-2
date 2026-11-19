@@ -7,7 +7,7 @@ const envio = ler('webapp/src/pages/olli/orcamentos/useEnviarWhatsApp.tsx');
 
 // Rascunho: basta um NOME. O cliente cadastrado deixou de ser pré-requisito para salvar (igual ao app).
 assert.doesNotMatch(form, /if \(!orc\.clienteId \|\| !orc\.clienteNome\.trim\(\)\)/);
-assert.match(form, /if \(!orc\.clienteNome\.trim\(\)\) return "Informe o cliente/);
+assert.match(form, /if \(!orc\.clienteNome\.trim\(\)( && !nomeDoExemplo)?\) return "Informe o cliente/);
 // O campo "só o nome" aparece quando não há cliente cadastrado escolhido e grava em clienteNome.
 assert.match(form, /!orc\.clienteId && \(/);
 assert.match(form, /patch\(\{ clienteNome: ev\.target\.value \}\)/);
