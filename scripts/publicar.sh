@@ -85,6 +85,14 @@ case "$ALVO" in
   painel) ANTES="$(versao_painel)" || barra "não consegui ler a publicação do painel no ar (wrangler logado?)." ;;
 esac
 diz "No ar agora ($ALVO): $ANTES"
+if [ "$ALVO" = painel ]; then
+  # O painel no ar diz de que commit saiu (Source). Em 19/11 ele saía da branch claude/painel-publicar-1118, à frente da
+  # main: publicar da main apagaria 10 correções. Este commit tem de conter o que está no ar, sem depender de anotação.
+  NO_AR="$(echo "$ANTES" | sed -n 's/.*(commit \([0-9a-f]\{7,\}\)).*/\1/p')"
+  [ -n "$NO_AR" ] || barra "não consegui ler de que commit o painel no ar saiu."
+  git cat-file -e "$NO_AR^{commit}" 2>/dev/null || barra "o commit do painel no ar ($NO_AR) não existe aqui: ele saiu de outra branch. Traga essa branch (git merge) antes."
+  git merge-base --is-ancestor "$NO_AR" "$HASH" || barra "este commit não contém o painel que está no ar ($NO_AR). Publicar daqui apagaria correções que já estão no ar."
+fi
 case "$ALVO" in
   worker|landing) VOLTAR="cd $([ "$ALVO" = worker ] && echo worker || echo site) && env -u CLOUDFLARE_API_TOKEN npx wrangler rollback ${ANTES%% *} -y" ;;
   painel) VOLTAR="rollback do Pages pela API para o deployment ${ANTES%% *} (docs/PUBLICAR.md, seção Voltar)" ;;
