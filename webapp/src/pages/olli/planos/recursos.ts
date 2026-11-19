@@ -2,7 +2,7 @@
  * COMPARATIVO DE RECURSOS — quem entrega o quê, lido do MESMO mapa que o app e o worker.
  *
  * As colunas de "incluído / não incluído" NÃO são digitadas à mão: elas perguntam ao
- * `temAcessoRecurso` de `src/services/entitlements.ts` (via ponte `@entitlements`), a
+ * `planoIncluiRecurso` (a tabela do plano, sem a carência do D-2267) de `src/services/entitlements.ts` (via ponte `@entitlements`), a
  * mesma função que decide o acesso de verdade no produto. As LINHAS também não: a ordem
  * é `RECURSOS_EM_ORDEM`, o rótulo é o da tabela única `src/services/planosBase.ts` e o
  * "(em breve)" é `RECURSOS_EM_BREVE`. Se o Pro ganhar um recurso, a linha aparece aqui
@@ -15,11 +15,11 @@ import {
 	RECURSOS_EM_BREVE,
 	RECURSOS_EM_ORDEM,
 	type Recurso,
-	temAcessoRecurso,
+	planoIncluiRecurso,
 } from "@entitlements";
 import { ROTULO_RECURSO } from "../../../../../src/services/planosBase";
 
-export { IA_USOS_GRATIS_MES, temAcessoRecurso };
+export { IA_USOS_GRATIS_MES, planoIncluiRecurso };
 export type { PlanoId, Recurso };
 
 /** Uma linha do comparativo: um recurso do mapa de entitlements + seu rótulo na tela. */
