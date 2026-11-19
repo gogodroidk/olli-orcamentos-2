@@ -1,0 +1,5 @@
+{
+  "OLLI Orçamentos": { "empresa": "olli", "label": "olli-orcamentos" },
+  "GR Tech": { "empresa": "grtech", "label": "gr-tech", "instancia": "gr-tech", "soNovos": true },
+  "Segundo Andar": { "empresa": "segundoandar", "label": "segundo-andar" }
+}
