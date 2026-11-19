@@ -276,6 +276,32 @@ function contextoCatalogo(catalogo) {
     .join('\n')}\n</CATALOGO_NAO_CONFIAVEL>`;
 }
 
+// O Llama do Workers AI (provedor de produção desde a troca do Gemini) devolve o JSON do modo
+// conversa com a chave em maiúscula ("Pergunta") e às vezes com chaves sobrando ("wont"). Sem
+// isto o servidor respondia `resposta_invalida` e o modo Conversar quebrava em toda tentativa
+// (QA 19/11, S20, versão 1.2.2). Lê as chaves conhecidas sem diferenciar maiúscula/acento e
+// aceita "pronto" como texto "true". Chave desconhecida é descartada.
+const CHAVES_CONVERSA = ['pergunta', 'pronto', 'titulo', 'clienteNome', 'itens', 'observacao'];
+const chaveSimples = (k) => String(k).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+export function normalizarRespostaConversa(valor) {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
+  const porChave = new Map(Object.entries(valor).map(([k, v]) => [chaveSimples(k), v]));
+  const saida = {};
+  for (const chave of CHAVES_CONVERSA) {
+    const v = porChave.get(chaveSimples(chave));
+    if (v !== undefined) saida[chave] = v;
+  }
+  if (typeof saida.pronto === 'string') saida.pronto = saida.pronto.trim().toLowerCase() === 'true';
+  return saida;
+}
+
+/** `true` quando a resposta do modelo serve para o turno (pergunta válida ou pronto com itens). */
+function respostaConversaValida(r) {
+  if (!r) return false;
+  if (r.pronto === true) return Array.isArray(r.itens);
+  return typeof r.pergunta === 'string' && r.pergunta.trim().length > 0;
+}
+
 export async function handleVozConversa(bodyText, env, user) {
   const raw = parseJsonBody(bodyText);
   const {
@@ -319,21 +345,27 @@ export async function handleVozConversa(bodyText, env, user) {
   }));
   if (contexto) contents.unshift({ role: 'user', parts: [{ text: contexto }] });
 
-  let text;
+  // Uma 2ª tentativa quando o modelo devolve algo que não serve (JSON quebrado, sem pergunta e
+  // sem pronto): o Llama erra o formato às vezes e acerta na seguinte. Cota/limite não repete.
+  const gerarTurno = async () => normalizarRespostaConversa(parseJsonLoose(await gerarIA(env, {
+    system: vozConversaSystem(vertical, forcarPronto),
+    user: contents,
+    wantJson: true,
+    temperature: 0.3,
+    beforeAttempt: criarGateTentativasOpenRouter(env, user && user.id),
+  })));
+  let parsed;
   try {
-    text = await gerarIA(env, {
-      system: vozConversaSystem(vertical, forcarPronto),
-      user: contents,
-      wantJson: true,
-      temperature: 0.3,
-      beforeAttempt: criarGateTentativasOpenRouter(env, user && user.id),
-    });
+    parsed = await gerarTurno();
+    if (!forcarPronto && !respostaConversaValida(parsed)) {
+      console.warn('[olli-voz-conversa] formato inválido na 1ª tentativa; tentando de novo (conteúdo omitido)');
+      parsed = await gerarTurno();
+    }
   } catch (erro) {
     const respostaCota = respostaErroCota(erro);
     if (respostaCota) return respostaCota;
     throw erro;
   }
-  const parsed = parseJsonLoose(text);
 
   if (!forcarPronto) {
     if (!parsed) {

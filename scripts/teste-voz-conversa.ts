@@ -50,6 +50,8 @@ let ledgerRefs = new Set<string>();
 let ledgerChamadas = 0;
 let chamadasGemini = 0;
 let respostaGeminiFake = '';
+// Fila opcional: cada chamada ao modelo consome a próxima; vazia = respostaGeminiFake.
+let filaGemini: string[] = [];
 let quotaEstado: 'permitido' | 'limite_global' | 'limite_usuario' | 'ja_reservado' = 'permitido';
 // Cota grátis de IA do mês, contada NO SERVIDOR (migration 20260727). O default é
 // 0 (esgotada) porque quase todo caso aqui exercita a COBRANÇA do fechamento; os
@@ -65,6 +67,7 @@ function resetBanco(saldoInicial: number, cotaGratisRestante = 0) {
   cotaRestante = cotaGratisRestante;
   cotaRefs = new Set();
   quotaEstado = 'permitido';
+  filaGemini = [];
 }
 
 function fingirFetch() {
@@ -98,7 +101,7 @@ function fingirFetch() {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ candidates: [{ content: { parts: [{ text: respostaGeminiFake }] } }] }),
+        json: async () => ({ candidates: [{ content: { parts: [{ text: filaGemini.length ? (filaGemini.shift() as string) : respostaGeminiFake }] } }] }),
       } as unknown as Response;
     }
 
@@ -394,6 +397,61 @@ respostaGeminiFake = JSON.stringify({ pergunta: 'não pode chegar aqui' });
   checar('limite global vira 429', status, 429);
   checar('erro de cota sem conteúdo', body, { ok: false, erro: 'cota_ia_global' });
   checar('upstream não foi chamado', chamadasGemini, 0);
+}
+
+
+console.log('\n12) chave em maiúscula ("Pergunta", jeito do Llama) vira pergunta; chave sobrando é ignorada (QA 19/11)');
+resetBanco(10);
+respostaGeminiFake = JSON.stringify({ Pergunta: 'Qual o nome do cliente?', wont: 'não' });
+{
+  const { status, body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'Troca do capacitor do split da sala' }],
+    conversationId: 'conv-maiuscula',
+  });
+  checar('status 200', status, 200);
+  checar('pergunta lida da chave em maiúscula', body, { ok: true, pronto: false, pergunta: 'Qual o nome do cliente?' });
+  checar('1 chamada só (já veio válida)', chamadasGemini, 1);
+  checar('pergunta não cobra', ledgerChamadas, 0);
+}
+
+console.log('\n13) formato inválido na 1ª tentativa: tenta de novo 1 vez e usa a 2ª');
+resetBanco(10);
+filaGemini = ['isto não é JSON', JSON.stringify({ pergunta: 'Qual o nome do cliente?' })];
+{
+  const { status, body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'Troca do capacitor' }],
+    conversationId: 'conv-retry-ok',
+  });
+  checar('status 200', status, 200);
+  checar('usou a 2ª resposta', body, { ok: true, pronto: false, pergunta: 'Qual o nome do cliente?' });
+  checar('2 chamadas', chamadasGemini, 2);
+}
+
+console.log('\n14) inválido nas 2 tentativas: resposta_invalida, sem 3ª chamada e sem cobrar');
+resetBanco(10);
+filaGemini = ['lixo', JSON.stringify({ outra: 'coisa' })];
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'Troca do capacitor' }],
+    conversationId: 'conv-retry-falha',
+  });
+  checar('erro estável', body, { ok: false, erro: 'resposta_invalida' });
+  checar('parou na 2ª chamada', chamadasGemini, 2);
+  checar('não cobrou', ledgerChamadas, 0);
+}
+
+console.log('\n15) "pronto" como texto "true" e chaves em maiúscula fecham o orçamento');
+resetBanco(10);
+respostaGeminiFake = JSON.stringify({ Pronto: 'true', ClienteNome: 'João', Itens: [{ descricao: 'Mão de obra', quantidade: 1, valorUnitario: 350, tipo: 'servico' }] });
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'Orçamento pro João, mão de obra 350' }],
+    conversationId: 'conv-pronto-texto',
+    confirmarCredito: true,
+  });
+  checar('fechou', body.pronto, true);
+  checar('cliente lido', body.clienteNome, 'João');
+  checar('valor falado mantido', body.itens?.[0]?.valorUnitario, 350);
 }
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);

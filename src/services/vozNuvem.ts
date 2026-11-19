@@ -95,6 +95,8 @@ function mensagemErroIA(erro: unknown, fallback: string): string {
     return SOBRECARGA;
   }
   if (!s || /[{}]|gemini|anthropic|http|json|token|api/i.test(s)) return fallback;
+  // Código técnico do servidor (ex.: resposta_invalida, falha_workersai) nunca vai para a tela (QA 19/11).
+  if (/^[a-z0-9]+(?:_[a-z0-9]+)+$/i.test(s.trim())) return fallback;
   return s;
 }
 
