@@ -336,12 +336,12 @@ console.log('\n13) Telas: DESLIGADO = NADA SE VENDE; no Android nunca o preço d
   checar('estado das ofertas nasce "desligado" sem o binário', planos.includes("VENDA_PELA_PLAY ? { estado: 'carregando' } : { estado: 'desligado' }"), true);
   checar('card sem venda pela Play recebe vendaPlay=null', planos.includes('if (!vendaPlayVisivel(ofertasPlay.estado)) return null;'), true);
   checar('Android sem venda: card SEM preço (nem o da web)', [
-    planos.includes('const semPrecoNoAndroid = BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlay;'),
+    planos.includes('const semPrecoNoAndroid = !COMPRA_NO_APP || (BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlay);'),
     planos.includes(': semPrecoNoAndroid\n      ? null'),
   ], [true, true]);
   checar('Android sem venda: diz que está indisponível no momento', planos.includes('Assinatura pelo app indisponível no momento'), true);
   checar('texto antigo de "não contratar" saiu', /não disponível neste aplicativo Android|mas não contratar/.test(planos), false);
-  checar('comparativo nunca repete o preço da web no Android', planos.includes('precosDaFonte={!BUILD_PLAY_SEM_COMPRA_EXTERNA}'), true);
+  checar('comparativo nunca repete o preço da web no Android', planos.includes('precosDaFonte={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA}'), true);
   // Abas e rodapé seguem a última resposta CONHECIDA (não piscam no "carregando").
   checar('abas mensal/anual no Android só com a venda confirmada', planos.includes('BUILD_PLAY_SEM_COMPRA_EXTERNA && molduraPlay !== true ? null : ('), true);
   checar('a moldura só muda com a resposta do servidor', planos.includes('setMolduraPlay(vendaPlayVisivel(resultado.estado));'), true);
@@ -391,7 +391,7 @@ console.log('\n13) Telas: DESLIGADO = NADA SE VENDE; no Android nunca o preço d
   checar('RecursoPlano: atalho de venda no Android só com o servidor confirmando', recurso.includes("return podeOferecerPlanoPara(Platform.OS, Platform.OS === 'android' && vendaPlayConfirmada());"), true);
 
   const conta = ler('../src/screens/ContaScreen.tsx');
-  checar('Conta: preço da web escondido no Android', conta.includes('{BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (\n                  <View style={styles.soonPill}>'), true);
+  checar('Conta: preço da web escondido no Android', conta.includes('{BUILD_PLAY_SEM_COMPRA_EXTERNA || !COMPRA_NO_APP ? null : (\n                  <View style={styles.soonPill}>'), true);
   checar('Conta: atalho "Assinaturas na Google Play" no Android', [
     conta.includes("...(Platform.OS === 'android' ? [{ id: 'gerenciarPlay'"),
     conta.includes("gerenciarPlay: { titulo: 'Assinaturas na Google Play'"),
