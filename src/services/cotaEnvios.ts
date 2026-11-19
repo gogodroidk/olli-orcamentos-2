@@ -45,6 +45,20 @@ export async function obterEstadoOfertaComercial(): Promise<EstadoOfertaComercia
   }
 }
 
+/**
+ * Grava a CIÊNCIA do aviso do limite do Grátis (conta antiga): data/hora da 1ª exibição + versão do texto. O banco
+ * só limita a conta antiga no D+30 se ela viu o aviso até lá (senão D+37). Idempotente; nunca lança.
+ */
+export async function registrarCienciaLimiteGratis(versao: string, canal: 'app' | 'painel'): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { error } = await supabase.rpc('registrar_ciencia_limite_gratis', { p_versao: versao, p_canal: canal });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 export async function iniciarTrialPro(): Promise<InicioTrialPro | null> {
   if (!supabase) return null;
   try {

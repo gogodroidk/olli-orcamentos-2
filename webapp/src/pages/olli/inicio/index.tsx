@@ -2,6 +2,7 @@ import type { Empresa } from "@dominio";
 import { Banknote, Percent, Send, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
+import { AvisoLimiteAntigasFaixa } from "@/pages/olli/planos/AvisoLimiteAntigasFaixa";
 import { LembreteAssinaturaFaixa } from "@/pages/olli/planos/LembreteAssinaturaFaixa";
 import { AprovadoPeloClienteCard } from "./AprovadoPeloClienteCard";
 import { AtivacaoCard } from "./AtivacaoCard";
@@ -122,6 +123,9 @@ export default function Inicio() {
 			 * trava o trabalho do dia. Sem dado confirmado não aparece nada.
 			 */}
 			<LembreteAssinaturaFaixa />
+
+			{/* Conta antiga do Grátis: aviso da data do limite (grava a ciência ao aparecer). */}
+			<AvisoLimiteAntigasFaixa />
 
 			{/*
 			 * O cliente aprovou pelo link enquanto o dono estava fora: a notícia boa vem

@@ -157,7 +157,11 @@ const comAviso = (extra: Record<string, unknown> = {}) => teto({
   limite_conta_nova: false, limite_envios: null, envios_restantes: null, envios_usados: 3,
   aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00+00:00', usados_30d: 7 }, ...extra,
 });
-assert.deepEqual(comAviso()?.avisoLimiteAntigas, { aPartirDe: '2026-11-24T03:00:00+00:00', usados30d: 7 });
+assert.deepEqual(comAviso()?.avisoLimiteAntigas, { aPartirDe: '2026-11-24T03:00:00+00:00', usados30d: 7, cienciaRegistrada: false, limite: null });
+assert.equal(
+  comAviso({ aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00Z', usados_30d: 7, ciencia_registrada: true } })?.avisoLimiteAntigas?.cienciaRegistrada,
+  true, 'ciência já gravada no servidor',
+);
 assert.equal(comAviso({ aviso_limite_antigas: { a_partir_de: 'lixo', usados_30d: 7 } })?.avisoLimiteAntigas, null, 'data lixo: sem aviso');
 assert.equal(comAviso({ aviso_limite_antigas: { a_partir_de: '2026-11-24T03:00:00Z', usados_30d: -1 } })?.avisoLimiteAntigas, null, 'N negativo: sem aviso');
 assert.equal(comAviso({ plano_efetivo: 'pro' })?.avisoLimiteAntigas, null, 'Pro não recebe aviso');
@@ -173,6 +177,7 @@ assert.match((limites.avisoAntigas(comAviso({ aviso_limite_antigas: { a_partir_d
 assert.deepEqual(limites.avisoAntigas(comAviso(), 5, new Date('2026-11-24T03:00:00Z')), { mostrar: false }, 'depois do início do limite o banner some');
 // As telas ligam o banner pelo hook de 3 estados.
 assert.match(ler('../src/hooks/useAvisoLimiteAntigas.ts'), /estado: 'indisponivel'/, 'hook do aviso tem o estado indisponível');
+assert.match(ler('../src/hooks/useAvisoLimiteAntigas.ts'), /registrarCienciaLimiteGratis\(aviso\.chave, 'app'\)/, 'hook grava a ciência ao mostrar o aviso');
 for (const [nome, caminho] of [['Planos', '../src/screens/PlanosScreen.tsx'], ['Conta', '../src/screens/ContaScreen.tsx']] as const) {
   assert.match(ler(caminho), /useAvisoLimiteAntigas\(\)/, `${nome} usa o hook do aviso`);
   assert.match(ler(caminho), /<AvisoLimiteAntigas /, `${nome} desenha o aviso`);

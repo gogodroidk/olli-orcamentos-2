@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { obterEstadoOfertaComercial } from '../services/cotaEnvios';
+import { obterEstadoOfertaComercial, registrarCienciaLimiteGratis } from '../services/cotaEnvios';
 import { avisoAntigas, type AvisoAntigas } from '../services/limitesComerciais';
 import { LIMITE_ENVIOS_GRATIS_MES } from '../services/planosBase';
 
@@ -14,6 +14,8 @@ import { LIMITE_ENVIOS_GRATIS_MES } from '../services/planosBase';
  *                    formal também sai por e-mail no dia D, então a leitura falha sem esconder o limite de verdade.
  *   `pronto`       → sei: `aviso.mostrar` diz se há o que avisar (conta anterior, antes do limite, não dispensado).
  * Dispensável 1 vez por data de corte (AsyncStorage, só neste aparelho). Revalida a cada foco da tela.
+ * Ao MOSTRAR, grava a ciência no servidor (1ª exibição + versão = `chave`) se ele ainda não a tem: é ela que deixa o
+ * limite da conta antiga começar no D+30 (sem ciência, só no D+37). Falha ao gravar não muda a tela.
  */
 export type EstadoAvisoLimiteAntigas =
   | { estado: 'carregando' }
@@ -45,6 +47,9 @@ export function useAvisoLimiteAntigas(): { estado: EstadoAvisoLimiteAntigas; dis
             }
           }
           setEstado({ estado: 'pronto', aviso });
+          if (aviso.mostrar && oferta.avisoLimiteAntigas && !oferta.avisoLimiteAntigas.cienciaRegistrada) {
+            void registrarCienciaLimiteGratis(aviso.chave, 'app');
+          }
         } catch {
           if (ativo) setEstado({ estado: 'indisponivel' });
         }

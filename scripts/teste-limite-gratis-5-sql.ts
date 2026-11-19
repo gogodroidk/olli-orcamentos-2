@@ -21,6 +21,7 @@ const sqlTrialAuto = ler('../supabase/migrations/20260930120000_trial_pro_automa
 const sqlIlimitado = ler('../supabase/migrations/20261002150000_gratis_orcamentos_ilimitados.sql').split('-- ─── 3. Candidatos a lembrete')[0];
 const sqlLimite = ler('../supabase/migrations/20261024120000_limite_gratis_5_contas_novas.sql');
 const sqlAntigas = ler('../supabase/migrations/20261024150000_limite_gratis_contas_antigas.sql');
+const sqlCiencia = ler('../supabase/migrations/20261027060000_limite_gratis_ciencia_aviso.sql');
 const reservaCorrigida = sqlLint.match(/create or replace function public\.reservar_envio_orcamento_gratis\([\s\S]*?\n\$\$;/)?.[0];
 assert.ok(reservaCorrigida);
 
@@ -34,6 +35,10 @@ await db.exec(`
   create table auth.users (id uuid primary key, created_at timestamptz not null default now());
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('teste.uid', true), '')::uuid $$;
+  create table public.email_supressoes (
+    user_id uuid not null references auth.users(id) on delete cascade, motivo text not null, origem text not null,
+    criado_em timestamptz not null default now(), primary key (user_id, motivo)
+  ); -- forma de 20260929200000 (só o que a regra lê)
   create table public.organizacoes (id uuid primary key, owner_user_id uuid not null references auth.users(id));
   create table public.organizacao_membros (org_id uuid not null, user_id uuid not null, ativo boolean not null default true);
   create table public.assinaturas (
@@ -50,6 +55,8 @@ await db.exec(sqlLimite);
 await db.exec(sqlLimite); // idempotente: aplicar de novo não quebra
 await db.exec(sqlAntigas);
 await db.exec(sqlAntigas);
+await db.exec(sqlCiencia);
+await db.exec(sqlCiencia); // idempotente
 
 let seq = 0;
 async function novoUsuario(diasDeConta: number): Promise<string> {
@@ -208,7 +215,13 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   assert.equal((await oferta(pro)).aviso_limite_antigas, null, 'Pro não recebe aviso');
   caso('antes de D+30: antiga sem teto, com aviso {a_partir_de, usados_30d}; nova/Pro sem aviso');
 
-  // chegou D+30: a antiga fica limitada (os 7 envios do mês já passam de 5)
+  // a antiga VIU o aviso antes de D+30 (ciência registrada pelo app)
+  await como(velha);
+  const visto = (await db.query<{ v: string | null }>(`select public.registrar_ciencia_limite_gratis('aviso-antigas-v1', 'app') as v`)).rows[0].v;
+  assert.ok(visto, 'ciência gravada com o aviso no ar');
+  assert.equal((await oferta(velha)).aviso_limite_antigas?.['ciencia_registrada' as never], true, 'oferta diz que a ciência existe');
+  // chegou D+30: a antiga fica limitada (os 7 envios do mês, feitos depois do corte neste teste, passam de 5)
+  await db.query(`update public.limite_gratis_ciencia set visto_em = now() - interval '2 minutes' where tenant_id = $1`, [velha]);
   await db.query(`update public.limite_gratis_config set corte_antigas = now() - interval '1 minute'`);
   const depois = await oferta(velha);
   assert.equal(depois.limite_conta_antiga, true, 'depois de D+30: sinal de antiga limitada');
@@ -221,6 +234,9 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   assert.equal(barrado.motivo, 'cota_esgotada');
   assert.equal((await reservar(velha, 'ant-3')).permitido, true, 'reenvio de orçamento já registrado segue');
   const antigaLeve = await novoUsuario(40);
+  await como(antigaLeve);
+  await db.query(`select public.registrar_ciencia_limite_gratis('aviso-antigas-v1', 'painel')`);
+  await db.query(`update public.limite_gratis_ciencia set visto_em = now() - interval '2 minutes' where tenant_id = $1`, [antigaLeve]);
   for (let i = 1; i <= 5; i++) assert.equal((await enviar(antigaLeve, `leve-${i}`)).permitido, true);
   assert.equal((await reservar(antigaLeve, 'leve-6')).permitido, false, 'o 6º da antiga também é barrado');
   assert.equal((await oferta(pro)).limite_envios, null, 'Pro segue sem teto');
@@ -230,6 +246,115 @@ const apkAntigoPermite = (v: Record<string, unknown>) =>
   await desligar();
   assert.equal((await reservar(velha, 'ant-9')).permitido, true, 'corte_antigas NULL solta de novo');
   caso('rollback (cortes NULL) solta a antiga');
+}
+
+// 9. CIÊNCIA DO AVISO (parecer LEGAL R0012 §2): ninguém antigo é limitado antes de ver o aviso
+{
+  await ligar(1);
+  // sem aviso no ar (corte_antigas NULL) a RPC não grava nada
+  const semAviso = await novoUsuario(40);
+  await como(semAviso);
+  assert.equal((await db.query<{ v: unknown }>(`select public.registrar_ciencia_limite_gratis('v1', 'app') as v`)).rows[0].v, null);
+  assert.equal((await db.query<{ n: number }>(`select count(*)::int n from public.limite_gratis_ciencia where tenant_id=$1`, [semAviso])).rows[0].n, 0);
+  caso('sem corte_antigas: registrar ciência não grava nada');
+
+  // corte passou e a antiga NÃO viu: segue sem teto até corte+7d, e o aviso mostra essa data
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() - interval '1 day'`);
+  const naoViu = await novoUsuario(40);
+  for (let i = 1; i <= 7; i++) assert.equal((await enviar(naoViu, `nv-${i}`)).permitido, true, `não viu: envio ${i} livre`);
+  const o = await oferta(naoViu);
+  assert.equal(o.limite_conta_antiga, false, 'não viu o aviso: ainda não limitada');
+  assert.equal(o.limite_envios, null);
+  const av = o.aviso_limite_antigas as { a_partir_de: string; ciencia_registrada: boolean };
+  const seis = Date.parse(av.a_partir_de) - Date.now();
+  assert.ok(seis > 5.9 * 864e5 && seis < 6.1 * 864e5, 'aviso traz corte+7d (a data verdadeira desta conta)');
+  assert.equal(av.ciencia_registrada, false);
+  assert.equal((av as unknown as { limite: number }).limite, 5, 'aviso traz o teto do servidor');
+  // ver o aviso DEPOIS do corte não antecipa o limite (a data mostrada continua valendo)
+  await como(naoViu);
+  await db.query(`select public.registrar_ciencia_limite_gratis('v1', 'app')`);
+  assert.equal((await oferta(naoViu)).limite_conta_antiga, false, 'ver depois do corte não antecipa');
+  assert.equal((await reservar(naoViu, 'nv-8')).permitido, true);
+  caso('antiga sem ciência no corte: livre até corte+7d, aviso com essa data; ver depois não antecipa');
+
+  // passados 7 dias do corte: limitada mesmo sem ciência; envios ANTES do início não contam
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() - interval '8 days'`);
+  await db.query(`update public.orcamento_envios_gratis set criado_em = now() - interval '2 days' where tenant_id=$1`, [naoViu]);
+  const depois = await oferta(naoViu);
+  assert.equal(depois.limite_conta_antiga, true, 'corte+7d passou: limitada');
+  assert.equal(depois.envios_usados, 0, 'envios feitos antes do início não contam');
+  assert.equal(depois.envios_restantes, 5);
+  for (let i = 1; i <= 5; i++) assert.equal((await enviar(naoViu, `nv2-${i}`)).permitido, true, `depois do início: ${i} de 5`);
+  const barrado = await reservar(naoViu, 'nv2-6');
+  assert.equal(barrado.permitido, false);
+  assert.equal(barrado.motivo, 'cota_esgotada');
+  caso('corte+7d: antiga limitada sem ciência, contando só envios desde o início (6º barrado)');
+
+  // a tabela não é lida nem gravada direto por authenticated
+  const priv = await db.query<{ r: boolean; w: boolean }>(
+    `select has_table_privilege('authenticated','public.limite_gratis_ciencia','select') r,
+            has_table_privilege('authenticated','public.limite_gratis_ciencia','insert') w`,
+  );
+  assert.equal(priv.rows[0].r, false);
+  assert.equal(priv.rows[0].w, false);
+  const inicioPriv = await db.query<{ x: boolean }>(
+    `select has_function_privilege('authenticated','public.limite_gratis_inicio_antiga(uuid,uuid,timestamptz)','execute') x`,
+  );
+  assert.equal(inicioPriv.rows[0].x, false, 'helper interno fechado');
+  caso('limite_gratis_ciencia e o helper: fechados para authenticated (só via RPC)');
+
+  // e-mail devolvido (hard_bounce) e sem ciência: nunca entra no limite sem ver o aviso (LEGAL D-1323 cond. 3)
+  const devolvido = await novoUsuario(40);
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'hard_bounce', 'resend_webhook')`, [devolvido]);
+  for (let i = 1; i <= 7; i++) assert.equal((await enviar(devolvido, `dv-${i}`)).permitido, true, `bounce sem ciência: envio ${i} livre`);
+  const od = await oferta(devolvido);
+  assert.equal(od.limite_conta_antiga, false, 'corte+8d e bounce sem ciência: ainda livre');
+  const dataD = Date.parse((od.aviso_limite_antigas as { a_partir_de: string }).a_partir_de) - Date.now();
+  assert.ok(dataD > 6.9 * 864e5 && dataD < 7.1 * 864e5, 'aviso mostra agora+7d (data que anda até ver)');
+  await como(devolvido);
+  await db.query(`select public.registrar_ciencia_limite_gratis('v1', 'painel')`);
+  assert.equal((await oferta(devolvido)).limite_conta_antiga, false, 'viu agora: 7 dias a partir de ver');
+  await db.query(`update public.limite_gratis_ciencia set visto_em = now() - interval '8 days' where tenant_id=$1`, [devolvido]);
+  await db.query(`update public.orcamento_envios_gratis set criado_em = now() - interval '9 days' where tenant_id=$1`, [devolvido]);
+  assert.equal((await oferta(devolvido)).limite_conta_antiga, true, 'viu há 8 dias: limitada');
+  for (let i = 1; i <= 5; i++) assert.equal((await enviar(devolvido, `dv2-${i}`)).permitido, true);
+  assert.equal((await reservar(devolvido, 'dv2-6')).permitido, false, 'o 6º barrado');
+  // complaint também conta como "sem e-mail"; descadastro (só lembretes) não
+  const descad = await novoUsuario(40);
+  await db.query(`insert into public.email_supressoes (user_id, motivo, origem) values ($1, 'descadastro', 'link_email')`, [descad]);
+  assert.equal((await oferta(descad)).limite_conta_antiga, true, 'descadastro de lembretes não adia (o aviso chega por e-mail)');
+  caso('bounce sem ciência: data anda até ver; depois de ver, 7 dias; descadastro não adia');
+
+  // LIVRE #258 P1: ANTES do corte, sem ciência, o aviso mostra corte_antigas (a data que vale ao ver agora)
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() + interval '10 days'`);
+  const antes = await novoUsuario(40);
+  const avAntes = (await oferta(antes)).aviso_limite_antigas as { a_partir_de: string };
+  const corteCfg = (await db.query<{ c: string }>(`select corte_antigas::text c from public.limite_gratis_config`)).rows[0].c;
+  assert.equal(Date.parse(avAntes.a_partir_de), Date.parse(corteCfg), 'antes do corte: aviso = corte_antigas, não +7d');
+  await como(antes);
+  await db.query(`select public.registrar_ciencia_limite_gratis('v1', 'app')`);
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() - interval '1 minute'`);
+  await db.query(`update public.limite_gratis_ciencia set visto_em = now() - interval '2 minutes' where tenant_id=$1`, [antes]);
+  assert.equal((await oferta(antes)).limite_conta_antiga, true, 'viu antes: limitada exatamente na data mostrada');
+  caso('antes do corte: aviso mostra corte_antigas e quem viu entra no limite nessa data');
+
+  // LIVRE #258 P2: membro (funcionário) não dá ciência pelo dono
+  await db.query(`update public.limite_gratis_config set corte_antigas = now() + interval '10 days'`);
+  const dono = await novoUsuario(40);
+  const membro = await novoUsuario(40);
+  const org = '00000000-0000-4000-8000-0000000ff001';
+  await db.query(`insert into public.organizacoes (id, owner_user_id) values ($1, $2)`, [org, dono]);
+  await db.query(`insert into public.organizacao_membros (org_id, user_id, ativo) values ($1, $2, true)`, [org, membro]);
+  await como(membro);
+  assert.equal((await db.query<{ v: unknown }>(`select public.registrar_ciencia_limite_gratis('v1', 'app') as v`)).rows[0].v, null, 'membro: não grava');
+  assert.equal((await db.query<{ n: number }>(`select count(*)::int n from public.limite_gratis_ciencia where tenant_id=$1`, [org])).rows[0].n, 0);
+  await como(dono);
+  assert.ok((await db.query<{ v: unknown }>(`select public.registrar_ciencia_limite_gratis('v1', 'painel') as v`)).rows[0].v, 'dono: grava');
+  const linha = (await db.query<{ u: string }>(`select user_id::text u from public.limite_gratis_ciencia where tenant_id=$1`, [org])).rows[0];
+  assert.equal(linha.u, dono, 'ciência fica no nome do dono (FK cascade)');
+  caso('só o dono dá ciência; membro vê o aviso mas não antecipa o limite');
+  await desligar();
+  await desligar();
 }
 
 console.log(`\nteste-limite-gratis-5-sql: ${ok} casos OK`);
