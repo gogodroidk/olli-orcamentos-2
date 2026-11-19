@@ -144,7 +144,7 @@ export default function MapaProspeccao({ grupos, origem, rotuloOrigem, linha, ao
 
 	return (
 		<div className="relative isolate z-0 h-[360px] w-full overflow-hidden rounded-2xl border border-border bg-card md:h-[440px]">
-			<section ref={caixa} style={{ position: "absolute", inset: 0, height: "100%", width: "100%" }} aria-label="Mapa dos clientes. A lista abaixo traz os mesmos clientes, na ordem da rota." />
+			<section ref={caixa} className="[&_.leaflet-bar_a]:!h-[44px] [&_.leaflet-bar_a]:!w-[44px] [&_.leaflet-bar_a]:!leading-[44px]" style={{ position: "absolute", inset: 0, height: "100%", width: "100%" }} aria-label="Mapa dos clientes. A lista abaixo traz os mesmos clientes, na ordem da rota." />
 			{estado === "carregando" ? (
 				<div className="absolute inset-0 grid place-items-center text-sm text-text-secondary">Carregando o mapa…</div>
 			) : null}

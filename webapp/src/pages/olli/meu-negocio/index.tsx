@@ -281,6 +281,18 @@ export default function MeuNegocio() {
 	const somenteLeitura = !permissaoDesconhecida && !ehDono;
 	const bloqueado = permissaoDesconhecida || somenteLeitura;
 
+	// Atalho do Mapa de clientes: /meu-negocio#endereco cai direto no campo de endereço.
+	const pedeEndereco = location.hash === "#endereco";
+	const formPronto = !!form;
+	useEffect(() => {
+		if (!pedeEndereco || !formPronto) return;
+		const campo = document.getElementById("endereco");
+		if (!(campo instanceof HTMLInputElement)) return;
+		const semMovimento = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+		campo.scrollIntoView({ block: "center", behavior: semMovimento ? "auto" : "smooth" });
+		if (!bloqueado) campo.focus({ preventScroll: true });
+	}, [pedeEndereco, formPronto, bloqueado]);
+
 	const salvar = useMutation({
 		mutationFn: async (f: Empresa) => {
 			if (contexto.isLoading) throw new Error("Carregando seu perfil… tente de novo em um instante.");
@@ -878,6 +890,7 @@ export default function MeuNegocio() {
 
 						<Campo rotulo="Endereço" className="sm:col-span-2">
 							<Input
+								id="endereco"
 								disabled={bloqueado}
 								value={form.endereco}
 								onChange={(e) => set("endereco", e.target.value)}
