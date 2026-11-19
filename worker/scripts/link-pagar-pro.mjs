@@ -1,7 +1,7 @@
 /**
  * Gera o LINK DE PAGAMENTO DO PRO de uma conta (CQ-LINK-PAGAR-PRO).
  *
- *   LINK_PAGAMENTO_SECRET=<segredo> node worker/scripts/link-pagar-pro.mjs <user_id>
+ *   LINK_PAGAMENTO_SECRET=<segredo> node worker/scripts/link-pagar-pro.mjs <user_id> [--anual]
  *
  * Opcional: LINK_PAGAMENTO_BASE (padrão https://diagnostico.olliorcamentos.online; em staging, a URL
  * workers.dev do olli-diagnostico-staging). O segredo tem de ser O MESMO posto no worker daquele ambiente.
@@ -35,7 +35,9 @@ if (!base || base.protocol !== 'https:' || base.username || base.password) {
 }
 
 const agoraS = Math.floor(Date.now() / 1000);
-const token = await assinarLinkPro(segredo, { uid, agoraS });
+const periodo = process.argv.includes('--anual') ? 'anual' : 'mensal';
+const token = await assinarLinkPro(segredo, { uid, periodo, agoraS });
+console.log(`Pro ${periodo}`);
 const vence = new Date((agoraS + LINK_PRO_VALIDADE_S) * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 console.log(`${base.origin}/pagar/pro/${token}`);
 console.log(`vence em ${vence} (horário de Brasília)`);

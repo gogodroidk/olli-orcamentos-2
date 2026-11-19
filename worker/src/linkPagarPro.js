@@ -36,7 +36,8 @@ import { buscarEventos } from './webhookEvents.js';
 import { segredoLinkPro, verificarLinkPro } from './linkProToken.js';
 
 export const LINK_PRO_PREFIXO = '/pagar/pro/';
-const PLANO_KEY = 'pro_mensal';
+/** Item do catálogo (PLANO_PIX, fonte única de preço) por período do token. */
+const PLANO_POR_PERIODO = Object.freeze({ mensal: 'pro_mensal', anual: 'pro_anual' });
 /** Cobrança do link considerada "a mesma" enquanto faltar mais que isto para vencer. */
 const MARGEM_REUSO_MS = 10 * 60 * 1000;
 /** Só olha cobranças do link criadas nas últimas 25 h (o Pix vale 24 h). */
@@ -92,9 +93,10 @@ async function atender(request, env, url) {
   if (!conta.email) return paginaInvalido(); // conta apagada/inexistente = link inválido
   const contaMascarada = mascararEmail(conta.email);
 
-  const plano = PLANO_PIX[PLANO_KEY];
+  const planoKey = PLANO_POR_PERIODO[v.periodo] || 'pro_mensal';
+  const plano = PLANO_PIX[planoKey];
   // 1º a cobrança DESTE link (não cria nada): paga = "confirmado", mesmo que o Pro agora apareça como vigente.
-  const ultima = await ultimaCobrancaDoLink(env, uid);
+  const ultima = await ultimaCobrancaDoLink(env, uid, planoKey);
   if (!ultima.ok) return paginaIndisponivel();
 
   let pendente = null;
@@ -220,13 +222,13 @@ async function sinaisDoPlano(env, uid) {
 }
 
 /** A cobrança do link mais recente da conta (últimas 25 h), ou null. `{ ok:false }` = não deu para saber. */
-async function ultimaCobrancaDoLink(env, uid) {
+async function ultimaCobrancaDoLink(env, uid, planoKey) {
   if (!UUID_RE.test(uid)) return { ok: true, linha: null };
   const r = await buscarEventos(env, ORIGEM_PIX_COBRANCA, { user_id: uid, origem: 'link' }, 50);
   if (!r.ok) return { ok: false };
   const agora = Date.now();
   const linhas = r.linhas
-    .filter((l) => l && typeof l.event_id === 'string' && l.payload && l.payload.plano === PLANO_KEY)
+    .filter((l) => l && typeof l.event_id === 'string' && l.payload && l.payload.plano === planoKey)
     .filter((l) => agora - Date.parse(l.recebido_em) < JANELA_COBRANCA_MS)
     .sort((x, y) => Date.parse(y.recebido_em) - Date.parse(x.recebido_em));
   return { ok: true, linha: linhas[0] || null };
@@ -259,11 +261,11 @@ export function linhasDoPro() {
 function blocoPlano(plano, contaMascarada, sit) {
   const itens = linhasDoPro().map((b) => `<li>${esc(b)}</li>`).join('');
   const aviso = sit && sit.proAte
-    ? `<p class="nota">Seu Pro vale até ${esc(data(sit.proAte))}. Se pagar agora, o novo mês começa quando esse prazo terminar.</p>`
+    ? `<p class="nota">Seu Pro vale até ${esc(data(sit.proAte))}. Se pagar agora, o novo ${plano.meses === 12 ? 'ano' : 'mês'} começa quando esse prazo terminar.</p>`
     : '';
   return `<div class="plano">
-      <div class="nome">OLLI Pro · mensal</div>
-      <div class="preco">${esc(reais(plano.valor))}<span> por 1 mês, no Pix</span></div>
+      <div class="nome">OLLI Pro · ${plano.meses === 12 ? 'anual' : 'mensal'}</div>
+      <div class="preco">${esc(reais(plano.valor))}<span> por ${plano.meses === 12 ? '1 ano' : '1 mês'}, no Pix</span></div>
     </div>
     <ul class="lista">${itens}</ul>
     <p class="conta">Conta: <strong>${esc(contaMascarada)}</strong></p>${aviso}`;

@@ -182,7 +182,7 @@ console.log('\n1. token');
   const empresa = await assinarPayloadLinkPro(SEGREDO, { v: 1, uid: USER, plano: 'empresa', periodo: 'mensal', exp: agoraS + 1000 });
   checar('de outro plano (empresa)', (await verificarLinkPro(SEGREDO, empresa)).motivo, 'plano');
   const anual = await assinarPayloadLinkPro(SEGREDO, { v: 1, uid: USER, plano: 'pro', periodo: 'anual', exp: agoraS + 1000 });
-  checar('de outro período (anual)', (await verificarLinkPro(SEGREDO, anual)).motivo, 'plano');
+  checar('Pro anual é aceito (19/11)', (await verificarLinkPro(SEGREDO, anual)).ok, true);
   const eterno = await assinarPayloadLinkPro(SEGREDO, { v: 1, uid: USER, plano: 'pro', periodo: 'mensal', exp: agoraS + 400 * 86400 });
   checar('validade além de 14 dias é recusada', (await verificarLinkPro(SEGREDO, eterno)).ok, false);
   checar('lixo', (await verificarLinkPro(SEGREDO, 'abc')).motivo, 'formato');
@@ -351,6 +351,25 @@ console.log('\n7b. Pro vigente por TODAS as origens (regra da CPO 19/11): nunca 
   }
   checar('decidirVenda puro: Empresa bloqueia', decidirVenda({ assinatura: { plano: 'empresa', status: 'active', current_period_end: fim }, paAtiva: false, testeAte: null }).bloqueia, true);
   checar('decidirVenda puro: Grátis vende', decidirVenda({ assinatura: null, paAtiva: false, testeAte: null }).bloqueia, false);
+}
+
+console.log('\n7c. Pro anual pelo link (19/11: o 1º cliente do dia escolheu o anual)');
+{
+  reset();
+  const env = envCom();
+  const tA = await assinarLinkPro(SEGREDO, { uid: USER, periodo: 'anual' });
+  const vA = await verificarLinkPro(SEGREDO, tA);
+  checar('token anual confere e diz o período', [vA.ok, vA.periodo], [true, 'anual']);
+  const g = await chamar(env, 'GET', tA);
+  checar('página anual mostra o preço do catálogo (R$ 374,40) por 1 ano', [g.status, g.corpo.includes('374,40'), g.corpo.includes('por 1 ano'), g.corpo.includes('Pro · anual')], [200, true, true, true]);
+  const p = await chamar(env, 'POST', tA);
+  checar('POST anual cria UMA cobrança, marcada pro_anual', [p.status, criadas.length, JSON.stringify(criadas[0] ?? {}).includes('pro_anual')], [303, 1, true]);
+  checar('valor cobrado no anual = PLANO_PIX.pro_anual', JSON.stringify(criadas[0] ?? {}).includes(String(Math.round(PLANO_PIX.pro_anual.valor * 100))), true);
+  let recusou = false;
+  try { await assinarLinkPro(SEGREDO, { uid: USER, periodo: 'semestral' as never }); } catch { recusou = true; }
+  checar('período fora da lista não gera token', recusou, true);
+  const forjado = await assinarPayloadLinkPro(SEGREDO, { v: 1, uid: USER, plano: 'pro', periodo: 'semestral', exp: Math.floor(Date.now() / 1000) + 3600 });
+  checar('token com período estranho = plano inválido', (await verificarLinkPro(SEGREDO, forjado)).motivo, 'plano');
 }
 
 console.log('\n8. privacidade');
