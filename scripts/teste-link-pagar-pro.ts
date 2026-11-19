@@ -17,7 +17,7 @@
  *  8. NÃO VENDE POR CIMA de Empresa ou de assinatura no cartão.
  */
 // @ts-expect-error — worker é JS puro, sem tipos; roda por type stripping.
-import { handleLinkPagarPro, mascararEmail, linhasDoPro } from '../worker/src/linkPagarPro.js';
+import { decidirVenda, handleLinkPagarPro, linhasDoPro, mascararEmail, RENOVAR_ULTIMOS_DIAS, VENDE_DURANTE_TESTE } from '../worker/src/linkPagarPro.js';
 // @ts-expect-error — idem.
 import { assinarLinkPro, assinarPayloadLinkPro, segredoLinkPro, verificarLinkPro } from '../worker/src/linkProToken.js';
 // @ts-expect-error — idem.
@@ -65,6 +65,8 @@ let cobrancas: Record<string, any> = {};
 let criadas: any[] = [];
 let eventos: Record<string, any> = {};
 let assinaturas: Record<string, any> = {};
+let testes: Record<string, string> = {};
+let falharLeitura = '';
 let chamadas = 0;
 let logs: string[] = [];
 let seq = 0;
@@ -74,6 +76,8 @@ function reset(): void {
   criadas = [];
   eventos = {};
   assinaturas = {};
+  testes = {};
+  falharLeitura = '';
   chamadas = 0;
   logs = [];
 }
@@ -87,6 +91,7 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
   const url = String(input);
   const metodo = init.method || 'GET';
   const m = /\/auth\/v1\/admin\/users\/([^/?]+)$/.exec(url);
+  if (falharLeitura && url.includes(falharLeitura) && metodo === 'GET' && !url.includes('origem=eq.pix_cobranca')) return resposta({ message: 'falha simulada' }, 500);
   if (m) {
     const id = decodeURIComponent(m[1]);
     return EMAILS[id] ? resposta({ id, email: EMAILS[id] }) : resposta({ msg: 'User not found' }, 404);
@@ -119,6 +124,10 @@ globalThis.fetch = (async (input: any, init: any = {}) => {
       return true;
     });
     return resposta(linhas.map((e: any) => ({ event_id: e.event_id, status: e.status, payload: e.payload, recebido_em: e.recebido_em })));
+  }
+  if (url.includes('/rest/v1/trials_comerciais')) {
+    const uid = (new URL(url).searchParams.get('owner_user_id') || '').replace(/^eq\./, '');
+    return resposta(testes[uid] ? [{ termina_em: testes[uid] }] : []);
   }
   if (url.includes('/rest/v1/assinaturas')) {
     const uid = (new URL(url).searchParams.get('user_id') || '').replace(/^eq\./, '');
@@ -296,8 +305,52 @@ console.log('\n7. não vende por cima de plano pago no cartão ou Empresa');
   const s = await chamar(env, 'POST', TOKEN);
   checar('Pro no cartão (Stripe) ativo: não cria Pix', [s.status, criadas.length], [200, 0]);
   assinaturas[USER] = { user_id: USER, plano: 'pro', status: 'active', current_period_end: fim, stripe_subscription_id: null };
-  const r = await chamar(env, 'GET', TOKEN);
-  checar('Pro por Pix ativo: deixa renovar e diz quando começa', r.corpo.includes('o novo mês começa quando esse prazo terminar'), true);
+  const r = await chamar(env, 'POST', TOKEN);
+  checar('Pix avulso com 20 dias pela frente: NÃO vende (seria cobrar 2 meses) e diz até quando', [r.status, criadas.length, r.corpo.includes('Você já tem o Pro até')], [200, 0, true]);
+  const perto = new Date(Date.now() + (RENOVAR_ULTIMOS_DIAS - 1) * 86400e3).toISOString();
+  assinaturas[USER] = { user_id: USER, plano: 'pro', status: 'active', current_period_end: perto, stripe_subscription_id: null };
+  const rp = await chamar(env, 'GET', TOKEN);
+  checar(`Pix avulso nos últimos ${RENOVAR_ULTIMOS_DIAS} dias: deixa renovar e diz quando começa`, rp.corpo.includes('o novo mês começa quando esse prazo terminar'), true);
+}
+
+console.log('\n7b. Pro vigente por TODAS as origens (regra da CPO 19/11): nunca cobrar em dobro');
+{
+  const fim = new Date(Date.now() + 20 * 86400e3).toISOString();
+  const casos: [string, Record<string, unknown>, string][] = [
+    ['Play/Apple (RevenueCat)', { plano: 'pro', status: 'active', current_period_end: fim, revenuecat_transacao_id: 'GPA.123', revenuecat_vigencia_ate: fim }, 'loja do celular'],
+    ['override do admin', { plano: 'gratis', status: 'canceled', admin_override_ativo: true, admin_plano_override: 'pro', admin_override_ate: fim }, 'Você já tem o Pro até'],
+    ['override sem data', { plano: 'gratis', status: 'canceled', admin_override_ativo: true, admin_plano_override: 'pro', admin_override_ate: null }, 'Você já tem o Pro ativo'],
+  ];
+  for (const [nome, linha, texto] of casos) {
+    reset();
+    const env = envCom();
+    assinaturas[USER] = { user_id: USER, ...linha };
+    const r = await chamar(env, 'POST', TOKEN);
+    checar(`${nome}: não cria Pix e avisa`, [r.status, criadas.length, r.corpo.includes(texto)], [200, 0, true]);
+  }
+  reset();
+  {
+    const env = envCom();
+    eventos['abacate_pa_sub|subs_x'] = { origem: 'abacate_pa_sub', event_id: 'subs_x', status: 'recebido', payload: { user_id: USER, estado: 'ativa' }, recebido_em: new Date().toISOString() };
+    const r = await chamar(env, 'POST', TOKEN);
+    checar('Pix Automático ativo: não cria Pix e explica como cancelar', [r.status, criadas.length, r.corpo.includes('Pix Automático')], [200, 0, true]);
+  }
+  reset();
+  {
+    const env = envCom();
+    testes[USER] = new Date(Date.now() + 86400e3).toISOString();
+    const r = await chamar(env, 'GET', TOKEN);
+    checar('teste do Pro ativo: VENDE (é quem o link quer converter)', [r.status, r.corpo.includes('Gerar Pix')], [200, VENDE_DURANTE_TESTE]);
+  }
+  for (const alvo of ['/rest/v1/assinaturas', '/rest/v1/trials_comerciais', '/rest/v1/webhook_events']) {
+    reset();
+    const env = envCom();
+    falharLeitura = alvo;
+    const r = await chamar(env, 'POST', TOKEN);
+    checar(`leitura de ${alvo.split('/').pop()} falhou: 3º estado, sem Pix`, [r.status, criadas.length, r.corpo.includes('Não consegui conferir')], [503, 0, true]);
+  }
+  checar('decidirVenda puro: Empresa bloqueia', decidirVenda({ assinatura: { plano: 'empresa', status: 'active', current_period_end: fim }, paAtiva: false, testeAte: null }).bloqueia, true);
+  checar('decidirVenda puro: Grátis vende', decidirVenda({ assinatura: null, paAtiva: false, testeAte: null }).bloqueia, false);
 }
 
 console.log('\n8. privacidade');
