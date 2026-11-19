@@ -12,7 +12,6 @@ import { distanciaRetaKm } from '../src/services/etaEstimado.ts';
 import {
   NICHO_SEM,
   NICHO_TODOS,
-  TEXTO_ESQUEMA_PAINEL,
   TEXTO_SO_CADASTRO,
   clienteParaMapa,
   montarProspeccao,
@@ -20,6 +19,9 @@ import {
   textoKm,
   urlRotaProspeccao,
   type ClienteMapa,
+  TEXTO_MAPA_PAINEL,
+  ATRIBUICAO_OSM,
+  agruparPorPonto,
 } from '../src/utils/prospeccaoMapa.ts';
 
 const ORIGEM = { lat: -23.561, lon: -46.656 };
@@ -246,9 +248,35 @@ for (const arquivo of [telaApp, pagina, regra]) {
 }
 assert.ok(telaApp.includes('TEXTO_SO_CADASTRO'));
 assert.ok(pagina.includes('TEXTO_SO_CADASTRO'));
-assert.ok(pagina.includes('TEXTO_ESQUEMA_PAINEL'));
+// 19/11 (CPO): o painel deixou o esquema SVG e virou mapa de verdade (Leaflet + OpenStreetMap, grátis).
+const mapaPainel = readFileSync('webapp/src/pages/olli/prospeccao/MapaProspeccao.tsx', 'utf8');
+assert.ok(pagina.includes('TEXTO_MAPA_PAINEL'), 'texto de privacidade honesto na página');
+assert.ok(pagina.includes('lazy(() => import("./MapaProspeccao"))'), 'Leaflet só nesta tela');
+assert.ok(mapaPainel.includes('tile.openstreetmap.org') && mapaPainel.includes('ATRIBUICAO_OSM'), 'tiles OSM com atribuição');
+assert.match(ATRIBUICAO_OSM, /OpenStreetMap/);
+assert.match(TEXTO_MAPA_PAINEL, /área que você está olhando/);
+assert.match(TEXTO_MAPA_PAINEL, /lista de clientes não sai do OLLI/);
+assert.ok(mapaPainel.includes('textContent') && !/bindPopup\([^)]*nome/.test(mapaPainel), 'nome de cliente nunca vira HTML no popup');
+assert.ok(mapaPainel.includes('prefers-reduced-motion'), 'respeita menos movimento');
+for (const arquivo of [mapaPainel]) {
+  assert.equal(/maps\.googleapis|places\.googleapis|AIza|api[_-]?key/i.test(arquivo), false, 'sem API paga nem chave');
+}
+assert.ok(pagina.includes('Completar endereço') && pagina.includes('/clientes?editar='), 'quem não tem ponto ganha atalho para o cadastro');
+assert.ok(readFileSync('webapp/src/pages/olli/clientes/index.tsx', 'utf8').includes('params.get("editar")'), 'Clientes abre o cadastro por ?editar=');
+
+// Pontos iguais viram um grupo (o caso real: 5 clientes com ponto "cidade = São Paulo" numa bolinha só).
+const cli = (id: string, lat: number | null, lon: number | null, aproximado = false, precisao: 'cidade' | 'cep' | 'endereco' | null = null) => ({
+  cliente: { id, nome: id, endereco: '', cidade: '', lat, lon, precisao, aproximado, nichos: [] }, distanciaKm: null, ordem: 0,
+});
+const itensSP = ['a', 'b', 'c', 'd', 'e'].map((id, i) => ({ ...cli(id, -23.55052, -46.633308, true, 'cidade'), ordem: i + 1 }));
+const grupos = agruparPorPonto([...itensSP, { ...cli('f', -23.6, -46.7, false, 'endereco'), ordem: 6 }, { ...cli('g', null, null), ordem: 7 }] as never);
+assert.equal(grupos.length, 2, '5 iguais + 1 diferente = 2 grupos; sem ponto fica de fora');
+assert.equal(grupos[0].itens.length, 5);
+assert.equal(grupos[0].aproximado, true);
+assert.equal(grupos[0].raioM, 8000, 'cidade = círculo de 8 km');
+assert.equal(grupos[1].aproximado, false);
+assert.equal(grupos[1].raioM, 0);
 assert.equal(TEXTO_SO_CADASTRO.includes('API paga'), true);
-assert.equal(TEXTO_ESQUEMA_PAINEL.includes('Sem mapa de fundo'), true);
 assert.ok(nav.includes('path: "/prospeccao"'));
 assert.ok(rotas.includes('path: "prospeccao"'));
 assert.ok(stack.includes('name="Prospeccao"'));
