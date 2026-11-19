@@ -275,8 +275,10 @@ for (let i = 1; i <= VOZ_CONVERSA_MAX.turnos; i++) {
   });
   checar('teto força pronto: true (ignora o "pergunta" do Gemini)', body.pronto, true);
   checar('sem campo pergunta na resposta forçada', body.pergunta, undefined);
-  checar('mesmo forçado, cobra 1x (é o fechamento da conversa)', ledgerChamadas, 1);
-  checar('saldo debitado', saldo, 9);
+  // Modelo teimoso = nenhum item: o rascunho volta vazio para revisão e NÃO cobra (LIVRE #433 P2).
+  // Fechamento forçado COM item cobra: caso 19.
+  checar('forçado sem item não cobra', ledgerChamadas, 0);
+  checar('saldo intacto', saldo, 10);
 }
 
 console.log('\n6) abaixo do teto (5 turnos): NÃO força — segue perguntando');
@@ -382,7 +384,7 @@ respostaGeminiFake = JSON.stringify({ pergunta: 'ainda falta um dado' }); // Gem
   });
   checar('fechar:true força pronto: true mesmo no turno 1', body.pronto, true);
   checar('sem pergunta na resposta forçada', body.pergunta, undefined);
-  checar('cobrou (é o fechamento da conversa)', ledgerChamadas, 1);
+  checar('sem item, não cobrou (LIVRE #433 P2)', ledgerChamadas, 0);
 }
 
 console.log('\n11) cota diária é reservada ANTES do upstream e falha fechado');
@@ -452,6 +454,64 @@ respostaGeminiFake = JSON.stringify({ Pronto: 'true', ClienteNome: 'João', Iten
   checar('fechou', body.pronto, true);
   checar('cliente lido', body.clienteNome, 'João');
   checar('valor falado mantido', body.itens?.[0]?.valorUnitario, 350);
+}
+
+
+console.log('\n16) itens com chave em maiúscula (Descricao/ValorUnitario) são lidos (LIVRE #433 P2)');
+resetBanco(10);
+respostaGeminiFake = JSON.stringify({ Pronto: true, ClienteNome: 'Ana', Itens: [{ Descricao: 'limpeza', Quantidade: 1, ValorUnitario: 150, Tipo: 'servico' }] });
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'Limpeza pra Ana, 150' }],
+    conversationId: 'conv-itens-maiusculos',
+    confirmarCredito: true,
+  });
+  checar('fechou', body.pronto, true);
+  checar('item lido', body.itens, [{ descricao: 'limpeza', quantidade: 1, valorUnitario: 150, tipo: 'servico' }]);
+  checar('cobrou 1 vez', ledgerChamadas, 1);
+}
+
+console.log('\n17) pronto com itens inaproveitáveis: tenta de novo (antes passava como válido)');
+resetBanco(10);
+filaGemini = [JSON.stringify({ pronto: true, clienteNome: 'Ana', itens: [{ foo: 1 }] }), JSON.stringify({ pergunta: 'O que vai ser feito?' })];
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'Serviço pra Ana' }],
+    conversationId: 'conv-itens-ruins',
+  });
+  checar('usou a 2ª', body, { ok: true, pronto: false, pergunta: 'O que vai ser feito?' });
+  checar('2 chamadas', chamadasGemini, 2);
+}
+
+console.log('\n18) fechamento forçado sem item aproveitável: devolve vazio para revisão e NÃO cobra');
+resetBanco(10);
+respostaGeminiFake = JSON.stringify({ pronto: true, clienteNome: 'Ana', itens: [{ foo: 1 }] });
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'fecha com o que tem' }],
+    conversationId: 'conv-forcado-vazio',
+    confirmarCredito: true,
+    fechar: true,
+  });
+  checar('pronto', body.pronto, true);
+  checar('sem itens', body.itens, []);
+  checar('não cobrou', ledgerChamadas, 0);
+}
+
+
+console.log('\n19) fechar:true COM item aproveitável cobra 1 vez (é o fechamento da conversa)');
+resetBanco(10);
+respostaGeminiFake = JSON.stringify({ pronto: true, clienteNome: 'Ana', itens: [{ descricao: 'conserto de torneira', quantidade: 1, valorUnitario: null, tipo: 'servico' }] });
+{
+  const { body } = await chamar({
+    conversa: [{ papel: 'user', texto: 'conserto de torneira pra Ana' }],
+    conversationId: 'conv-fechar-com-item',
+    confirmarCredito: true,
+    fechar: true,
+  });
+  checar('pronto', body.pronto, true);
+  checar('cobrou 1x', ledgerChamadas, 1);
+  checar('saldo debitado', saldo, 9);
 }
 
 console.log(`\n${falhas === 0 ? 'PASSOU' : 'FALHOU'}: ${passes} ok, ${falhas} falha(s)\n`);

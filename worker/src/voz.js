@@ -282,6 +282,7 @@ function contextoCatalogo(catalogo) {
 // (QA 19/11, S20, versão 1.2.2). Lê as chaves conhecidas sem diferenciar maiúscula/acento e
 // aceita "pronto" como texto "true". Chave desconhecida é descartada.
 const CHAVES_CONVERSA = ['pergunta', 'pronto', 'titulo', 'clienteNome', 'itens', 'observacao'];
+const CHAVES_ITEM = ['descricao', 'quantidade', 'valorUnitario', 'tipo'];
 const chaveSimples = (k) => String(k).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 export function normalizarRespostaConversa(valor) {
   if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return null;
@@ -292,13 +293,23 @@ export function normalizarRespostaConversa(valor) {
     if (v !== undefined) saida[chave] = v;
   }
   if (typeof saida.pronto === 'string') saida.pronto = saida.pronto.trim().toLowerCase() === 'true';
+  // Mesmo defeito dentro de cada item ("Descricao", "ValorUnitario"): sem isto normalizarItens descarta tudo (LIVRE #433 P2).
+  if (Array.isArray(saida.itens)) {
+    saida.itens = saida.itens.map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+      const k = new Map(Object.entries(item).map(([c, v]) => [chaveSimples(c), v]));
+      const out = {};
+      for (const c of CHAVES_ITEM) if (k.has(chaveSimples(c))) out[c] = k.get(chaveSimples(c));
+      return out;
+    });
+  }
   return saida;
 }
 
 /** `true` quando a resposta do modelo serve para o turno (pergunta válida ou pronto com itens). */
 function respostaConversaValida(r) {
   if (!r) return false;
-  if (r.pronto === true) return Array.isArray(r.itens);
+  if (r.pronto === true) return normalizarItens(r.itens).length > 0;
   return typeof r.pergunta === 'string' && r.pergunta.trim().length > 0;
 }
 
@@ -356,8 +367,10 @@ export async function handleVozConversa(bodyText, env, user) {
   })));
   let parsed;
   try {
+    const inicioTurno = Date.now();
     parsed = await gerarTurno();
-    if (!forcarPronto && !respostaConversaValida(parsed)) {
+    // O app desiste em 45 s (TIMEOUT_CONVERSA_MS); 2ª tentativa só se a 1ª levou menos de 15 s.
+    if (!forcarPronto && !respostaConversaValida(parsed) && Date.now() - inicioTurno < 15_000) {
       console.warn('[olli-voz-conversa] formato inválido na 1ª tentativa; tentando de novo (conteúdo omitido)');
       parsed = await gerarTurno();
     }
@@ -426,6 +439,10 @@ export async function handleVozConversa(bodyText, env, user) {
   // a cada turno, então hash faria cada fechamento parecer trabalho novo.
   // Pergunta nunca chega aqui (retorna antes, acima) — só o fechamento cobra.
   const convId = typeof conversationId === 'string' ? conversationId.trim().slice(0, 200) : '';
+  // Fechamento forçado sem nenhum item aproveitável: devolve o rascunho vazio para revisão e NÃO cobra (LIVRE #433 P2).
+  if (!itens.length) {
+    return json({ ok: true, pronto: true, titulo: orcamento.titulo, clienteNome: orcamento.clienteNome, itens, observacao: orcamento.observacao });
+  }
   const cobranca = await cobrarCreditoVoz(env, user, {
     confirmarCredito,
     creditoRef: convId || undefined,
