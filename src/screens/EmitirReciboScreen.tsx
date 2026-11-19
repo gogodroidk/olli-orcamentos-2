@@ -16,6 +16,7 @@ import { OlliInput, OlliMoneyInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { CartaoRecursoPlano } from '../components/RecursoPlano';
 import { useCadeado } from '../hooks/useCadeado';
+import { pdfReciboTrancado } from '../services/cadeadoRecurso';
 import { OlliCard } from '../components/OlliCard';
 import { EmptyState } from '../components/EmptyState';
 import { OverlayProgresso } from '../components/OverlayProgresso';
@@ -321,6 +322,8 @@ function EmitirReciboConteudo() {
   // Reconstrói o HTML de um recibo já emitido (aba "Emitidos") e compartilha
   // de novo — cenário comum: cliente perdeu o PDF e pede a segunda via.
   async function handleReenviar(r: Recibo) {
+    // Cadeado vale só para GERAR o 1º PDF/link (pdfEmitido === false); reenviar o que já existe segue livre.
+    if (pdfReciboTrancado(r, reciboTrancado)) { cadeadoRecibo.abrirGate(); return; }
     if (!(await exigirCadastroParaEnviar('recibo'))) return;
     if (!empresa) {
       Alert.alert(
@@ -623,7 +626,7 @@ function EmitirReciboConteudo() {
                 {reenviandoId === item.id ? (
                   <ActivityIndicator size="small" color={cores.primary} />
                 ) : (
-                  <MaterialCommunityIcons name={item.pdfEmitido === false ? 'file-pdf-box' : 'share-variant'} size={16} color={cores.primary} />
+                  <MaterialCommunityIcons name={pdfReciboTrancado(item, reciboTrancado) ? 'lock-outline' : item.pdfEmitido === false ? 'file-pdf-box' : 'share-variant'} size={16} color={cores.primary} />
                 )}
                 <Text style={styles.reenviarBtnText}>
                   {item.pdfEmitido === false ? 'Gerar e compartilhar PDF' : 'Reenviar / compartilhar'}

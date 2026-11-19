@@ -194,8 +194,8 @@ for (const t of telasPdfRecibo) {
   const c = semComentarios(ler(t.arq));
   ok(`PDF de recibo pendente: portão 'recibos' antes de gerar (${t.arq.split('/').pop()})`, /useCadeado\('recibos'\)/.test(c) && t.onde.test(c));
 }
-// Varredura: quem monta o PDF do recibo e exporta precisa do portão (Emitir: aba 'novo' trancada; Modelos: só prévia de exemplo).
-const ISENTOS_PDF_RECIBO = new Set<string>(['src/screens/EmitirReciboScreen.tsx', 'src/screens/ModelosDocumentoScreen.tsx']);
+// Varredura: quem monta o PDF do recibo e exporta precisa do portão (Modelos: só prévia de exemplo).
+const ISENTOS_PDF_RECIBO = new Set<string>(['src/screens/ModelosDocumentoScreen.tsx']); // Modelos: só prévia de exemplo; Emitir NÃO é isento (handleReenviar gera o 1º PDF)
 const semPortaoPdf: string[] = [];
 const varrerPdf = (dir: string) => {
   for (const nome of readdirSync(new URL(`../${dir}`, import.meta.url))) {
@@ -208,6 +208,12 @@ const varrerPdf = (dir: string) => {
 };
 for (const d of ['src/screens', 'src/screens/desktop', 'src/components', 'src/components/encerramento']) varrerPdf(d);
 ok(`varredura: toda tela que gera o PDF do recibo usa o portão${semPortaoPdf.length ? ' — SEM: ' + semPortaoPdf.join(', ') : ''}`, semPortaoPdf.length === 0);
+{
+  const e = semComentarios(ler('src/screens/EmitirReciboScreen.tsx'));
+  ok('Emitir recibo, aba Emitidos: handleReenviar passa pelo portão antes de gerar o 1º PDF (reenviar já emitido segue livre)',
+    /async function handleReenviar\(r: Recibo\) \{\s*if \(pdfReciboTrancado\(r, reciboTrancado\)\) \{ cadeadoRecibo\.abrirGate\(\); return; \}/.test(e)
+    && /pdfReciboTrancado\(item, reciboTrancado\) \? 'lock-outline'/.test(e));
+}
 ok('Emitir recibo: a aba "novo" fica trancada mesmo com pagamento já registrado (PDF pendente)', /const reciboTrancado = cadeadoRecibo\.trancado;/.test(semComentarios(ler('src/screens/EmitirReciboScreen.tsx'))));
 
 // LIVRE P2 #2 (#387): a trava do lote vale pelo tipo FINAL, conferida na hora de importar.
