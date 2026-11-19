@@ -169,6 +169,9 @@ globalThis.fetch = async (entrada, init = {}) => {
     }
     if (metodo === 'POST') {
       const linha = JSON.parse(corpo);
+      // Fiel ao Postgres: no INSERT … ON CONFLICT a linha PROPOSTA passa pelo NOT NULL antes do conflito —
+      // upsert sem `plano`/`status` falha com 23502 mesmo quando a linha já existe (achado no Modo Teste, 18/11).
+      if (!linha.plano || !linha.status) return resp(400, { code: '23502', message: 'null value in column violates not-null constraint' });
       db.upserts++;
       db.assinaturas.set(linha.user_id, { ...db.assinaturas.get(linha.user_id), ...linha });
       return resp(201);
