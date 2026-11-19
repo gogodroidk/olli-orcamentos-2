@@ -12,9 +12,9 @@
  * falso. Desde 01/10/2026 (Grátis ilimitado) só a renovação vira e-mail.
  */
 
-import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
+import { LEMBRETE_ASSINATURA, LEMBRETE_ATIVACAO, LEMBRETE_OFERTA_PRO, LEMBRETE_REENGAJAMENTO } from './emailLembretesPolicy.js';
 import { COBRANCA_ID_RE } from './pixVencePolicy.js';
-import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
+import { PRECO_PRO, DESCONTO_ANUAL_ROTULO, reais } from '../../src/services/precosPlanos.ts';
 import { FRASE_GRATIS, PREVIEW_EMAIL_GRATIS, frasePro } from '../../src/services/planosBase.ts';
 
 export const EMAIL_LEMBRETES_RENDERER_VERSION = '2026-10-05.v3';
@@ -329,8 +329,52 @@ function conteudoReengajamento(dados, appUrl) {
     };
   }
 
+  if (dados.tipo === 'trial_encerrado') {
+    chavesExatas(dados, ['tipo', 'terminaEm'], 'dados_invalidos');
+    const termina = new Date(dados.terminaEm);
+    exigir(!Number.isNaN(termina.getTime()) && termina.toISOString() === dados.terminaEm, 'dados_invalidos');
+    const anual = reais(PRECO_PRO.anualCentavos);
+    const mensal = reais(PRECO_PRO.mensalCentavos);
+    return {
+      subject: 'Seus orçamentos continuam aqui',
+      preview: 'O teste do Pro terminou e seus dados continuam salvos.',
+      titulo: 'Seus orçamentos continuam aqui',
+      paragrafos: [
+        'Seu teste do Pro terminou e a conta voltou ao plano Grátis. Seus dados continuam salvos: orçamentos e clientes seguem aí.',
+        'Para continuar acompanhando propostas e retomando conversas no tempo certo, é só escolher o plano Pro.',
+        `Pro anual: ${anual} por ano (${DESCONTO_ANUAL_ROTULO} menos que o mensal, que é ${mensal}). Dá para pagar com Pix; o Pro volta assim que o pagamento é confirmado.`,
+      ],
+      passos: null,
+      cta: { rotulo: 'Ver planos', href: urlCom(appUrl, '/planos') },
+      depois: ['Se preferir não receber mais, use o link de descadastro abaixo.'],
+      motivo: 'Você recebe este aviso porque testou o plano Pro da OLLI Orçamentos.',
+    };
+  }
+
   exigir(false, 'tipo_invalido');
   return null;
+}
+
+/** Limites do texto da oferta (assunto + parágrafos já escritos por conta). Sem HTML, sem rastreio, sem link novo. */
+export const OFERTA_PRO_LIMITES = Object.freeze({ assunto: 150, paragrafos: 8, paragrafo: 700 });
+
+function conteudoOfertaPro(dados, appUrl) {
+  chavesExatas(dados, ['assunto', 'paragrafos'], 'dados_invalidos');
+  const L = OFERTA_PRO_LIMITES;
+  exigir(typeof dados.assunto === 'string' && dados.assunto.trim().length >= 5 && dados.assunto.length <= L.assunto && !/[\r\n<>]/.test(dados.assunto), 'dados_invalidos');
+  exigir(Array.isArray(dados.paragrafos) && dados.paragrafos.length >= 1 && dados.paragrafos.length <= L.paragrafos, 'dados_invalidos');
+  for (const p of dados.paragrafos) exigir(typeof p === 'string' && p.trim().length > 0 && p.length <= L.paragrafo && !/[<>]/.test(p), 'dados_invalidos');
+  return {
+    subject: dados.assunto.trim(),
+    preview: dados.paragrafos[0].trim().slice(0, 110),
+    titulo: dados.assunto.trim(),
+    paragrafos: dados.paragrafos.map((p) => p.trim()),
+    passos: null,
+    cta: { rotulo: 'Ver o plano Pro', href: urlCom(appUrl, '/planos') },
+    depois: [],
+    motivo: 'Você recebe este e-mail porque tem uma conta no OLLI.',
+    rotuloDescadastro: 'Parar de receber lembretes e ofertas',
+  };
 }
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
@@ -420,7 +464,7 @@ export function renderizarEmailLembrete(input = {}) {
   const eventId = idSeguro(input.eventId);
   exigir(eventId, 'event_id_invalido');
 
-  const catalogo = [LEMBRETE_ATIVACAO, LEMBRETE_ASSINATURA, LEMBRETE_REENGAJAMENTO]
+  const catalogo = [LEMBRETE_ATIVACAO, LEMBRETE_ASSINATURA, LEMBRETE_REENGAJAMENTO, LEMBRETE_OFERTA_PRO]
     .find((c) => c.template === input.template) ?? null;
   exigir(catalogo, 'template_invalido');
   exigir(input.templateVersion === catalogo.templateVersion, 'template_version_divergente');
@@ -435,7 +479,9 @@ export function renderizarEmailLembrete(input = {}) {
     ? conteudoAtivacao(input.dados, appUrl)
     : catalogo === LEMBRETE_ASSINATURA
       ? conteudoAssinatura(input.dados, appUrl)
-      : conteudoReengajamento(input.dados, appUrl);
+      : catalogo === LEMBRETE_OFERTA_PRO
+        ? conteudoOfertaPro(input.dados, appUrl)
+        : conteudoReengajamento(input.dados, appUrl);
   exigir(conteudo.subject.length <= 180 && !/[\r\n]/.test(conteudo.subject), 'subject_invalido');
 
   const html = montarHtml(conteudo, {

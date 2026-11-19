@@ -256,3 +256,100 @@ export async function consultarStatusPix(id: string): Promise<ResultadoStatusPix
 		clearTimeout(timer);
 	}
 }
+
+/* ═══════════════════════  PIX AUTOMÁTICO (renova sozinho)  ═══════════════════════
+ *
+ * Assinatura recorrente no Pix, só do Pro mensal (worker/src/abacatePixAutomatico.js). DESLIGADO por padrão
+ * no servidor: o botão só existe quando `/abacate/config` diz `pixAutomatico:true`. A autorização acontece numa
+ * página da AbacatePay (QR que vale 1 h, lido no app do banco); aqui só abrimos a página e perguntamos ao servidor
+ * até ele liberar o Pro. Nada lança; `null` = não consegui perguntar (nunca é lido como "não ativa").
+ *
+ *   POST /abacate/assinatura/pix      (JWT) → { ok, checkoutId, url } · 409 plano_ainda_ativo { ate } / assinatura_ja_ativa
+ *   GET  /abacate/assinatura/status   (JWT) ?checkout= → { ok, ativa }
+ *   GET  /abacate/assinatura/estado   (JWT) → { ok, ativa, pagoAte }
+ *   POST /abacate/assinatura/cancelar (JWT) → { ok, ate }
+ */
+
+async function chamarPA<T>(caminho: string, init: RequestInit = {}): Promise<{ status: number; corpo: T | null } | null> {
+	const token = await lerToken();
+	if (!token) return null;
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+	try {
+		const r = await fetch(`${PAGAMENTOS_URL}${caminho}`, {
+			...init,
+			headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) },
+			signal: controller.signal,
+		});
+		return { status: r.status, corpo: (await r.json().catch(() => null)) as T | null };
+	} catch {
+		return null;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/** O servidor confirmou que o Pix Automático está ligado? Só `true` explícito liga. */
+export async function pixAutomaticoDisponivel(): Promise<boolean> {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+	try {
+		const r = await fetch(`${PAGAMENTOS_URL}/abacate/config`, { signal: controller.signal });
+		if (!r.ok) return false;
+		const data = ((await r.json().catch(() => null)) ?? {}) as { ok?: boolean; pixAutomatico?: unknown };
+		return data.ok === true && data.pixAutomatico === true;
+	} catch {
+		return false;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+export type ResultadoCriarPixAutomatico =
+	| { ok: true; checkoutId: string; url: string }
+	| { ok: false; motivo: "plano_ainda_ativo" | "assinatura_ja_ativa" | "desligado" | "sessao" | "falha"; ate?: string };
+
+export async function criarPixAutomatico(): Promise<ResultadoCriarPixAutomatico> {
+	const r = await chamarPA<{ ok?: boolean; checkoutId?: unknown; url?: unknown; erro?: string; ate?: unknown }>("/abacate/assinatura/pix", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ plano: "pro_mensal" }),
+	});
+	if (!r) return { ok: false, motivo: "falha" };
+	const c = r.corpo ?? {};
+	if (r.status === 200 && c.ok === true && typeof c.checkoutId === "string" && typeof c.url === "string" && c.url.startsWith("https://")) {
+		return { ok: true, checkoutId: c.checkoutId, url: c.url };
+	}
+	if (c.erro === "plano_ainda_ativo" || c.erro === "assinatura_ja_ativa") {
+		return { ok: false, motivo: c.erro, ate: typeof c.ate === "string" ? c.ate : undefined };
+	}
+	if (r.status === 401) return { ok: false, motivo: "sessao" };
+	if (c.erro === "pix_automatico_desligado") return { ok: false, motivo: "desligado" };
+	return { ok: false, motivo: "falha" };
+}
+
+/** `ativa:true` = o servidor JÁ liberou o Pro. `null` = não consegui perguntar. */
+export async function consultarPixAutomatico(checkoutId: string): Promise<{ ativa: boolean } | null> {
+	const r = await chamarPA<{ ok?: boolean; ativa?: unknown }>(`/abacate/assinatura/status?checkout=${encodeURIComponent(checkoutId)}`);
+	if (!r || r.status !== 200 || r.corpo?.ok !== true) return null;
+	return { ativa: r.corpo.ativa === true };
+}
+
+export interface EstadoPixAutomatico {
+	ativa: boolean;
+	/** ISO: até quando o período já pago vale. */
+	pagoAte: string | null;
+}
+
+export async function estadoPixAutomatico(): Promise<EstadoPixAutomatico | null> {
+	const r = await chamarPA<{ ok?: boolean; ativa?: unknown; pagoAte?: unknown }>("/abacate/assinatura/estado");
+	if (!r || r.status !== 200 || r.corpo?.ok !== true) return null;
+	return { ativa: r.corpo.ativa === true, pagoAte: typeof r.corpo.pagoAte === "string" ? r.corpo.pagoAte : null };
+}
+
+/** Cancela a renovação automática (revoga a autorização no banco). `null` = não deu; `ate` = até quando o Pro segue. */
+export async function cancelarPixAutomatico(): Promise<{ ate: string | null } | null> {
+	const r = await chamarPA<{ ok?: boolean; ate?: unknown }>("/abacate/assinatura/cancelar", { method: "POST" });
+	if (!r || r.status !== 200 || r.corpo?.ok !== true) return null;
+	return { ate: typeof r.corpo.ate === "string" ? r.corpo.ate : null };
+}

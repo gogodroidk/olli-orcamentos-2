@@ -29,6 +29,8 @@
 import { rateOkSensivel, cabeNoTeto, textoCabeNoTeto, TETO } from './rateLimit.js';
 import { cancelarPreapprovalMp, lerPreapprovalGravado } from './mercadopago.js';
 import { getAssinatura } from './stripe.js';
+import { ABACATE_API, modoAbacate } from './abacate.js';
+import { cancelarPixAutomaticoDoUsuario } from './abacatePixAutomatico.js';
 import { cancelarPlayDoUsuario } from './play.js';
 import { parseJsonBody } from './util.js';
 
@@ -608,6 +610,11 @@ export async function handleContaExcluir(request, env) {
     const r = await cancelarPreapprovalMp(env, preapproval.id);
     if (r !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
   }
+
+  // ABACATEPAY (Pix Automático) — mesma regra: assinatura viva numa conta apagada continuaria debitando a conta
+  // bancária do cliente todo mês. Sem chave da AbacatePay no ambiente não há o que cancelar ('ok').
+  const pixAutomatico = await cancelarPixAutomaticoDoUsuario(env, user.id, { modoAbacate, api: ABACATE_API });
+  if (pixAutomatico !== 'ok') return json({ ok: false, erro: 'falha_cancelamento' }, 502);
 
   // GOOGLE PLAY — mesma regra (decisão C12): cancela a renovação pela API da Play
   // (`subscriptionsv2.cancel`) com a conta de serviço. Assinatura da Play viva numa

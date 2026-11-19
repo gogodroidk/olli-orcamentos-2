@@ -30,6 +30,9 @@
  *   POST /admin/api/user/nota?id=        → nota interna (linha `nota_interna` na trilha)
  *   GET  /admin/api/cnpj?cnpj=           → dados públicos da Receita (BrasilAPI → OpenCNPJ)
  *   POST /admin/api/export/registrar     → audita a exportação CSV antes do download
+ *   GET  /admin/api/emails/resumo?dias=7 → saúde dos e-mails automáticos (sem PII)
+ *   GET  /admin/api/emails/oferta-pro/candidatas → contas com uso e motivo da oferta do Pro (sem e-mail)
+ *   POST /admin/api/emails/oferta-pro/enviar → ensaio ou envio da oferta do Pro (auditado antes)
  *
  * A página (HTML/CSS/JS) mora em adminPagina.js.
  * Segurança: toda rota /admin/api exige JWT validado pelo Supabase. O e-mail
@@ -78,6 +81,7 @@ import {
   revogarSessoesUsuario,
 } from './adminFerramentas.js';
 import { adminHtml } from './adminPagina.js';
+import { enviarOfertaPro, rotaCandidatasOfertaPro, rotaResumoEmails } from './adminEmails.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -1167,6 +1171,16 @@ export async function handleAdmin(request, env, url) {
     }
     if (m === 'POST' && p === '/admin/api/export/registrar') {
       return exigir(user, 'admin', { aal2: true }) || registrarExport(env, user, body, { auditar });
+    }
+    // Aba "E-mails" (D-1859): leitura e envio da oferta do Pro; só admin com aal2, envio auditado antes.
+    if (m === 'GET' && p === '/admin/api/emails/resumo') {
+      return exigir(user, 'admin', { aal2: true }) || rotaResumoEmails(env, url);
+    }
+    if (m === 'GET' && p === '/admin/api/emails/oferta-pro/candidatas') {
+      return exigir(user, 'admin', { aal2: true }) || rotaCandidatasOfertaPro(env);
+    }
+    if (m === 'POST' && p === '/admin/api/emails/oferta-pro/enviar') {
+      return exigir(user, 'admin', { aal2: true }) || enviarOfertaPro(env, user, body, { auditar });
     }
     // Métricas, listas globais, feedback, administradores e auditoria são dados
     // de governança/PII. O gate explícito exige papel suficiente E AAL2 antes de
