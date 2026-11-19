@@ -17,7 +17,7 @@ import {
 // Preço só da FONTE (Stripe live). Nenhum literal de R$ nesta página.
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS } from "../data/recursos";
+import { FRASE_GRATIS, recursosQueSairamDoGratis } from "../data/recursos";
 import { AVISO_ILUSTRATIVA, FOTOS, ORDEM_HOME } from "../data/fotos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
@@ -115,7 +115,7 @@ const CALCULADORAS_POR_OFICIO = OFICIOS.filter((o) => o.calculadoras > 0)
 const faq = [
 	{
 		q: "Preciso pagar para testar?",
-		a: `Não. O plano Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, recibos, clientes e histórico também ficam sem limite. Depois do primeiro envio, você pode ativar 14 dias de Pro sem cartão e sem cobrança automática.`,
+		a: `Não. O plano Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, clientes e histórico também ficam sem limite; ${recursosQueSairamDoGratis()} são do Pro. Depois do primeiro envio, você pode ativar 14 dias de Pro sem cartão e sem cobrança automática.`,
 	},
 	{
 		q: "Funciona no celular e no computador?",
@@ -144,8 +144,8 @@ const faq = [
 		a: "Não. A OLLI não emite nota fiscal. No recibo, Preparar nota fiscal separa cliente, descrição, valor e município para você copiar no Emissor Nacional. Sem o número da NFS-e, a nota não foi emitida.",
 	},
 	{
-		q: "Existe app grátis de ordem de serviço?",
-		a: "Sim — o plano Grátis da OLLI faz ordem de serviço sem limite, com checklist, fotos e assinatura do cliente na tela. Não é teste de 7 dias: é grátis sem prazo, sem cartão e sem fidelidade. O PDF do Grátis sai com uma marca discreta da OLLI, que some no Pro.",
+		q: "A OLLI tem ordem de serviço?",
+		a: `A ordem de serviço da OLLI, com checklist, fotos e assinatura do cliente na tela, é do plano Pro (${reais(PRECO_PRO.mensalCentavos)} por mês). No Grátis, sem prazo e sem cartão: ${FRASE_GRATIS}.`,
 	},
 	{
 		q: "Serve pra eletricista, encanador ou pintor?",

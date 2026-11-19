@@ -10,13 +10,15 @@
  */
 import type { Empresa } from "@dominio";
 import { FileText, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
 import RecordListPage, { type AcaoDeLinha, type Linha } from "@/olli/components/RecordListPage";
 import { useMinhaEmpresa } from "@/olli/data";
 import { useExcluir } from "@/olli/mutacoes";
+import { supabase } from "@/lib/supabase";
 import { numeroWhatsapp } from "@/pages/olli/inicio/financeiro";
 import FormCliente, { linhaParaCliente } from "./FormCliente";
 
@@ -38,6 +40,24 @@ function textoAberturaWhatsapp(nomeCliente: string, empresa?: string): string {
 export default function ClientesPage() {
 	const navigate = useNavigate();
 	const [alvo, setAlvo] = useState<Alvo | null>(null);
+	// `?editar=<id>` abre o cadastro direto (ex.: "Completar endereço" da Prospecção, para o cliente ganhar ponto no mapa).
+	const [params, setParams] = useSearchParams();
+	const editarId = params.get("editar");
+	const paraEditar = useQuery({
+		queryKey: ["olli", "clientes", "editar", editarId],
+		enabled: !!editarId,
+		queryFn: async () => {
+			const { data, error } = await supabase.from("clientes").select("*").eq("id", editarId as string).maybeSingle();
+			if (error) throw error;
+			return (data ?? null) as Linha | null;
+		},
+	});
+	useEffect(() => {
+		if (!editarId || paraEditar.isLoading) return;
+		if (paraEditar.data) setAlvo({ modo: "editar", linha: paraEditar.data });
+		else if (paraEditar.isError || paraEditar.data === null) toast.error("Não achei esse cliente para editar. Ele pode ter sido excluído.");
+		setParams((p) => { p.delete("editar"); return p; }, { replace: true });
+	}, [editarId, paraEditar.isLoading, paraEditar.data, paraEditar.isError, setParams]);
 	const [aExcluir, setAExcluir] = useState<Linha | null>(null);
 	const excluir = useExcluir("clientes");
 	const { data: empresaLinha } = useMinhaEmpresa();
