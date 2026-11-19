@@ -22,7 +22,9 @@ Comando único: `bash scripts/publicar.sh <painel|worker|landing>`.
 - Árvore suja, commit fora do GitHub ou sem CI completo verde: barra.
 - Commit sem a `origin/main` de agora: barra, porque voltaria no tempo.
 - **Painel:** lê na Cloudflare de que commit o painel no ar saiu. Se este commit não contém o do ar, barra. Em 19/11 o painel saía da branch `claude/painel-publicar-1118`, à frente da main; publicar da main teria apagado 10 correções.
-- Worker e landing: o commit tem de conter o último publicado por esta máquina (`~/.local/state/olli-publicar/ultimo-*`).
+- Worker e landing: o comando lê na Cloudflare a mensagem do deploy no ar (`publicar.sh commit <hash> | ...`) e barra se este commit não o contém. Se o que está no ar foi publicado à mão, sem essa marca, ele barra; aí confira à mão que este commit contém o que está no ar e use `--forcar-primeira` (só na 1ª vez; daí em diante a marca existe).
+- Arquivo não rastreado (novo, não commitado e fora do `.gitignore`) barra: ele iria ao ar sem estar no commit.
+- O carimbo do CI só sai de rodada completa, sem arquivo não rastreado, e se a árvore no fim for a mesma do começo. Job em AVISO (sqlfluff) não impede o carimbo, porque não reprova; leia o aviso antes de publicar.
 - Antes de publicar, anota a versão no ar e imprime o comando de volta.
 - Smoke depois de publicar:
   - worker: link de pagamento e site;
