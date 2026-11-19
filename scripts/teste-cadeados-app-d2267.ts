@@ -13,7 +13,7 @@
  *  5. Texto e preço só da fonte única (nada digitado à mão nas telas novas); alvos de toque >= 44 px.
  */
 import { readFileSync } from 'node:fs';
-import { RECURSOS_CADEADO_D2267, podeOferecerPlanoPara, recursoTrancado } from '../src/services/cadeadoRecurso.ts';
+import { RECURSOS_CADEADO_D2267, podeOferecerPlanoPara, recursoTrancado, recursoVendavel } from '../src/services/cadeadoRecurso.ts';
 import { regrasDaLoja } from '../src/config/lojaRegras.ts';
 import { ROTULO_RECURSO, beneficioRecursoLoja } from '../src/services/planosBase.ts';
 import { TRANCA_GRATIS_D2267, disponibilidadeRecurso, estadoAcessoRecurso, temAcessoRecurso } from '../src/services/entitlements.ts';
@@ -30,7 +30,8 @@ const semComentarios = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace
 ok('liberado e em_breve não tranca', !recursoTrancado('liberado') && !recursoTrancado('em_breve'));
 ok('bloqueado tranca', recursoTrancado('bloqueado'));
 ok('carregando e indeterminado também trancam (nunca liberam de graça)', recursoTrancado('carregando') && recursoTrancado('indeterminado'));
-ok('os 5 recursos do D-2267', RECURSOS_CADEADO_D2267.join(',') === 'recibos,agenda,ordem_servico,importar_lote,nota_fiscal');
+ok('os 4 recursos com cadeado do D-2267 (nota fiscal saiu: Preparar nota é aberta a todos — CPO A7)', RECURSOS_CADEADO_D2267.join(',') === 'recibos,agenda,ordem_servico,importar_lote');
+ok('recurso "em breve" não vende; o que já entrega vende', !recursoVendavel('nota_fiscal') && !recursoVendavel('mapa_equipe') && !recursoVendavel('dashboard_empresa') && recursoVendavel('recibos') && recursoVendavel('importar_lote'));
 const antes = Date.parse(TRANCA_GRATIS_D2267) - 1000;
 const depois = Date.parse(TRANCA_GRATIS_D2267) + 1000;
 for (const r of ['recibos', 'agenda', 'ordem_servico', 'importar_lote'] as const) {
@@ -44,6 +45,7 @@ ok('nota fiscal: Grátis nunca (nem na carência); Pro/Empresa "em breve"',
 ok('Grátis confirmado sem carência vira "bloqueado"; plano não confirmado nunca libera',
   estadoAcessoRecurso({ plano: 'gratis', carregando: false, confirmado: true } as never, 'nota_fiscal') === 'bloqueado'
   && estadoAcessoRecurso({ plano: 'gratis', carregando: false, confirmado: false } as never, 'nota_fiscal') === 'indeterminado');
+ok('texto "Em breve" sem data inventada', !/\d{1,2}\/\d{1,2}|\b20\d\d\b/.test(semComentarios(ler('src/components/RecursoPlano.tsx')).match(/EM BREVE NO[\s\S]{0,200}/)?.[0] ?? ''));
 
 // 2. Portões nas telas + rota
 const recibo = semComentarios(ler('src/screens/EmitirReciboScreen.tsx'));
@@ -72,10 +74,15 @@ ok('agenda: visita existente abre em somente leitura (Fechar, sem excluir, campo
 ok('OS: "Nova OS" passa pelo portão e o detalhe vira somente leitura com o cartão do plano',
   /useCadeado\('ordem_servico'\)/.test(os) && (os.match(/cadeadoOS\.trancado\) \{ cadeadoOS\.abrirGate\(\); return; \}/g) ?? []).length === 2
   && /osTrancada \? <CartaoRecursoPlano recurso="ordem_servico"/.test(os) && /pointerEvents=\{osTrancada \? 'none' : 'auto'\}/.test(os));
-ok('orçamento: "Criar OS" passa pelo portão; botões de OS, recibo e nota mostram o cadeado',
+ok('orçamento: "Criar OS" passa pelo portão; botões de OS e recibo mostram o cadeado (nota fica aberta)',
   /cadeadoOS\.trancado\) \{ cadeadoOS\.abrirGate\(\); return; \}/.test(visualizar)
-  && (visualizar.match(/lock-outline/g) ?? []).length >= 5);
-ok('nota fiscal: a tela inteira passa por TelaRecursoPlano (cadeado no Grátis; Pro vê como antes)', /<TelaRecursoPlano recurso="nota_fiscal"/.test(nota));
+  && (visualizar.match(/lock-outline/g) ?? []).length >= 4);
+ok('Preparar nota fica ABERTA a todos: tela sem TelaRecursoPlano/useCadeado e sem gate de nota_fiscal', !/TelaRecursoPlano|useCadeado|nota_fiscal|CartaoRecursoPlano/.test(nota) && /PrepararNotaConteudo/.test(nota));
+ok('atalhos de Preparar nota (recibo e orçamento) sem gate e sem cadeado', !/cadeadoNota|useCadeado\('nota_fiscal'\)/.test(recibo) && !/cadeadoNota|useCadeado\('nota_fiscal'\)/.test(visualizar));
+const rpl = semComentarios(ler('src/components/RecursoPlano.tsx'));
+ok('cartão e chip "em breve": só texto "Em breve no <plano>", sem botão (recursoVendavel antes do botão)',
+  (rpl.match(/if \(!recursoVendavel\(recurso\)\)/g) ?? []).length === 2 && /Em breve no \{nome\}\./.test(rpl) && /Em breve no \{NOME_PLANO\[planoMinimo\]\}/.test(rpl)
+  && rpl.indexOf('!recursoVendavel(recurso)', rpl.indexOf('export function CartaoRecursoPlano')) < rpl.indexOf('Ver o plano {nome}'));
 ok('Home: atalhos Recibo e Agendar ficam, com cadeado', /trancado: cadeadoRecibo\.trancado/.test(home) && /trancado: cadeadoAgenda\.trancado/.test(home));
 
 // 3. O que já existe segue visível: a lista de emitidos e a lista de OS não passam pelo cadeado

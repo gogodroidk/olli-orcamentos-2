@@ -10,7 +10,6 @@ import { OlliCard } from '../components/OlliCard';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
 import { OlliPressable } from '../components/OlliPressable';
-import { TelaRecursoPlano } from '../components/RecursoPlano';
 import { getCliente, getEmpresa, getOrcamento, getRecibo } from '../database/database';
 import { usePermissao } from '../hooks/usePermissao';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -62,15 +61,11 @@ type Origem = { tipo: 'carregando' } | { tipo: 'erro'; mensagem: string } | { ti
  * desligado | valor). "Não consegui ver" nunca vira "ainda não guardada".
  */
 /**
- * D-2267: nota fiscal é recurso do Pro e hoje "em breve" (`nota_fiscal`): sem o plano, a tela vira o cadeado
- * "Disponível no Pro"; com o plano, abre como sempre (o Pro vê o estado "em breve" da tabela única).
+ * Aberta a todos os planos (CPO, A7): só PREPARA os dados para o emissor do governo (AVISO_NAO_EMITE), igual ao painel.
+ * Sem gate de `nota_fiscal`; esse recurso segue "em breve" só para a emissão automática.
  */
 export default function PrepararNotaScreen() {
-  return (
-    <TelaRecursoPlano recurso="nota_fiscal" titulo="Nota fiscal">
-      <PrepararNotaConteudo />
-    </TelaRecursoPlano>
-  );
+  return <PrepararNotaConteudo />;
 }
 
 function PrepararNotaConteudo() {

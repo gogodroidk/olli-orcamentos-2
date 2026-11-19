@@ -11,7 +11,7 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '../services/entitlements';
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
 import { vendaPlayConfirmada } from '../services/playBilling';
-import { podeOferecerPlanoPara } from '../services/cadeadoRecurso';
+import { podeOferecerPlanoPara, recursoVendavel } from '../services/cadeadoRecurso';
 import { track, Eventos } from '../services/analytics';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 
@@ -121,6 +121,15 @@ export function RecursoPlanoChip({ recurso, children }: PropsChip) {
     );
   }
   // bloqueado
+  if (!recursoVendavel(recurso)) {
+    // "em breve" não vende: só informa, sem toque que leve ao plano
+    return (
+      <View style={styles.chip} accessibilityRole="text">
+        <MaterialCommunityIcons name="clock-outline" size={14} color={cores.onSurfaceVariant} />
+        <Text style={styles.chipTxt} numberOfLines={1}>{rotulo.titulo} · Em breve no {NOME_PLANO[planoMinimo]}</Text>
+      </View>
+    );
+  }
   const texto = `${rotulo.titulo} · Disponível no ${NOME_PLANO[planoMinimo]}`;
   if (!podeOferecerPlano()) {
     return (
@@ -200,6 +209,19 @@ export function CartaoRecursoPlano({ recurso, beneficio, titulo }: PropsCartao) 
         </View>
         <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
         <Text style={styles.texto}>Já faz parte do seu plano e chega numa próxima atualização.</Text>
+      </View>
+    );
+  }
+  if (!recursoVendavel(recurso)) {
+    // "em breve" não vende (CPO, A7): só o texto "Em breve no Pro", sem botão, sem preço e sem data inventada
+    return (
+      <View style={styles.cartao}>
+        <View style={styles.selo}>
+          <MaterialCommunityIcons name="clock-outline" size={14} color={cores.onSurfaceVariant} />
+          <Text style={styles.seloTxt}>EM BREVE NO {nome.toUpperCase()}</Text>
+        </View>
+        <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
+        <Text style={styles.texto}>Em breve no {nome}.</Text>
       </View>
     );
   }
