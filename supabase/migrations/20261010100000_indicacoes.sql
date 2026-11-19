@@ -190,6 +190,19 @@ grant execute on function public.indicacao_vincular(uuid, text, integer) to serv
 -- Mesmas guardas do crédito de troca / concederPlanoPeriodo: nunca rebaixa nível (Empresa
 -- manual continua Empresa), nunca encurta vigência (sem data final continua sem data final),
 -- e soma os meses a partir do fim de uma concessão ainda vigente.
+-- ─── cupom de influenciador × indicação: NÃO acumulam (vale o que a conta usou primeiro) ──
+-- Stub: a migration 20261119090000_cupom_influenciador.sql substitui por a versão real (lê cupom_usos).
+-- Fica aqui para a ordem de aplicação não importar (plpgsql resolve a função na execução).
+create or replace function public.cupom_usou(p_user uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path to ''
+as $$ select false $$;
+revoke all on function public.cupom_usou(uuid) from public, anon, authenticated;
+grant execute on function public.cupom_usou(uuid) to service_role;
+
 create or replace function public.indicacao_conceder_pro(p_user uuid, p_meses integer, p_razao text)
 returns boolean
 language plpgsql
@@ -207,6 +220,10 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_user::text, 0));
   select * into a from public.assinaturas x where x.user_id = p_user for update;
   v_tem := found;
+  -- Quem já usou cupom de influenciador (pago) não acumula o mês da indicação: vale o que usou primeiro.
+  if public.cupom_usou(p_user) then
+    return false;
+  end if;
   -- Quem JÁ PAGA o Pro (assinatura ativa no gateway, período em dia) não recebe override como prêmio:
   -- não soma ao Stripe/MP, então "ganha 1 mês" seria falso. Não concede e não conta.
   if v_tem and a.status = 'active' and a.current_period_end is not null and a.current_period_end > now() then
