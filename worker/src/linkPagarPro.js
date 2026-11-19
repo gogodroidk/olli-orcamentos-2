@@ -32,7 +32,6 @@ import { FONTES_CSS } from './fontesProprias.js';
 import { sha256Hex } from './googleAuth.js';
 import { PLANO_PIX } from './mercadopago.js';
 import { rateOkSensivel } from './rateLimit.js';
-import { getAssinatura } from './stripe.js';
 import { buscarEventos } from './webhookEvents.js';
 import { segredoLinkPro, verificarLinkPro } from './linkProToken.js';
 
@@ -94,11 +93,7 @@ async function atender(request, env, url) {
   const contaMascarada = mascararEmail(conta.email);
 
   const plano = PLANO_PIX[PLANO_KEY];
-  const assinatura = await getAssinatura(env, uid);
-  if (assinatura && assinatura.error) return paginaIndisponivel();
-  const sit = situacaoDoPlano(assinatura);
-  if (sit.bloqueia) return paginaJaAtivo(contaMascarada, sit);
-
+  // 1º a cobrança DESTE link (não cria nada): paga = "confirmado", mesmo que o Pro agora apareça como vigente.
   const ultima = await ultimaCobrancaDoLink(env, uid);
   if (!ultima.ok) return paginaIndisponivel();
 
@@ -109,6 +104,12 @@ async function atender(request, env, url) {
     if (r.estado === 'indisponivel') return paginaIndisponivel();
     if (r.estado === 'pendente' && cobrancaReutilizavel(ultima.linha)) pendente = ultima.linha;
   }
+
+  // Regra da CPO (19/11): nunca cobrar em dobro. Confere o Pro vigente por TODAS as origens antes de vender.
+  const sinais = await sinaisDoPlano(env, uid);
+  if (!sinais.ok) return paginaNaoConferi();
+  const sit = decidirVenda({ ...sinais });
+  if (sit.bloqueia) return paginaJaAtivo(contaMascarada, sit);
 
   if (metodo === 'POST') {
     if (!pendente) {
@@ -154,18 +155,68 @@ export function mascararEmail(email) {
   return `${local[0]}***@${dominio}`;
 }
 
+/** Pix avulso só renova nos últimos N dias do Pro já pago (antes disso não vende: seria cobrar 2 meses juntos). */
+export const RENOVAR_ULTIMOS_DIAS = 7;
 /**
- * O que a assinatura atual permite. Bloqueia a venda (não cria Pix) quando há plano PAGO
- * ativo que o Pix avulso não pode tocar: Empresa (o Pro seria rebaixar) ou assinatura no
- * cartão da Stripe (a concessão do Pix apagaria o vínculo com a Stripe). Pro ativo por Pix
- * ou teste: deixa pagar, e o novo mês começa quando o atual termina (inicioDoPeriodo).
+ * Teste do Pro (trial) NÃO bloqueia: quem está no teste é justamente quem o link quer converter. O Pix pago começa
+ * na hora (o teste não fica em `assinaturas`). Confirmar com a CPO; desligar aqui bloqueia a venda durante o teste.
  */
-export function situacaoDoPlano(a, agora = Date.now()) {
-  const fim = a && a.current_period_end ? Date.parse(a.current_period_end) : NaN;
-  const ativa = !!(a && a.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(a.status) && Number.isFinite(fim) && fim > agora);
-  if (!ativa) return { bloqueia: false, proAte: null };
-  if (a.plano === 'empresa' || a.stripe_subscription_id) return { bloqueia: true, plano: a.plano, ate: fim };
-  return { bloqueia: false, proAte: a.plano === 'pro' ? fim : null };
+export const VENDE_DURANTE_TESTE = true;
+
+const ATIVO = (st) => !!st && !['canceled', 'unpaid', 'incomplete_expired', 'expired'].includes(st);
+const ms = (v) => (v ? Date.parse(v) : NaN);
+
+/**
+ * Regra pura: dado o que o banco diz da conta, vende ou bloqueia. Origens que BLOQUEIAM (Pro/Empresa pago vigente):
+ * Empresa; cartão (Stripe); Play/Apple (RevenueCat); Pix Automático ativo; override do admin (Pro ou Empresa).
+ * Pix avulso vigente: bloqueia, salvo nos últimos RENOVAR_ULTIMOS_DIAS (aí vende e o mês novo começa no fim do atual).
+ * Devolve { bloqueia, plano, ate, proAte, origem }.
+ */
+export function decidirVenda({ assinatura: a, paAtiva, testeAte, agora = Date.now() }) {
+  const fim = ms(a?.current_period_end);
+  const vigente = !!a && ATIVO(a.status) && Number.isFinite(fim) && fim > agora && ['pro', 'empresa'].includes(a.plano);
+  const overrideAte = ms(a?.admin_override_ate);
+  const override = !!a && a.admin_override_ativo === true && ['pro', 'empresa'].includes(a.admin_plano_override)
+    && (!a.admin_override_ate || overrideAte >= agora);
+  const rcAte = ms(a?.revenuecat_vigencia_ate);
+  const loja = !!a && !!a.revenuecat_transacao_id && ((Number.isFinite(rcAte) && rcAte > agora) || vigente);
+
+  if (override) return { bloqueia: true, plano: a.admin_plano_override, ate: Number.isFinite(overrideAte) ? overrideAte : null, origem: 'override' };
+  if (vigente && a.plano === 'empresa') return { bloqueia: true, plano: 'empresa', ate: fim, origem: 'empresa' };
+  if (vigente && a.stripe_subscription_id) return { bloqueia: true, plano: a.plano, ate: fim, origem: 'cartao' };
+  if (loja) return { bloqueia: true, plano: 'pro', ate: Number.isFinite(rcAte) ? rcAte : fim, origem: 'loja' };
+  if (paAtiva) return { bloqueia: true, plano: 'pro', ate: vigente ? fim : null, origem: 'pix_automatico' };
+  if (vigente) {
+    if (fim - agora > RENOVAR_ULTIMOS_DIAS * 864e5) return { bloqueia: true, plano: 'pro', ate: fim, origem: 'pix_avulso' };
+    return { bloqueia: false, proAte: fim, origem: 'pix_avulso_renovacao' };
+  }
+  if (testeAte && testeAte > agora && !VENDE_DURANTE_TESTE) return { bloqueia: true, plano: 'pro', ate: testeAte, origem: 'teste' };
+  return { bloqueia: false, proAte: null, origem: testeAte && testeAte > agora ? 'teste' : 'gratis' };
+}
+
+/**
+ * Tudo que decide a venda, de uma vez. `{ ok:false }` se QUALQUER leitura falhar (3º estado: não gera Pix).
+ * assinaturas (todas as colunas de origem) + Pix Automático ativo (webhook_events) + teste ativo (trials_comerciais).
+ */
+async function sinaisDoPlano(env, uid) {
+  const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const u = encodeURIComponent(uid);
+  try {
+    const cols = 'user_id,plano,status,current_period_end,stripe_subscription_id,revenuecat_transacao_id,revenuecat_vigencia_ate,admin_override_ativo,admin_override_ate,admin_plano_override';
+    const [ra, rt, pa] = await Promise.all([
+      fetch(`${env.SUPABASE_URL}/rest/v1/assinaturas?user_id=eq.${u}&select=${cols}&limit=1`, { headers: h }),
+      fetch(`${env.SUPABASE_URL}/rest/v1/trials_comerciais?owner_user_id=eq.${u}&estado=eq.active&select=termina_em&order=termina_em.desc&limit=1`, { headers: h }),
+      buscarEventos(env, 'abacate_pa_sub', { user_id: uid, estado: 'ativa' }, 1),
+    ]);
+    if (!ra.ok || !rt.ok || !pa || !pa.ok) return { ok: false };
+    const la = await ra.json();
+    const lt = await rt.json();
+    if (!Array.isArray(la) || !Array.isArray(lt)) return { ok: false };
+    const testeAte = lt[0] ? ms(lt[0].termina_em) : null;
+    return { ok: true, assinatura: la[0] || null, paAtiva: pa.linhas.length > 0, testeAte: Number.isFinite(testeAte) ? testeAte : null };
+  } catch {
+    return { ok: false };
+  }
 }
 
 /** A cobrança do link mais recente da conta (últimas 25 h), ou null. `{ ok:false }` = não deu para saber. */
@@ -273,10 +324,19 @@ function paginaJaAtivo(contaMascarada, sit) {
   return pagina({
     titulo: `Seu plano ${nome} já está ativo`,
     tom: 'ok',
-    corpo: `<p class="texto">A conta <strong>${esc(contaMascarada)}</strong> tem o plano ${nome} ativo até ${esc(data(sit.ate))}. Não há nada a pagar por este link. Para mudar o plano, use a tela Planos no app.</p>`,
+    corpo: `<p class="texto">${sit.ate ? `Você já tem o ${nome} até ${esc(data(sit.ate))}` : `Você já tem o ${nome} ativo`} na conta <strong>${esc(contaMascarada)}</strong>. Não há nada a pagar por este link.</p>
+    <p class="texto">${COMO_GERENCIAR[sit.origem] || COMO_GERENCIAR.padrao}</p>`,
   });
 }
 
+const COMO_GERENCIAR = {
+  cartao: 'Para mudar ou cancelar, abra Planos no app ou no painel (app.olliorcamentos.online/planos).',
+  loja: 'Essa assinatura é pela loja do celular (Google Play ou App Store): mude ou cancele por lá.',
+  pix_automatico: 'É o Pix Automático: ele renova sozinho. Para cancelar, abra Planos no app ou o app do seu banco.',
+  pix_avulso: `Perto do vencimento (nos últimos ${RENOVAR_ULTIMOS_DIAS} dias) este link deixa renovar.`,
+  padrao: 'Para mudar o plano, abra Planos no app ou no painel (app.olliorcamentos.online/planos).',
+};
+const paginaNaoConferi = () => pagina({ status: 503, titulo: 'Não consegui conferir seu plano', texto: 'Para não cobrar em dobro, só gero o Pix depois de conferir se você já tem o Pro. Tente de novo em alguns minutos.', tom: 'erro' });
 const paginaInvalido = () => pagina({ status: 404, titulo: 'Link inválido', texto: 'Este link de pagamento não é válido. Peça um novo a quem enviou.', tom: 'erro' });
 const paginaVencido = () => pagina({ status: 410, titulo: 'Este link venceu', texto: 'Links de pagamento valem 14 dias. Peça um novo a quem enviou, ou assine pela tela Planos no app OLLI.', tom: 'erro' });
 const paginaLimite = () => pagina({ status: 429, titulo: 'Muitas tentativas', texto: 'Espere um minuto e abra o link de novo.', tom: 'erro' });
