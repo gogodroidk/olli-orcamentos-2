@@ -6,6 +6,7 @@ import { Spacing, BorderRadius, Fonts, useCores, useEstilos, sombrasDe, type Cor
 import { OlliButton } from './OlliButton';
 import { qrSvg } from '../utils/qrcode';
 import { mensagemWhatsApp, textoPromessa, textoResumo } from '../utils/indicacaoTexto';
+import { cupomAtivo } from '../services/cupom';
 import {
   obterMeuLinkIndicacao,
   registrarEventoIndicacao,
@@ -35,6 +36,8 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
   const [dados, setDados] = useState<MeuLinkIndicacao | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [qr, setQr] = useState(false);
+  // Cupom ligado no servidor: o cartão avisa que cupom e indicação não se somam (nada na tela com ele desligado).
+  const [cupomLigado, setCupomLigado] = useState(false);
   const jaVisto = useRef(false);
 
   useEffect(() => {
@@ -42,6 +45,7 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
     let vivo = true;
     setCarregando(true);
     setQr(false);
+    void cupomAtivo().then((a) => { if (vivo) setCupomLigado(a); });
     obterMeuLinkIndicacao().then((d) => {
       if (!vivo) return;
       setDados(d);
@@ -91,7 +95,7 @@ export function IndicacaoCard({ visivel, momento, aoFechar }: Props) {
             <ActivityIndicator color={cores.primary} style={styles.espera} />
           ) : dados ? (
             <View style={styles.corpo}>
-              <Text style={styles.texto}>{textoPromessa(dados.meses, dados.teto, dados.indicadorPaga)}</Text>
+              <Text style={styles.texto}>{textoPromessa(dados.meses, dados.teto, dados.indicadorPaga, cupomLigado)}</Text>
               <OlliButton label="Mandar no WhatsApp" icon={<MaterialCommunityIcons name="whatsapp" size={18} color="#fff" />} variant="gradient" fullWidth onPress={() => compartilhar('whatsapp')} />
               <View style={styles.linha}>
                 <OlliButton label="Copiar link" variant="outline" size="sm" onPress={() => compartilhar('copiar')} style={styles.meio} />

@@ -1,6 +1,7 @@
 /**
  * Cupom de influenciador — OLLI (worker Cloudflare, SEM SDK).
  *
+ *   GET  /cupom/config    → { ativo } (sem login; o app só mostra o campo quando true)
  *   POST /cupom/consultar → { codigo, plano? } diz, SEM gravar nada, se o código vale para esta conta,
  *                           o desconto em palavras e o aviso de que NÃO acumula com a indicação.
  *
@@ -132,6 +133,11 @@ export async function confirmarCupom(env, userId) {
 /** POST /cupom/consultar. `precosPix`: tabela de preço do Pix (injetada; evita import circular). */
 export async function handleCupom(request, env, url, precosPix = {}) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  // GET /cupom/config: o app só mostra o campo de cupom quando isto é true (desligado = nada na tela).
+  if (url.pathname === '/cupom/config') {
+    if (request.method !== 'GET') return json({ ok: false, erro: 'metodo_nao_permitido' }, 405);
+    return json({ ok: true, ativo: pctLigado(env) > 0 });
+  }
   if (url.pathname !== '/cupom/consultar') return json({ ok: false, erro: 'nao_encontrado' }, 404);
   if (request.method !== 'POST') return json({ ok: false, erro: 'metodo_nao_permitido' }, 405);
   const user = await getUser(request, env);

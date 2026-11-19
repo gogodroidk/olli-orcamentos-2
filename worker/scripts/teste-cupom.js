@@ -11,6 +11,7 @@
 import { handleCupom, normalizarCodigoCupom, valorComDesconto, textoDesconto, pctLigado, reservarCupom, CUPOM_PERCENTUAL, AVISO_NAO_ACUMULA } from '../src/cupom.js';
 import { handleAbacate } from '../src/abacate.js';
 import { handleCheckout } from '../src/stripe.js';
+import { AVISO_CUPOM_E_INDICACAO } from '../../src/utils/cupomTexto.ts';
 import { PLANO_PIX } from '../src/mercadopago.js';
 
 let ok = 0;
@@ -70,7 +71,16 @@ checar('10% de R$ 374,40 = R$ 336,96', valorComDesconto(374.4, 10) === 336.96);
 checar('% inválido não mexe no preço', valorComDesconto(39, 0) === 39 && valorComDesconto(39, 100) === 39);
 const t = textoDesconto({ pct: 10, de: 39, por: 35.1 });
 checar('texto escrito: percentual, só 1ª cobrança, de/por, volta ao normal', /10%/.test(t) && /1ª cobrança/.test(t) && /R\$ 39,00/.test(t) && /R\$ 35,10/.test(t) && /volta ao normal/.test(t), t);
+checar('paridade: o aviso da tela é o mesmo do servidor', AVISO_CUPOM_E_INDICACAO === AVISO_NAO_ACUMULA);
 checar('aviso: cupom e indicação não se somam', /não se somam/.test(AVISO_NAO_ACUMULA) && /primeiro/.test(AVISO_NAO_ACUMULA));
+
+console.log('/cupom/config');
+let cfg = await consultar(new Request('https://w.test/cupom/config'), envBase);
+checar('config desligado: ativo=false', (await cfg.json()).ativo === false);
+cfg = await consultar(new Request('https://w.test/cupom/config'), ligado);
+checar('config ligado: ativo=true, sem login', (await cfg.json()).ativo === true);
+cfg = await consultar(new Request('https://w.test/cupom/config', { method: 'POST' }), ligado);
+checar('config só aceita GET', cfg.status === 405);
 
 console.log('/cupom/consultar');
 reset();
