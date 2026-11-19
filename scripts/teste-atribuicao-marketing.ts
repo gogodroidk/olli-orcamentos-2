@@ -77,7 +77,8 @@ const comClickId = lerToqueDaUrl(`?fbclid=${fbclidLongo}&gclid=${'g'.repeat(150)
 assert.equal(comClickId?.fbclid, fbclidLongo, 'fbclid longo não é cortado');
 assert.equal(comClickId?.gclid?.length, 150, 'gclid longo não é cortado');
 assert.equal(comClickId?.utm_source?.length, 100, 'utm continua truncada');
-assert.equal(lerToqueDaUrl(`?fbclid=${'z'.repeat(900)}`, '/', T0)?.fbclid?.length, 500, 'click id tem teto de 500');
+assert.equal(lerToqueDaUrl(`?fbclid=${'z'.repeat(500)}`, '/', T0)?.fbclid?.length, 500, 'click id de 500 passa inteiro');
+assert.equal(lerToqueDaUrl(`?fbclid=${'z'.repeat(900)}`, '/', T0), null, 'click id acima de 500 é descartado, nunca cortado (LIVRE P2 #398)');
 assert.equal(
   montarOrigemUtm(registrarToque(ATRIBUICAO_VAZIA, comClickId), '')?.fbc,
   `fb.1.${T0}.${fbclidLongo}`,
@@ -228,6 +229,14 @@ assert.equal(origem.ultimo_toque?.fbclid, 'F9');
 assert.equal(origem.fbp, 'fb.1.1700000000000.111');
 assert.equal(origem.fbc, `fb.1.${T0}.F9`, 'sem cookie _fbc, monta a partir do fbclid');
 assert.equal(montarOrigemUtm(estado, '_fbc=fb.1.5.REAL')?.fbc, 'fb.1.5.REAL', '_fbc do Pixel tem prioridade');
+// LIVRE P1 #398: o cookie _fbc do Pixel (caso comum) não pode sair cortado em 100.
+const fbcPixelLongo = `fb.1.1795000000000.IwY2xjaw${'P'.repeat(168)}`;
+assert.equal(montarOrigemUtm(estado, `_fbc=${fbcPixelLongo}`)?.fbc, fbcPixelLongo, '_fbc longo do Pixel passa inteiro');
+const comF9 = registrarToque(ATRIBUICAO_VAZIA, lerToqueDaUrl('?utm_source=facebook&fbclid=F9', '/', T0)!);
+assert.equal(montarOrigemUtm(comF9, `_fbc=fb.1.5.${'Q'.repeat(700)}`)?.fbc, `fb.1.${T0}.F9`, '_fbc acima de 600 é descartado e o fbc vem do fbclid');
+const fbpLongo = `fb.1.1795000000000.${'9'.repeat(150)}`;
+assert.equal(montarOrigemUtm(estado, `_fbp=${fbpLongo}`)?.fbp, fbpLongo, '_fbp até 200 passa inteiro');
+assert.equal(montarOrigemUtm(estado, `_fbp=${'9'.repeat(250)}`)?.fbp, undefined, '_fbp acima de 200 é descartado');
 assert.equal(montarOrigemUtm(ATRIBUICAO_VAZIA, ''), null, 'nada a gravar = null');
 assert.deepEqual(montarOrigemUtm(ATRIBUICAO_VAZIA, '_fbp=fb.1.2.3'), { fbp: 'fb.1.2.3' });
 assert.equal((origem.primeiro_toque as Record<string, unknown>).ts, undefined, 'ts interno não vaza para o banco');
