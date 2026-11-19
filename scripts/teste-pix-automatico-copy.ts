@@ -56,5 +56,18 @@ ok('worker: /abacate/config expõe pixAutomatico e o Pix avulso não depende del
 const pa = ler('worker/src/abacatePixAutomatico.js');
 ok('worker: flag exige valor exato "true" (padrão desligada)', pa.includes("env[ABACATE_PA_ENV.flag] !== 'true'"));
 
+// D-2171 (Igor, 18/11): Pix Automático é a 1ª opção; o Pix avulso, a 2ª.
+const iAuto = web.indexOf('data-opcao-pagamento="pix-automatico"');
+const iAvulsoComAuto = web.indexOf('{pixAutomaticoDisponivel && pixDisponivel && botaoPix}');
+const iCartao = web.indexOf('data-opcao-pagamento="cartao"');
+const iAvulsoSemAuto = web.indexOf('{!pixAutomaticoDisponivel && pixDisponivel && botaoPix}');
+ok('painel: com Pix Automático, a ordem é automático → Pix avulso → cartão', iAuto > 0 && iAuto < iAvulsoComAuto && iAvulsoComAuto < iCartao);
+ok('painel: sem Pix Automático, a ordem de antes (cartão → Pix) e o avulso aparece uma vez só', iCartao < iAvulsoSemAuto && web.split('botaoPix}').length - 1 === 2);
+ok('painel: ao lado do automático, o avulso diz que é só este mês', web.includes('pixAutomaticoDisponivel ? "Pagar com Pix só este mês" : "Pagar com Pix"'));
+ok('app: Pix Automático antes do Pix avulso', app.indexOf('onPress={onPagarPixAuto}') > 0 && app.indexOf('onPress={onPagarPixAuto}') < app.indexOf('onPress={onPagarPix}'));
+const cfg = ler('worker/wrangler.jsonc');
+ok('produção: flag ligada e produto prod_ configurado', /"ABACATE_PIX_AUTOMATICO": "true"/.test(cfg) && /"ABACATE_PA_PRODUTO_PRO_MENSAL": "prod_[A-Za-z0-9]+"/.test(cfg));
+ok('worker: encerrar acesso sempre manda plano e status no upsert (NOT NULL)', pa.includes("{ plano: atual.plano, status: atual.status,") && pa.includes("{ plano: atual.plano, status: 'canceled',"));
+
 console.log(falhas ? `\n${falhas} falha(s)` : '\nPASSOU');
 process.exit(falhas ? 1 : 0);

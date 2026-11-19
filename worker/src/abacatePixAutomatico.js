@@ -189,11 +189,14 @@ async function encerrarAcesso(env, userId, payload) {
     return { ok: true, efeito: 'vigencia_de_outra_fonte' };
   }
   const agora = Date.now();
-  const patch = Number.isFinite(pagoAte) && pagoAte > agora
-    ? { current_period_end: new Date(Math.min(pagoAte, fimAtual)).toISOString() }
-    : { status: 'canceled', current_period_end: new Date(agora).toISOString() };
+  const ateFimDoCiclo = Number.isFinite(pagoAte) && pagoAte > agora;
+  // `plano` e `status` vão SEMPRE no upsert: no INSERT … ON CONFLICT o Postgres confere o NOT NULL da linha proposta
+  // antes do conflito, e um patch só com a data falhava (23502) — o cancelamento nunca terminava (Modo Teste, 18/11).
+  const patch = ateFimDoCiclo
+    ? { plano: atual.plano, status: atual.status, current_period_end: new Date(Math.min(pagoAte, fimAtual)).toISOString() }
+    : { plano: atual.plano, status: 'canceled', current_period_end: new Date(agora).toISOString() };
   const ok = await upsertAssinatura(env, userId, patch);
-  return ok ? { ok: true, efeito: patch.status ? 'encerrado_agora' : 'ate_fim_do_ciclo' } : { ok: false };
+  return ok ? { ok: true, efeito: ateFimDoCiclo ? 'ate_fim_do_ciclo' : 'encerrado_agora' } : { ok: false };
 }
 
 // ─── cadastro ────────────────────────────────────────────────
