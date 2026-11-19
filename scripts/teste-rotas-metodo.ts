@@ -123,7 +123,7 @@ console.log('\n4) a tabela não pode se descolar do roteador que a usa');
   // rota (webhook GET+POST, as demais POST/GET) e retorna antes da tabela — por isso é delegada, não tabelada.
   // `/indicacao/` (worker/src/indicacao.js: meu, vincular, verificar, evento) responde o próprio 405 e 404 por rota.
   // `/apple/` (worker/src/appleRotas.js: /apple/config, /apple/verificar, /apple/notificacoes) também responde o próprio 405 e 404.
-  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/apple/', '/whatsapp/', '/equipe/', '/conta/', '/indicacao/', '/o/', '/q/', '/e/', '/v/', '/ical/'];
+  const DELEGADAS = ['/admin/', '/stripe/', '/mp/', '/abacate/', '/play/', '/apple/', '/whatsapp/', '/equipe/', '/conta/', '/indicacao/', '/cupom/', '/o/', '/q/', '/e/', '/v/', '/ical/'];
 
   // Rotas resolvidas no roteador de topo por igualdade de path.
   const exatas = new Set(

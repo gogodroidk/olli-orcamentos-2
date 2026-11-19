@@ -20,6 +20,7 @@ import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { FONTES_CSS } from './fontesProprias.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
+import { reservarCupom, confirmarCupom } from './cupom.js';
 
 // URLs de retorno do Checkout / Portal (o worker atende os dois subdomínios;
 // usamos o de diagnóstico, que serve estas páginas de sucesso/cancelado).
@@ -342,6 +343,24 @@ export async function handleCheckout(request, env) {
     allow_promotion_codes: 'true',
     locale: 'pt-BR',
   };
+
+  // Cupom de influenciador (opcional; desligado por flag). Só na 1ª cobrança (duration 'once'), % fixo
+  // na constante, sem preço novo. O Checkout da Stripe mostra o desconto escrito ANTES do cartão. O cupom
+  // da Stripe é criado na hora, de uso único; o promotion code da Stripe fica de fora neste pedido (a
+  // Stripe não aceita os dois juntos). Recusa nunca cai em "cobra cheio".
+  const codigoCupom = body && typeof body.cupom === 'string' && body.cupom.trim() ? body.cupom : null;
+  if (codigoCupom) {
+    const r = await reservarCupom(env, { userId: user.id, codigo: codigoCupom, plano, canal: 'stripe' });
+    if (!r.ok) return json({ ok: false, erro: 'cupom_recusado', status: r.status, texto: r.texto }, r.status === 'indisponivel' ? 503 : 409);
+    const cup = await stripePost(env, '/coupons', {
+      percent_off: String(r.pct), duration: 'once', max_redemptions: '1',
+      name: `OLLI cupom ${r.codigo}`.slice(0, 40), 'metadata[user_id]': user.id, 'metadata[cupom]': r.codigo,
+    });
+    if (!cup.ok || !cup.data || !cup.data.id) return json({ ok: false, erro: 'falha_cupom' }, 502);
+    delete fields.allow_promotion_codes;
+    fields['discounts[0][coupon]'] = cup.data.id;
+    fields['metadata[cupom]'] = r.codigo;
+  }
 
   if (config.modo === 'subscription') {
     // Propaga o user_id para o metadata da subscription — é dele que o webhook
@@ -833,6 +852,12 @@ export async function handleWebhook(request, env) {
       const userId =
         (obj && obj.metadata && obj.metadata.user_id) || (obj && obj.client_reference_id) || null;
 
+      // Cupom de influenciador: pagamento concluído = a reserva vira uso (idempotente; falha não perde a venda).
+      if (userId && obj && obj.metadata && obj.metadata.cupom
+        && (obj.payment_status === 'paid' || obj.payment_status === 'no_payment_required')) {
+        await confirmarCupom(env, userId);
+      }
+
       // AVULSO 12x (mode=payment): não há subscription. Só gravamos o acesso se o
       // pagamento realmente foi concluído (payment_status='paid') — parcelado no
       // cartão a autorização é imediata, então 'paid' já chega neste evento.
@@ -870,6 +895,7 @@ export async function handleWebhook(request, env) {
       }
     } else if (tipo === 'checkout.session.async_payment_succeeded') {
       // Pagamento assíncrono do 12x concluído depois: libera o acesso agora.
+      if (obj && obj.metadata && obj.metadata.cupom && obj.metadata.user_id) await confirmarCupom(env, obj.metadata.user_id);
       if (obj && obj.metadata && obj.metadata.origem === '12x') {
         return processar12x(env, obj, evento);
       }
