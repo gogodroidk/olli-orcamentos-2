@@ -22,6 +22,7 @@ import { chaveDescadastro, EMAIL_DESCADASTRO_PATH } from './emailDescadastro.js'
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { lerTiposPermitidos, rodadaDeSelecao, selecionarPedidos, sufixoLigaNaoAberto } from './emailLembretesPolicy.js';
 import { selecionarPixVence } from './pixVencePolicy.js';
+import { selecionarNaoAbertos } from './orcamentoNaoAbertoPolicy.js';
 
 export const EMAIL_LEMBRETES_JOB_VERSION = '2026-09-29.v1';
 const LIMITE_CANDIDATOS = 50;
@@ -101,15 +102,6 @@ async function executarRodada(env, dependencias = {}) {
       tiposPermitidos,
     });
     const motivos = { ...motivosBase };
-
-    // Orçamento não aberto (Z-52): `production` sozinho não liga. Neste build o
-    // sufixo também não chama `listar_nao_abertos_email` — a lista está no PR #247,
-    // fora da main. Marca a decisão e segue. Quando a lista entrar, a chamada
-    // substitui este bloco e continua obrigada a usar `sufixoLigaNaoAberto`.
-    if (sufixoLigaNaoAberto(texto(env?.EMAIL_LEMBRETES_MODE, 80))) {
-      motivos.nao_aberto_bloqueado = 1;
-    }
-
     const banco = {};
     let enfileirados = 0;
 
@@ -144,7 +136,34 @@ async function executarRodada(env, dependencias = {}) {
       if (motivo === 'teto_diario') break;
     }
 
-    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, pixVence, decisoes: motivos, banco });
+    // "Orçamento não aberto em 48 h" (Z-123): aviso ao PRESTADOR, nunca ao cliente. Só roda se
+    // `sufixoLigaNaoAberto` for true (MODE production e a palavra exata no sufixo). "production"
+    // sozinho NÃO liga. Usa o que sobrou do teto da rodada. Falha aqui não derruba o resto:
+    // vira `nao_aberto_falhou` nas decisões.
+    let naoAbertos = 0;
+    if (sufixoLigaNaoAberto(texto(env?.EMAIL_LEMBRETES_MODE, 80)) && !tetoDiarioAtingido && enfileirados < tetoRodada) try {
+      const lista = await chamarRpcServico(config, fetchImpl, 'listar_nao_abertos_email', {
+        p_now: agoraIso,
+        p_limit: LIMITE_CANDIDATOS,
+      }, { limiteBytes: LIMITE_BYTES_CANDIDATOS });
+      if (!Array.isArray(lista)) throw Object.assign(new Error('nao_abertos_resposta_invalida'), { codigo: 'nao_abertos_resposta_invalida' });
+      const sel = selecionarNaoAbertos(lista.map((l) => (l && typeof l === 'object' ? l.candidato : null)), {
+        agora,
+        teto: tetoRodada - enfileirados,
+      });
+      for (const [m, n] of Object.entries(sel.motivos)) motivos[`nao_aberto_${m}`] = n;
+      for (const p of sel.pedidos) {
+        const motivo = await enfileirar(p);
+        if (motivo === 'enfileirado') { enfileirados += 1; naoAbertos += 1; }
+        if (motivo === 'teto_diario') break;
+      }
+    } catch (erro) {
+      motivos.nao_aberto_falhou = 1;
+      const codigo = texto(erro?.codigo || erro?.message, 60).replace(/[^a-zA-Z0-9._:-]/g, '_') || 'erro';
+      console.error(JSON.stringify({ event: 'email_lembretes_nao_aberto_falhou', code: codigo }));
+    }
+
+    const saida = resumo({ mode: modo, motivo: 'ok', candidatos: candidatos.length, enfileirados, pixVence, naoAbertos, decisoes: motivos, banco });
     console.log(JSON.stringify({ event: 'email_lembretes_rodada', ...saida }));
     return saida;
 
@@ -191,6 +210,7 @@ export function resumoSeguroRodada(r) {
     candidatos: n(r?.candidatos),
     enfileirados: n(r?.enfileirados),
     pixVence: n(r?.pixVence),
+    naoAbertos: n(r?.naoAbertos),
     decisoes: contagens(r?.decisoes),
     banco: contagens(r?.banco),
   };
