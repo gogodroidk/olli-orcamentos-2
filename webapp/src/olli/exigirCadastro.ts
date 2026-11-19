@@ -28,6 +28,7 @@ import {
 	juntarPendentes,
 } from "@/olli/onboarding";
 import { ehDonoDaConta } from "@/olli/papel";
+import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /** O que a pessoa tentou gerar — só muda a frase do aviso. */
 export type DocumentoComCadastro = "orcamento" | "contrato" | "documento";
@@ -128,6 +129,12 @@ export function usePortaDoCadastro() {
 					position: "top-center",
 				});
 				return null;
+			}
+			// MEDIÇÃO (CQ-ATIVACAO-LOTE1, achado 6): o orçamento ia sair (WhatsApp, link ou PDF) e a
+			// porta segurou por cadastro incompleto. Só o nome do evento, sem dado pessoal. "Não consegui
+			// conferir" (leitura falhou) não é cadastro faltando e não conta.
+			if (documento === "orcamento" && !decisao.libera && decisao.motivo !== "nao_sei") {
+				void registrarEtapaAtivacao("envio_barrado_cadastro");
 			}
 			const retorno = `${local.pathname}${local.search}`;
 			toast.error(aviso.titulo, {

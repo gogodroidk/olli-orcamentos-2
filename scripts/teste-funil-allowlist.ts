@@ -8,8 +8,10 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 
 const raiz = new URL('../', import.meta.url);
-const store = readFileSync(new URL('webapp/src/store/userStore.ts', raiz), 'utf8');
-const tipo = store.slice(store.indexOf('export type EtapaAtivacao'), store.indexOf(';', store.indexOf('export type EtapaAtivacao')));
+// A lista de eventos do painel mora em `etapasAtivacao.ts` (valor + tipo, CQ-ATIVACAO-LOTE1); o userStore só reexporta.
+const etapas = readFileSync(new URL('webapp/src/olli/etapasAtivacao.ts', raiz), 'utf8');
+const ini = etapas.indexOf('export const ETAPAS_ATIVACAO = [');
+const tipo = etapas.slice(ini, etapas.indexOf('] as const', ini)).replace(/\/\/.*$/gm, '');
 const eventosPainel = [...tipo.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
 assert.ok(eventosPainel.length >= 10, 'leu os eventos do painel');
 

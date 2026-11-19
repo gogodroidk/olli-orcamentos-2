@@ -162,7 +162,8 @@ const hook = ler('webapp/src/pages/olli/orcamentos/useEnviarWhatsApp.tsx');
 ok((lista.match(/Enviar pelo WhatsApp/g) ?? []).length >= 2, 'menu e botão têm "Enviar pelo WhatsApp"');
 ok(/onClick=\{\(\) => onEnviarWhatsApp\(linha\)\}/.test(lista), 'botão visível fora do menu "…" (ação primária)');
 ok(/\{dialogoWhats\}/.test(lista), 'a página renderiza o diálogo do envio');
-ok(/reservarEnvioOrcamento\(orcamentoId, "whatsapp"\)/.test(hook), 'registra o envio no canal whatsapp');
+// CQ-ATIVACAO-LOTE1: o canal vem do modo (padrão "whatsapp"; "link" no Copiar link sem número).
+ok(/reservarEnvioOrcamento\(orcamentoId, modo\)/.test(hook) && /modo: ModoEnvio = "whatsapp"/.test(hook), 'registra o envio no canal do modo (whatsapp por padrão)');
 ok(/exigirCadastro\("orcamento"\)/.test(hook), 'passa pela porta do cadastro');
 const iAbrir = hook.indexOf('Abrir o WhatsApp');
 const iJa = hook.indexOf('const jaEnviei');

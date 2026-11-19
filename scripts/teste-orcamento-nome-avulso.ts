@@ -11,10 +11,10 @@ assert.match(form, /if \(!orc\.clienteNome\.trim\(\)\) return "Informe o cliente
 // O campo "só o nome" aparece quando não há cliente cadastrado escolhido e grava em clienteNome.
 assert.match(form, /!orc\.clienteId && \(/);
 assert.match(form, /patch\(\{ clienteNome: ev\.target\.value \}\)/);
-// Enviar por WhatsApp continua exigindo número válido e, sem cliente cadastrado, diz o que fazer.
-assert.match(envio, /linkWhatsApp\(blob\.clienteTelefone, ""\)/);
-assert.match(envio, /blob\.clienteId\s*\?/);
-assert.match(envio, /só o nome do cliente/);
+// Enviar por WhatsApp continua exigindo número válido; sem ele, o número é pedido no próprio diálogo
+// de envio (CQ-ATIVACAO-LOTE1 — antes era um aviso que mandava voltar ao editor; ver teste-ativacao-lote1).
+assert.match(envio, /proximoPassoDoEnvio\(modo, blob\.clienteTelefone\) === "pedir_numero"/);
+assert.match(envio, /Qual o WhatsApp de/);
 assert.match(form, /clienteNome: orc\.clienteNome\.trim\(\),/);
 const contrato = ler('webapp/src/olli/contrato.ts');
 assert.doesNotMatch(contrato, /clienteId \?\? null/);

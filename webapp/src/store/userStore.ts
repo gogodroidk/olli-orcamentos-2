@@ -10,6 +10,7 @@ import { limparIndicioDeSessao, marcarIndicioDeSessao } from "@/lib/session-hint
 import { resetBrandColor } from "@/olli/branding";
 import { queryClient } from "./queryClient";
 import { SENHA_MINIMA } from "@auth-policy";
+import { ETAPAS_REPETIVEIS, type EtapaAtivacao } from "@/olli/etapasAtivacao";
 
 const atividadeRegistrada = new Set<string>();
 
@@ -34,22 +35,9 @@ async function registrarAtividade(
 	if (!error) atividadeRegistrada.add(chave);
 }
 
-/** Eventos do funil de ativação (allowlist do RPC `registrar_atividade_usuario`). */
-export type EtapaAtivacao =
-	| "ativacao_card_visto"
-	| "ativacao_card_clicado"
-	| "oficio_escolhido"
-	| "orcamento_novo_aberto"
-	| "empresa_salva"
-	| "orcamento_enviado"
-	| "client_create"
-	| "quote_create"
-	// Funil de RECEITA (migration 20261030070000): sem eles não se sabe se alguém chega a ver o preço.
-	| "planos_visto"
-	| "plano_pagar_clicado";
+/** Eventos do funil de ativação (allowlist do RPC `registrar_atividade_usuario`): lista em `@/olli/etapasAtivacao`. */
+export type { EtapaAtivacao };
 
-/** Podem repetir, no máximo 1 vez por minuto por evento. */
-const ETAPAS_REPETIVEIS: ReadonlySet<EtapaAtivacao> = new Set(["client_create", "quote_create", "orcamento_enviado", "plano_pagar_clicado"]);
 const etapasEnviadas = new Set<string>();
 const etapasUltimoEnvio = new Map<string, number>();
 
