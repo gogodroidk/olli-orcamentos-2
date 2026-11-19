@@ -36,6 +36,13 @@ const VALIDADE_MS = VALIDADE_SEGUNDOS * 1000;
 /** Tolerância a relógio de aparelho adiantado: toque "do futuro" além disso é lixo. */
 const TOLERANCIA_FUTURO_MS = 24 * 60 * 60 * 1000;
 const TAMANHO_MAXIMO_VALOR = 100;
+/**
+ * `fbclid` e `gclid` são identificadores opacos: cortá-los os invalida (o Meta só casa o clique
+ * com o `fbc` se o fbclid estiver inteiro, e fbclid recente passa de 100 caracteres). Teto maior,
+ * só para eles; o cookie continua limitado por TAMANHO_MAXIMO_COOKIE.
+ */
+const TAMANHO_MAXIMO_CLICK_ID = 500;
+const CHAVES_CLICK_ID = new Set<string>(["fbclid", "gclid"]);
 /** Limite de segurança: o navegador descarta cookie acima de ~4 KB e não avisa. */
 const TAMANHO_MAXIMO_COOKIE = 3500;
 
@@ -81,13 +88,30 @@ export interface Ambiente {
 
 // ─── Parser ─────────────────────────────────────────────────────────────────
 
-function limparValor(bruto: unknown): string | null {
+function limparValor(bruto: unknown, max: number = TAMANHO_MAXIMO_VALOR): string | null {
 	if (typeof bruto !== "string") return null;
 	const semControle = Array.from(bruto)
 		.filter((c) => c.charCodeAt(0) > 31 && c.charCodeAt(0) !== 127)
 		.join("");
-	const valor = semControle.trim().slice(0, TAMANHO_MAXIMO_VALOR);
+	const valor = semControle.trim().slice(0, max);
 	return valor === "" ? null : valor;
+}
+
+/**
+ * Identificador opaco (fbclid, gclid, _fbp, _fbc) só vale INTEIRO: acima do teto, descarta em vez de
+ * cortar (um id cortado é um id inválido que parece válido; o worker aplica a mesma regra, #405).
+ */
+function idInteiro(bruto: unknown, max: number): string | null {
+	const valor = limparValor(bruto, Number.MAX_SAFE_INTEGER);
+	return valor && valor.length <= max ? valor : null;
+}
+
+/** Tetos dos cookies do Pixel: `_fbc` = 'fb.1.<13 dígitos>.' (19) + fbclid de até 500, com folga (= worker, #405). */
+const TAMANHO_MAXIMO_FBP = 200;
+const TAMANHO_MAXIMO_FBC = 600;
+
+function lerParametro(chave: string, bruto: unknown): string | null {
+	return CHAVES_CLICK_ID.has(chave) ? idInteiro(bruto, TAMANHO_MAXIMO_CLICK_ID) : limparValor(bruto, TAMANHO_MAXIMO_VALOR);
 }
 
 /** Lê os parâmetros de campanha de uma query string. `null` = visita sem campanha. */
@@ -96,7 +120,7 @@ export function lerToqueDaUrl(search: string, pagina: string | undefined, agora:
 	const toque: Toque = { ts: agora };
 	let achou = false;
 	for (const chave of PARAMETROS_ATRIBUICAO) {
-		const valor = limparValor(params.get(chave));
+		const valor = lerParametro(chave, params.get(chave));
 		if (valor) {
 			toque[chave] = valor;
 			achou = true;
@@ -118,7 +142,7 @@ function toqueValido(bruto: unknown, agora: number): Toque | null {
 	const toque: Toque = { ts };
 	let achou = false;
 	for (const chave of PARAMETROS_ATRIBUICAO) {
-		const valor = limparValor(candidato[chave]);
+		const valor = lerParametro(chave, candidato[chave]);
 		if (valor) {
 			toque[chave] = valor;
 			achou = true;
@@ -325,10 +349,10 @@ export function montarOrigemUtm(atribuicao: Atribuicao, cookies: string): Origem
 	if (atribuicao.primeiro) origem.primeiro_toque = exportarToque(atribuicao.primeiro);
 	if (atribuicao.ultimo) origem.ultimo_toque = exportarToque(atribuicao.ultimo);
 
-	const fbp = limparValor(lerCookie(cookies, "_fbp"));
+	const fbp = idInteiro(lerCookie(cookies, "_fbp"), TAMANHO_MAXIMO_FBP);
 	if (fbp) origem.fbp = fbp;
 
-	let fbc = limparValor(lerCookie(cookies, "_fbc"));
+	let fbc = idInteiro(lerCookie(cookies, "_fbc"), TAMANHO_MAXIMO_FBC);
 	if (!fbc) {
 		const clique = atribuicao.ultimo?.fbclid ? atribuicao.ultimo : atribuicao.primeiro?.fbclid ? atribuicao.primeiro : null;
 		if (clique?.fbclid) fbc = `fb.1.${clique.ts}.${clique.fbclid}`;

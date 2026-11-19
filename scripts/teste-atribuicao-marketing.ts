@@ -71,6 +71,19 @@ assert.equal(lerToqueDaUrl('?utm_source=', '/', T0), null, 'valor vazio não con
 assert.deepEqual(lerToqueDaUrl('?fbclid=abc', undefined, T0), { ts: T0, fbclid: 'abc' }, 'só o fbclid já é uma origem');
 const longo = lerToqueDaUrl(`?utm_source=${'a'.repeat(500)}`, '/', T0);
 assert.equal(longo?.utm_source?.length, 100, 'valor é truncado');
+// fbclid/gclid são IDs opacos: inteiros até 500 (cortar em 100 invalida o fbc no Meta); utm_* segue em 100.
+const fbclidLongo = 'IwY2xjaw' + 'A'.repeat(160);
+const comClickId = lerToqueDaUrl(`?fbclid=${fbclidLongo}&gclid=${'g'.repeat(150)}&utm_source=${'b'.repeat(150)}`, '/', T0);
+assert.equal(comClickId?.fbclid, fbclidLongo, 'fbclid longo não é cortado');
+assert.equal(comClickId?.gclid?.length, 150, 'gclid longo não é cortado');
+assert.equal(comClickId?.utm_source?.length, 100, 'utm continua truncada');
+assert.equal(lerToqueDaUrl(`?fbclid=${'z'.repeat(500)}`, '/', T0)?.fbclid?.length, 500, 'click id de 500 passa inteiro');
+assert.equal(lerToqueDaUrl(`?fbclid=${'z'.repeat(900)}`, '/', T0), null, 'click id acima de 500 é descartado, nunca cortado (LIVRE P2 #398)');
+assert.equal(
+  montarOrigemUtm(registrarToque(ATRIBUICAO_VAZIA, comClickId), '')?.fbc,
+  `fb.1.${T0}.${fbclidLongo}`,
+  'fbc montado com o fbclid inteiro',
+);
 const controle = lerToqueDaUrl(`?utm_source=${encodeURIComponent('fa\u0000ce\nbook')}`, '/', T0);
 assert.equal(controle?.utm_source, 'facebook', 'caractere de controle é removido');
 assert.equal(lerToqueDaUrl('?FBCLID=x&UTM_SOURCE=y', '/', T0), null, 'nome do parâmetro é case-sensitive');
@@ -216,6 +229,14 @@ assert.equal(origem.ultimo_toque?.fbclid, 'F9');
 assert.equal(origem.fbp, 'fb.1.1700000000000.111');
 assert.equal(origem.fbc, `fb.1.${T0}.F9`, 'sem cookie _fbc, monta a partir do fbclid');
 assert.equal(montarOrigemUtm(estado, '_fbc=fb.1.5.REAL')?.fbc, 'fb.1.5.REAL', '_fbc do Pixel tem prioridade');
+// LIVRE P1 #398: o cookie _fbc do Pixel (caso comum) não pode sair cortado em 100.
+const fbcPixelLongo = `fb.1.1795000000000.IwY2xjaw${'P'.repeat(168)}`;
+assert.equal(montarOrigemUtm(estado, `_fbc=${fbcPixelLongo}`)?.fbc, fbcPixelLongo, '_fbc longo do Pixel passa inteiro');
+const comF9 = registrarToque(ATRIBUICAO_VAZIA, lerToqueDaUrl('?utm_source=facebook&fbclid=F9', '/', T0)!);
+assert.equal(montarOrigemUtm(comF9, `_fbc=fb.1.5.${'Q'.repeat(700)}`)?.fbc, `fb.1.${T0}.F9`, '_fbc acima de 600 é descartado e o fbc vem do fbclid');
+const fbpLongo = `fb.1.1795000000000.${'9'.repeat(150)}`;
+assert.equal(montarOrigemUtm(estado, `_fbp=${fbpLongo}`)?.fbp, fbpLongo, '_fbp até 200 passa inteiro');
+assert.equal(montarOrigemUtm(estado, `_fbp=${'9'.repeat(250)}`)?.fbp, undefined, '_fbp acima de 200 é descartado');
 assert.equal(montarOrigemUtm(ATRIBUICAO_VAZIA, ''), null, 'nada a gravar = null');
 assert.deepEqual(montarOrigemUtm(ATRIBUICAO_VAZIA, '_fbp=fb.1.2.3'), { fbp: 'fb.1.2.3' });
 assert.equal((origem.primeiro_toque as Record<string, unknown>).ts, undefined, 'ts interno não vaza para o banco');
