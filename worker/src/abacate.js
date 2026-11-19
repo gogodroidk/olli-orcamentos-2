@@ -278,7 +278,7 @@ function lerVinculo(cobranca) {
  *            registrado?, jaConsumida?, motivo? } — `jaConsumida` e `motivo` só
  * alimentam a trilha do webhook; nenhuma decisão depende deles.
  */
-async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
+export async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const idEnc = encodeURIComponent(idCobranca);
   const cobranca = await abacateFetch(env, `/transparents/get?id=${idEnc}`);
   if (!cobranca) return { estado: 'indisponivel' };
@@ -306,7 +306,13 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const claim = await reivindicarEvento(env, {
     ...consumo,
     tipo: 'plano_pix',
-    payload: { user_id: vinculo.userId, plano: vinculo.planoKey, valor_centavos: Number(cobranca.amount) },
+    payload: {
+      user_id: vinculo.userId,
+      plano: vinculo.planoKey,
+      valor_centavos: Number(cobranca.amount),
+      // Medição do link de pagamento: a origem vem da metadata gravada NA cobrança (não do pedido).
+      ...(cobranca.metadata && cobranca.metadata.origem === 'link' ? { origem: 'link' } : {}),
+    },
   });
   if (!claim.ok) return { estado: 'indisponivel' };
   if (claim.duplicado) return { estado: 'liberado', registrado: true, jaConsumida: true };
@@ -348,6 +354,68 @@ function config(env) {
 }
 
 // ─── POST /abacate/plano/pix ─────────────────────────────────
+/** Únicas origens aceitas na cobrança (metadata.origem). Sem origem = venda pelo app (como sempre foi). */
+const ORIGENS_COBRANCA = new Set(['link']);
+
+/**
+ * Cria a cobrança Pix de um PERÍODO de plano na AbacatePay e grava a cobrança para o
+ * lembrete de vencimento. Usada pelo app (POST /abacate/plano/pix) e pelo link de
+ * pagamento (linkPagarPro.js) — UMA criação só: mesmo catálogo, mesmo vínculo
+ * (`olli:pl:<userId>:<pedido>:<plano>`), mesma vigência, mesma liberação.
+ * `origem` ('link') vai na metadata da cobrança e na linha `pix_cobranca` (medição);
+ * sem origem, o corpo enviado é idêntico ao de antes.
+ * Devolve `{ ok:true, data, inicio, gravou }` ou `{ ok:false }`.
+ */
+export async function criarCobrancaPlano(env, { userId, plano, origem = null }) {
+  const org = ORIGENS_COBRANCA.has(origem) ? origem : null;
+  const externalId = `olli:pl:${userId}:${crypto.randomUUID()}:${plano.id}`;
+  const inicio = await inicioDoPeriodo(env, userId, plano.plano);
+  const data = await abacateFetch(env, '/transparents/create', {
+    method: 'POST',
+    body: JSON.stringify({
+      method: 'PIX',
+      data: {
+        amount: centavos(plano),
+        expiresIn: PIX_EXPIRA_S,
+        description: descricaoAbacate(plano.nome),
+        externalId,
+        metadata: { externalId, inicio, ...(org ? { origem: org } : {}) },
+      },
+    }),
+  });
+  if (!data || !data.brCode) {
+    // Sem rastro, toda venda de plano viraria 502 mudo (ex.: gateway recusando expiresIn).
+    // Só plano e o que veio (nada de segredo, brCode ou dado do usuário).
+    console.error('[olli-abacate] criar Pix falhou —', JSON.stringify({ plano: plano.id, expiresIn: PIX_EXPIRA_S, resposta: data ? 'sem_brCode' : 'nula' }));
+    return { ok: false };
+  }
+
+  // P0-08: grava a cobrança para o lembrete de 3 h antes do vencimento. Falha aqui NUNCA derruba a venda
+  // (o cliente já tem o QR): só perde o lembrete e deixa rastro no log (sem brCode nem dado pessoal).
+  // Cobrança do LINK leva também origem e o copia e cola: é por esta linha que o link reencontra a
+  // cobrança pendente (não cria duas) e volta a mostrar o mesmo Pix.
+  let gravou = false;
+  try {
+    // Teto de 2,5 s: Supabase lento não pode atrasar o QR do cliente (revisão independente, P2).
+    const r = await Promise.race([reivindicarEvento(env, {
+      origem: ORIGEM_PIX_COBRANCA,
+      eventId: data.id,
+      tipo: 'plano_pix_criada',
+      payload: {
+        user_id: userId,
+        plano: plano.id,
+        expires_at: data.expiresAt || null,
+        ...(org ? { origem: org, br_code: data.brCode } : {}),
+      },
+    }), new Promise((res) => setTimeout(() => res({ ok: false }), 2500))]);
+    gravou = !!(r && r.ok);
+    if (!gravou) console.error('[olli-abacate] cobrança não gravada para o lembrete — segue a venda');
+  } catch (e) {
+    console.error('[olli-abacate] gravar cobrança para o lembrete falhou —', e && (e.message || e));
+  }
+  return { ok: true, data, inicio, gravou };
+}
+
 async function criarPixPlano(request, env) {
   const user = await getUser(request, env);
   if (!user) return json({ ok: false, erro: 'nao_autorizado' }, 401);
@@ -360,42 +428,9 @@ async function criarPixPlano(request, env) {
   const plano = PLANO_PIX[body && body.plano];
   if (!plano) return json({ ok: false, erro: 'plano_invalido' }, 400);
 
-  const externalId = `olli:pl:${user.id}:${crypto.randomUUID()}:${plano.id}`;
-  const inicio = await inicioDoPeriodo(env, user.id, plano.plano);
-  const data = await abacateFetch(env, '/transparents/create', {
-    method: 'POST',
-    body: JSON.stringify({
-      method: 'PIX',
-      data: {
-        amount: centavos(plano),
-        expiresIn: PIX_EXPIRA_S,
-        description: descricaoAbacate(plano.nome),
-        externalId,
-        metadata: { externalId, inicio },
-      },
-    }),
-  });
-  if (!data || !data.brCode) {
-    // Sem rastro, toda venda de plano viraria 502 mudo (ex.: gateway recusando expiresIn).
-    // Só plano e o que veio (nada de segredo, brCode ou dado do usuário).
-    console.error('[olli-abacate] criar Pix falhou —', JSON.stringify({ plano: plano.id, expiresIn: PIX_EXPIRA_S, resposta: data ? 'sem_brCode' : 'nula' }));
-    return json({ ok: false, erro: 'falha_criar_pix' }, 502);
-  }
-
-  // P0-08: grava a cobrança para o lembrete de 3 h antes do vencimento. Falha aqui NUNCA derruba a venda
-  // (o cliente já tem o QR): só perde o lembrete e deixa rastro no log (sem brCode nem dado pessoal).
-  try {
-    // Teto de 2,5 s: Supabase lento não pode atrasar o QR do cliente (revisão independente, P2).
-    const gravou = await Promise.race([reivindicarEvento(env, {
-      origem: ORIGEM_PIX_COBRANCA,
-      eventId: data.id,
-      tipo: 'plano_pix_criada',
-      payload: { user_id: user.id, plano: plano.id, expires_at: data.expiresAt || null },
-    }), new Promise((r) => setTimeout(() => r({ ok: false }), 2500))]);
-    if (!gravou.ok) console.error('[olli-abacate] cobrança não gravada para o lembrete — segue a venda');
-  } catch (e) {
-    console.error('[olli-abacate] gravar cobrança para o lembrete falhou —', e && (e.message || e));
-  }
+  const criada = await criarCobrancaPlano(env, { userId: user.id, plano });
+  if (!criada.ok) return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  const { data, inicio } = criada;
 
   return json({
     ok: true,
