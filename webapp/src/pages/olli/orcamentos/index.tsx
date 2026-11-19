@@ -41,7 +41,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useLocation, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { lazyComRetry } from "@/components/lazy/carregar-chunk";
 import { ChunkBoundary } from "@/components/lazy/chunk-boundary";
@@ -56,8 +56,8 @@ import {
 	confirmarEnvioOrcamento,
 	obterEstadoOfertaComercial,
 	reservarEnvioOrcamento,
-	avisoLimiteEnvios,
 } from "@/olli/cota-envios";
+import { mostrarAvisoLimiteEnvios } from "@/olli/avisoLimiteEnvios";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { ymdParaBr } from "@/olli/datas";
 import { registrarDocumentoWeb } from "@/olli/documentos";
@@ -319,6 +319,7 @@ function AcoesDoOrcamento({
 }
 
 export default function OrcamentosPage() {
+	const navigate = useNavigate();
 	const { data, isLoading, isError, error, refetch, isFetching } = useOlliList<LinhaOrcamento>("orcamentos", {
 		orderBy: "criado_em",
 	});
@@ -522,15 +523,17 @@ export default function OrcamentosPage() {
 		 * prestador de imprimir. Quando não dá para confirmar, o selo fica — e o
 		 * toast de sucesso conta que ficou, em vez de deixá-lo descobrir no papel.
 		 */
+		// REGISTRO do envio E limite do Grátis (5 por mês; vale para todas as contas desde o
+		// corte de 07/11). Se o registro falhar, `reserva` vem como `sem_registro` e o PDF sai igual.
+		const reserva = await reservarEnvioOrcamento(linha.id, "pdf");
+		if (!reserva.permitido) {
+			// P0-09: só o ENVIO para; o orçamento fica salvo. Falha de registro nunca cai aqui.
+			// Antes virava toast de ERRO e sumia; agora é o aviso com o botão de pagar o Pro.
+			setPdfEmCurso(null);
+			mostrarAvisoLimiteEnvios(reserva, navigate);
+			return;
+		}
 		const tarefa = (async () => {
-			// REGISTRO do envio, não portão: o Grátis é ilimitado (limitesComerciais.ts).
-			// Se o registro falhar, `reserva` vem como `sem_registro` e o PDF sai igual.
-			const reserva = await reservarEnvioOrcamento(linha.id, "pdf");
-			if (!reserva.permitido) {
-				// P0-09: só o ENVIO para; o orçamento fica salvo. Falha de registro nunca cai aqui.
-				const aviso = avisoLimiteEnvios(reserva);
-				throw new Error(`${aviso.titulo}. ${aviso.mensagem}`);
-			}
 			try {
 				const marca = await resolverMarcaDoDocumento(qc);
 				await imprimirOrcamento(blob, empresa, [], { removerMarca: marca.removerMarca });

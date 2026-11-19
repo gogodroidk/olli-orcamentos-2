@@ -1066,7 +1066,10 @@ export default function VisualizarOrcamentoScreen() {
         const link = await statusDoLink(orc.id);
         if (link?.status !== 'aprovado' || (comPix && saldo !== undefined)) throw new Error('link_nao_serve');
         const url = await gerarLinkOrcamento(orc, empresa);
-        mensagem = montarMensagemCobrancaLink(orc, dias, `${url}#pagar`, { comPix, valorEmAberto: saldo });
+        // CDC: a página só mostra o Pix se o plano do dono tem `link_pagamento` (Pro/Empresa).
+        // No Grátis (ou plano não confirmado), a mensagem NÃO promete "paga por Pix pelo link".
+        const pixNoLink = comPix && estadoLinkPagamento === 'liberado';
+        mensagem = montarMensagemCobrancaLink(orc, dias, `${url}#pagar`, { comPix: pixNoLink, valorEmAberto: saldo });
         semLink = false;
       } catch {
         // segue sem link (ver acima)

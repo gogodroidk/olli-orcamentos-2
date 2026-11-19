@@ -19,9 +19,11 @@ import { avisoTrialAutomatico } from "@ativacao";
 import type { ReservaEnvioOrcamento } from "@limites-comerciais";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
+import { useNavigate } from "react-router";
+import { mostrarAvisoLimiteEnvios } from "@/olli/avisoLimiteEnvios";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import { avisoLimiteEnvios, cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
+import { cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
 import { linkWhatsApp } from "@/olli/linkWhatsApp";
 import { publicarLinkOrcamento } from "@/olli/publicarLink";
@@ -44,6 +46,7 @@ interface Pendente {
 
 export function useEnviarWhatsApp() {
 	const qc = useQueryClient();
+	const navigate = useNavigate();
 	const exigirCadastro = usePortaDoCadastro();
 	const marcarEnviado = useMarcarEnviado();
 	const [pendente, setPendente] = useState<Pendente | null>(null);
@@ -73,9 +76,9 @@ export function useEnviarWhatsApp() {
 				// 3) Registra o envio (nunca barra: sem registro o envio segue) e publica o link.
 				const reserva = await reservarEnvioOrcamento(orcamentoId, "whatsapp");
 				if (!reserva.permitido) {
-					// P0-09: limite do Grátis em conta nova — só o envio para, o orçamento fica salvo.
-					const aviso = avisoLimiteEnvios(reserva);
-					toast.info(aviso.titulo, { description: aviso.mensagem, position: "top-center", duration: 12_000 });
+					// P0-09: limite do Grátis — só o envio para, o orçamento fica salvo. O aviso
+					// traz o botão de pagar o Pro (antes era só texto).
+					mostrarAvisoLimiteEnvios(reserva, navigate);
 					return;
 				}
 				let url: string | null = null;
@@ -97,7 +100,7 @@ export function useEnviarWhatsApp() {
 				setPreparando(null);
 			}
 		},
-		[exigirCadastro, preparando],
+		[exigirCadastro, preparando, navigate],
 	);
 
 	const cancelar = useCallback(async () => {

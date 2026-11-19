@@ -79,6 +79,11 @@ import {
 	VALIDADES_PADRAO,
 } from "./constantes";
 import { normalizarChavePix } from "../../../../../src/utils/pixBrCode";
+import { dicaChavePix } from "../../../../../src/services/pixNoLink";
+import { useRecursoPlanoPainel } from "@/olli/recursoPlano";
+
+/** "Conhecer o Pro" do aviso do Pix: Planos com a intenção do Pro (sem abrir cobrança). */
+const URL_CONHECER_PRO_PIX_LINK = "/planos?plano=pro&periodo=mensal&origem=pix-link";
 import { normalizarLinkAvaliacaoGoogle, normalizarSiteProprio, type RecortePx } from "@identidade-visual";
 import { RecorteImagem } from "@/olli/RecorteImagem";
 import { erroArquivoLogo, LOGO_TIPOS_ACEITOS, recorteParaLogoDataUri } from "./logoUpload";
@@ -280,6 +285,9 @@ export default function MeuNegocio() {
 	const permissaoDesconhecida = contexto.isLoading || contexto.isError || !papel;
 	const somenteLeitura = !permissaoDesconhecida && !ehDono;
 	const bloqueado = permissaoDesconhecida || somenteLeitura;
+	// Pix no link do orçamento: recurso do Pro (`link_pagamento`). A dica diz a verdade do plano.
+	const recursoLinkPagamento = useRecursoPlanoPainel("link_pagamento");
+	const dicaPix = dicaChavePix(recursoLinkPagamento.estado);
 
 	const salvar = useMutation({
 		mutationFn: async (f: Empresa) => {
@@ -1088,7 +1096,8 @@ export default function MeuNegocio() {
 
 						<Campo
 							rotulo="Chave Pix (para receber dos clientes)"
-							dica="Vai no recibo, na cobrança pelo WhatsApp e no link do orçamento depois que o cliente aprova. O dinheiro cai direto na sua conta — a OLLI não passa por ele."
+							// A VERDADE do Pix no link (CDC): só Pro/Empresa mostram o Pix ao cliente no /o/.
+							dica={dicaPix.dica}
 							// Aviso (não bloqueia o salvar): chave que não reconhecemos NÃO vira Pix
 							// nas cobranças — mesma regra do app (`normalizarChavePix`).
 							erro={
@@ -1104,6 +1113,24 @@ export default function MeuNegocio() {
 								onChange={(e) => set("chavePix", e.target.value)}
 								placeholder="Sua chave Pix"
 							/>
+							{dicaPix.avisoGratis ? (
+								<div
+									data-testid="aviso-pix-link-gratis"
+									className="mt-2 flex flex-col gap-2 rounded-md border border-brand/30 bg-brand/5 p-3 sm:flex-row sm:items-center sm:justify-between"
+								>
+									<p className="text-sm text-text-primary">{dicaPix.avisoGratis}</p>
+									{bloqueado ? null : (
+										<Button
+											type="button"
+											variant="outline"
+											className="min-h-11 shrink-0"
+											onClick={() => navigate(URL_CONHECER_PRO_PIX_LINK)}
+										>
+											Conhecer o Pro
+										</Button>
+									)}
+								</div>
+							) : null}
 						</Campo>
 
 						<div data-erro={erroGoogle ? "1" : undefined} className="sm:col-span-2">

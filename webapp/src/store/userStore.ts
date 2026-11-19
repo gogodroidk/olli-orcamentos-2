@@ -46,10 +46,20 @@ export type EtapaAtivacao =
 	| "quote_create"
 	// Funil de RECEITA (migration 20261030070000): sem eles não se sabe se alguém chega a ver o preço.
 	| "planos_visto"
-	| "plano_pagar_clicado";
+	| "plano_pagar_clicado"
+	// Aviso do limite do Grátis (migration 20261119200000, CQ-DINHEIRO-LOTE1): quem é barrado e quem clica em pagar.
+	| "limite_aviso_visto"
+	| "limite_aviso_pagar_clicado";
 
 /** Podem repetir, no máximo 1 vez por minuto por evento. */
-const ETAPAS_REPETIVEIS: ReadonlySet<EtapaAtivacao> = new Set(["client_create", "quote_create", "orcamento_enviado", "plano_pagar_clicado"]);
+const ETAPAS_REPETIVEIS: ReadonlySet<EtapaAtivacao> = new Set([
+	"client_create",
+	"quote_create",
+	"orcamento_enviado",
+	"plano_pagar_clicado",
+	"limite_aviso_visto",
+	"limite_aviso_pagar_clicado",
+]);
 const etapasEnviadas = new Set<string>();
 const etapasUltimoEnvio = new Map<string, number>();
 

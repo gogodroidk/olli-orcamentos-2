@@ -68,8 +68,9 @@ import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
 import { urlGerenciarNaPlay } from "@play-billing-regras";
 import { TRIAL_PRO_DIAS } from "@limites-comerciais";
-import { lerIntencaoPlano } from "@/olli/plano-intent";
+import { PARAM_PAGAR, lerIntencaoPlano, podeAbrirPixDaIntencao } from "@/olli/plano-intent";
 import { LembreteAssinaturaFaixa, PARAM_RENOVAR_PIX } from "./LembreteAssinaturaFaixa";
+import { ResumoTesteProCard, useResumoTestePro } from "./ResumoTesteProCard";
 import { comecarTesteProComAviso, opcoesOfertaComercial } from "./useLembreteAssinatura";
 import { AudioIaPrototipo } from "./AudioIaPrototipo";
 import { planosAudioIaLigada } from "../../../../../src/services/planosAudioIa";
@@ -124,6 +125,7 @@ interface EstadoCheckout {
 
 export default function Planos() {
 	const intencao = useMemo(() => lerIntencaoPlano(window.location.search), []);
+	const resumoTeste = useResumoTestePro();
 	const { data: resumo, isLoading, isError, error, refetch, isFetching } = useMinhaAssinatura();
 	const [periodo, setPeriodo] = useState<PeriodoCobranca>(() => intencao?.periodo ?? "mensal");
 	const [checkout, setCheckout] = useState<EstadoCheckout>({ plano: null, carregando: false, erro: null });
@@ -133,6 +135,8 @@ export default function Planos() {
 	const [iniciandoTrial, setIniciandoTrial] = useState(false);
 	// Pix só aparece quando o worker CONFIRMA que está ligado; até lá (e se falhar), nada de Pix.
 	const [pixLigado, setPixLigado] = useState(false);
+	// A consulta do Pix já respondeu (ligado ou não)? Até lá o `pagar=pix` espera.
+	const [pixVerificado, setPixVerificado] = useState(false);
 	// Pix aberto: o período fica congelado no clique (mexer no seletor atrás do diálogo não troca o valor).
 	const [pixAberto, setPixAberto] = useState<{ plano: "pro" | "empresa"; periodo: PeriodoCobranca } | null>(null);
 
@@ -157,7 +161,9 @@ export default function Planos() {
 	useEffect(() => {
 		let ativo = true;
 		void pixDisponivel().then((ligado) => {
-			if (ativo) setPixLigado(ligado);
+			if (!ativo) return;
+			setPixLigado(ligado);
+			setPixVerificado(true);
 		});
 		void pixAutomaticoDisponivel().then((ligado) => {
 			if (ativo) setPixAutoLigado(ligado);
@@ -249,6 +255,29 @@ export default function Planos() {
 		window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
 	}, [pedidoRenovarPix, pixLigado, planoParaRenovarPix]);
 
+	// `?plano=pro&pagar=pix` (vindo do botão do aviso de limite ou do resumo do teste):
+	// abre o MESMO Pix do cartão do plano, uma vez só, quando a assinatura e o Pix estão
+	// confirmados. Sem Pix ligado, membro da equipe ou plano pago, só rola até o catálogo.
+	// O parâmetro sai da URL: recarregar a página não reabre a cobrança.
+	const [pedidoPagarPix, setPedidoPagarPix] = useState(
+		() => intencao !== null && new URLSearchParams(window.location.search).get(PARAM_PAGAR) === "pix",
+	);
+	useEffect(() => {
+		if (!pedidoPagarPix || !intencao) return;
+		if (!pixVerificado || isLoading || contexto.isLoading) return;
+		setPedidoPagarPix(false);
+		const url = new URL(window.location.href);
+		url.searchParams.delete(PARAM_PAGAR);
+		window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+		if (podeAbrirPixDaIntencao({ pixLigado, membroNaoDono, resumo: isError ? null : (resumo ?? null) })) {
+			void registrarEtapaAtivacao("plano_pagar_clicado");
+			setPixAberto({ plano: intencao.plano, periodo: intencao.periodo });
+		} else {
+			// Mesmo destino de `irParaCatalogo` (inline: o efeito não depende de função recriada a cada render).
+			document.getElementById("escolha-seu-plano")?.scrollIntoView({ behavior: "smooth", block: "start" });
+		}
+	}, [pedidoPagarPix, intencao, pixVerificado, isLoading, contexto.isLoading, pixLigado, membroNaoDono, isError, resumo]);
+
 	return (
 		<div className="mx-auto w-full max-w-6xl p-4 md:p-6">
 			<header className="mb-5">
@@ -277,6 +306,20 @@ export default function Planos() {
 			 * mostra o mesmo estado: o card "Renovar com Pix", o card do teste grátis, o
 			 * status de plano vencido e o convite genérico (a tela inteira já é o convite).
 			 */}
+			{/* Véspera/fim do teste: o que o Pro fez, e o Pix do Pro ali mesmo. */}
+			<ResumoTesteProCard
+				className="mb-5"
+				resumo={resumoTeste}
+				aoPagar={() => {
+					if (pixLigado && podeAbrirPixDaIntencao({ pixLigado, membroNaoDono, resumo: isError ? null : (resumo ?? null) })) {
+						void registrarEtapaAtivacao("plano_pagar_clicado");
+						setPixAberto({ plano: "pro", periodo: "mensal" });
+					} else {
+						irParaCatalogo();
+					}
+				}}
+			/>
+
 			<LembreteAssinaturaFaixa
 				className="mb-5"
 				aoIrParaPlanos={irParaCatalogo}
@@ -285,6 +328,7 @@ export default function Planos() {
 					l.tipo === "assinar" ||
 					l.tipo === "plano_vencido" ||
 					(l.tipo === "renovar_pix" && cardRenovarPixVisivel) ||
+					(l.tipo === "trial_acabando" && !!resumoTeste) ||
 					(l.tipo === "trial_disponivel" && cardTrialVisivel)
 				}
 			/>
