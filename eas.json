@@ -51,6 +51,12 @@
         "releaseStatus": "completed"
       },
       "ios": {}
+    },
+    "internal": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
+      }
     }
   }
 }

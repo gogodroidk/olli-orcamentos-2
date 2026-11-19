@@ -31,9 +31,9 @@
  * alternativa — botão que "não faz nada" some no meio de uma venda (P0: erro ≠ vazio).
  */
 import { registrarEtapaAtivacao } from "@/store/userStore";
-import { AlertTriangle, Check, Clock, Crown, Loader2, MessageCircle, Minus, QrCode, RotateCw, Sparkles, Users } from "lucide-react";
+import { AlertTriangle, Check, Clock, Crown, Loader2, MessageCircle, Minus, QrCode, RefreshCw, RotateCw, Sparkles, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { paraBr } from "@/olli/datas";
 // A leitura da assinatura saiu daqui para `olli/marcaDocumento`: ela ganhou um
 // SEGUNDO leitor (o gerador de documentos, que decide se o selo OLLI sai) e duas
@@ -50,7 +50,9 @@ import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { cn } from "@/utils";
 import { type FalhaCheckout, iniciarCheckout, type PlanoCheckout } from "./checkout";
 import { DialogPix } from "./DialogPix";
-import { type PlanoPix, pixDisponivel } from "./pix";
+import { type EstadoPixAutomatico, estadoPixAutomatico, type PlanoPix, pixAutomaticoDisponivel, pixDisponivel } from "./pix";
+import { CardPixAutomaticoAtivo, DialogPixAutomatico } from "./PixAutomatico";
+import { ROTULO_PIX_AUTOMATICO, textoCurtoPixAutomatico } from "../../../../../src/content/pixAutomatico";
 import { FRASE_GRATIS, nomeDoPlano, type PlanoBase, PLANOS_BASE, RECURSOS_GRATIS } from "./planos-base";
 import { estadoDoCardPlano } from "./estadoCard";
 import { notaCartao } from "./notaCartao";
@@ -134,6 +136,17 @@ export default function Planos() {
 	// Pix aberto: o período fica congelado no clique (mexer no seletor atrás do diálogo não troca o valor).
 	const [pixAberto, setPixAberto] = useState<{ plano: "pro" | "empresa"; periodo: PeriodoCobranca } | null>(null);
 
+	// Pix Automático (renova sozinho): DESLIGADO por padrão no servidor; só aparece com o worker confirmando a flag.
+	const [pixAutoLigado, setPixAutoLigado] = useState(false);
+	const [pixAutoEstado, setPixAutoEstado] = useState<EstadoPixAutomatico | null>(null);
+	const [pixAutoAberto, setPixAutoAberto] = useState(false);
+	const pixAutoAtiva = pixAutoEstado?.ativa === true;
+	// `null` (não deu para ler) mantém o último estado conhecido: nunca inventa "ativa" nem "inativa".
+	const recarregarPixAuto = useCallback(async () => {
+		const e = await estadoPixAutomatico();
+		if (e) setPixAutoEstado(e);
+	}, []);
+
 	const carregarOferta = () => ofertaQ.refetch();
 
 	// Funil de receita: quem chega a ver o preço (1 vez por sessão da página).
@@ -146,10 +159,14 @@ export default function Planos() {
 		void pixDisponivel().then((ligado) => {
 			if (ativo) setPixLigado(ligado);
 		});
+		void pixAutomaticoDisponivel().then((ligado) => {
+			if (ativo) setPixAutoLigado(ligado);
+		});
+		void recarregarPixAuto();
 		return () => {
 			ativo = false;
 		};
-	}, []);
+	}, [recarregarPixAuto]);
 
 	// A tabela `assinaturas` é lida pelo MEU user_id — mas quem é membro não-dono
 	// (técnico/gestor) não tem linha própria: a assinatura pertence ao DONO da
@@ -205,7 +222,7 @@ export default function Planos() {
 				: resumo.planoEfetivo === "gratis" && resumo.planoContratado !== "gratis"
 					? resumo.planoContratado
 					: null;
-	const cardRenovarPixVisivel = !!resumo && !isError && !membroNaoDono && acessoPorPix(resumo) && pixLigado;
+	const cardRenovarPixVisivel = !!resumo && !isError && !membroNaoDono && acessoPorPix(resumo) && pixLigado && !pixAutoAtiva;
 	const cardTrialVisivel = !membroNaoDono && oferta?.trialEstado === "eligible" && resumo?.planoEfetivo === "gratis";
 
 	function irParaCatalogo() {
@@ -283,10 +300,19 @@ export default function Planos() {
 				<CardErro mensagem={(error as Error)?.message} aoTentar={() => refetch()} tentando={isFetching} />
 			) : resumo ? (
 				<div className="space-y-3">
-					<CardStatus resumo={resumo} acessoAdministrativo={acessoAdministrativo} />
+					<CardStatus resumo={resumo} acessoAdministrativo={acessoAdministrativo} renovaPorPixAutomatico={pixAutoAtiva} />
 					{acessoPorPix(resumo) ? (
 						<>
-							{pixLigado && (
+							{pixAutoEstado?.ativa && (
+								<CardPixAutomaticoAtivo
+									estado={pixAutoEstado}
+									aoCancelado={() => {
+										void recarregarPixAuto();
+										void refetch();
+									}}
+								/>
+							)}
+							{pixLigado && !pixAutoAtiva && (
 								<CardRenovarPix
 									plano={resumo.planoEfetivo}
 									aoRenovar={(periodoRenovacao) => setPixAberto({ plano: resumo.planoEfetivo, periodo: periodoRenovacao })}
@@ -354,6 +380,11 @@ export default function Planos() {
 							}
 						}}
 						pixDisponivel={pixLigado}
+						pixAutomaticoDisponivel={pixAutoLigado && !pixAutoAtiva && p.id === "pro" && periodo === "mensal"}
+						aoPagarComPixAutomatico={() => {
+							void registrarEtapaAtivacao("plano_pagar_clicado");
+							setPixAutoAberto(true);
+						}}
 						aoPagarComPix={() => {
 							if (p.id === "pro" || p.id === "empresa") {
 								void registrarEtapaAtivacao("plano_pagar_clicado");
@@ -363,6 +394,16 @@ export default function Planos() {
 					/>
 				))}
 			</div>
+
+			{pixAutoAberto ? (
+				<DialogPixAutomatico
+					aoFechar={() => setPixAutoAberto(false)}
+					aoAtivo={() => {
+						void recarregarPixAuto();
+						void refetch();
+					}}
+				/>
+			) : null}
 
 			{pixAberto ? (
 				<DialogPix
@@ -477,7 +518,16 @@ function CardMembro() {
 	);
 }
 
-function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAssinatura; acessoAdministrativo?: boolean }) {
+function CardStatus({
+	resumo,
+	acessoAdministrativo = false,
+	renovaPorPixAutomatico = false,
+}: {
+	resumo: ResumoAssinatura;
+	acessoAdministrativo?: boolean;
+	/** Pix Automático ativo: o acesso vindo de Pix RENOVA sozinho (o texto de "Pix não renova" seria falso). */
+	renovaPorPixAutomatico?: boolean;
+}) {
 	const nome = resumo.origem === "trial" ? "Pro" : nomeDoPlano(resumo.planoContratado);
 	const quando = dataBr(resumo.proximaCobranca);
 
@@ -534,7 +584,11 @@ function CardStatus({ resumo, acessoAdministrativo = false }: { resumo: ResumoAs
 			<Faixa
 				tom="success"
 				titulo={`${nome} ativo`}
-				texto={`${quando ? `Acesso até ${quando}. ` : ""}Pagamento por Pix não renova sozinho.`}
+				texto={
+					renovaPorPixAutomatico
+						? `${quando ? `Acesso até ${quando}. ` : ""}Pix Automático ativo: renova sozinho todo mês, até você cancelar.`
+						: `${quando ? `Acesso até ${quando}. ` : ""}Pagamento por Pix não renova sozinho.`
+				}
 				acao={{
 					rotulo: "Falar sobre minha assinatura",
 					href: linkWhatsApp(`Olá! Quero falar sobre a minha assinatura do plano ${nome} no OLLI.`),
@@ -739,6 +793,8 @@ function CardPlano({
 	aoAssinar,
 	pixDisponivel,
 	aoPagarComPix,
+	pixAutomaticoDisponivel,
+	aoPagarComPixAutomatico,
 }: {
 	plano: PlanoBase;
 	periodo: PeriodoCobranca;
@@ -754,6 +810,9 @@ function CardPlano({
 	/** O worker confirmou que o Pix está ligado. Sem isso, nenhum botão de Pix. */
 	pixDisponivel: boolean;
 	aoPagarComPix: () => void;
+	/** O worker confirmou o Pix Automático (desligado por padrão) e este cartão é o Pro mensal. */
+	pixAutomaticoDisponivel: boolean;
+	aoPagarComPixAutomatico: () => void;
 }) {
 	const estado = estadoDoCardPlano({ atual, emTeste });
 	// Só o plano PAGO trava o cartão; no teste ele fica marcado mas pode ser assinado (estadoCard.ts).
@@ -764,6 +823,20 @@ function CardPlano({
 	const { valor, sufixo, nota } = preco
 		? precoNoPeriodo(preco, periodo)
 		: { valor: reais(0), sufixo: "", nota: null };
+
+	// Pix avulso: paga o período uma vez, sem renovar. Ao lado do Pix Automático, o rótulo diz isso.
+	const botaoPix = (
+		<Button
+			variant="secondary"
+			className="mt-2 min-h-[44px] w-full"
+			onClick={aoPagarComPix}
+			disabled={carregando}
+			data-opcao-pagamento="pix-avulso"
+		>
+			<QrCode className="size-4" aria-hidden />
+			{pixAutomaticoDisponivel ? "Pagar com Pix só este mês" : "Pagar com Pix"}
+		</Button>
+	);
 
 	// WhatsApp de fallback com o preço DERIVADO (nunca um R$ digitado).
 	const precoWhats = preco ? (periodo === "anual" ? `${reais(preco.anualCentavos)}/ano` : `${reais(preco.mensalCentavos)}/mês`) : "";
@@ -830,12 +903,29 @@ function CardPlano({
 					<p className="text-center text-xs text-text-secondary">Sempre disponível na sua conta.</p>
 				) : (
 					<>
+						{/* D-2171 (Igor, 18/11): com o Pix Automático disponível (Pro mensal) ele é a 1ª opção, o Pix avulso
+						    a 2ª e o cartão a 3ª. Sem ele, a ordem de sempre (cartão, depois Pix). */}
+						{pixAutomaticoDisponivel && (
+							<div data-opcao-pagamento="pix-automatico">
+								<Button className="h-auto min-h-[44px] w-full whitespace-normal py-2" onClick={aoPagarComPixAutomatico} disabled={carregando}>
+									<RefreshCw className="size-4" aria-hidden />
+									{ROTULO_PIX_AUTOMATICO}
+								</Button>
+								<p className="mt-1 text-center text-xs text-text-secondary">
+									{textoCurtoPixAutomatico(reais(precoDoPlano("pro")?.mensalCentavos ?? 0))}
+								</p>
+							</div>
+						)}
+
+						{pixAutomaticoDisponivel && pixDisponivel && botaoPix}
+
 						<Button
-							variant={plano.destaque ? "default" : "outline"}
-							className="min-h-[44px] w-full"
+							variant={plano.destaque && !pixAutomaticoDisponivel ? "default" : "outline"}
+							className={cn("min-h-[44px] w-full", pixAutomaticoDisponivel && "mt-2")}
 							onClick={aoAssinar}
 							disabled={carregando}
 							aria-busy={carregando}
+							data-opcao-pagamento="cartao"
 						>
 							{carregando ? (
 								<>
@@ -847,17 +937,7 @@ function CardPlano({
 							)}
 						</Button>
 
-						{pixDisponivel && (
-							<Button
-								variant="secondary"
-								className="mt-2 min-h-[44px] w-full"
-								onClick={aoPagarComPix}
-								disabled={carregando}
-							>
-								<QrCode className="size-4" aria-hidden />
-								Pagar com Pix
-							</Button>
-						)}
+						{!pixAutomaticoDisponivel && pixDisponivel && botaoPix}
 
 						{/* Quais cartões o checkout aceita — dito ANTES do clique (ver notaCartao.ts). */}
 						<p className="mt-2 text-center text-xs text-text-secondary">{notaCartao(pixDisponivel)}</p>
