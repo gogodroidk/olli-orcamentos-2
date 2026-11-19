@@ -4,7 +4,7 @@
  *     node scripts/teste-feedback-cadeado.ts
  * Exit 0 = passou; 1 = falhou.
  *
- *  1. Regra de frequência/consentimento (pura): 1 por semana, "agora não" 14 dias, "não perguntar mais" nunca volta,
+ *  1. Regra de frequência/consentimento (pura): 1 a cada 14 dias, "agora não" 14 dias, "não perguntar mais" nunca volta,
  *     nunca antes do 1º envio, nunca criando/enviando/pagando, nunca com dado não lido.
  *  2. Copy da fonte: nome do plano de NOME_PLANO; sem recompensa por avaliação em loja; sem promessa de crédito sem concessão.
  *  3. Ligação no app: o popup só nasce de "fechou o cadeado sem assinar", 1 host no App, nenhuma tela de criar/enviar/pagar o importa.
@@ -41,12 +41,12 @@ for (const rota of ['NovoOrcamento', 'EditarOrcamento', 'EmitirRecibo', 'Planos'
 ok('as rotas sensíveis existem no navegador (nome certo, senão a trava é decoração)',
   ROTAS_SENSIVEIS.every((r) => new RegExp(`${r}[:?]`).test(ler('src/navigation/AppNavigator.tsx'))));
 const mostrado = aposMostrar(vazio, t0);
-ok('no máximo 1 por semana: 6 dias não, 8 dias sim', !decidirPopup(mostrado, { ...base, agora: t0 + 6 * DIA }).mostrar && decidirPopup(mostrado, { ...base, agora: t0 + (DIAS_ENTRE_POPUPS + 1) * DIA }).mostrar);
+ok('no máximo 1 a cada 14 dias: 13 dias não, 15 dias sim', DIAS_ENTRE_POPUPS === 14 && !decidirPopup(mostrado, { ...base, agora: t0 + 13 * DIA }).mostrar && decidirPopup(mostrado, { ...base, agora: t0 + (DIAS_ENTRE_POPUPS + 1) * DIA }).mostrar);
 const agoraNao = aposAgoraNao(mostrado, t0);
 ok('"agora não": não volta por 14 dias (13 não, 15 sim)', !decidirPopup(agoraNao, { ...base, agora: t0 + 13 * DIA }).mostrar && decidirPopup(agoraNao, { ...base, agora: t0 + (DIAS_AGORA_NAO + 1) * DIA }).mostrar);
 const nunca = aposNaoPerguntarMais(agoraNao);
 ok('"não perguntar mais": nunca volta, nem em 1 ano', !decidirPopup(nunca, { ...base, agora: t0 + 365 * DIA }).mostrar);
-ok('resposta enviada só carimba (a semana segue valendo)', !decidirPopup(aposResposta(mostrado, t0), { ...base, agora: t0 + 2 * DIA }).mostrar);
+ok('resposta enviada só carimba (o intervalo de 14 dias segue valendo)', !decidirPopup(aposResposta(mostrado, t0), { ...base, agora: t0 + 2 * DIA }).mostrar);
 ok('estado gravado ilegível vira vazio (nunca lança)', JSON.stringify(lerEstadoFeedbackCadeado('{{lixo')) === '{}' && JSON.stringify(lerEstadoFeedbackCadeado(null)) === '{}' && lerEstadoFeedbackCadeado('{"naoPerguntarMais":true}').naoPerguntarMais === true);
 
 // 2. Copy

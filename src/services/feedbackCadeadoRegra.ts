@@ -6,11 +6,12 @@
  * `feedbackCadeadoCopy.ts`).
  *
  * Nunca aparece: antes do 1º envio de orçamento, durante criar/enviar/pagar (rotas sensíveis), com o plano
- * não confirmado, mais de 1 vez por semana, nos 14 dias depois de "agora não" e nunca mais depois de
+ * não confirmado, mais de 1 vez a cada 14 dias, nos 14 dias depois de "agora não" e nunca mais depois de
  * "não perguntar mais". Dúvida (dado que não deu para ler) = não mostra.
  */
 
-export const DIAS_ENTRE_POPUPS = 7;
+/** Ordem da CPO (18/11, CQ-APP-13-D): no máximo 1 popup a cada 14 dias. */
+export const DIAS_ENTRE_POPUPS = 14;
 export const DIAS_AGORA_NAO = 14;
 const DIA_MS = 24 * 60 * 60 * 1000;
 
@@ -27,7 +28,8 @@ export interface EstadoFeedbackCadeado {
 
 /** Telas em que a pessoa está CRIANDO, ENVIANDO ou PAGANDO — o popup espera. Nomes de rota do AppNavigator. */
 export const ROTAS_SENSIVEIS: readonly string[] = [
-  'NovoOrcamento', 'EditarOrcamento', 'EmitirRecibo', 'Planos', 'Assinatura', 'Creditos',
+  // VisualizarOrcamento: é onde se ENVIA e se REGISTRA/COBRA pagamento.
+  'NovoOrcamento', 'EditarOrcamento', 'VisualizarOrcamento', 'EmitirRecibo', 'Planos', 'Assinatura', 'Creditos',
   'Entrar', 'Onboarding', 'OlliVoz', 'OlliChat', 'DiagnosticoIA',
 ];
 
@@ -42,7 +44,7 @@ export interface ContextoPopup {
 }
 
 export type MotivoSemPopup =
-  | 'nunca_mais' | 'primeiro_envio_pendente' | 'envio_desconhecido' | 'rota_sensivel' | 'plano_nao_confirmado' | 'semana' | 'agora_nao';
+  | 'nunca_mais' | 'primeiro_envio_pendente' | 'envio_desconhecido' | 'rota_sensivel' | 'plano_nao_confirmado' | 'intervalo' | 'agora_nao';
 
 export type DecisaoPopup = { mostrar: true } | { mostrar: false; motivo: MotivoSemPopup };
 
@@ -61,7 +63,7 @@ export function decidirPopup(estado: EstadoFeedbackCadeado, ctx: ContextoPopup):
   const ate = ms(estado.agoraNaoAte);
   if (ate !== null && ctx.agora < ate) return { mostrar: false, motivo: 'agora_nao' };
   const ultimo = ms(estado.ultimoMostradoEm);
-  if (ultimo !== null && ctx.agora - ultimo < DIAS_ENTRE_POPUPS * DIA_MS) return { mostrar: false, motivo: 'semana' };
+  if (ultimo !== null && ctx.agora - ultimo < DIAS_ENTRE_POPUPS * DIA_MS) return { mostrar: false, motivo: 'intervalo' };
   return { mostrar: true };
 }
 
