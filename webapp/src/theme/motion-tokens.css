@@ -14,13 +14,13 @@
 	--motion-duration-slow: 320ms;
 	--motion-duration-page: 400ms;
 	--motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
-	--motion-ease-enter: cubic-bezier(0.23, 1, 0.32, 1);
+	--motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
 	--motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
 	--motion-distance-xs: 2px;
 	--motion-distance-sm: 6px;
 	--motion-distance-md: 12px;
 	--motion-distance-lg: 20px;
-	--motion-scale-press: 0.97;
+	--motion-scale-press: 0.98;
 	--motion-scale-enter: 0.985;
 	--motion-stagger-tight: 25ms;
 	--motion-stagger-base: 45ms;
@@ -37,7 +37,6 @@
 		--motion-distance-sm: 0px;
 		--motion-distance-md: 0px;
 		--motion-distance-lg: 0px;
-		--motion-scale-press: 1;
 		--motion-scale-enter: 1;
 		--motion-stagger-tight: 0ms;
 		--motion-stagger-base: 0ms;
