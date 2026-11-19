@@ -71,6 +71,8 @@ function textoNeutro(tipo: TipoLembrete): string | null {
       return 'Você voltou ao Grátis — seus dados continuam salvos.';
     case 'trial_acabando':
       return 'Depois disso sua conta volta ao Grátis — seus dados continuam salvos.';
+    case 'trial_encerrado':
+      return 'Seu teste do Pro terminou. Sua conta voltou ao Grátis — seus dados continuam salvos.';
     case 'trial_disponivel':
       // A regra lista o que o Pro dá — e um dos itens é "link com pagamento por
       // Pix" (o cliente pagando o PRESTADOR). Correto, mas nas lojas qualquer

@@ -93,6 +93,17 @@ checar('cartão recorrente (renova sozinho) → nunca lembra', lembreteAssinatur
 checar('venceu há 3 dias → plano_vencido crítico', [lembreteAssinatura(pagoPix(-3))?.tipo, lembreteAssinatura(pagoPix(-3))?.urgencia], ['plano_vencido', 'critico']);
 checar('venceu há 40 dias → não insiste mais', lembreteAssinatura(pagoPix(-40)), null);
 
+console.log('\n2b. Teste do Pro encerrado');
+const encerrado = (diasDesdeFim: number, usados = 0): EntradaLembrete => ({
+  agora: AGORA, precoProMensal: 'R$ 39,00', assinatura: null,
+  oferta: { planoEfetivo: 'gratis', enviosUsados: usados, trialEstado: 'ended', trialTerminaEm: emDias(-diasDesdeFim), trialDias: 14 },
+});
+checar('terminou há 2 dias, 0 envios no mês → avisa (antes: nada)', lembreteAssinatura(encerrado(2))?.tipo, 'trial_encerrado');
+checar('terminou há 2 dias, 6 envios → trial_encerrado e não "assinar"', lembreteAssinatura(encerrado(2, 6))?.tipo, 'trial_encerrado');
+checar('trial_encerrado cita R$ 39,00 e Pix', /R\$ 39,00.*Pix/.test(lembreteAssinatura(encerrado(2))?.texto ?? ''), true);
+checar('terminou há 20 dias → volta ao aviso antigo', lembreteAssinatura(encerrado(20, 6))?.tipo, 'assinar');
+checar('terminou há 20 dias sem envio → nada', lembreteAssinatura(encerrado(20)), null);
+
 console.log('\n3. Teste do Pro');
 const trial = (dias: number): EntradaLembrete => ({
   agora: AGORA, precoProMensal: 'R$ 39,00', assinatura: null,
