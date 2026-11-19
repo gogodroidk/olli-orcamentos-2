@@ -71,7 +71,7 @@ ok('arrependimento: fonte única (7 dias, art. 49) usada nos Termos e na tela do
 ok('texto curto cita os 7 dias e o art. 49', /7 dias corridos/.test(textoArrependimentoCurto()) && /art\. 49/.test(textoArrependimentoCurto()));
 const cent = (v: number) => Math.round(v * 100);
 ok('preço do Pix = preço da fonte (precosPlanos): mensal e anual, Pro e Empresa', cent(PLANO_PIX.pro_mensal.valor) === PRECO_PRO.mensalCentavos && cent(PLANO_PIX.pro_anual.valor) === PRECO_PRO.anualCentavos && cent(PLANO_PIX.empresa_mensal.valor) === PRECO_EMPRESA.mensalCentavos && cent(PLANO_PIX.empresa_anual.valor) === PRECO_EMPRESA.anualCentavos);
-ok('o modal mostra o valor da cobrança (servidor), sem número de preço digitado', /formatCurrency\(cobranca\.plano\.valor\)/.test(modal) && !/R\$\s?\d/.test(modal));
+ok('o modal mostra o valor da cobrança (servidor; com cupom, o valor com desconto), sem número de preço digitado', /formatCurrency\(cobranca\.desconto \? cobranca\.desconto\.por : cobranca\.plano\.valor\)/.test(modal) && !/R\$\s?\d/.test(modal));
 
 if (falhas) { console.error(`${falhas} falha(s)`); process.exit(1); }
 console.log('tudo ok');
