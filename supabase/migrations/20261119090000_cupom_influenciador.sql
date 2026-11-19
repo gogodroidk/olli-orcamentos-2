@@ -141,3 +141,42 @@ as $$
 $$;
 revoke all on function public.cupom_atribuicao() from public, anon, authenticated;
 grant execute on function public.cupom_atribuicao() to service_role;
+
+-- Admin: cria um código (teto de usos e validade por código, com limites duros) e desativa.
+-- Guarda só o código: nenhum dado pessoal do influenciador.
+create or replace function public.cupom_criar(p_codigo text, p_usos_max integer, p_dias integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  v_codigo text := upper(btrim(coalesce(p_codigo, '')));
+begin
+  if v_codigo !~ '^[A-Z0-9]{4,20}$' or p_usos_max is null or p_usos_max < 1 or p_usos_max > 500
+     or p_dias is null or p_dias < 1 or p_dias > 90 then
+    return jsonb_build_object('status', 'invalido');
+  end if;
+  insert into public.cupons_influenciador (codigo, usos_max, valido_ate)
+  values (v_codigo, p_usos_max, now() + make_interval(days => p_dias))
+  on conflict (codigo) do nothing;
+  if not found then return jsonb_build_object('status', 'existe'); end if;
+  return jsonb_build_object('status', 'ok', 'codigo', v_codigo);
+end;
+$$;
+revoke all on function public.cupom_criar(text, integer, integer) from public, anon, authenticated;
+grant execute on function public.cupom_criar(text, integer, integer) to service_role;
+
+create or replace function public.cupom_desativar(p_codigo text)
+returns boolean
+language plpgsql
+security definer
+set search_path to ''
+as $$
+begin
+  update public.cupons_influenciador set ativo = false where codigo = upper(btrim(coalesce(p_codigo, ''))) and ativo;
+  return found;
+end;
+$$;
+revoke all on function public.cupom_desativar(text) from public, anon, authenticated;
+grant execute on function public.cupom_desativar(text) to service_role;

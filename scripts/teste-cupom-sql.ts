@@ -130,8 +130,20 @@ checar('atribuição não expõe dado pessoal', !('user_id' in (at[0] ?? {})) &&
 checar('tabela cupom_usos guarda só conta+código (sem e-mail/nome)', !(await db.query(
   `select 1 from information_schema.columns where table_name='cupom_usos' and column_name in ('email','nome','telefone')`)).rows.length);
 
+// admin: criar/desativar (limites duros)
+checar('admin cria código válido', (await um<any>(`select public.cupom_criar('NOVO10', 50, 30)`)).status === 'ok');
+checar('admin: código repetido = existe', (await um<any>(`select public.cupom_criar('novo10', 50, 30)`)).status === 'existe');
+for (const [c, u, d] of [['ab', 5, 5], ['ABCD', 0, 5], ['ABCD', 501, 5], ['ABCD', 5, 0], ['ABCD', 5, 91], ["A-B'C", 5, 5]] as const) {
+  checar(`admin: ${c}/${u}/${d} fora dos limites = invalido`, (await um<any>(`select public.cupom_criar($1,$2,$3)`, [c, u, d])).status === 'invalido');
+}
+const novaConta = await conta();
+checar('código criado vale e respeita a validade escolhida', (await reservar(novaConta, 'NOVO10')).status === 'ok');
+checar('admin desativa e o código vira invalido', (await um<boolean>(`select public.cupom_desativar('novo10')`)) === true
+  && (await reservar(await conta(), 'NOVO10')).status === 'invalido');
+checar('desativar de novo = false (idempotente)', (await um<boolean>(`select public.cupom_desativar('NOVO10')`)) === false);
+
 // permissões: só service_role
-for (const fn of ['cupom_reservar(uuid,text,integer,text,text)', 'cupom_verificar(uuid,text,integer)', 'cupom_confirmar(uuid)', 'cupom_atribuicao()', 'cupom_usou(uuid)']) {
+for (const fn of ['cupom_reservar(uuid,text,integer,text,text)', 'cupom_verificar(uuid,text,integer)', 'cupom_confirmar(uuid)', 'cupom_atribuicao()', 'cupom_usou(uuid)', 'cupom_criar(text,integer,integer)', 'cupom_desativar(text)']) {
   const anon = await um<boolean>(`select has_function_privilege('anon', '${fn}', 'execute')`);
   const auth = await um<boolean>(`select has_function_privilege('authenticated', '${fn}', 'execute')`);
   const sr = await um<boolean>(`select has_function_privilege('service_role', '${fn}', 'execute')`);
