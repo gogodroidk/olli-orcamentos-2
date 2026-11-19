@@ -5,6 +5,7 @@ import {
   TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { rotuloDisponibilidade } from '../services/cadeadoRecurso';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -553,12 +554,12 @@ export default function ClientesScreen() {
             style={styles.mapaAtalho}
             onPress={() => nav.navigate('Importar', { origem: 'contatos' })}
             accessibilityRole="button"
-            accessibilityLabel={loteTrancado ? `Importar clientes dos contatos do celular. Disponível no ${NOME_PLANO[planoLote]}` : 'Importar clientes dos contatos do celular'}
+            accessibilityLabel={loteTrancado ? `Importar clientes dos contatos do celular. ${rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoLote])}` : 'Importar clientes dos contatos do celular'}
           >
             <MaterialCommunityIcons name="card-account-phone-outline" size={20} color={cores.primary} />
             <View style={{ flex: 1 }}>
               <Text style={styles.mapaAtalhoTitulo}>Importar dos contatos</Text>
-              <Text style={styles.mapaAtalhoSub}>{loteTrancado ? `Disponível no ${NOME_PLANO[planoLote]}` : 'Escolha na sua agenda quem é cliente. Sem digitar.'}</Text>
+              <Text style={styles.mapaAtalhoSub}>{loteTrancado ? rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoLote]) : 'Escolha na sua agenda quem é cliente. Sem digitar.'}</Text>
             </View>
             <MaterialCommunityIcons name={loteTrancado ? 'lock-outline' : 'chevron-right'} size={20} color={cores.onSurfaceVariant} />
           </TouchableOpacity>

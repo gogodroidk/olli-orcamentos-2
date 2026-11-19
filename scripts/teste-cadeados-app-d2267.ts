@@ -57,7 +57,7 @@ const home = semComentarios(ler('src/screens/HomeScreen.tsx'));
 const gate = semComentarios(ler('src/screens/RecursoTrancadoScreen.tsx'));
 const nav = ler('src/navigation/AppNavigator.tsx');
 ok('rota RecursoTrancado registrada e tipada', /RecursoTrancado: \{ recurso: Recurso \}/.test(nav) && /name="RecursoTrancado" component=\{RecursoTrancadoScreen\}/.test(nav));
-ok('tela "Disponível no Pro" usa o cartão da fonte única', /<CartaoRecursoPlano recurso=\{recurso\} \/>/.test(gate) && /Disponível no \$\{NOME_PLANO\[planoMinimoDoRecurso\(recurso\)\]\}/.test(gate));
+ok('tela "Disponível no Pro" usa o cartão da fonte única', /<CartaoRecursoPlano recurso=\{recurso\} \/>/.test(gate) && /rotuloDisponibilidade\(Platform\.OS, NOME_PLANO\[planoMinimoDoRecurso\(recurso\)\]\)/.test(gate));
 ok('recibo: aba Novo vira cartão do plano quando trancada', /useCadeado\('recibos'\)/.test(recibo) && /aba === 'novo' && reciboTrancado/.test(recibo) && /<CartaoRecursoPlano recurso="recibos" \/>/.test(recibo));
 ok('recibo (corte do CPO): EMITIR PDF/link tranca, inclusive o pagamento já registrado com PDF pendente', /const reciboTrancado = cadeadoRecibo\.trancado;/.test(recibo) && !/cadeadoRecibo\.trancado && !reciboPendente/.test(recibo));
 // REGISTRAR pagamento recebido segue Grátis: nem o registro (serviço) nem o botão no orçamento passam pelo cadeado de recibo

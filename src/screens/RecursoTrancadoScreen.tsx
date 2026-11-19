@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GradientHeader } from '../components/GradientHeader';
@@ -8,6 +8,7 @@ import { fechouCadeadoSemAssinar } from '../services/feedbackCadeado';
 import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso } from '../services/entitlements';
 import { NOME_PLANO } from '../services/planosBase';
+import { rotuloDisponibilidade } from '../services/cadeadoRecurso';
 import { Spacing, useCores } from '../theme';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
@@ -29,7 +30,7 @@ export default function RecursoTrancadoScreen() {
   useEffect(() => () => fechouCadeadoSemAssinar(recurso, estadoRef.current), [recurso]);
   return (
     <View style={[styles.raiz, { backgroundColor: cores.background }]}>
-      <GradientHeader title={`Disponível no ${NOME_PLANO[planoMinimoDoRecurso(recurso)]}`} onBack={() => goBackOrHome(nav as never)} />
+      <GradientHeader title={rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoMinimoDoRecurso(recurso)])} onBack={() => goBackOrHome(nav as never)} />
       <ScrollView contentContainerStyle={{ padding: Spacing.base, paddingBottom: Spacing.xl + insets.bottom }}>
         <CartaoRecursoPlano recurso={recurso} />
       </ScrollView>

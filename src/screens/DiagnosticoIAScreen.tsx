@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity,
+  View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity, Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -176,7 +176,7 @@ export default function DiagnosticoIAScreen() {
         : undefined;
   const limiteDiarioFechado = motivoErro === 'limite_diario' || motivoErro === 'limite_global';
   const onAcaoErro = avisoCota
-    ? () => nav.navigate('Planos')
+    ? (Platform.OS === 'ios' ? undefined : () => nav.navigate('Planos'))
     : motivoErro && !limiteDiarioFechado
       ? pedirDiagnostico
       : undefined;

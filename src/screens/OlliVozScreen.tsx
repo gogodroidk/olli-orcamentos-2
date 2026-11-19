@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
   Animated, Easing, Platform, ActivityIndicator, KeyboardAvoidingView, Alert,
 } from 'react-native';
+import { podeVerPlanosPara } from '../services/cadeadoRecurso';
 import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -977,6 +978,7 @@ export default function OlliVozScreen() {
                   icon={<MaterialCommunityIcons name="lightning-bolt-outline" size={18} color="#fff" />}
                   style={{ marginTop: 14, alignSelf: 'stretch' }}
                 />
+                {podeVerPlanosPara(Platform.OS) ? (
                 <OlliButton
                   label="Ver planos"
                   variant="outline"
@@ -985,6 +987,7 @@ export default function OlliVozScreen() {
                   icon={<MaterialCommunityIcons name="crown-outline" size={18} color={cores.accentLight} />}
                   style={{ marginTop: 10, alignSelf: 'stretch' }}
                 />
+                ) : null}
                 <OlliButton
                   label="Montar na mão"
                   variant="ghost"
@@ -1212,7 +1215,7 @@ export default function OlliVozScreen() {
                 <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.erroText}>{erro}</Text>
-                  {semCreditosNoErro ? (
+                  {semCreditosNoErro && podeVerPlanosPara(Platform.OS) ? (
                     // Sem créditos: "Tentar de novo" ia falhar de novo igual — a
                     // saída honesta aqui é "Ver planos" (cai na opção b do gate).
                     <OlliButton

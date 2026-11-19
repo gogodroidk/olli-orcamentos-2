@@ -41,6 +41,7 @@ import {
   type TomPilula,
 } from '../services/assinaturaTextos';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
+import { podeVerPlanosPara } from '../services/cadeadoRecurso';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -595,7 +596,7 @@ export default function AssinaturaScreen() {
                   </View>
                   {BUILD_PLAY_SEM_COMPRA_EXTERNA && !VENDA_PELA_PLAY ? (
                     <Text style={[styles.gerenciarHint, { marginTop: Spacing.base }]}>A assinatura pelo app está indisponível no momento.</Text>
-                  ) : (
+                  ) : !podeVerPlanosPara(Platform.OS) ? null : (
                     <OlliButton
                       label={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}
                       variant="gradient"

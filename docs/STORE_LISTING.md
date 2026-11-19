@@ -66,8 +66,59 @@ IA e gestão de equipe — veja os detalhes e preços dentro do app, na aba Cont
 Feito para quem trabalha na rua, não atrás de mesa.
 ```
 
-(≈1750 caracteres — bem dentro do limite de 4000 da Play Store; a Apple não tem limite curto de
-descrição, então o mesmo texto serve.)
+(≈1750 caracteres — bem dentro do limite de 4000 da Play Store. **A Apple NÃO usa este texto**: a seção "PLANOS" manda ver
+preços no app, e o iPhone não mostra preço nem venda. Use a seção 3.1.)
+
+### 3.1 Ficha da APPLE (iPhone) — sem venda pela Apple, sem compra fora (CPO, 19/11/2026)
+
+> Regra (Guideline 3.1.1 e 3.1.1(a); `docs/RELEASE-1.3.0.md` e a nota da Marina `2026-11-19-ios-pro-sem-venda/REGRA-IOS-PRO.md`):
+> a descrição, os prints e os metadados da App Store **não citam preço, assinatura, "assine", site de compra nem Pix de plano**.
+> O Pro é reconhecido (quem assinou no painel web ou no Android usa tudo no iPhone); o app é gratuito e o iPhone só informa
+> "Recurso do plano Pro". A descrição da seção 3 NÃO vai para a Apple (ela manda ver preços no app). Use esta.
+> O teste `scripts/teste-ios-sem-venda.ts` lê o bloco abaixo e falha se aparecer preço, "assine", "site" de compra ou Pix de plano.
+
+<!-- IOS-INICIO -->
+```
+OLLI Orçamentos é o app de gestão para quem atende serviço técnico em campo — eletricistas,
+técnicos de HVAC/refrigeração e autônomos que vivem entre visitas, orçamentos e recibos.
+
+MONTE ORÇAMENTOS EM MINUTOS
+Catálogo de serviços e produtos, cálculo automático, PDF profissional com a marca (logo e cor)
+do seu negócio, e um link de aprovação que você manda pro cliente pelo WhatsApp — ele aprova
+direto pelo celular, sem precisar instalar nada.
+
+RECIBOS E ORDENS DE SERVIÇO
+Depois de aprovado, emita o recibo em um toque. Ordens de serviço organizam o trabalho do início
+ao fim, com o histórico de cada cliente e equipamento.
+
+DIAGNÓSTICO TÉCNICO OFFLINE
+Uma base com centenas de códigos de erro de equipamentos HVAC, com causa provável e o que checar
+— funciona mesmo sem internet, direto no bolso durante a visita.
+
+ASSISTENTE OLLI (IA)
+Dite o orçamento por voz enquanto ainda está na casa do cliente, ou pergunte pro assistente sobre
+um código de erro ou uma dúvida técnica. O app converte a fala em orçamento estruturado, pronto
+pra revisar e enviar.
+
+CLIENTES, AGENDA E LEMBRETES
+Cadastro de clientes, agenda de visitas com lembrete automático antes do horário, e um radar que
+avisa quando um cliente antigo some do seu radar de vendas.
+
+FUNCIONA OFFLINE, SINCRONIZA QUANDO TIVER INTERNET
+Os dados ficam no aparelho por padrão e sincronizam com a nuvem quando você entra na sua conta —
+sem perder trabalho por falta de sinal no meio da visita.
+
+O app é gratuito. Alguns recursos são do plano Pro; quem já tem o Pro na conta usa tudo no iPhone.
+
+Feito para quem trabalha na rua, não atrás de mesa.
+```
+<!-- IOS-FIM -->
+
+**Telas da App Store (iPhone):** as mesmas 8 da seção 7, **trocando a nº 8** por `RelatorioDiaScreen.tsx` capturado numa conta com o Pro
+(nunca `PlanosScreen.tsx`). Nenhuma tela com cadeado, "Recurso do plano Pro" no meio da captura, preço ou "Ver planos".
+**Metadados:** subtítulo `Orçamentos para o técnico`; palavras-chave sem "assinatura", "preço", "plano"; URL de suporte e de privacidade da seção 8;
+"Novidades" sem citar plano, preço ou compra.
+**Notas ao revisor (App Review Information):** texto pronto em `Entregas Claude/OLLI/2026-11-19-ios-build-mobile/NOTA-AO-REVISOR.md` (a senha da conta de demonstração é digitada só no campo do App Store Connect, nunca em arquivo).
 
 ## 4. Palavras-chave (Apple — campo "Keywords", 100 caracteres, separadas por vírgula sem espaço)
 
@@ -131,7 +182,7 @@ reais de cliente). Ordem e legenda sugeridas (a mesma sequência serve pras duas
 | 5 | `OlliVozScreen.tsx` ou `OlliChatScreen.tsx` | "Dite o orçamento ou pergunte pro assistente Olli" |
 | 6 | `AgendaScreen.tsx` | "Agenda com lembrete automático da visita" |
 | 7 | `EquipamentoScreen.tsx` | "Cadastro de equipamentos com etiqueta QR" |
-| 8 | `RelatorioDiaScreen.tsx` ou `PlanosScreen.tsx` | "Acompanhe faturamento e conversão" |
+| 8 | `RelatorioDiaScreen.tsx` (Android: pode ser `PlanosScreen.tsx`; **iPhone: nunca**) | "Acompanhe faturamento e conversão" |
 
 Use o tema escuro padrão do app (não force tema claro pra print) — é a identidade visual real do
 OLLI, e screenshot que não bate com o app instalado é motivo comum de rejeição/reclamação.

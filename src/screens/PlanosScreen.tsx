@@ -62,6 +62,7 @@ import {
 import { idProdutoPlay, liberacaoPlayConfirmada, ofertaPara, produtoPlay, type OfertaPlay, type PlanoPlay } from '../services/playBillingRegras';
 import { getAssinaturaNaPlay, type AssinaturaNaPlay } from '../services/assinatura';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
+import { rotuloDisponibilidade } from '../services/cadeadoRecurso';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -1136,7 +1137,7 @@ export default function PlanosScreen() {
                   ? `O Grátis tem ${FRASE_GRATIS}. Veja abaixo o que cada plano libera.`
                 : Platform.OS === 'android'
                   ? `O Grátis tem ${FRASE_GRATIS}. A assinatura pelo app está indisponível no momento; aqui você confere o que cada plano libera.`
-                  : `O Grátis tem ${FRASE_GRATIS}. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
+                  : `O Grátis tem ${FRASE_GRATIS}. Veja abaixo o que cada plano libera.`}
             </Text>
           </View>
         </AnimatedEntrance>
@@ -1222,7 +1223,7 @@ export default function PlanosScreen() {
 
         {/* COMPARATIVO — sempre visível (info, não venda): deixa óbvio o que cada
             plano dá e destaca o que o usuário JÁ tem. Sem CTA aqui. */}
-        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={!BUILD_PLAY_SEM_COMPRA_EXTERNA} />
+        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA} />
         {/* D1438-G20: protótipo de áudio. Sem a flag, o card não monta e o microfone não abre. */}
         {planosAudioIaLigada((process.env as { EXPO_PUBLIC_PLANOS_AUDIO_IA?: string }).EXPO_PUBLIC_PLANOS_AUDIO_IA) ? <PlanosAudioIaCard /> : null}
       </ScrollView>
@@ -1287,7 +1288,8 @@ function PlanoCard({
   const precoLoja = vendaPlay?.oferta?.precoTexto ?? null;
   // Android sem venda pela Play (servidor desligado): NENHUM preço — o da web
   // seria um convite a pagar por fora (Payments policy). Só nome e recursos.
-  const semPrecoNoAndroid = BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlay;
+  // iPhone (CPO 19/11, Guideline 3.1.1(a)): também NENHUM preço — o app só informa o que o plano libera.
+  const semPrecoNoAndroid = !COMPRA_NO_APP || (BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlay);
   const exibido = !preco
     ? { valor: 'Grátis', sufixo: '', nota: null }
     : semPrecoNoAndroid
@@ -1397,7 +1399,7 @@ function PlanoCard({
         // abaixo, também fica escondido no iOS: sem o botão de compra acima,
         // ele viraria o próprio caminho de venda por fora do app.
         <View style={styles.ctaIndisponivel}>
-          <Text style={styles.ctaIndisponivelText}>Assinatura ainda não disponível no iPhone</Text>
+          <Text style={styles.ctaIndisponivelText}>{rotuloDisponibilidade(Platform.OS, plano.nome)}</Text>
         </View>
       ) : BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
         vendaPlay ? (

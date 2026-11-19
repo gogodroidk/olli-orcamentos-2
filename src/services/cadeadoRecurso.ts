@@ -58,3 +58,23 @@ export function podeOferecerPlanoPara(os: string, vendaPlayConfirmada: boolean):
   if (os === 'web') return true;
   return os === 'android' && vendaPlayConfirmada;
 }
+
+/**
+ * iPHONE SEM VENDA PELA APPLE (CPO, 19/11/2026; Guideline 3.1.1 e 3.1.1(a)): o iOS não vende e não leva a venda.
+ * Sem preço, sem botão, sem "assine no site", sem Pix. O Pro é RECONHECIDO (quem assinou no painel ou no Android
+ * usa tudo); o cadeado só informa "Recurso do plano Pro". Plano B (se a Apple pedir IAP): esconder os recursos Pro
+ * do iPhone em vez de trancá-los. Regra pura para o teste rodar no Node; quem aplica é `Platform.OS` nas telas.
+ */
+export function iphoneSoInforma(os: string): boolean {
+  return os === 'ios';
+}
+
+/** O rótulo do cadeado: "Disponível no Pro" nas outras plataformas, "Recurso do plano Pro" no iPhone. */
+export function rotuloDisponibilidade(os: string, nomePlano: string): string {
+  return iphoneSoInforma(os) ? `Recurso do plano ${nomePlano}` : `Disponível no ${nomePlano}`;
+}
+
+/** Botões "Ver planos"/"Ver o plano": no iPhone não existem (nada a vender nem a apontar). */
+export function podeVerPlanosPara(os: string): boolean {
+  return !iphoneSoInforma(os);
+}

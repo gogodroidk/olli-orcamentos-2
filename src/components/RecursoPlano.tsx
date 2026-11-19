@@ -11,7 +11,7 @@ import { goBackOrHome } from '../navigation/safeBack';
 import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '../services/entitlements';
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
 import { vendaPlayConfirmada } from '../services/playBilling';
-import { podeOferecerPlanoPara, recursoVendavel } from '../services/cadeadoRecurso';
+import { iphoneSoInforma, podeOferecerPlanoPara, recursoVendavel, rotuloDisponibilidade } from '../services/cadeadoRecurso';
 import { fechouCadeadoSemAssinar } from '../services/feedbackCadeado';
 import { track, Eventos } from '../services/analytics';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
@@ -131,7 +131,7 @@ export function RecursoPlanoChip({ recurso, children }: PropsChip) {
       </View>
     );
   }
-  const texto = `${rotulo.titulo} · Disponível no ${NOME_PLANO[planoMinimo]}`;
+  const texto = `${rotulo.titulo} · ${rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoMinimo])}`;
   if (!podeOferecerPlano()) {
     return (
       <View style={styles.chip} accessibilityRole="text">
@@ -230,13 +230,16 @@ export function CartaoRecursoPlano({ recurso, beneficio, titulo }: PropsCartao) 
     <View style={styles.cartao}>
       <View style={[styles.selo, styles.seloPlano]}>
         <MaterialCommunityIcons name="crown-outline" size={14} color={cores.accentLight} />
-        <Text style={[styles.seloTxt, { color: cores.accentLight }]}>DISPONÍVEL NO {nome.toUpperCase()}</Text>
+        <Text style={[styles.seloTxt, { color: cores.accentLight }]}>{rotuloDisponibilidade(Platform.OS, nome).toUpperCase()}</Text>
       </View>
       <Text style={styles.titulo}>{titulo ?? rotulo.titulo}</Text>
       {/* Nas lojas (APK/iOS) o benefício padrão sai sem Pix: ver `beneficioLoja`. */}
       <Text style={styles.texto}>{beneficio ?? (Platform.OS === 'web' ? beneficioRecurso(recurso) : beneficioRecursoLoja(recurso))}</Text>
       {/* D-2267: "Disponível no Pro: R$ 39 por mês" — o preço sai de `precosPlanos` (nunca digitado). */}
-      <Text style={styles.preco}>{nome}: {reais((planoMinimo === 'empresa' ? PRECO_EMPRESA : PRECO_PRO).mensalCentavos)} por mês</Text>
+      {/* iPhone: sem preço (Guideline 3.1.1(a); CPO 19/11) — o cartão só informa "Recurso do plano Pro". */}
+      {iphoneSoInforma(Platform.OS) ? null : (
+        <Text style={styles.preco}>{nome}: {reais((planoMinimo === 'empresa' ? PRECO_EMPRESA : PRECO_PRO).mensalCentavos)} por mês</Text>
+      )}
       <Text style={styles.nota}>Seus dados continuam salvos, em qualquer plano.</Text>
       {podeOferecerPlano() ? (
         <OlliPressable onPress={irParaPlanos} haptic="light" style={styles.botao} accessibilityRole="button">

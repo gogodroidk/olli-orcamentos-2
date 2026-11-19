@@ -5,7 +5,9 @@
  * Envio pelo canal que já existe (`public.feedback`, RLS: só o dono insere; só o /admin lê): tipo
  * `motivo_cadeado`, com recurso, opção e plano em `contexto`. Não há migration. Best-effort: nunca lança.
  */
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { iphoneSoInforma } from './cadeadoRecurso';
 import { enviarFeedback } from './feedback';
 import { track, Eventos } from './analytics';
 import { FEEDBACK_CADEADO_KEY } from './storageKeys';
@@ -46,6 +48,8 @@ export function aoCadeadoFechado(o: Ouvinte): () => void {
  */
 export function fechouCadeadoSemAssinar(recurso: Recurso, estado: string): void {
   if (estado !== 'bloqueado') return;
+  // iPhone: não há o que assinar ali (sem venda pela Apple); a pergunta "o que faltou para assinar" não se aplica.
+  if (iphoneSoInforma(Platform.OS)) return;
   track(Eventos.gateFechadoSemAssinar, { recurso });
   marcarCadeadoFechado(recurso);
 }

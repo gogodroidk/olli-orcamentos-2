@@ -7,6 +7,8 @@
  * `motivoFalhaDiagnostico()` (olliIA.ts) e do status HTTP mapeado em
  * olliAssistente.ts.
  */
+import { iphoneSoInforma } from './cadeadoRecurso.ts';
+
 export type TipoErroIA =
   | 'timeout'
   | 'offline'
@@ -44,7 +46,7 @@ export function mensagemLimiteIA(codigo: unknown): string | null {
 }
 
 /** Mapeia o motivo real da falha para {titulo, mensagem, ação} — texto único, sem duplicar tela a tela. */
-export function mapearErroIA(tipo: TipoErroIA): EstadoErroIA {
+export function mapearErroIA(tipo: TipoErroIA, os?: string): EstadoErroIA {
   switch (tipo) {
     case 'timeout':
       return {
@@ -71,6 +73,10 @@ export function mapearErroIA(tipo: TipoErroIA): EstadoErroIA {
         acao: 'Tentar de novo',
       };
     case 'cota':
+      // iPhone: sem "assine" nem "Ver planos" (CPO 19/11, Guideline 3.1.1(a)).
+      if (os && iphoneSoInforma(os)) {
+        return { titulo: 'Seus usos grátis de IA deste mês acabaram', mensagem: 'Volta mês que vem com usos novos. Enquanto isso, o orçamento segue no modo manual.', acao: 'Continuar no modo manual' };
+      }
       return {
         titulo: 'Seus usos grátis de IA deste mês acabaram',
         mensagem: 'Volta mês que vem com usos novos, ou assine o Pro para IA incluída com uso justo diário.',

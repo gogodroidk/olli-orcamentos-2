@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, Animated, Easing,
 } from 'react-native';
+import { podeVerPlanosPara } from '../services/cadeadoRecurso';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -552,6 +553,7 @@ export default function OlliChatScreen() {
                 disabled={saldoCreditos === 0}
                 style={styles.creditoBotao}
               />
+              {podeVerPlanosPara(Platform.OS) ? (
               <OlliButton
                 label="Ver planos"
                 variant="outline"
@@ -559,6 +561,7 @@ export default function OlliChatScreen() {
                 onPress={() => irParaPlanos('chat_card')}
                 style={styles.creditoBotao}
               />
+              ) : null}
               <OlliButton
                 label="Montar na mão"
                 variant="ghost"

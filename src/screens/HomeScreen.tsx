@@ -29,7 +29,8 @@
  */
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, Pressable, Platform } from 'react-native';
+import { podeVerPlanosPara, rotuloDisponibilidade } from '../services/cadeadoRecurso';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -648,8 +649,8 @@ export default function HomeScreen() {
   const atalhos: Atalho[] = [
     ...(ehTecnico ? [{ chave: 'os', icone: 'clipboard-check-outline' as const, rotulo: rotuloOS, descricao: 'Abrir minhas ordens de serviço', cor: cores.accentLight, onPress: () => nav.navigate('OrdemServico') }] : []),
     { chave: 'orcar', icone: 'file-document-edit-outline', rotulo: 'Orçar', descricao: 'Criar um orçamento novo', cor: cores.accentLight, onPress: () => nav.navigate('NovoOrcamento', {}) },
-    { chave: 'recibo', icone: 'receipt', rotulo: 'Recibo', descricao: cadeadoRecibo.trancado ? `Emitir um recibo. Disponível no ${NOME_PLANO.pro}` : 'Emitir um recibo', cor: cores.success, trancado: cadeadoRecibo.trancado, onPress: () => nav.navigate('EmitirRecibo', {}) },
-    { chave: 'agendar', icone: 'calendar-plus', rotulo: 'Agendar', descricao: cadeadoAgenda.trancado ? `Agendar uma visita. Disponível no ${NOME_PLANO.pro}` : 'Agendar uma visita', cor: cores.primaryLight, trancado: cadeadoAgenda.trancado, onPress: agendar },
+    { chave: 'recibo', icone: 'receipt', rotulo: 'Recibo', descricao: cadeadoRecibo.trancado ? `Emitir um recibo. ${rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro)}` : 'Emitir um recibo', cor: cores.success, trancado: cadeadoRecibo.trancado, onPress: () => nav.navigate('EmitirRecibo', {}) },
+    { chave: 'agendar', icone: 'calendar-plus', rotulo: 'Agendar', descricao: cadeadoAgenda.trancado ? `Agendar uma visita. ${rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro)}` : 'Agendar uma visita', cor: cores.primaryLight, trancado: cadeadoAgenda.trancado, onPress: agendar },
     { chave: 'clientes', icone: 'account-group', rotulo: 'Clientes', descricao: 'Abrir a lista de clientes', cor: corCategoria(cores.avatarLilac, cores.surface), onPress: () => nav.navigate('Clientes') },
   ];
 
@@ -1210,7 +1211,7 @@ export default function HomeScreen() {
 
               {radarBloqueados > 0 && (
                 <Aparecer indice={radar.length}>
-                  <PressableAnimado style={styles.radarTeaser} onPress={() => irParaPlanos('radar_card')} escala={0.98}>
+                  <PressableAnimado style={styles.radarTeaser} onPress={() => { if (podeVerPlanosPara(Platform.OS)) irParaPlanos('radar_card'); }} escala={0.98}>
                     <View style={styles.radarTeaserIcon}>
                       <MaterialCommunityIcons name="lock-outline" size={18} color={cores.plan} />
                     </View>
@@ -1218,9 +1219,9 @@ export default function HomeScreen() {
                       <Text style={styles.radarTeaserTitle}>
                         +{radarBloqueados} cliente{radarBloqueados > 1 ? 's' : ''} na hora de lembrar
                       </Text>
-                      <Text style={styles.radarTeaserSub}>Veja todos e lembre com 1 toque no Pro</Text>
+                      <Text style={styles.radarTeaserSub}>{podeVerPlanosPara(Platform.OS) ? 'Veja todos e lembre com 1 toque no Pro' : rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro)}</Text>
                     </View>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color={cores.plan} />
+                    {podeVerPlanosPara(Platform.OS) ? <MaterialCommunityIcons name="chevron-right" size={20} color={cores.plan} /> : null}
                   </PressableAnimado>
                 </Aparecer>
               )}

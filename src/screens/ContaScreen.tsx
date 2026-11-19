@@ -48,6 +48,7 @@ import { escolherFotoPerfil } from '../utils/escolherFotoPerfil';
 import { criarOrganizacao, aceitarConvite, extrairToken, listarMembros, PAPEL_LABEL, type Organizacao } from '../services/equipe';
 import { APP_VERSION, APP_VERSION_CODE } from '../config';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP, TEXTOS_LOJA, URL_EXCLUIR_CONTA_WEB } from '../config/loja';
+import { podeVerPlanosPara } from '../services/cadeadoRecurso';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
@@ -1099,7 +1100,7 @@ export default function ContaScreen() {
                   <Text style={styles.proBadgeText}>OLLI PRO</Text>
                 </View>
                 {/* Android: sem o preço da web (Payments policy) — o preço é o da loja, na tela de Planos. */}
-                {BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
+                {BUILD_PLAY_SEM_COMPRA_EXTERNA || !COMPRA_NO_APP ? null : (
                   <View style={styles.soonPill}><Text style={styles.soonPillText}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text></View>
                 )}
               </View>
@@ -1109,8 +1110,9 @@ export default function ContaScreen() {
                   ? 'Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.'
                   : Platform.OS === 'android'
                     ? 'Relatórios avançados, metas de vendas e suporte prioritário. Veja o que cada plano libera.'
-                    : 'Relatórios avançados, metas de vendas e suporte prioritário. A assinatura ainda não está disponível no iPhone.'}
+                    : 'Relatórios avançados, metas de vendas e suporte prioritário. Recursos do plano Pro.'}
               </Text>
+              {podeVerPlanosPara(Platform.OS) ? (
               <OlliPressable
                 style={styles.proBtn}
                 haptic={false}
@@ -1121,6 +1123,7 @@ export default function ContaScreen() {
                 <Text style={styles.proBtnText}>{COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={16} color={cores.accentLight} />
               </OlliPressable>
+              ) : null}
             </View>
           )}
         </Aparecer>
