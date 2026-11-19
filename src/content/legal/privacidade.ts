@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '2 de novembro de 2026',
+  atualizadoEm: '19 de novembro de 2026',
   aviso:
-    'Documento atualizado em 2 de novembro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 19 de novembro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -185,7 +185,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Uso do app (telas visitadas e ações dentro do app)',
-          finalidade: "Entender passo a passo como o OLLI é usado: quais telas e botões você usa, em que ponto as pessoas travam e quais erros acontecem, para corrigir problemas e decidir o que melhorar. Registramos o tipo da ação e a hora (por exemplo, 'abriu a tela de orçamento', 'tocou em Enviar'), ligados a um código da sua conta, e não ao seu nome. Não registramos o que você digita, nem senhas, nem o conteúdo dos seus orçamentos, nem nome, telefone, endereço ou localização dos seus clientes, e não gravamos a tela. Os eventos ficam no seu aparelho e são enviados aos nossos servidores. Guardamos o registro detalhado por até 90 dias; depois, só um resumo diário por tela por até 12 meses, e depois só números gerais.",
+          finalidade: "Entender passo a passo como o OLLI é usado: quais telas e botões você usa, em que ponto as pessoas travam e quais erros acontecem, para corrigir problemas e decidir o que melhorar. Registramos o tipo da ação e a hora (por exemplo, 'abriu a tela de orçamento', 'tocou em Enviar', e os passos até assinar: criar e enviar o 1º orçamento, abrir Planos, gerar e pagar o Pix), ligados a um código da sua conta, e não ao seu nome. A equipe vê esses registros só somados, em contagens de quantas contas chegaram a cada passo. Não registramos o que você digita, nem senhas, nem o conteúdo dos seus orçamentos, nem nome, telefone, endereço ou localização dos seus clientes, e não gravamos a tela. Os eventos ficam no seu aparelho e são enviados aos nossos servidores. Guardamos o registro por até 90 dias e depois o apagamos; o que fica são só números gerais, sem ligação com nenhuma conta.",
           base: "Legítimo interesse (art. 7º, IX) em melhorar o produto, usando o mínimo de dados necessário. Você pode desativar em Conta > Privacidade > 'Ajudar a melhorar o OLLI', e vale a partir desse momento, em todos os seus aparelhos; ao desativar, apagamos o que já foi registrado de você.",
         },
         {
