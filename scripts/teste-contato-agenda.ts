@@ -70,6 +70,16 @@ ok('só o seletor do sistema; nada de varrer a agenda', () => {
   }
   assert.match(svc, /ContactField\.FULL_NAME, ContactField\.PHONES, ContactField\.EMAILS/);
 });
+ok('Android: permissão pedida só DEPOIS da escolha e só para reler o contato escolhido (S20, 19/11)', () => {
+  const svc = ler('src/services/contatoAgenda.ts');
+  const iPicker = svc.indexOf('Contact.presentPicker()');
+  const iPede = svc.indexOf('garantirLeituraDeContatos()');
+  assert.ok(iPicker > 0 && iPede > iPicker, 'a permissão vem depois do seletor, nunca antes');
+  assert.match(svc, /Platform\.OS !== 'android' \|\| !erroDePermissao\(e\)\) throw e/);
+  assert.match(svc, /return \{ tipo: 'negado' \}/);
+  const cel = ler('src/services/contatosCelular.ts');
+  assert.match(cel, /export async function garantirLeituraDeContatos\(\): Promise<boolean>/);
+});
 ok('só LEITURA de contatos (D-2245): WRITE_CONTACTS bloqueada; READ liberada; plugin do expo-contacts declarado', () => {
   const app = JSON.parse(ler('app.json')) as { expo: { plugins: unknown[]; android: { permissions?: string[]; blockedPermissions?: string[] } } };
   const bloq = app.expo.android.blockedPermissions ?? [];

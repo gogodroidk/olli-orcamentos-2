@@ -346,7 +346,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   diaTodoLinha: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: c.outline },
   diaTodoRotulo: { width: COLUNA_HORAS, fontSize: 13, fontWeight: '800', color: c.onSurfaceMuted, paddingTop: 8 },
   diaTodoChip: { backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, borderLeftWidth: 4, paddingHorizontal: 10, paddingVertical: 6 },
-  linhaHora: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', height: 14, marginTop: -7 },
+  linhaHora: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', height: 28, marginTop: -14 }, // 28: cabe a hora com fonte do sistema em 130%+ (com 14 o Android cortava)
   rotuloHora: { width: COLUNA_HORAS, fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted },
   fio: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: c.outline },
   agora: { position: 'absolute', left: COLUNA_HORAS - 4, right: 0, flexDirection: 'row', alignItems: 'center', height: 10, marginTop: -5, zIndex: 5 },

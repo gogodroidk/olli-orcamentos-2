@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { registrarAtividadeUsuario } from '../services/equipe';
 import {
@@ -42,6 +43,8 @@ interface Props {
 export default function Step1Cliente({ orc, onChange }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Modal no Android edge-to-edge desenha sob a barra do sistema: o rodapé soma a área segura.
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Cliente[]>([]);
   const [showResults, setShowResults] = useState(false);
@@ -347,7 +350,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
               <OlliInput label="UF" value={nc.estado ?? ''} onChangeText={v => setNc(p => ({ ...p, estado: v.toUpperCase().slice(0, 2) }))} placeholder="SP" autoCapitalize="characters" maxLength={2} containerStyle={{ flex: 1 }} />
             </View>
           </ScrollView>
-          <View style={styles.modalFooter}>
+          <View style={[styles.modalFooter, { paddingBottom: Math.max(28, insets.bottom + Spacing.base) }]}>
             <OlliButton label="Salvar cliente" variant="gradient" size="lg" fullWidth loading={salvandoNovo} onPress={saveNewCliente} disabled={!nc.nome?.trim() || salvandoNovo} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
           </View>
         </View>

@@ -570,6 +570,9 @@ function TabNavigator() {
               // sem position absolute: mantém o layout estável na web (PWA)
             },
         tabBarLabelStyle: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
+        // Com fonte do sistema em 130% "Orçamentos" virava "Orçamen…" (S20, 19/11). O rótulo fica
+        // em 13 fixo ao lado do ícone; o leitor de tela lê o nome da aba do mesmo jeito.
+        tabBarAllowFontScaling: false,
         tabBarHideOnKeyboard: true,
       }}
       // Sidebar permanente no desktop: substitui a tab bar inferior por completo.

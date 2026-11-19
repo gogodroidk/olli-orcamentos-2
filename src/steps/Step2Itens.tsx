@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
@@ -57,6 +58,8 @@ export default function Step2Itens({
 }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Modal no Android edge-to-edge desenha sob a barra do sistema: o rodapé soma a área segura.
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<Tab>('servico');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState<(ServicoItem | ProdutoItem)[]>([]);
@@ -531,7 +534,7 @@ export default function Step2Itens({
               )
             }
           />
-          <View style={styles.modalFooter}>
+          <View style={[styles.modalFooter, { paddingBottom: Math.max(28, insets.bottom + Spacing.base) }]}>
             <OlliButton
               label={adicionadosNaSessao > 0
                 ? `Pronto · ${adicionadosNaSessao} ${adicionadosNaSessao === 1 ? 'adicionado' : 'adicionados'}`
@@ -594,7 +597,7 @@ export default function Step2Itens({
                 ))}
               </View>
             </ScrollView>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: Math.max(28, insets.bottom + Spacing.base) }]}>
               <Text style={styles.editSubtotal}>Subtotal: {formatCurrency((editingItem.preco || 0) * (editingItem.quantidade || 1))}</Text>
               <OlliButton label="Confirmar item" variant="gradient" size="lg" fullWidth onPress={saveEditingItem} disabled={!editingItem.nome.trim()} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>

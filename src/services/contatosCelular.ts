@@ -45,6 +45,21 @@ async function garantirLeitura(): Promise<{ ok: true } | { ok: false; podePedirD
 	return { ok: false, podePedirDeNovo: pedida.canAskAgain !== false };
 }
 
+/**
+ * Pede (ou confirma) a leitura para o seletor de 1 contato (`contatoAgenda.ts`).
+ * No Android o `getDetails` do contato escolhido consulta a agenda pelo id e exige
+ * READ_CONTACTS (o seletor do sistema só libera a URI do contato, não os dados).
+ * Só é chamado DEPOIS de o usuário escolher um contato; nada é listado aqui.
+ */
+export async function garantirLeituraDeContatos(): Promise<boolean> {
+	if (!disponivel()) return false;
+	try {
+		return (await garantirLeitura()).ok;
+	} catch {
+		return false;
+	}
+}
+
 /** Lê a agenda inteira (nome + telefone) para a prévia de importação. */
 export async function lerContatosDoCelular(): Promise<LeituraContatos> {
 	if (!disponivel()) return { estado: 'indisponivel' };
