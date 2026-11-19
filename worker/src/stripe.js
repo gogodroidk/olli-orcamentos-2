@@ -20,7 +20,7 @@ import { capturarExcecao } from '../../src/services/sentryCaptura.ts';
 import { FONTES_CSS } from './fontesProprias.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
 import { cabeNoTeto, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
-import { reservarCupom, confirmarCupom } from './cupom.js';
+import { reservarCupom, anexarCupom, liberarCupom, confirmarCupom } from './cupom.js';
 
 // URLs de retorno do Checkout / Portal (o worker atende os dois subdomínios;
 // usamos o de diagnóstico, que serve estas páginas de sucesso/cancelado).
@@ -352,11 +352,13 @@ export async function handleCheckout(request, env) {
   if (codigoCupom) {
     const r = await reservarCupom(env, { userId: user.id, codigo: codigoCupom, plano, canal: 'stripe' });
     if (!r.ok) return json({ ok: false, erro: 'cupom_recusado', status: r.status, texto: r.texto }, r.status === 'indisponivel' ? 503 : 409);
+    // UMA reserva aberta por conta: pedido repetido devolve a MESMA sessão, nunca abre outra com desconto.
+    if (r.reaproveitar && r.cobranca.url) return json({ ok: true, url: r.cobranca.url });
     const cup = await stripePost(env, '/coupons', {
       percent_off: String(r.pct), duration: 'once', max_redemptions: '1',
       name: `OLLI cupom ${r.codigo}`.slice(0, 40), 'metadata[user_id]': user.id, 'metadata[cupom]': r.codigo,
     });
-    if (!cup.ok || !cup.data || !cup.data.id) return json({ ok: false, erro: 'falha_cupom' }, 502);
+    if (!cup.ok || !cup.data || !cup.data.id) { await liberarCupom(env, user.id); return json({ ok: false, erro: 'falha_cupom' }, 502); }
     delete fields.allow_promotion_codes;
     fields['discounts[0][coupon]'] = cup.data.id;
     fields['metadata[cupom]'] = r.codigo;
@@ -397,7 +399,14 @@ export async function handleCheckout(request, env) {
   }
 
   const { ok, data } = await stripePost(env, '/checkout/sessions', fields);
-  if (!ok || !data || !data.url) return json({ ok: false, erro: 'falha_checkout' }, 502);
+  if (!ok || !data || !data.url) {
+    if (fields['metadata[cupom]']) await liberarCupom(env, user.id); // a sessão não abriu: solta a reserva
+    return json({ ok: false, erro: 'falha_checkout' }, 502);
+  }
+  if (fields['metadata[cupom]']) {
+    // A sessão da Stripe vive 24h: guarda a URL na reserva para o pedido repetido devolver a mesma.
+    await anexarCupom(env, user.id, { url: data.url }, data.expires_at ? new Date(Number(data.expires_at) * 1000).toISOString() : null);
+  }
   return json({ ok: true, url: data.url });
 }
 
@@ -855,7 +864,7 @@ export async function handleWebhook(request, env) {
       // Cupom de influenciador: pagamento concluído = a reserva vira uso (idempotente; falha não perde a venda).
       if (userId && obj && obj.metadata && obj.metadata.cupom
         && (obj.payment_status === 'paid' || obj.payment_status === 'no_payment_required')) {
-        await confirmarCupom(env, userId);
+        await confirmarCupom(env, userId, obj.id, obj.total_details && obj.total_details.amount_discount);
       }
 
       // AVULSO 12x (mode=payment): não há subscription. Só gravamos o acesso se o
@@ -895,7 +904,7 @@ export async function handleWebhook(request, env) {
       }
     } else if (tipo === 'checkout.session.async_payment_succeeded') {
       // Pagamento assíncrono do 12x concluído depois: libera o acesso agora.
-      if (obj && obj.metadata && obj.metadata.cupom && obj.metadata.user_id) await confirmarCupom(env, obj.metadata.user_id);
+      if (obj && obj.metadata && obj.metadata.cupom && obj.metadata.user_id) await confirmarCupom(env, obj.metadata.user_id, obj.id, obj.total_details && obj.total_details.amount_discount);
       if (obj && obj.metadata && obj.metadata.origem === '12x') {
         return processar12x(env, obj, evento);
       }

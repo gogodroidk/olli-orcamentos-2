@@ -15,6 +15,9 @@
 - **Quem ganha o quê:** quem usa um código de cupom paga **10% a menos na 1ª cobrança** do plano (Pix ou cartão). O valor com desconto aparece **escrito na tela antes de pagar**: "De R$ X por R$ Y; nas próximas, o valor volta ao normal."
 - **Quando:** só na **primeira** cobrança. Não vale retroativo: quem já pagou um plano não pode usar o cupom para pedir desconto no que já pagou.
 - **Um cupom por conta**, com limite de usos e validade por código.
+- **Um desconto aberto por vez:** se você pedir de novo o Pix com o mesmo cupom, recebe o **mesmo** Pix, nunca outro. Se o desconto já foi pago, a tela diz "O desconto já foi usado nesta conta." e nenhum novo Pix é gerado.
+- **Só no Pix avulso e no cartão:** o desconto **não vale na assinatura recorrente (Pix Automático)**; com cupom aplicado, essa opção não aparece, e a tela já avisa antes de aplicar.
+- **Onde aparece:** só onde o pagamento não é pela loja (web e Android fora da Google Play). No iOS e na Google Play não há cupom, nem Pix, nem qualquer menção a eles.
 - **Cupom e indicação NÃO se somam:** vale o que a conta usar **primeiro**. A tela diz isso antes de aplicar. Quem entrou por link de indicação fica com a indicação; quem já usou um cupom pago não recebe o mês da indicação.
 
 ### Quadro: quem pode o quê
@@ -32,9 +35,9 @@
 - **Uma constante para cada regra:** `INDICACAO_MESES_PRO`, `INDICACAO_TETO_PREMIADAS`, `INDICACAO_TETO_DIARIO`, `CUPOM_PERCENTUAL`, `CUPOM_USOS_MAX`, `CUPOM_VALIDADE_DIAS_MAX` em `src/services/limitesComerciais.ts` (o worker espelha, o SQL recebe por parâmetro, há teste de paridade).
 - **Sem preço novo:** o valor com desconto sai do preço de tabela × (100 − %). Pix (AbacatePay) cobra o valor com desconto e só libera se a cobrança foi criada com cupom (o webhook confere o valor); cartão (Stripe) usa um cupom da Stripe de uso único, só na 1ª cobrança, sem o campo de promotion code junto. Pix do Mercado Pago segue a mesma regra (piso de 50% como trava).
 - **Atribuição por origem:** guarda só **código + conta** (+ plano, canal, data). Nenhum nome, e-mail ou contato do influenciador. O admin lista por código: reservados e pagos.
-- **Admin (só administrador com 2º fator):** `GET /admin/api/cupons`, `POST /admin/api/cupons/criar` (código, limite de usos até 500, validade até 90 dias, motivo) e `POST /admin/api/cupons/desativar`. Toda mudança é auditada antes de gravar. A tela do painel para isso é a próxima etapa; hoje é pela API.
-- **Reserva e uso:** o desconto é reservado ao gerar o Pix/checkout (vaga presa por 24h) e vira "uso" só quando o pagamento é confirmado. Recusa (esgotado, expirado, já usou, já pagou, indicação) **nunca** cobra o valor cheio escondido: o servidor não gera a cobrança e a tela diz o motivo.
-- **Não coberto agora:** Pix Automático (assinatura recorrente) e Apple/Google (a loja define o preço). O cupom é para Pix avulso e cartão.
+- **Admin (só administrador com 2º fator):** `GET /admin/api/cupons`, `POST /admin/api/cupons/criar` (código, limite de usos até 500, validade até 90 dias, motivo), `POST /admin/api/cupons/desativar` e as devoluções (`GET /admin/api/cupons/devolucoes`, `POST /admin/api/cupons/devolucoes/resolver`). Passo a passo em `docs/CUPOM_ADMIN_PROCEDIMENTO.md` (testado). Toda mudança é auditada antes de gravar. A tela do painel para isso é a próxima etapa; até lá vale o procedimento por API.
+- **Reserva e uso:** **uma reserva aberta por conta**. O desconto é reservado ao gerar o Pix/checkout (a cobrança gerada fica guardada na reserva: pedido repetido devolve a mesma; duas chamadas em paralelo geram uma só) e vira "uso" só quando o pagamento é confirmado. Se, por corrida, um 2º pagamento com desconto chegar, o sistema **marca para devolução** (lista no admin, com alarme no log) e nunca deixa como desconto duplo silencioso. Recusa (esgotado, expirado, já usou, já pagou, indicação) **nunca** cobra o valor cheio escondido: o servidor não gera a cobrança e a tela diz o motivo.
+- **Não coberto, de propósito:** Pix Automático (assinatura recorrente) e Apple/Google (a loja define o preço). O cupom é para Pix avulso e cartão.
 
 ## 3. Para ligar (nesta ordem, tudo pelo roteiro)
 1. Migrations `20261010100000_indicacoes.sql` e `20261119090000_cupom_influenciador.sql` em staging, depois produção.

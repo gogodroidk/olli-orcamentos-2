@@ -59,7 +59,7 @@ import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
 import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
-import { reservarCupom, confirmarCupom, valorComDesconto, textoDesconto } from './cupom.js';
+import { reservarCupom, anexarCupom, liberarCupom, confirmarCupom, valorComDesconto, textoDesconto } from './cupom.js';
 import { handlePixAutomatico, pixAutomaticoLigado, processarEventoAssinatura } from './abacatePixAutomatico.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
@@ -349,7 +349,7 @@ async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   const registrado = await marcarEvento(env, { ...consumo, status: 'processado' });
   if (!registrado) console.error('[olli-abacate] plano liberado, mas o consumo não gravou — aguardando reenvio');
   // Cupom de influenciador: pagamento confirmado = a reserva vira uso (idempotente; falha não desfaz a venda).
-  if (cupomPago) await confirmarCupom(env, vinculo.userId);
+  if (cupomPago) await confirmarCupom(env, vinculo.userId, idCobranca, centavos(plano) - Number(cobranca.amount));
   return { estado: 'liberado', registrado };
 }
 
@@ -383,6 +383,8 @@ async function criarPixPlano(request, env) {
   if (codigoCupom) {
     const r = await reservarCupom(env, { userId: user.id, codigo: codigoCupom, plano: plano.id, canal: 'pix' });
     if (!r.ok) return json({ ok: false, erro: 'cupom_recusado', status: r.status, texto: r.texto }, r.status === 'indisponivel' ? 503 : 409);
+    // UMA reserva aberta por conta: pedido repetido devolve o MESMO Pix, nunca cria outro com desconto.
+    if (r.reaproveitar) return json({ ok: true, ...r.cobranca });
     valor = valorComDesconto(plano.valor, r.pct);
     desconto = { codigo: r.codigo, pct: r.pct, de: plano.valor, por: valor, texto: textoDesconto({ pct: r.pct, de: plano.valor, por: valor }) };
   }
@@ -406,6 +408,7 @@ async function criarPixPlano(request, env) {
     // Sem rastro, toda venda de plano viraria 502 mudo (ex.: gateway recusando expiresIn).
     // Só plano e o que veio (nada de segredo, brCode ou dado do usuário).
     console.error('[olli-abacate] criar Pix falhou —', JSON.stringify({ plano: plano.id, expiresIn: PIX_EXPIRA_S, resposta: data ? 'sem_brCode' : 'nula' }));
+    if (desconto) await liberarCupom(env, user.id); // a cobrança não saiu: solta a reserva para tentar de novo
     return json({ ok: false, erro: 'falha_criar_pix' }, 502);
   }
 
@@ -424,8 +427,7 @@ async function criarPixPlano(request, env) {
     console.error('[olli-abacate] gravar cobrança para o lembrete falhou —', e && (e.message || e));
   }
 
-  return json({
-    ok: true,
+  const resposta = {
     id: data.id,
     brCode: data.brCode,
     brCodeBase64: data.brCodeBase64 || '', // já vem como data:image/png;base64,…
@@ -434,7 +436,10 @@ async function criarPixPlano(request, env) {
     plano: { id: plano.id, nome: plano.nome, meses: plano.meses, valor: plano.valor },
     inicio,
     ...(desconto ? { desconto } : {}),
-  });
+  };
+  // Guarda o Pix na reserva: o pedido repetido com o cupom devolve ESTE Pix (idempotente).
+  if (desconto) await anexarCupom(env, user.id, resposta, data.expiresAt || null);
+  return json({ ok: true, ...resposta });
 }
 
 // ─── GET /abacate/status?id= ─────────────────────────────────

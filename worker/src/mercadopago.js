@@ -38,7 +38,7 @@
 import { lancarCreditos } from './creditos.js';
 import { cabeNoTeto, checarLimite, deixaPassar, rateOkSensivel, TETO, textoCabeNoTeto } from './rateLimit.js';
 import { upsertAssinatura, getAssinatura } from './stripe.js';
-import { reservarCupom, confirmarCupom, valorComDesconto, textoDesconto } from './cupom.js';
+import { reservarCupom, anexarCupom, liberarCupom, confirmarCupom, valorComDesconto, textoDesconto } from './cupom.js';
 
 const MP_API = 'https://api.mercadopago.com';
 
@@ -214,6 +214,8 @@ async function criarPixPlano(request, env) {
   if (codigoCupom) {
     const r = await reservarCupom(env, { userId: user.id, codigo: codigoCupom, plano: plano.id, canal: 'pix' });
     if (!r.ok) return json({ ok: false, erro: 'cupom_recusado', status: r.status, texto: r.texto }, r.status === 'indisponivel' ? 503 : 409);
+    // UMA reserva aberta por conta: pedido repetido devolve o MESMO Pix, nunca cria outro com desconto.
+    if (r.reaproveitar) return json({ ok: true, ...r.cobranca });
     valorReais = valorComDesconto(plano.valor, r.pct);
     desconto = { codigo: r.codigo, pct: r.pct, de: plano.valor, por: valorReais, texto: textoDesconto({ pct: r.pct, de: plano.valor, por: valorReais }) };
   }
@@ -228,8 +230,13 @@ async function criarPixPlano(request, env) {
     externalRef,
     itemId: plano.id,
   });
-  if (!res.ok) return json({ ok: false, erro: 'falha_criar_pix' }, 502);
-  return json({ ok: true, ...res.pix, plano: { id: plano.id, nome: plano.nome, meses: plano.meses }, ...(desconto ? { desconto } : {}) });
+  if (!res.ok) {
+    if (desconto) await liberarCupom(env, user.id); // a cobrança não saiu: solta a reserva
+    return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  }
+  const resposta = { ...res.pix, plano: { id: plano.id, nome: plano.nome, meses: plano.meses }, ...(desconto ? { desconto } : {}) };
+  if (desconto) await anexarCupom(env, user.id, resposta, res.pix && res.pix.expiresAt ? res.pix.expiresAt : null);
+  return json({ ok: true, ...resposta });
 }
 
 /** Cria um pagamento Pix no MP e extrai o QR. Retorna { ok, pix:{ id, brCode, brCodeBase64, status, expiresAt } }.
@@ -665,7 +672,7 @@ async function webhook(request, env, url) {
         return json({ ok: true, valor_divergente: true });
       }
       const resp = await concederPlanoPeriodo(env, { userId, planoKey: key, dataAprovacao: data.date_approved || data.date_created });
-      if (comCupom && resp.status < 300) await confirmarCupom(env, userId);
+      if (comCupom && resp.status < 300) await confirmarCupom(env, userId, String(data.id), Math.round((cfgPl.valor - Number(data.transaction_amount)) * 100));
       return resp;
     }
     // `as` = cobrança gerada por uma preapproval (assinatura por CARTÃO no MP). O

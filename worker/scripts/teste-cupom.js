@@ -32,19 +32,24 @@ const ligado = { ...envBase, CUPOM_INFLUENCER_ATIVO: '1' };
 let chamadas = [];
 let rpcs = {};
 let cobrancaAbacate = null; // o que a AbacatePay "devolve" em /transparents/get
+let abacateFalha = false;
+let createN = 0;
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   chamadas.push({ url: u, init });
   if (u.endsWith('/auth/v1/user')) return new Response(JSON.stringify(USER), { status: 200 });
   const m = u.match(/\/rest\/v1\/rpc\/(\w+)$/);
   if (m) {
-    const r = rpcs[m[1]];
+    let r = rpcs[m[1]];
+    if (typeof r === 'function') r = r(init.body ? JSON.parse(init.body) : {});
     if (r === undefined || r === 'erro') return new Response('{}', { status: 500 });
     return new Response(JSON.stringify(r), { status: 200 });
   }
   if (u.includes('api.stripe.com/v1/coupons')) return new Response(JSON.stringify({ id: 'cup_1' }), { status: 200 });
   if (u.includes('api.stripe.com/v1/checkout/sessions')) return new Response(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.test/c/1' }), { status: 200 });
+  if (u.includes('/transparents/create') && abacateFalha) return new Response('{}', { status: 500 });
   if (u.includes('/transparents/create')) {
+    createN += 1;
     const corpo = JSON.parse(init.body);
     return new Response(JSON.stringify({ data: { id: 'bill_1', brCode: '000201xx', brCodeBase64: '', status: 'PENDING', expiresAt: null, _amount: corpo.data.amount } }), { status: 200 });
   }
@@ -54,7 +59,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (u.includes('/rest/v1/webhook_events')) return new Response(JSON.stringify([{ id: 1, status: 'recebido', recebido_em: new Date().toISOString() }]), { status: 201 });
   return new Response('{}', { status: 200 });
 };
-const reset = () => { chamadas = []; rpcs = {}; cobrancaAbacate = null; };
+const reset = () => { chamadas = []; rpcs = {}; cobrancaAbacate = null; abacateFalha = false; createN = 0; };
 const rpcChamado = (nome) => chamadas.find((c) => c.url.endsWith(`/rpc/${nome}`));
 const req = (path, body, token = 't') => new Request(`https://w.test${path}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
@@ -173,11 +178,69 @@ reset(); cobrancaAbacate = cobranca(1, { cupom: 'ANA10', cupomPct: 99 });
 await status();
 checar('pct fora de 1..50 na cobrança é ignorado (não vira passe livre)', !chamadas.some((c) => c.url.includes('/transparents/check')));
 
-console.log('Cartão (Stripe) com cupom');
 const envStripe = { ...ligado, STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_PRICE_PRO: 'price_pro', STRIPE_PRICE_PRO_ANUAL: 'price_pa', STRIPE_RL: RL };
 const checkout = (corpo, env = envStripe) => handleCheckout(req('/stripe/checkout', corpo), env);
 const sessao = () => new URLSearchParams(chamadas.find((c) => c.url.includes('/checkout/sessions')).init.body);
 const cupomStripe = () => chamadas.find((c) => c.url.includes('/v1/coupons'));
+console.log('UMA reserva aberta por conta (Pix e cartão)');
+const textoJaUsou = 'O desconto já foi usado nesta conta.';
+// modelo fiel do Postgres: 1ª chamada abre a reserva; a 2ª, enquanto a cobrança ainda não foi anexada, espera;
+// depois do anexo, o mesmo plano recebe a MESMA cobrança e outro plano é recusado.
+function reservaModelo() {
+  const est = { aberta: false, cobranca: null, plano: null, canal: null, pago: false };
+  rpcs.cupom_reservar = (b) => {
+    if (est.pago) return { status: 'ja_usou' };
+    if (est.aberta && est.cobranca === null) return { status: 'em_andamento' };
+    if (est.aberta) return b.p_plano === est.plano && b.p_canal === est.canal
+      ? { status: 'ok', codigo: 'ANA10', pct: 10, reaproveitar: true, cobranca: est.cobranca } : { status: 'reserva_aberta' };
+    est.aberta = true; est.plano = b.p_plano; est.canal = b.p_canal;
+    return { status: 'ok', codigo: 'ANA10', pct: 10 };
+  };
+  rpcs.cupom_anexar = (b) => { est.cobranca = b.p_cobranca; return true; };
+  rpcs.cupom_liberar = () => { if (est.cobranca === null) { est.aberta = false; return true; } return false; };
+  return est;
+}
+reset(); const est1 = reservaModelo();
+const [pa, pb] = await Promise.all([pedir({ plano: 'pro_mensal', cupom: 'ANA10' }), pedir({ plano: 'pro_mensal', cupom: 'ANA10' })]);
+const sta = [pa.status, pb.status].sort().join(',');
+checar('corrida (2 chamadas paralelas): UM Pix gerado, a outra espera (409 em_andamento)', sta === '200,409' && createN === 1, `${sta} creates=${createN}`);
+const perdedor = await (pa.status === 409 ? pa : pb).json();
+checar('a que espera recebe o motivo em palavras', perdedor.status === 'em_andamento' && /Aguarde/.test(perdedor.texto));
+checar('o Pix gerado ficou guardado na reserva', est1.cobranca && est1.cobranca.id === 'bill_1' && est1.cobranca.desconto && est1.cobranca.desconto.por === 35.1);
+const created = createN;
+r = await pedir({ plano: 'pro_mensal', cupom: 'ANA10' }); j = await r.json();
+checar('pedido repetido: devolve o MESMO Pix (idempotente) e NÃO cria outro', r.status === 200 && j.id === 'bill_1' && createN === created && j.desconto && j.desconto.por === 35.1);
+r = await pedir({ plano: 'pro_anual', cupom: 'ANA10' });
+checar('outro plano com reserva aberta: 409 reserva_aberta e nenhum Pix novo', r.status === 409 && (await r.json()).status === 'reserva_aberta' && createN === created);
+est1.pago = true;
+r = await pedir({ plano: 'pro_mensal', cupom: 'ANA10' }); j = await r.json();
+checar('1º Pix pago: o 2º é recusado ANTES de gerar, "O desconto já foi usado nesta conta."', r.status === 409 && j.status === 'ja_usou' && j.texto === textoJaUsou && createN === created, j.texto);
+reset(); abacateFalha = true; const est2 = reservaModelo();
+r = await pedir({ plano: 'pro_mensal', cupom: 'ANA10' });
+checar('gateway não gerou o Pix: 502 e a reserva é solta (dá para tentar de novo)', r.status === 502 && est2.aberta === false && !!rpcChamado('cupom_liberar'));
+// cartão
+reset(); const est3 = reservaModelo();
+const [sa, sb] = await Promise.all([checkout({ plano: 'pro', cupom: 'ANA10' }), checkout({ plano: 'pro', cupom: 'ANA10' })]);
+const nCup = chamadas.filter((c) => c.url.includes('/v1/coupons')).length;
+const nSess = chamadas.filter((c) => c.url.includes('/checkout/sessions')).length;
+checar('corrida no cartão: UMA sessão e UM cupom da Stripe', [sa.status, sb.status].sort().join(',') === '200,409' && nCup === 1 && nSess === 1, `${nCup}/${nSess}`);
+r = await checkout({ plano: 'pro', cupom: 'ANA10' }); j = await r.json();
+checar('cartão: pedido repetido devolve a MESMA sessão (sem novo cupom nem sessão)', r.status === 200 && j.url === 'https://checkout.stripe.test/c/1'
+  && chamadas.filter((c) => c.url.includes('/v1/coupons')).length === 1 && chamadas.filter((c) => c.url.includes('/checkout/sessions')).length === 1);
+checar('a sessão do cartão ficou guardada na reserva', est3.cobranca && est3.cobranca.url === 'https://checkout.stripe.test/c/1');
+
+console.log('2º pagamento com desconto (corrida que escapou): nunca silencioso');
+const erros = [];
+const errOrig = console.error;
+console.error = (...a) => { erros.push(a.join(' ')); };
+reset(); rpcs.cupom_confirmar = { resultado: 'desconto_duplicado' }; cobrancaAbacate = cobranca(3510, { cupom: 'ANA10', cupomPct: 10 });
+await status();
+console.error = errOrig;
+const confB = rpcChamado('cupom_confirmar') && JSON.parse(rpcChamado('cupom_confirmar').init.body);
+checar('o webhook manda a cobrança e o desconto (R$ 3,90 = 390 centavos) ao banco', confB && confB.p_cobranca_id === 'bill_1' && confB.p_desconto_centavos === 390 && confB.p_user === USER.id, JSON.stringify(confB));
+checar('resultado desconto_duplicado vira ALARME no log (devolução pendente no admin)', erros.some((e) => /ALARME/.test(e) && /desconto_duplicado/.test(e) && /devolução pendente/.test(e)), erros.join(' | '));
+
+console.log('Cartão (Stripe) com cupom');
 reset();
 r = await checkout({ plano: 'pro' });
 checar('sem cupom: segue como hoje (promotion code da Stripe liberado, sem desconto nosso)', r.status === 200 && sessao().get('allow_promotion_codes') === 'true' && !sessao().get('discounts[0][coupon]') && !cupomStripe());

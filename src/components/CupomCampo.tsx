@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Spacing, BorderRadius, Fonts, useCores, useEstilos, type Cores } from '../theme';
 import { cupomAtivo, consultarCupom, type ConsultaCupom } from '../services/cupom';
-import { AVISO_CUPOM_E_INDICACAO, AVISO_CUPOM_NAO_RETROATIVO } from '../utils/cupomTexto';
+import { AVISO_CUPOM_E_INDICACAO, AVISO_CUPOM_NAO_RETROATIVO, AVISO_CUPOM_SO_AVULSO } from '../utils/cupomTexto';
 
 /**
  * CupomCampo — "Tenho um cupom". Só aparece com o recurso LIGADO no servidor (desligado = nada na tela).
@@ -66,6 +66,7 @@ export function CupomCampo({ plano, aoMudar }: CupomCampoProps) {
     <View style={styles.box}>
       <Text style={styles.aviso}>{AVISO_CUPOM_E_INDICACAO}</Text>
       <Text style={styles.aviso}>{AVISO_CUPOM_NAO_RETROATIVO}</Text>
+      <Text style={styles.aviso}>{AVISO_CUPOM_SO_AVULSO}</Text>
       <View style={styles.linha}>
         <TextInput
           value={codigo}

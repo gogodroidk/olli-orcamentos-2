@@ -21,14 +21,31 @@ create table if not exists public.cupom_usos (
   pct       integer not null check (pct between 1 and 50),
   estado    text not null default 'reservado' check (estado in ('reservado', 'pago')),
   criado_em timestamptz not null default now(),
-  pago_em   timestamptz
+  pago_em   timestamptz,
+  -- UMA reserva aberta por conta: guarda a cobrança já gerada (Pix/sessão) para devolver a MESMA no pedido repetido.
+  cobranca        jsonb,
+  expira_em       timestamptz,
+  cobranca_paga_id text
 );
 create index if not exists cupom_usos_codigo_idx on public.cupom_usos (codigo, estado);
 
+-- Desconto que chegou a ser pago uma 2ª vez (corrida): nunca fica silencioso, entra aqui para devolução.
+create table if not exists public.cupom_devolucoes (
+  cobranca_id       text primary key,
+  user_id           uuid not null references auth.users (id) on delete cascade,
+  codigo            text,
+  desconto_centavos integer not null check (desconto_centavos >= 0),
+  motivo            text not null check (motivo in ('desconto_duplicado', 'sem_reserva')),
+  estado            text not null default 'pendente' check (estado in ('pendente', 'devolvido')),
+  criado_em         timestamptz not null default now(),
+  resolvido_em      timestamptz
+);
+
 alter table public.cupons_influenciador enable row level security;
 alter table public.cupom_usos            enable row level security;
-revoke all on public.cupons_influenciador, public.cupom_usos from public, anon, authenticated;
-grant all on public.cupons_influenciador, public.cupom_usos to service_role;
+alter table public.cupom_devolucoes      enable row level security;
+revoke all on public.cupons_influenciador, public.cupom_usos, public.cupom_devolucoes from public, anon, authenticated;
+grant all on public.cupons_influenciador, public.cupom_usos, public.cupom_devolucoes to service_role;
 
 -- versão real (substitui o stub da migration de indicações): só cupom PAGO bloqueia a indicação.
 create or replace function public.cupom_usou(p_user uuid)
@@ -73,7 +90,8 @@ begin
   end if;
   select count(*) into v_ocupadas from public.cupom_usos
    where codigo = c.codigo and user_id <> p_user
-     and (estado = 'pago' or criado_em > now() - interval '24 hours');
+     and (estado = 'pago'
+          or (estado = 'reservado' and (expira_em > now() or (expira_em is null and criado_em > now() - interval '2 minutes'))));
   if v_ocupadas >= c.usos_max then return jsonb_build_object('status', 'esgotado'); end if;
   return jsonb_build_object('status', 'ok', 'codigo', c.codigo, 'pct', p_pct);
 end;
@@ -81,8 +99,12 @@ $$;
 revoke all on function public.cupom_verificar(uuid, text, integer) from public, anon, authenticated;
 grant execute on function public.cupom_verificar(uuid, text, integer) to service_role;
 
--- Reserva o desconto ANTES de abrir o checkout. Serializa por código (lock) para o teto não furar.
--- Reserva aberta há mais de 24h não conta no teto (checkout abandonado).
+-- Reserva o desconto ANTES de abrir o checkout. UMA reserva aberta por conta (regra de produto):
+--   * pedido repetido, mesmo plano e canal, reserva aberta  → status ok + reaproveitar + a MESMA cobrança (nunca outra);
+--   * reserva aberta ainda sem cobrança (corrida de 2 chamadas) → em_andamento (a 2ª não gera nada);
+--   * reserva aberta de OUTRO plano/canal                    → reserva_aberta (pague ou espere vencer);
+--   * desconto já pago                                       → ja_usou ("O desconto já foi usado nesta conta").
+-- Serializa por código e por conta (locks), então 2 chamadas paralelas nunca abrem 2 reservas.
 create or replace function public.cupom_reservar(
   p_user uuid, p_codigo text, p_pct integer, p_plano text, p_canal text)
 returns jsonb
@@ -92,16 +114,30 @@ set search_path to ''
 as $$
 declare
   v jsonb;
+  u public.cupom_usos%rowtype;
+  v_codigo text := upper(btrim(coalesce(p_codigo, '')));
 begin
-  perform 1 from public.cupons_influenciador where codigo = upper(btrim(coalesce(p_codigo, ''))) for update;
+  perform 1 from public.cupons_influenciador where codigo = v_codigo for update;
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_user::text, 1));
   v := public.cupom_verificar(p_user, p_codigo, p_pct);
   if v->>'status' <> 'ok' then return v; end if;
-  insert into public.cupom_usos (user_id, codigo, plano, canal, pct, estado, criado_em)
-  values (p_user, v->>'codigo', p_plano, p_canal, p_pct, 'reservado', now())
+
+  select * into u from public.cupom_usos where user_id = p_user for update;
+  if found and u.estado = 'reservado'
+     and ((u.cobranca is not null and u.expira_em > now())
+          or (u.cobranca is null and u.criado_em > now() - interval '2 minutes')) then
+    if u.cobranca is null then return jsonb_build_object('status', 'em_andamento'); end if;
+    if u.plano = p_plano and u.canal = p_canal and u.codigo = v->>'codigo' then
+      return v || jsonb_build_object('reaproveitar', true, 'cobranca', u.cobranca);
+    end if;
+    return jsonb_build_object('status', 'reserva_aberta');
+  end if;
+
+  insert into public.cupom_usos (user_id, codigo, plano, canal, pct, estado, criado_em, cobranca, expira_em)
+  values (p_user, v->>'codigo', p_plano, p_canal, p_pct, 'reservado', now(), null, null)
   on conflict (user_id) do update
     set codigo = excluded.codigo, plano = excluded.plano, canal = excluded.canal,
-        pct = excluded.pct, criado_em = now()
+        pct = excluded.pct, criado_em = now(), cobranca = null, expira_em = null
   where public.cupom_usos.estado = 'reservado';
   return v;
 end;
@@ -109,21 +145,98 @@ $$;
 revoke all on function public.cupom_reservar(uuid, text, integer, text, text) from public, anon, authenticated;
 grant execute on function public.cupom_reservar(uuid, text, integer, text, text) to service_role;
 
--- Pagamento confirmado: a reserva vira uso. Idempotente. true = a conta tinha reserva (ou já estava paga).
-create or replace function public.cupom_confirmar(p_user uuid)
+-- Guarda a cobrança gerada na reserva (para devolver a MESMA no pedido repetido). true = gravou.
+create or replace function public.cupom_anexar(p_user uuid, p_cobranca jsonb, p_expira timestamptz)
 returns boolean
 language plpgsql
 security definer
 set search_path to ''
 as $$
 begin
-  update public.cupom_usos set estado = 'pago', pago_em = coalesce(pago_em, now())
+  update public.cupom_usos set cobranca = p_cobranca, expira_em = p_expira
    where user_id = p_user and estado = 'reservado';
-  return exists (select 1 from public.cupom_usos where user_id = p_user and estado = 'pago');
+  return found;
 end;
 $$;
-revoke all on function public.cupom_confirmar(uuid) from public, anon, authenticated;
-grant execute on function public.cupom_confirmar(uuid) to service_role;
+revoke all on function public.cupom_anexar(uuid, jsonb, timestamptz) from public, anon, authenticated;
+grant execute on function public.cupom_anexar(uuid, jsonb, timestamptz) to service_role;
+
+-- A cobrança NÃO saiu (gateway recusou): solta a reserva para o usuário tentar de novo. Só reserva sem cobrança.
+create or replace function public.cupom_liberar(p_user uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path to ''
+as $$
+begin
+  delete from public.cupom_usos where user_id = p_user and estado = 'reservado' and cobranca is null;
+  return found;
+end;
+$$;
+revoke all on function public.cupom_liberar(uuid) from public, anon, authenticated;
+grant execute on function public.cupom_liberar(uuid) to service_role;
+
+-- Pagamento confirmado (idempotente por cobrança). O PRIMEIRO pagamento com desconto vira o uso; um 2º
+-- pagamento com desconto (corrida) NUNCA fica silencioso: entra em cupom_devolucoes para devolver a diferença.
+-- resultado: confirmado | ja_confirmado | desconto_duplicado | sem_reserva
+create or replace function public.cupom_confirmar(p_user uuid, p_cobranca_id text, p_desconto_centavos integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path to ''
+as $$
+declare
+  u public.cupom_usos%rowtype;
+  v_desc integer := greatest(coalesce(p_desconto_centavos, 0), 0);
+begin
+  perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(p_user::text, 1));
+  select * into u from public.cupom_usos where user_id = p_user for update;
+  if not found then
+    insert into public.cupom_devolucoes (cobranca_id, user_id, codigo, desconto_centavos, motivo)
+    values (p_cobranca_id, p_user, null, v_desc, 'sem_reserva') on conflict (cobranca_id) do nothing;
+    return jsonb_build_object('resultado', 'sem_reserva');
+  end if;
+  if u.estado = 'reservado' then
+    update public.cupom_usos set estado = 'pago', pago_em = now(), cobranca_paga_id = p_cobranca_id where user_id = p_user;
+    return jsonb_build_object('resultado', 'confirmado');
+  end if;
+  if u.cobranca_paga_id = p_cobranca_id then return jsonb_build_object('resultado', 'ja_confirmado'); end if;
+  insert into public.cupom_devolucoes (cobranca_id, user_id, codigo, desconto_centavos, motivo)
+  values (p_cobranca_id, p_user, u.codigo, v_desc, 'desconto_duplicado') on conflict (cobranca_id) do nothing;
+  return jsonb_build_object('resultado', 'desconto_duplicado');
+end;
+$$;
+revoke all on function public.cupom_confirmar(uuid, text, integer) from public, anon, authenticated;
+grant execute on function public.cupom_confirmar(uuid, text, integer) to service_role;
+
+-- Admin: devoluções pendentes (desconto pago em duplicidade) e baixa quando a diferença foi devolvida.
+create or replace function public.cupom_devolucoes_listar()
+returns table (cobranca_id text, codigo text, desconto_centavos integer, motivo text, estado text, criado_em timestamptz)
+language sql
+stable
+security definer
+set search_path to ''
+as $$
+  select d.cobranca_id, d.codigo, d.desconto_centavos, d.motivo, d.estado, d.criado_em
+    from public.cupom_devolucoes d order by d.criado_em desc limit 200
+$$;
+revoke all on function public.cupom_devolucoes_listar() from public, anon, authenticated;
+grant execute on function public.cupom_devolucoes_listar() to service_role;
+
+create or replace function public.cupom_devolucao_resolver(p_cobranca_id text)
+returns boolean
+language plpgsql
+security definer
+set search_path to ''
+as $$
+begin
+  update public.cupom_devolucoes set estado = 'devolvido', resolvido_em = now()
+   where cobranca_id = p_cobranca_id and estado = 'pendente';
+  return found;
+end;
+$$;
+revoke all on function public.cupom_devolucao_resolver(text) from public, anon, authenticated;
+grant execute on function public.cupom_devolucao_resolver(text) to service_role;
 
 -- Atribuição por origem (admin): código → reservas/pagos. Só código e contagem, nenhum dado pessoal.
 create or replace function public.cupom_atribuicao()

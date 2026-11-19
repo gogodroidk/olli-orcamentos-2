@@ -58,9 +58,11 @@ export const MOTIVO_TEXTO = {
   invalido: 'Esse código não existe ou não está mais ativo.',
   expirado: 'Esse código já passou da validade.',
   esgotado: 'Esse código atingiu o limite de usos.',
-  ja_usou: 'Você já usou um cupom nesta conta. O desconto vale só na 1ª cobrança.',
+  ja_usou: 'O desconto já foi usado nesta conta.',
   ja_pagou: 'O cupom vale só na 1ª cobrança, e esta conta já pagou um plano.',
   indicacao: 'Esta conta já está com a indicação, e cupom e indicação não se somam.',
+  em_andamento: 'Estamos gerando seu pagamento com desconto. Aguarde um instante e tente de novo.',
+  reserva_aberta: 'Você já tem um pagamento com desconto aberto. Pague esse ou espere ele vencer para gerar outro.',
   desligado: 'Cupom indisponível no momento.',
 };
 
@@ -108,8 +110,11 @@ export async function rpc(env, nome, args) {
 }
 
 /**
- * Reserva o desconto antes de abrir o checkout. { ok:true, pct, codigo } | { ok:false, status, texto }.
- * status 'indisponivel' = banco fora do ar (o chamador devolve 503; "não sei" nunca vira "sem desconto").
+ * Reserva o desconto antes de abrir o checkout. UMA reserva aberta por conta:
+ *  { ok:true, pct, codigo }                       → gere a cobrança e chame anexarCupom (ou liberarCupom se falhar);
+ *  { ok:true, reaproveitar:true, cobranca }       → pedido repetido: devolva a MESMA cobrança, não crie outra;
+ *  { ok:false, status, texto }                    → recusa (nunca cobra cheio escondido).
+ * status 'indisponivel' = banco fora do ar (503; "não sei" nunca vira "sem desconto").
  */
 export async function reservarCupom(env, { userId, codigo, plano, canal }) {
   const pct = pctLigado(env);
@@ -121,13 +126,37 @@ export async function reservarCupom(env, { userId, codigo, plano, canal }) {
   if (r.data.status !== 'ok') {
     return { ok: false, status: r.data.status, texto: MOTIVO_TEXTO[r.data.status] || MOTIVO_TEXTO.invalido };
   }
+  if (r.data.reaproveitar && r.data.cobranca && typeof r.data.cobranca === 'object') {
+    return { ok: true, pct, codigo: r.data.codigo, reaproveitar: true, cobranca: r.data.cobranca };
+  }
   return { ok: true, pct, codigo: r.data.codigo };
 }
 
-/** Pagamento confirmado: a reserva vira uso. Falha aqui não perde o pagamento (a conta já foi creditada). */
-export async function confirmarCupom(env, userId) {
-  const r = await rpc(env, 'cupom_confirmar', { p_user: userId });
+/** Guarda a cobrança gerada na reserva (para o pedido repetido devolver a mesma). Falha não derruba a venda. */
+export async function anexarCupom(env, userId, cobranca, expiraEm) {
+  const r = await rpc(env, 'cupom_anexar', { p_user: userId, p_cobranca: cobranca, p_expira: expiraEm || new Date(Date.now() + 24 * 3600 * 1000).toISOString() });
+  if (!r.ok || r.data !== true) console.error('[olli-cupom] cobrança não anexada à reserva — pedido repetido pode gerar outra');
+  return r.ok && r.data === true;
+}
+
+/** A cobrança NÃO saiu: solta a reserva para tentar de novo. */
+export async function liberarCupom(env, userId) {
+  const r = await rpc(env, 'cupom_liberar', { p_user: userId });
   return r.ok;
+}
+
+/**
+ * Pagamento confirmado: a reserva vira uso (idempotente por cobrança). Um 2º pagamento com desconto na
+ * mesma conta (corrida) vira devolução pendente + ALARME: nunca fica como desconto duplo silencioso.
+ * Falha aqui não perde o pagamento (a conta já foi creditada). Retorna o resultado ou null (não sei).
+ */
+export async function confirmarCupom(env, userId, cobrancaId, descontoCentavos) {
+  const r = await rpc(env, 'cupom_confirmar', { p_user: userId, p_cobranca_id: String(cobrancaId || ''), p_desconto_centavos: Math.max(0, Math.round(Number(descontoCentavos) || 0)) });
+  if (!r.ok || !r.data) return null;
+  if (r.data.resultado === 'desconto_duplicado' || r.data.resultado === 'sem_reserva') {
+    console.error(`[olli-cupom] ALARME: desconto pago sem ser o 1º uso (${r.data.resultado}) — devolução pendente no admin`, String(cobrancaId));
+  }
+  return r.data.resultado;
 }
 
 /** POST /cupom/consultar. `precosPix`: tabela de preço do Pix (injetada; evita import circular). */

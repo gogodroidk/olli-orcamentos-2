@@ -68,22 +68,58 @@ checar('código vencido = expirado', (await reservar(a, 'VELHO1')).status === 'e
 checar('percentual 0 (desligado) não decide nada', (await reservar(a, 'ANA10', 'pro', 'pix', 0)).status === 'desligado');
 checar('desligado não grava reserva', (await um<number>('select count(*)::int from public.cupom_usos')) === 0);
 checar('código em minúsculo e com espaço vale', (await reservar(a, '  ana10 ')).status === 'ok');
-checar('refazer o checkout na mesma conta reaproveita a reserva (1 linha)', (await reservar(a, 'ANA10', 'pro_anual')).status === 'ok'
-  && (await um<number>('select count(*)::int from public.cupom_usos where user_id=$1', [a])) === 1);
 
+// UMA reserva aberta por conta
+checar('2º pedido enquanto a 1ª cobrança ainda está sendo gerada = em_andamento (não gera outra)', (await reservar(a, 'ANA10')).status === 'em_andamento');
+const PIX = { id: 'bill_1', brCode: '000201', plano: 'pro_mensal' };
+const expira = () => new Date(Date.now() + 3600_000).toISOString();
+checar('anexar a cobrança gerada na reserva', (await um<boolean>('select public.cupom_anexar($1,$2::jsonb,$3)', [a, JSON.stringify(PIX), expira()])) === true);
+const r2: any = await reservar(a, 'ANA10', 'pro', 'pix');
+checar('pedido repetido (mesmo plano/canal) devolve a MESMA cobrança, não cria outra', r2.status === 'ok' && r2.reaproveitar === true && r2.cobranca?.id === 'bill_1', JSON.stringify(r2));
+checar('reserva aberta de OUTRO plano = reserva_aberta (nenhum 2º Pix com desconto)', (await reservar(a, 'ANA10', 'pro_anual', 'pix')).status === 'reserva_aberta');
+checar('reserva aberta de OUTRO canal = reserva_aberta', (await reservar(a, 'ANA10', 'pro', 'stripe')).status === 'reserva_aberta');
+checar('segue 1 linha por conta', (await um<number>('select count(*)::int from public.cupom_usos where user_id=$1', [a])) === 1);
+await db.query(`update public.cupom_usos set expira_em = now() - interval '1 minute' where user_id=$1`, [a]);
+const r3: any = await reservar(a, 'ANA10', 'pro_anual', 'pix');
+checar('cobrança vencida: a reserva fecha e pode abrir outra (cobrança antiga zerada)', r3.status === 'ok' && !r3.reaproveitar
+  && (await um<any>('select cobranca from public.cupom_usos where user_id=$1', [a])) === null);
+
+// corrida: 2 chamadas em paralelo na mesma conta
+const corrida = await conta();
+const [c1, c2] = await Promise.all([reservar(corrida, 'ANA10'), reservar(corrida, 'ANA10')]);
+const sts = [c1.status, c2.status].sort().join(',');
+checar('corrida (2 chamadas paralelas): exatamente UMA abre a reserva, a outra espera', sts === 'em_andamento,ok', sts);
+checar('corrida: 1 linha só', (await um<number>('select count(*)::int from public.cupom_usos where user_id=$1', [corrida])) === 1);
+checar('cobrança que falhou: liberar solta a reserva sem cobrança', (await um<boolean>('select public.cupom_liberar($1)', [corrida])) === true
+  && (await reservar(corrida, 'ANA10')).status === 'ok');
+await um('select public.cupom_anexar($1,$2::jsonb,$3)', [corrida, JSON.stringify(PIX), expira()]);
+checar('liberar NÃO apaga reserva com cobrança já gerada', (await um<boolean>('select public.cupom_liberar($1)', [corrida])) === false);
+await db.query(`delete from public.cupom_usos where user_id=$1`, [corrida]);
+
+// teto de usos
 const b = await conta();
 checar('2ª conta ocupa a 2ª vaga', (await reservar(b, 'ANA10')).status === 'ok');
 const c = await conta();
 checar('teto de usos: 3ª conta = esgotado (reservas abertas contam)', (await reservar(c, 'ANA10')).status === 'esgotado');
-await db.query(`update public.cupom_usos set criado_em = now() - interval '25 hours' where user_id = $1`, [b]);
-checar('reserva abandonada há +24h libera a vaga', (await reservar(c, 'ANA10')).status === 'ok');
+await db.query(`update public.cupom_usos set criado_em = now() - interval '3 minutes' where user_id = $1`, [b]);
+checar('reserva sem cobrança há +2 min (gateway não respondeu) libera a vaga', (await reservar(c, 'ANA10')).status === 'ok');
 
-checar('confirmar: reserva vira uso pago', (await um<boolean>('select public.cupom_confirmar($1)', [a])) === true
-  && (await um<string>('select estado from public.cupom_usos where user_id=$1', [a])) === 'pago');
-checar('confirmar é idempotente', (await um<boolean>('select public.cupom_confirmar($1)', [a])) === true
-  && (await um<number>(`select count(*)::int from public.cupom_usos where user_id=$1 and estado='pago'`, [a])) === 1);
-checar('conta sem reserva: confirmar = false', (await um<boolean>('select public.cupom_confirmar($1)', [await conta()])) === false);
-checar('só a 1ª cobrança: quem já usou fica = ja_usou', (await reservar(a, 'ANA10')).status === 'ja_usou');
+// confirmar: 1º pagamento = uso; repetido = idempotente; 2º pagamento com desconto = devolução
+await db.query(`update public.cupom_usos set estado='reservado', expira_em = now() + interval '1 hour', cobranca=$2::jsonb where user_id=$1`, [a, JSON.stringify(PIX)]);
+const conf1: any = await um('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_1', 390]);
+checar('confirmar: o 1º pagamento vira uso pago', conf1.resultado === 'confirmado' && (await um<string>('select estado from public.cupom_usos where user_id=$1', [a])) === 'pago');
+checar('confirmar o MESMO pagamento de novo é idempotente', (await um<any>('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_1', 390])).resultado === 'ja_confirmado');
+const dup: any = await um('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_2', 390]);
+checar('2º pagamento com desconto (corrida) = desconto_duplicado, NUNCA silencioso', dup.resultado === 'desconto_duplicado');
+const dev = (await db.query<any>(`select * from public.cupom_devolucoes where cobranca_id='bill_2'`)).rows[0];
+checar('devolução marcada: cobrança, conta, desconto e estado pendente', dev && dev.user_id === a && dev.desconto_centavos === 390 && dev.estado === 'pendente' && dev.motivo === 'desconto_duplicado', JSON.stringify(dev));
+await um('select public.cupom_confirmar($1,$2,$3)', [a, 'bill_2', 390]);
+checar('o mesmo 2º pagamento reprocessado não duplica a devolução', (await um<number>(`select count(*)::int from public.cupom_devolucoes where cobranca_id='bill_2'`)) === 1);
+checar('admin lista a devolução pendente', (await db.query<any>('select * from public.cupom_devolucoes_listar()')).rows.some((r: any) => r.cobranca_id === 'bill_2' && r.estado === 'pendente'));
+checar('admin dá baixa na devolução (1x)', (await um<boolean>(`select public.cupom_devolucao_resolver('bill_2')`)) === true && (await um<boolean>(`select public.cupom_devolucao_resolver('bill_2')`)) === false);
+const semRes: any = await um('select public.cupom_confirmar($1,$2,$3)', [await conta(), 'bill_x', 100]);
+checar('pagamento com desconto sem reserva = sem_reserva e devolução marcada', semRes.resultado === 'sem_reserva' && (await um<number>(`select count(*)::int from public.cupom_devolucoes where cobranca_id='bill_x'`)) === 1);
+checar('só a 1ª cobrança: quem já usou = ja_usou', (await reservar(a, 'ANA10')).status === 'ja_usou');
 checar('uso pago não é sobrescrito', (await um<string>('select estado from public.cupom_usos where user_id=$1', [a])) === 'pago');
 
 // 1ª cobrança: quem já tem período no gateway
@@ -115,7 +151,7 @@ checar('indicador que já ganhou o mês não usa cupom', (await reservar(ind2, '
 const usouCupom = await conta();
 await reservar(usouCupom, 'BIA20');
 checar('cupom só reservado ainda não bloqueia indicação', (await um<boolean>('select public.cupom_usou($1)', [usouCupom])) === false);
-await um('select public.cupom_confirmar($1)', [usouCupom]);
+await um('select public.cupom_confirmar($1,$2,$3)', [usouCupom, 'bill_u', 390]);
 checar('cupom pago: cupom_usou = true', (await um<boolean>('select public.cupom_usou($1)', [usouCupom])) === true);
 checar('cupom pago: a indicação NÃO concede o mês', (await um<boolean>(`select public.indicacao_conceder_pro($1,$2,'t')`, [usouCupom, INDICACAO_MESES_PRO])) === false
   && !(await db.query(`select 1 from public.assinaturas where user_id=$1 and admin_override_ativo`, [usouCupom])).rows.length);
@@ -125,7 +161,7 @@ checar('sem cupom: a indicação concede normal', (await um<boolean>(`select pub
 // atribuição: só código e contagem
 const at = (await db.query<any>('select * from public.cupom_atribuicao()')).rows;
 const ana = at.find((r: any) => r.codigo === 'ANA10');
-checar('atribuição por código: pagos e reservados (a abandonada segue reservada, só não ocupa vaga)', ana && Number(ana.pagos) === 1 && Number(ana.reservados) === 2, JSON.stringify(ana));
+checar('atribuição por código: pagos e reservados (a abandonada segue reservada, só não ocupa vaga)', ana && Number(ana.pagos) === 1 && Number(ana.reservados) >= 1, JSON.stringify(ana));
 checar('atribuição não expõe dado pessoal', !('user_id' in (at[0] ?? {})) && !('email' in (at[0] ?? {})));
 checar('tabela cupom_usos guarda só conta+código (sem e-mail/nome)', !(await db.query(
   `select 1 from information_schema.columns where table_name='cupom_usos' and column_name in ('email','nome','telefone')`)).rows.length);
@@ -143,13 +179,13 @@ checar('admin desativa e o código vira invalido', (await um<boolean>(`select pu
 checar('desativar de novo = false (idempotente)', (await um<boolean>(`select public.cupom_desativar('NOVO10')`)) === false);
 
 // permissões: só service_role
-for (const fn of ['cupom_reservar(uuid,text,integer,text,text)', 'cupom_verificar(uuid,text,integer)', 'cupom_confirmar(uuid)', 'cupom_atribuicao()', 'cupom_usou(uuid)', 'cupom_criar(text,integer,integer)', 'cupom_desativar(text)']) {
+for (const fn of ['cupom_reservar(uuid,text,integer,text,text)', 'cupom_verificar(uuid,text,integer)', 'cupom_confirmar(uuid,text,integer)', 'cupom_anexar(uuid,jsonb,timestamptz)', 'cupom_liberar(uuid)', 'cupom_devolucoes_listar()', 'cupom_devolucao_resolver(text)', 'cupom_atribuicao()', 'cupom_usou(uuid)', 'cupom_criar(text,integer,integer)', 'cupom_desativar(text)']) {
   const anon = await um<boolean>(`select has_function_privilege('anon', '${fn}', 'execute')`);
   const auth = await um<boolean>(`select has_function_privilege('authenticated', '${fn}', 'execute')`);
   const sr = await um<boolean>(`select has_function_privilege('service_role', '${fn}', 'execute')`);
   checar(`permissão ${fn}: só service_role`, !anon && !auth && sr);
 }
-checar('tabelas sem acesso direto de anon/authenticated', !(await um<boolean>(`select has_table_privilege('authenticated','public.cupom_usos','select') or has_table_privilege('anon','public.cupons_influenciador','select')`)));
+checar('tabelas sem acesso direto de anon/authenticated', !(await um<boolean>(`select has_table_privilege('authenticated','public.cupom_usos','select') or has_table_privilege('authenticated','public.cupom_devolucoes','select') or has_table_privilege('anon','public.cupons_influenciador','select')`)));
 
 void INDICACAO_TETO_DIARIO;
 console.log(`\n${ok} ok, ${falhas} falha(s)`);

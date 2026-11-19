@@ -41,6 +41,7 @@ import {
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
 import { CupomCampo } from '../components/CupomCampo';
+import { CUPOM_PERMITIDO_NA_PLATAFORMA } from '../services/cupom';
 import { track, Eventos } from '../services/analytics';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { PlanosAudioIaCard } from '../components/PlanosAudioIaCard';
@@ -664,7 +665,7 @@ export default function PlanosScreen() {
 
   // Pix Automático: só o Pro mensal. A confirmação mostra preço, que renova sozinho e como cancelar ANTES de abrir o banco.
   async function pagarComPixAutomatico(p: Plano) {
-    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixAutoLigado || p.id !== 'pro' || periodo !== 'mensal') return;
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixAutoLigado || cupom || p.id !== 'pro' || periodo !== 'mensal') return;
     if (!acoesPlanoDisponiveis) {
       Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
       return;
@@ -953,7 +954,7 @@ export default function PlanosScreen() {
   );
 
   // Campo de cupom: só com compra no app fora da Play, e o próprio componente some com o recurso desligado.
-  const campoCupom = COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
+  const campoCupom = CUPOM_PERMITIDO_NA_PLATAFORMA ? (
     <CupomCampo plano={chavePixPlano('pro', periodo)} aoMudar={setCupom} />
   ) : null;
 
@@ -1188,7 +1189,7 @@ export default function PlanosScreen() {
                 pixLigado={pixLigado}
                 carregandoPix={pixEmAndamento === p.id}
                 onPagarPix={() => { void pagarComPix(p); }}
-                pixAutoLigado={pixAutoLigado && !pixAutoEstado?.ativa && !pixAutoAguardando}
+                pixAutoLigado={pixAutoLigado && !cupom && !pixAutoEstado?.ativa && !pixAutoAguardando}
                 carregandoPixAuto={pixAutoEmAndamento}
                 onPagarPixAuto={() => { void pagarComPixAutomatico(p); }}
                 vendaPlay={vendaPlayDoCard(p)}

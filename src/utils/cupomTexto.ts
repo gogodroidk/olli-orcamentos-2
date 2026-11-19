@@ -11,3 +11,7 @@ export const AVISO_CUPOM_E_INDICACAO =
 /** O desconto vale só na 1ª cobrança; este texto complementa o que o servidor devolve ("De R$ X por R$ Y"). */
 export const AVISO_CUPOM_NAO_RETROATIVO =
   'O cupom vale só na 1ª cobrança e não vale para o que você já pagou.';
+
+/** O desconto NUNCA vale na assinatura recorrente: a tela diz isso antes de aplicar e esconde o Pix Automático com cupom. */
+export const AVISO_CUPOM_SO_AVULSO =
+  'O desconto vale no Pix avulso e no cartão. Não vale na assinatura recorrente (Pix Automático).';

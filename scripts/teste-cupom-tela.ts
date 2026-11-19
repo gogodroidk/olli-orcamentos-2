@@ -27,7 +27,13 @@ checar('conferir mostra o texto do servidor (desconto escrito ou motivo)', /resu
 checar('modal do Pix escreve o desconto e mostra o valor COBRADO', /cobranca\.desconto\.texto/.test(modal) && /cobranca\.desconto \? cobranca\.desconto\.por/.test(modal));
 checar('cupom recusado: serviço devolve null (nenhum Pix) e entrega o motivo', /r\.status === 409/.test(pix) && /aoRecusa\?\.\(e\.texto\)/.test(pix));
 checar('PlanosScreen: recusa no checkout de cartão avisa e NÃO abre checkout', /Cupom não aplicado/.test(planos) && /cupom_recusado/.test(planos));
-checar('cupom só com compra no app fora da Play', /COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA \? \(\s*<CupomCampo/.test(planos));
+const svc = ler('src/services/cupom.ts');
+checar('cupom só onde o pagamento NÃO é pela loja (mesma regra do Pix): iOS e Play ficam sem cupom', /CUPOM_PERMITIDO_NA_PLATAFORMA = COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA/.test(svc) && /CUPOM_PERMITIDO_NA_PLATAFORMA \? \(\s*<CupomCampo/.test(planos));
+checar('loja: cupomAtivo() devolve false ANTES de qualquer chamada de rede (nem pergunta ao servidor)', /if \(!CUPOM_PERMITIDO_NA_PLATAFORMA \|\| !PAGAMENTOS_URL\) return false;\s*try/.test(svc));
+const card = ler('src/components/IndicacaoCard.tsx');
+checar('loja: o cartão da indicação só cita cupom via cupomAtivo() (que é false na loja)', /cupomAtivo\(\)/.test(card) && /cupomLigado/.test(card));
+checar('Pix Automático some com cupom aplicado (botão e cartão do plano)', /!pixAutoLigado \|\| cupom \|\|/.test(planos) && /pixAutoLigado && !cupom && /.test(planos));
+checar('a tela diz, antes de aplicar, que o desconto não vale na assinatura recorrente', /AVISO_CUPOM_SO_AVULSO\}<\/Text>/.test(campo) && /Não vale na assinatura recorrente/.test(textos) && campo.indexOf('AVISO_CUPOM_SO_AVULSO}</Text>') < campo.indexOf('<TextInput'));
 checar('novo Pix (expirou) mantém o cupom da cobrança anterior', /atual\.desconto\?\.codigo/.test(planos));
 checar('percentual nunca digitado no app', !/\b10\s*%/.test(campo + modal + textos + ler('src/services/cupom.ts')));
 
