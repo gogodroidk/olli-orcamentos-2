@@ -1,0 +1,134 @@
+---
+/**
+ * /modelo-orcamento-ar-condicionado/ — página de entrega da isca "comenta ORÇAMENTO" (D-2099).
+ *
+ * O PDF é asset estático (`public/modelos/`), baixado direto, sem formulário e sem coleta de dado: nada de LGPD
+ * novo. Ao lado, o CTA de cadastro no plano Grátis com UTM `i0074-modelo` (mede o teste: 10 pedidos ou 3 cadastros
+ * em 2 dias). O clique no CTA já dispara `Lead` pelo `scripts/marketing.ts` (ehCtaDeCadastro); o clique no PDF é medido no mesmo
+ * handler (`Lead` com content_category "modelo-pdf"), só com consentimento.
+ *
+ * Exemplo do PDF é fictício e marcado como tal. Sem tabela de preço, sem promessa de resultado (CDC).
+ */
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
+import Layout from "../layouts/Layout.astro";
+import { FRASE_GRATIS } from "../data/recursos";
+
+const APP_CADASTRO = "https://app.olliorcamentos.online/auth/login?modo=cadastro";
+const cta = `${APP_CADASTRO}&utm_source=instagram&utm_medium=isca&utm_campaign=i0074-modelo`;
+const PDF = "/modelos/modelo-orcamento-ar-condicionado-olli.pdf";
+const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
+
+const titulo = "Modelo de orçamento de ar-condicionado em PDF — OLLI";
+const descricao =
+	"Baixe grátis um modelo de orçamento de instalação de split em PDF: mão de obra e material em linhas separadas, garantia, validade e assinatura.";
+
+const campos = [
+	"Dados da empresa e do cliente",
+	"Mão de obra e material em linhas separadas",
+	"Forma de pagamento e prazo de execução",
+	"Garantia do serviço e itens não incluídos",
+	"Validade da proposta e assinatura das duas partes",
+];
+
+const schemaBreadcrumb = {
+	"@context": "https://schema.org",
+	"@type": "BreadcrumbList",
+	itemListElement: [
+		{ "@type": "ListItem", position: 1, name: "OLLI", item: `${ORIGEM}/` },
+		{ "@type": "ListItem", position: 2, name: "Modelo de orçamento de ar-condicionado", item: `${ORIGEM}/modelo-orcamento-ar-condicionado/` },
+	],
+};
+---
+
+<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb]} ofertaDoApp={false}>
+	<Header>
+		<a
+			href={cta}
+			class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
+			>Começar grátis</a
+		>
+	</Header>
+
+	<main id="conteudo">
+		<section class="mx-auto grid max-w-5xl gap-10 px-6 pb-16 pt-14 md:grid-cols-[1.1fr_0.9fr] md:items-start">
+			<div>
+				<h1 class="text-[clamp(2rem,5vw,3.2rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
+					Modelo de orçamento de <span class="brand-text">ar-condicionado</span> em PDF.
+				</h1>
+				<p class="mt-5 text-lg leading-relaxed text-slate">
+					Para instalação de split. Mão de obra e material em linhas separadas, com garantia, validade e assinatura: o cliente
+					entende o que está pagando e você fica protegido.
+				</p>
+
+				<ul class="mt-6 space-y-2 text-base text-slate">
+					{
+						campos.map((c) => (
+							<li class="flex gap-3">
+								<span aria-hidden="true" class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand"></span>
+								<span>{c}</span>
+							</li>
+						))
+					}
+				</ul>
+
+				<div class="mt-8 flex flex-col gap-3 sm:flex-row">
+					<a
+						id="baixar-modelo"
+						href={PDF}
+						download
+						class="inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-strong"
+						>Baixar o modelo em PDF</a
+					>
+					<a
+						href={cta}
+						class="inline-flex min-h-12 items-center justify-center rounded-acao border border-line bg-white px-6 py-3 text-base font-semibold text-ink transition hover:border-brand"
+						>Montar no celular, grátis</a
+					>
+				</div>
+				<p class="mt-3 text-sm text-muted">PDF gratuito, sem cadastro para baixar. A página 2 é um exemplo preenchido.</p>
+			</div>
+
+			<figure class="mx-auto w-full max-w-sm">
+				<img
+					src="/modelos/previa-modelo-1.webp"
+					alt="Primeira página do modelo: campos em branco para empresa, cliente, itens, condições e assinatura"
+					width="663"
+					height="937"
+					class="w-full rounded-cartao border border-line bg-white shadow-sm"
+				/>
+				<figcaption class="mt-2 text-center text-sm text-muted">Página 1: em branco, para preencher.</figcaption>
+			</figure>
+		</section>
+
+		<section class="mx-auto max-w-5xl px-6 pb-16">
+			<div class="grid gap-8 md:grid-cols-2 md:items-center">
+				<figure class="mx-auto w-full max-w-sm">
+					<img
+						src="/modelos/previa-modelo-2.webp"
+						alt="Segunda página do modelo: exemplo preenchido com valores fictícios"
+						width="663"
+						height="937"
+						loading="lazy"
+						class="w-full rounded-cartao border border-line bg-white shadow-sm"
+					/>
+					<figcaption class="mt-2 text-center text-sm text-muted">Página 2: exemplo com valores fictícios.</figcaption>
+				</figure>
+				<div>
+					<h2 class="text-2xl font-extrabold tracking-tight text-ink">Prefere não preencher à mão?</h2>
+					<p class="mt-3 text-base leading-relaxed text-slate">
+						No OLLI você monta o orçamento no celular e envia pelo WhatsApp. O plano Grátis é permanente, com {FRASE_GRATIS}.
+					</p>
+					<a
+						href={cta}
+						class="mt-5 inline-flex min-h-12 items-center justify-center rounded-acao bg-brand px-6 py-3 text-base font-semibold text-white transition hover:bg-brand-strong"
+						>Criar conta grátis</a
+					>
+					<p class="mt-3 text-sm text-muted">Sem cartão para começar. Os valores do exemplo são fictícios: use os seus custos.</p>
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<Footer />
+</Layout>

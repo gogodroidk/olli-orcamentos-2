@@ -56,6 +56,7 @@ const LASTMOD_PAGINAS = new Map([
   ['/ajuda/', '2026-10-02'],
   ['/legal/privacidade/', '2026-09-29'],
   ['/legal/termos/', '2026-09-29'],
+  ['/modelo-orcamento-ar-condicionado/', '2026-11-16'],
 ]);
 const LASTMOD_PARA = '2026-10-01';
 
