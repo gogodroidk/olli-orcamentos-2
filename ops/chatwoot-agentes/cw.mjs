@@ -11,7 +11,7 @@
 //   node cw.mjs passar    <AGENTE> <conversa> <PARA> "motivo"   passa ao dono (nota + atribuição)
 //   node cw.mjs etiqueta  <AGENTE> <conversa> <etiqueta> [...]  acrescenta etiquetas (não apaga as que já tem)
 //   node cw.mjs resolver  <AGENTE> <conversa>
-// AGENTE = IRIS | CARTEIRA | BRUNO | SDR | ACOLHE | DESTRAVA | FECHA
+// AGENTE = IRIS | CARTEIRA | ACOLHE | DESTRAVA | FECHA | SDR | PROSPECCAO | BRUNO (supervisor) — lista em agentes.json
 import { CFG, api, meuId, agentePorChave, tokenDe, carregarCredenciais, ehNumeroInterno, final4 } from './lib.mjs';
 import { motivosDeBarrar, ehTeste } from './travas.mjs';
 
