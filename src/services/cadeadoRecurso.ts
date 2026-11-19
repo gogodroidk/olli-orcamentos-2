@@ -9,10 +9,22 @@
  * Trancar é a escolha conservadora: `carregando` e `indeterminado` (não deu para confirmar o plano)
  * NÃO liberam de graça. Quem paga já chega `liberado` pelo cache da mesma conta (ver usePlano).
  */
-import type { EstadoAcessoRecurso, Recurso } from './entitlements.ts';
+import { RECURSOS_EM_BREVE, type EstadoAcessoRecurso, type Recurso } from './entitlements.ts';
 
-/** Os recursos que o D-2267 tirou do Grátis (cadeado nas telas do app). Nota fiscal é "em breve". */
-export const RECURSOS_CADEADO_D2267: readonly Recurso[] = ['recibos', 'agenda', 'ordem_servico', 'importar_lote', 'nota_fiscal'];
+/**
+ * Os recursos que o D-2267 tirou do Grátis (cadeado nas telas do app). Nota fiscal NÃO entra (CPO, A7): "Preparar nota" só
+ * monta os dados para o emissor do governo (o OLLI não emite) e fica aberta a todos, igual ao painel; o recurso `nota_fiscal`
+ * segue "em breve" só para a emissão automática.
+ */
+export const RECURSOS_CADEADO_D2267: readonly Recurso[] = ['recibos', 'agenda', 'ordem_servico', 'importar_lote'];
+
+/**
+ * Recurso "em breve" NÃO vende (CPO, A7): o cartão e o chip só dizem "Em breve no Pro" — sem botão "Ver o plano" e sem data
+ * inventada. Vender o que o produto ainda não entrega é promessa cobrada em dinheiro.
+ */
+export function recursoVendavel(recurso: Recurso): boolean {
+  return !RECURSOS_EM_BREVE.has(recurso);
+}
 
 /** `true` quando o recurso deve aparecer trancado (cadeado). `liberado` e `em_breve` (plano inclui) não. */
 export function recursoTrancado(estado: EstadoAcessoRecurso): boolean {

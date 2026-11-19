@@ -159,7 +159,6 @@ export default function VisualizarOrcamentoScreen() {
   // D-2267: criar OS e emitir recibo são do Pro (com carência do Grátis); o cadeado aparece no botão e o toque abre "Disponível no Pro".
   const cadeadoOS = useCadeado('ordem_servico');
   const cadeadoRecibo = useCadeado('recibos');
-  const cadeadoNota = useCadeado('nota_fiscal');
   // P0-09: "X de 5 envios" só em conta nova do Grátis, a partir do 3º envio (3 estados no hook).
   const contadorEstado = useContadorEnvios();
   const route = useRoute<Route>();
@@ -1633,7 +1632,7 @@ export default function VisualizarOrcamentoScreen() {
                   variant="outline"
                   size="sm"
                   onPress={() => nav.navigate('PrepararNota', { reciboId: recibo.id })}
-                  icon={<MaterialCommunityIcons name={cadeadoNota.trancado ? 'lock-outline' : 'file-certificate-outline'} size={17} color={cores.primary} />}
+                  icon={<MaterialCommunityIcons name="file-certificate-outline" size={17} color={cores.primary} />}
                   style={{ marginTop: Spacing.sm }}
                 />
               ))}

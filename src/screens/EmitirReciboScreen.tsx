@@ -420,7 +420,6 @@ function EmitirReciboConteudo() {
   // O que já foi emitido segue visível e legível na aba "Emitidos".
   const cadeadoRecibo = useCadeado('recibos');
   const reciboTrancado = cadeadoRecibo.trancado;
-  const cadeadoNota = useCadeado('nota_fiscal'); // nota fiscal: "em breve" no Pro, cadeado no Grátis
 
   return (
     <View style={styles.container}>
@@ -639,7 +638,7 @@ function EmitirReciboConteudo() {
                   activeOpacity={0.85}
                   accessibilityRole="button"
                 >
-                  <MaterialCommunityIcons name={cadeadoNota.trancado ? 'lock-outline' : 'file-certificate-outline'} size={16} color={cores.primary} />
+                  <MaterialCommunityIcons name="file-certificate-outline" size={16} color={cores.primary} />
                   <Text style={styles.reenviarBtnText}>Preparar nota fiscal</Text>
                 </TouchableOpacity>
               )}
