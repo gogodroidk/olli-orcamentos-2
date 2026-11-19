@@ -38,6 +38,7 @@ n += 1;
 const ia = passagemHumano('Você é robô?');
 igual([ia.estado, ia.motivo, ia.resposta], ['humano', 'ia', FRASE_IA], 'gatilho 5 é a única frase');
 assert.equal(FRASE_IA.includes('sou uma IA'), true, 'a frase diz que é IA');
+assert.equal(/pessoa/i.test(FRASE_IA), false, 'a frase não promete pessoa: quem assume é a equipe da OLLI (CPO D-2633)');
 n += 1;
 
 const primeira = passagemHumano('qual o prazo da peça que ainda não existe?');
