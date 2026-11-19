@@ -15,12 +15,12 @@
 export const TOKENS_MOTION = {
 	duracao: { instant: 0, micro: 100, fast: 160, base: 220, slow: 320, page: 400, celebration: 700 },
 	distancia: { xs: 2, sm: 6, md: 12, lg: 20, xl: 32 },
-	escala: { press: 0.97, hover: 1.015, enter: 0.985 },
+	escala: { press: 0.98, hover: 1.015, enter: 0.985 },
 	/** Em SEGUNDOS (é o formato do `staggerChildren`/`delay` do Motion). */
 	escalonamento: { tight: 0.025, base: 0.045, relaxed: 0.075 },
 	curva: {
 		standard: [0.2, 0, 0, 1],
-		enter: [0.23, 1, 0.32, 1],
+		enter: [0.16, 1, 0.3, 1],
 		exit: [0.4, 0, 1, 1],
 		emphasized: [0.2, 0.8, 0.2, 1],
 	},
