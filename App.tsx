@@ -30,6 +30,7 @@ import { OlliLogo } from './src/components/OlliLogo';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
+import { FeedbackCadeadoHost } from './src/components/FeedbackCadeadoHost';
 import { AvisoRelogioErrado } from './src/components/AvisoRelogioErrado';
 import { AtualizacaoObrigatoria, useVersaoMinima } from './src/components/AtualizacaoObrigatoria';
 import { curvas } from './src/components/motion/curvas';
@@ -691,6 +692,8 @@ function AppConteudo() {
               acima; o toast fica por cima de tudo que não é Modal. */}
           <ToastHost />
           <ConfirmSheetHost />
+          {/* D-2267: popup "o que faltou para assinar?" depois de fechar um cadeado do Pro (1 por semana, nunca criando/enviando/pagando). */}
+          <FeedbackCadeadoHost />
         </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

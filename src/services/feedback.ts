@@ -32,7 +32,7 @@ import { APP_VERSION } from '../config';
  * proximo. Assim um tipo novo nunca fica esperando migration pra parar de falhar
  * calado — o dado entra hoje, e o /admin separa por `contexto->>'origem'`.
  */
-export type TipoFeedback = 'feedback' | 'sugestao' | 'bug' | 'elogio' | 'erro' | 'pulso' | 'denuncia';
+export type TipoFeedback = 'feedback' | 'sugestao' | 'bug' | 'elogio' | 'erro' | 'pulso' | 'denuncia' | 'motivo_cadeado';
 
 /** Traducao produto -> banco. Unico lugar que conhece o CHECK constraint. */
 const TIPO_NO_BANCO: Record<TipoFeedback, string> = {
@@ -48,6 +48,9 @@ const TIPO_NO_BANCO: Record<TipoFeedback, string> = {
   // pro mais proximo ('bug': algo errado com o conteudo). O tipo real do produto
   // fica em contexto.origem = 'denuncia' e o /admin destaca por ali.
   denuncia: 'bug',
+  // "O que faltou para assinar o Pro?" (popup do cadeado, D-2267): cabe em 'feedback'; o /admin separa por
+  // contexto->>'origem' = 'motivo_cadeado' (recurso, opção e plano vão em `contexto`).
+  motivo_cadeado: 'feedback',
 };
 
 export interface ContextoFeedback {

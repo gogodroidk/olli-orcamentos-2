@@ -116,6 +116,13 @@ export const EMPRESA_STAMP_KEY = 'olli.empresa.stamp';
 export const PULSO_ULTIMO_KEY = 'olli.pulso.ultimo';
 
 /**
+ * Estado do popup de feedback do cadeado (services/feedbackCadeadoRegra): quando foi mostrado, "agora não" e
+ * "não perguntar mais". É dado de CONTA (a cadência é por pessoa) — entra em APP_DATA_STORAGE_KEYS para o próximo
+ * usuário do aparelho não herdar o "não perguntar mais" de outra conta.
+ */
+export const FEEDBACK_CADEADO_KEY = 'olli.feedbackCadeado.v1';
+
+/**
  * Mapa empresaId→FormaPagamento com a ÚLTIMA combinação de formas de
  * pagamento marcada pelo prestador (services/formasPagamentoPadrao). Smart
  * default: em vez de todo orçamento novo reabrir só com PIX marcado, herda o
@@ -312,6 +319,7 @@ export const APP_DATA_STORAGE_KEYS = [
   RITUAL_DOMINGO_TOGGLE_KEY,
   RESPOSTAS_AVISADAS_KEY,
   PULSO_ULTIMO_KEY,
+  FEEDBACK_CADEADO_KEY,
   FORMAS_PAGAMENTO_PADRAO_KEY,
   SAIDA_CACHE_KEY,
   ROTA_FIXAS_KEY,

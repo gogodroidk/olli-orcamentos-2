@@ -12,6 +12,7 @@ import { planoMinimoDoRecurso, type EstadoAcessoRecurso, type Recurso } from '..
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso, beneficioRecursoLoja } from '../services/planosBase';
 import { vendaPlayConfirmada } from '../services/playBilling';
 import { podeOferecerPlanoPara } from '../services/cadeadoRecurso';
+import { fechouCadeadoSemAssinar } from '../services/feedbackCadeado';
 import { track, Eventos } from '../services/analytics';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../services/precosPlanos';
 
@@ -247,6 +248,10 @@ export function TelaRecursoPlano({ recurso, titulo, children }: PropsTela) {
   const { estado } = useRecursoPlano(recurso);
   const nav = useNavigation<any>();
   const styles = useEstilos(criarEstilos);
+  // Saiu da tela trancada sem assinar: popup "o que faltou?" (D-2267; a regra de frequência fica no host).
+  const estadoRef = useRef(estado);
+  estadoRef.current = estado;
+  useEffect(() => () => fechouCadeadoSemAssinar(recurso, estadoRef.current), [recurso]);
   if (estado === 'liberado' || estado === 'em_breve') return <>{children}</>;
   return (
     <View style={styles.tela}>
