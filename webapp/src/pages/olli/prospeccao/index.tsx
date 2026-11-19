@@ -8,7 +8,7 @@
 import type { Empresa } from "@dominio";
 import { CATEGORIAS_HVAC } from "@dominio";
 import { MapPinned, RefreshCw } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { cn } from "@/utils";
@@ -16,22 +16,23 @@ import {
 	NICHO_TODOS,
 	RAIO_PADRAO_KM,
 	RAIOS_KM,
-	TEXTO_ESQUEMA_PAINEL,
+	TEXTO_MAPA_PAINEL,
 	TEXTO_ROTA,
 	TEXTO_SEM_ORIGEM,
 	TEXTO_SO_CADASTRO,
+	agruparPorPonto,
 	clienteParaMapa,
 	coordenadaValida,
 	linhaDaProspeccao,
 	montarProspeccao,
-	projetarNoRetangulo,
 	textoKm,
 	urlRotaProspeccao,
 	type PontoProspeccao,
 } from "@prospeccao";
 
-const LARGURA = 640;
-const ALTURA = 360;
+// Leaflet só entra no bundle desta tela.
+const MapaProspeccao = lazy(() => import("./MapaProspeccao"));
+
 const CATALOGO: Record<string, string> = Object.fromEntries(CATEGORIAS_HVAC.map((c) => [c.id, c.label]));
 
 interface LinhaClienteMapa {
@@ -95,7 +96,9 @@ export default function ProspeccaoPage() {
 	const [selecionado, setSelecionado] = useState<string | null>(null);
 
 	const dadosEmpresa = (empresaQ.data?.dados ?? null) as Partial<Empresa> | null;
-	const base = coordenadaValida(dadosEmpresa?.baseLat, dadosEmpresa?.baseLon);
+	const baseLat = dadosEmpresa?.baseLat;
+	const baseLon = dadosEmpresa?.baseLon;
+	const base = useMemo(() => coordenadaValida(baseLat, baseLon), [baseLat, baseLon]);
 	const origem = fonte === "aparelho" && aparelho ? aparelho : base;
 
 	const mapaClientes = useMemo(() => {
@@ -134,25 +137,19 @@ export default function ProspeccaoPage() {
 	const nichoEfetivo = !equipamentosQ.isError && (nicho === NICHO_TODOS || resultado.nichos.some((n) => n.id === nicho))
 		? nicho
 		: NICHO_TODOS;
-	const resultadoFinal = nichoEfetivo === nicho ? resultado : montarProspeccao({
+	const resultadoFinal = useMemo(() => (nichoEfetivo === nicho ? resultado : montarProspeccao({
 		origem,
 		clientes: mapaClientes,
 		raioKm: origem ? raioKm : null,
 		nicho: nichoEfetivo,
 		nichosConfiaveis: !equipamentosQ.isError,
-	});
+	})), [nichoEfetivo, nicho, resultado, origem, mapaClientes, raioKm, equipamentosQ.isError]);
 
 	const rota = urlRotaProspeccao(resultadoFinal.dentro.map((item) => item.cliente.endereco));
-	const linha = linhaDaProspeccao(origem, resultadoFinal.dentro);
-	const pontos = [
-		...(origem ? [{ id: "__origem", lat: origem.lat, lon: origem.lon }] : []),
-		...resultadoFinal.dentro
-			.filter((item) => item.cliente.lat !== null && item.cliente.lon !== null)
-			.map((item) => ({ id: item.cliente.id, lat: item.cliente.lat as number, lon: item.cliente.lon as number })),
-	];
-	const tela = projetarNoRetangulo(pontos, LARGURA, ALTURA);
-	const porId = new Map((tela ?? []).map((p) => [p.id, p]));
-	const eu = origem ? porId.get("__origem") : undefined;
+	const dentro = resultadoFinal.dentro;
+	// Memorizados: o mapa só redesenha e reenquadra quando o recorte muda de verdade.
+	const linha = useMemo(() => linhaDaProspeccao(origem, dentro), [origem, dentro]);
+	const grupos = useMemo(() => agruparPorPonto(dentro), [dentro]);
 	const rotuloEu = fonte === "aparelho" && aparelho ? "Onde você está agora" : "Base do seu cadastro";
 
 	const carregando = clientesQ.isLoading || equipamentosQ.isLoading || empresaQ.isLoading;
@@ -253,60 +250,16 @@ export default function ProspeccaoPage() {
 						</fieldset>
 					) : null}
 
-					<div className="relative aspect-[640/360] w-full overflow-hidden rounded-2xl border border-border bg-card">
-						{tela && tela.length > 0 ? (
-							<>
-								<svg viewBox={`0 0 ${LARGURA} ${ALTURA}`} className="absolute inset-0 h-full w-full" role="img" aria-label={TEXTO_ESQUEMA_PAINEL}>
-									{linha.length > 1 ? (
-										<polyline
-											fill="none"
-											stroke="currentColor"
-											strokeWidth="2"
-											className="text-primary"
-											points={linha.map(([lon, lat]) => {
-												const p = porId.get(linhaPontoId(lon, lat, origem, resultadoFinal.dentro));
-												return p ? `${p.x},${p.y}` : "";
-											}).filter(Boolean).join(" ")}
-										/>
-									) : null}
-								</svg>
-								{eu ? (
-									<span
-										className="absolute grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-text-primary text-[10px] font-bold text-background"
-										style={posicao(eu)}
-									>
-										<span className="sr-only">{rotuloEu}</span>
-										Eu
-									</span>
-								) : null}
-								{resultadoFinal.dentro.map((item) => {
-									const p = porId.get(item.cliente.id);
-									if (!p) return null;
-									const ativo = selecionado === item.cliente.id;
-									return (
-										<button
-											key={item.cliente.id}
-											type="button"
-											className={cn(
-												"absolute grid size-8 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full text-xs font-bold",
-												ativo ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2" : "bg-primary/90 text-primary-foreground",
-											)}
-											style={posicao(p)}
-											onClick={() => setSelecionado(item.cliente.id)}
-											aria-label={`${item.ordem}. ${item.cliente.nome}${item.distanciaKm === null ? "" : `, a ${textoKm(item.distanciaKm)}`}${item.cliente.aproximado ? ", ponto aproximado" : ""}`}
-										>
-											{item.ordem}
-										</button>
-									);
-								})}
-							</>
-						) : (
-							<div className="grid h-full place-items-center px-6 text-center text-sm text-text-secondary">
-								Nenhum cliente com ponto neste recorte.
-							</div>
-						)}
-					</div>
-					<p className="text-sm text-text-secondary">{TEXTO_ESQUEMA_PAINEL}</p>
+					<Suspense fallback={<div className="grid h-[360px] place-items-center rounded-2xl border border-border bg-card text-sm text-text-secondary md:h-[440px]">Carregando o mapa…</div>}>
+						<MapaProspeccao grupos={grupos} origem={origem} rotuloOrigem={rotuloEu} linha={linha} aoSelecionar={setSelecionado} />
+					</Suspense>
+					{grupos.length === 0 ? <p className="text-sm text-text-secondary">Nenhum cliente com ponto neste recorte.</p> : null}
+					{grupos.some((g) => g.itens.length > 1) ? (
+						<p className="text-sm text-text-primary">
+							Alguns clientes caem no mesmo ponto (mesma cidade ou CEP). O número com “+” é quantos estão ali; toque nele para ver os nomes. Endereço completo no cadastro põe cada um no lugar certo.
+						</p>
+					) : null}
+					<p className="text-sm text-text-secondary">{TEXTO_MAPA_PAINEL}</p>
 					<p className="text-sm text-text-secondary">{TEXTO_ROTA}</p>
 					{resultadoFinal.kmLinhaReta !== null ? (
 						<p className="text-sm text-text-primary">
@@ -380,8 +333,15 @@ export default function ProspeccaoPage() {
 								O ponto nasce quando o cadastro tem CEP ou cidade e UF. Sem isso, o cliente continua na lista e não some.{" "}
 								<Link to="/clientes" className="font-semibold text-primary">Abrir Clientes</Link>
 							</p>
-							<ul className="mt-2 space-y-1 text-sm text-text-primary">
-								{resultadoFinal.semPonto.map((c) => <li key={c.id}>{c.nome}</li>)}
+							<ul className="mt-2 space-y-2 text-sm text-text-primary">
+								{resultadoFinal.semPonto.map((c) => (
+									<li key={c.id} className="flex flex-wrap items-center justify-between gap-2">
+										<span>{c.nome}</span>
+										<Link to={`/clientes?editar=${encodeURIComponent(c.id)}`} className="inline-flex min-h-11 items-center rounded-full border border-border px-4 text-sm font-semibold text-primary">
+											Completar endereço
+										</Link>
+									</li>
+								))}
 							</ul>
 						</section>
 					) : null}
@@ -389,22 +349,6 @@ export default function ProspeccaoPage() {
 			)}
 		</div>
 	);
-}
-
-function posicao(p: { x: number; y: number }): { left: string; top: string } {
-	return { left: `${(p.x / LARGURA) * 100}%`, top: `${(p.y / ALTURA) * 100}%` };
-}
-
-/** Acha o id do ponto da linha (origem ou cliente) para ligar o traço ao esquema. */
-function linhaPontoId(
-	lon: number,
-	lat: number,
-	origem: PontoProspeccao | null,
-	dentro: readonly { cliente: { id: string; lat: number | null; lon: number | null } }[],
-): string {
-	if (origem && Math.abs(origem.lon - lon) < 1e-9 && Math.abs(origem.lat - lat) < 1e-9) return "__origem";
-	const achado = dentro.find((item) => item.cliente.lon === lon && item.cliente.lat === lat);
-	return achado?.cliente.id ?? "";
 }
 
 function Chip({
