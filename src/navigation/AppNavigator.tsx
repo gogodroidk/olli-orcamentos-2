@@ -45,6 +45,7 @@ import OlliVozScreen from '../screens/OlliVozScreen';
 import OlliChatScreen from '../screens/OlliChatScreen';
 import AutopilotScreen from '../screens/AutopilotScreen';
 import ImportarScreen from '../screens/ImportarScreen';
+import RecursoTrancadoScreen from '../screens/RecursoTrancadoScreen';
 import CalculadoraTintaScreen from '../screens/CalculadoraTintaScreen';
 import CertificadoAnvisaScreen from '../screens/CertificadoAnvisaScreen';
 import PrepararNotaScreen from '../screens/PrepararNotaScreen';
@@ -174,6 +175,8 @@ export type RootStackParamList = {
   // Troque em 5 minutos: contatos (.vcf/CSV), planilha CSV/XLSX e foto de orçamento antigo (IA).
   // `origem: 'contatos'` abre já na porta "Contatos do celular" (botão "Importar dos contatos" em Clientes).
   Importar: { origem?: 'contatos' } | undefined;
+  // D-2267: o cadeado de um recurso do Pro abre "Disponível no Pro" (planosBase). O que já foi criado segue visível.
+  RecursoTrancado: { recurso: Recurso };
   // Ferramenta ÚNICA do ofício de pintura (gate `vertical: 'pintura'` em Conta).
   CalculadoraTinta: undefined;
   // Comprovante de controle de pragas (RDC 622, art. 19) do ofício de dedetização (gate `vertical: 'dedetizacao'`).
@@ -800,6 +803,7 @@ export function AppNavigator({ initialRouteName }: { initialRouteName?: keyof Ro
       <Stack.Screen name="OlliChat" component={OlliChatCentro} />
       <Stack.Screen name="Autopilot" component={AutopilotCentro} />
       <Stack.Screen name="Importar" component={ImportarCentro} />
+      <Stack.Screen name="RecursoTrancado" component={RecursoTrancadoScreen} />
       <Stack.Screen name="CalculadoraTinta" component={CalculadoraTintaCentro} />
       <Stack.Screen name="CertificadoAnvisa" component={CertificadoAnvisaCentro} />
       <Stack.Screen name="CertificadoCaixaDagua" component={CertificadoCaixaDaguaCentro} />

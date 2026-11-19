@@ -203,7 +203,7 @@ console.log('\n5) fiação do paywall');
   const comp = semComentarios(ler('../src/components/RecursoPlano.tsx'));
   checar('gate trata os 3 estados', ["'carregando'", "'indeterminado'", "'em_breve'", "'liberado'"].every((e) => comp.includes(e)), true);
   // Android: só com o binário vendendo E o servidor confirmando (`/play/config`).
-  checar('lojas: só vende na web ou pela Play', /Platform\.OS === 'web'[\s\S]*Platform\.OS === 'android' && vendaPlayConfirmada\(\)/.test(comp), true);
+  checar('lojas: só vende na web ou pela Play', /podeOferecerPlanoPara\(Platform\.OS, Platform\.OS === 'android' && vendaPlayConfirmada\(\)\)/.test(comp), true);
   const gate = semComentarios(ler('../src/components/GatePro.tsx'));
   checar('GatePro: leitura que falhou não vira muro', /estado === 'indeterminado'[\s\S]*CartaoRecursoPlano/.test(gate), true);
   checar('GatePro: selo "Disponível no Pro"', gate.includes('DISPONÍVEL NO ${NOME_PLANO.pro.toUpperCase()}'), true);

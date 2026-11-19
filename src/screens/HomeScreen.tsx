@@ -94,6 +94,8 @@ import { RotaDeHoje, type EstadoRota } from '../components/rua/RotaDeHoje';
 import { MiniMapaDia } from '../components/rua/MiniMapaDia';
 import { AtalhosRua, type Atalho } from '../components/rua/AtalhosRua';
 import { usePlano } from '../hooks/usePlano';
+import { useCadeado } from '../hooks/useCadeado';
+import { NOME_PLANO } from '../services/planosBase';
 import { usePermissao } from '../hooks/usePermissao';
 import { useSyncInicial } from '../hooks/useSyncInicial';
 import { useVerticais } from '../hooks/useVerticais';
@@ -183,6 +185,9 @@ const VEU_HERO = ['rgba(11,111,206,0.38)', 'rgba(52,198,217,0.08)'] as const;
 
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: recibo e agenda são do Pro (com carência do Grátis): o atalho continua na Home, com cadeado.
+  const cadeadoRecibo = useCadeado('recibos');
+  const cadeadoAgenda = useCadeado('agenda');
   const insets = useSafeAreaInsets();
   // O banner fixo "Complete seu negócio" (AvisoCompletarNegocio, ~140 px) fica por
   // cima do fim da lista: enquanto ele aparece, a lista ganha esse espaço a mais.
@@ -642,8 +647,8 @@ export default function HomeScreen() {
   const atalhos: Atalho[] = [
     ...(ehTecnico ? [{ chave: 'os', icone: 'clipboard-check-outline' as const, rotulo: rotuloOS, descricao: 'Abrir minhas ordens de serviço', cor: cores.accentLight, onPress: () => nav.navigate('OrdemServico') }] : []),
     { chave: 'orcar', icone: 'file-document-edit-outline', rotulo: 'Orçar', descricao: 'Criar um orçamento novo', cor: cores.accentLight, onPress: () => nav.navigate('NovoOrcamento', {}) },
-    { chave: 'recibo', icone: 'receipt', rotulo: 'Recibo', descricao: 'Emitir um recibo', cor: cores.success, onPress: () => nav.navigate('EmitirRecibo', {}) },
-    { chave: 'agendar', icone: 'calendar-plus', rotulo: 'Agendar', descricao: 'Agendar uma visita', cor: cores.primaryLight, onPress: agendar },
+    { chave: 'recibo', icone: 'receipt', rotulo: 'Recibo', descricao: cadeadoRecibo.trancado ? `Emitir um recibo. Disponível no ${NOME_PLANO.pro}` : 'Emitir um recibo', cor: cores.success, trancado: cadeadoRecibo.trancado, onPress: () => nav.navigate('EmitirRecibo', {}) },
+    { chave: 'agendar', icone: 'calendar-plus', rotulo: 'Agendar', descricao: cadeadoAgenda.trancado ? `Agendar uma visita. Disponível no ${NOME_PLANO.pro}` : 'Agendar uma visita', cor: cores.primaryLight, trancado: cadeadoAgenda.trancado, onPress: agendar },
     { chave: 'clientes', icone: 'account-group', rotulo: 'Clientes', descricao: 'Abrir a lista de clientes', cor: corCategoria(cores.avatarLilac, cores.surface), onPress: () => nav.navigate('Clientes') },
   ];
 

@@ -50,6 +50,8 @@ import {
   getReciboDoOrcamento, marcarReciboComoPdfEmitido, registrarPagamento, totalRecebidoDoOrcamento,
 } from '../../services/pagamentos';
 import { saveAgendamento } from '../../services/agenda';
+import { CartaoRecursoPlano } from '../RecursoPlano';
+import { useCadeado } from '../../hooks/useCadeado';
 import { RECURSO_REMOVE_MARCA } from '../../services/planos';
 import { usePlano } from '../../hooks/usePlano';
 import { useVerticais } from '../../hooks/useVerticais';
@@ -118,6 +120,9 @@ export function EncerrarAtendimentoModal({
   const [erroPasso, setErroPasso] = useState<string | null>(null);
   const [meses, setMeses] = useState<number>(retorno.meses);
   const [finalizado, setFinalizado] = useState(!!ordem.encerramento?.finalizadoEm);
+  // D-2267: encerrar atendimento (fotos, assinatura, cobrança, recibo, próxima visita) é do Pro (com carência do Grátis):
+  // sem o plano o fluxo aparece só para leitura, com o cartão do plano; nada é gravado.
+  const trancado = useCadeado('ordem_servico').trancado;
   const contouInicio = useRef(false);
   const retomado = useRef(!!ordem.encerramento);
   // O ofício chega depois do 1º render: o intervalo sugerido acompanha até o
@@ -591,7 +596,9 @@ export function EncerrarAtendimentoModal({
             texto="Seis passos para sair da casa do cliente com tudo fechado. Cada um é opcional e fica salvo no aparelho, mesmo sem sinal."
           />
           <SeloSync variante="cartao" />
+          {trancado ? <CartaoRecursoPlano recurso="ordem_servico" titulo="Encerrar atendimento" /> : null}
 
+          <View pointerEvents={trancado ? 'none' : 'auto'} style={{ gap: 10 }}>
           {falhaSalvar ? (
             <TouchableOpacity style={styles.erroFaixa} onPress={() => void persistir(falhaSalvar)} accessibilityRole="button">
               <MaterialCommunityIcons name="alert-circle-outline" size={18} color={cores.danger} />
@@ -671,10 +678,11 @@ export function EncerrarAtendimentoModal({
               </Aparecer>
             );
           })}
+          </View>
         </ScrollView>
 
         <View style={[styles.rodape, { paddingBottom: insets.bottom + 12 }]}>
-          {finalizado ? (
+          {finalizado || trancado ? (
             <OlliButton label="Fechar" variant="gradient" size="lg" fullWidth onPress={onFechar} />
           ) : (
             <OlliButton

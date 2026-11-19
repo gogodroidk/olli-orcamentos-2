@@ -388,7 +388,7 @@ console.log('\n13) Telas: DESLIGADO = NADA SE VENDE; no Android nunca o preço d
   ], [true, true]);
 
   const recurso = ler('../src/components/RecursoPlano.tsx');
-  checar('RecursoPlano: atalho de venda no Android só com o servidor confirmando', recurso.includes("return Platform.OS === 'android' && vendaPlayConfirmada();"), true);
+  checar('RecursoPlano: atalho de venda no Android só com o servidor confirmando', recurso.includes("return podeOferecerPlanoPara(Platform.OS, Platform.OS === 'android' && vendaPlayConfirmada());"), true);
 
   const conta = ler('../src/screens/ContaScreen.tsx');
   checar('Conta: preço da web escondido no Android', conta.includes('{BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (\n                  <View style={styles.soonPill}>'), true);

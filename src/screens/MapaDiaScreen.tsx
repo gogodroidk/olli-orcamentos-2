@@ -57,6 +57,7 @@ import { RecursoPlanoChip, useRecursoPlano } from '../components/RecursoPlano';
 import { confirmar, toast } from '../components/feedback';
 import { vibrar } from '../utils/haptico';
 import { goBackOrHome } from '../navigation/safeBack';
+import { useCadeado } from '../hooks/useCadeado';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -94,6 +95,8 @@ async function lerFixas(): Promise<Set<string>> {
 
 export default function MapaDiaScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: reordenar a rota regrava o horário das visitas — é edição de agenda (Pro, com carência do Grátis).
+  const cadeadoAgenda = useCadeado('agenda');
   const route = useRoute<RouteProp<RootStackParamList, 'MapaDia'>>();
   const insets = useSafeAreaInsets();
   const { height: alturaTela } = useWindowDimensions();
@@ -279,6 +282,7 @@ export default function MapaDiaScreen() {
 
   const ordenar = useCallback(async () => {
     if (ordenando) return;
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     vibrar('selecao');
     const futuras = noMapa.comLocal.filter(ehFutura);
     const anteriores = noMapa.comLocal.filter((p) => !ehFutura(p));
@@ -329,7 +333,7 @@ export default function MapaDiaScreen() {
       setOrdenando(false);
       void carregar();
     }
-  }, [ordenando, noMapa, pontoBase, fixas, ocorrencias, telefoneDe, carregar]);
+  }, [ordenando, noMapa, pontoBase, fixas, ocorrencias, telefoneDe, carregar, cadeadoAgenda]);
 
   const avisarCliente = useCallback(async (a: Avisar) => {
     if (!a.telefone) {

@@ -14,6 +14,7 @@ import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos,
 import { OlliCard } from '../components/OlliCard';
 import { OlliButton } from '../components/OlliButton';
 import { GradientHeader } from '../components/GradientHeader';
+import { useCadeado } from '../hooks/useCadeado';
 import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
@@ -150,6 +151,10 @@ type EnvioPendente =
 
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: criar OS e emitir recibo são do Pro (com carência do Grátis); o cadeado aparece no botão e o toque abre "Disponível no Pro".
+  const cadeadoOS = useCadeado('ordem_servico');
+  const cadeadoRecibo = useCadeado('recibos');
+  const cadeadoNota = useCadeado('nota_fiscal');
   // P0-09: "X de 5 envios" só em conta nova do Grátis, a partir do 3º envio (3 estados no hook).
   const contadorEstado = useContadorEnvios();
   const route = useRoute<Route>();
@@ -871,6 +876,7 @@ export default function VisualizarOrcamentoScreen() {
   // direto daqui para poupar os 4-5 toques do caminho normal — e abre a OS criada.
   async function handleCriarOS() {
     if (!orc || criandoOS) return;
+    if (cadeadoOS.trancado) { cadeadoOS.abrirGate(); return; }
     setCriandoOS(true);
     setOverlayInfo({ titulo: 'Criando a ordem de serviço...', subtitulo: 'Já abre a OS em seguida.' });
     try {
@@ -1330,7 +1336,7 @@ export default function VisualizarOrcamentoScreen() {
                 )}
                 <CloseAction icon="cash-check" label="Registrar" onPress={() => setPagamentoAberto(true)} />
                 {orc.status === 'aprovado' && (
-                  <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+                  <CloseAction icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'} label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
                 )}
               </View>
 
@@ -1387,10 +1393,10 @@ export default function VisualizarOrcamentoScreen() {
               <View style={styles.closeActions}>
                 {servicoPago && <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />}
                 {orc.status === 'aprovado' && (
-                  <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+                  <CloseAction icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'} label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
                 )}
                 {podeFinanceiro && (
-                  <CloseAction icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
+                  <CloseAction icon={cadeadoRecibo.trancado ? 'lock-outline' : 'receipt'} label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
                 )}
               </View>
             </OlliCard>
@@ -1612,7 +1618,7 @@ export default function VisualizarOrcamentoScreen() {
                   variant="outline"
                   size="sm"
                   onPress={() => nav.navigate('PrepararNota', { reciboId: recibo.id })}
-                  icon={<MaterialCommunityIcons name="file-certificate-outline" size={17} color={cores.primary} />}
+                  icon={<MaterialCommunityIcons name={cadeadoNota.trancado ? 'lock-outline' : 'file-certificate-outline'} size={17} color={cores.primary} />}
                   style={{ marginTop: Spacing.sm }}
                 />
               ))}
@@ -1781,7 +1787,7 @@ export default function VisualizarOrcamentoScreen() {
         />
         {orc.status === 'aprovado' ? (
           <ItemFolha
-            icon="clipboard-check-outline"
+            icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'}
             label="Criar ordem de serviço"
             descricao="A partir deste orçamento aprovado."
             onPress={handleCriarOS}
@@ -1798,7 +1804,7 @@ export default function VisualizarOrcamentoScreen() {
         ) : null}
         {podeFinanceiro ? (
           <ItemFolha
-            icon="receipt"
+            icon={cadeadoRecibo.trancado ? 'lock-outline' : 'receipt'}
             label="Recibo"
             descricao="Emitir ou reenviar o recibo deste orçamento."
             onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })}
@@ -1854,7 +1860,7 @@ export default function VisualizarOrcamentoScreen() {
         ) : null}
         {orc.status === 'aprovado' ? (
           <ItemFolha
-            icon="clipboard-check-outline"
+            icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'}
             destaque={!precisaAssinatura}
             label="Criar ordem de serviço"
             descricao="Já abre a OS deste orçamento para a equipe."

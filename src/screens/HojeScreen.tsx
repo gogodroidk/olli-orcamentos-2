@@ -49,6 +49,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { CHECKLIST_KEY, PULSO_ULTIMO_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
+import { useCadeado } from '../hooks/useCadeado';
 import { usePermissao } from '../hooks/usePermissao';
 import { useTipoConta } from '../hooks/useTipoConta';
 import { getCurrentUser } from '../services/supabase';
@@ -455,6 +456,8 @@ const VisitaNaLinha = React.memo(function VisitaNaLinha({
 
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: concluir/reabrir visita é edição de agenda (Pro, com carência do Grátis). Ver o dia segue liberado.
+  const cadeadoAgenda = useCadeado('agenda');
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -677,6 +680,7 @@ export default function HojeScreen() {
   }, [nav]);
 
   const mudarStatus = useCallback(async (a: OcorrenciaAgendamento, status: 'concluido' | 'agendado') => {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     setBaixando(a.id);
     try {
       await mudarStatusVisitaDoDia(a, status);
@@ -696,7 +700,7 @@ export default function HojeScreen() {
     } finally {
       setBaixando(null);
     }
-  }, [load]);
+  }, [load, cadeadoAgenda]);
   // O "Desfazer" do toast chama a versão MAIS NOVA da função (o toast vive mais
   // que o render em que nasceu).
   const mudarStatusRef = useRef(mudarStatus);

@@ -27,6 +27,7 @@ import { CampoVisitaExterna } from '../../components/agenda/CampoVisitaExterna';
 import { SugestaoEncaixe } from '../../components/agenda/SugestaoEncaixe';
 import { ClimaDaVisita } from '../../components/clima/ClimaDaVisita';
 import { useEncaixe } from '../../hooks/useEncaixe';
+import { useCadeado } from '../../hooks/useCadeado';
 import { sugerirVisitaExterna } from '../../services/verticais';
 import { getClientes } from '../../database/database';
 import { duracaoEstimadaMin } from '../../utils/agendaDominio';
@@ -105,6 +106,8 @@ interface EditState {
  */
 export default function AgendaDesktopScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: agendar, editar, concluir, cancelar e excluir visita são do Pro (com carência do Grátis). Ver segue liberado.
+  const cadeadoAgenda = useCadeado('agenda');
   const route = useRoute<AgendaRoute>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -211,6 +214,7 @@ export default function AgendaDesktopScreen() {
   useEffect(() => onSyncAplicado(load), [load]);
 
   function abrirNovo(prefill?: Partial<EditState>) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const base = prefill?.data ?? new Date();
     const inicioPadrao = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 9, 0, 0, 0);
     setEditing({
@@ -266,6 +270,7 @@ export default function AgendaDesktopScreen() {
   }
 
   function abrirEdicao(a: Agendamento) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const iniRaw = new Date(a.inicio);
     const ini = isNaN(iniRaw.getTime()) ? new Date() : iniRaw;
     setDetalhe(null);
@@ -295,6 +300,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function salvar(e: EditState) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const ini = combinarDataHora(e.data, e.horaInicio);
     const fimDt = e.horaFim ? combinarDataHora(e.data, e.horaFim) : undefined;
     if (fimDt && fimDt <= ini) {
@@ -346,6 +352,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function concluir(a: Agendamento) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     setSalvando(true);
     try {
       await saveAgendamento({ ...a, status: 'concluido', atualizadoEm: nowISO() });
@@ -359,6 +366,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function cancelar(a: Agendamento) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     setSalvando(true);
     try {
       await saveAgendamento({ ...a, status: 'cancelado', atualizadoEm: nowISO() });
@@ -372,6 +380,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function remover(id: string, serie = false) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const titulo = serie ? 'Excluir a série inteira' : 'Excluir agendamento';
     const texto = serie
       ? 'Todas as repetições deste compromisso saem da agenda. Ele vai para a Lixeira.'

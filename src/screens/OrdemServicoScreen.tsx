@@ -14,6 +14,8 @@ import { GradientHeader } from '../components/GradientHeader';
 import { EmptyState } from '../components/EmptyState';
 import { OlliSkeleton } from '../components/OlliSkeleton';
 import { OlliButton } from '../components/OlliButton';
+import { CartaoRecursoPlano } from '../components/RecursoPlano';
+import { useCadeado } from '../hooks/useCadeado';
 import { FormularioDadosOS } from '../components/os/FormularioDadosOS';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -129,6 +131,8 @@ export default function OrdemServicoScreen() {
   const { org, carregando: carregandoConta } = useTipoConta();
   const { pode, papel } = usePermissao();
   const insets = useSafeAreaInsets();
+  // D-2267: criar OS e editar OS são do Pro (com carência do Grátis). A lista e o detalhe do que já existe seguem legíveis.
+  const cadeadoOS = useCadeado('ordem_servico');
 
   // GESTÃO = quem pode ver a agenda/relatórios da equipe (owner/admin/gestor) ou
   // conta pessoal (dono de si). TÉCNICO = papel 'tecnico' numa organização.
@@ -296,9 +300,9 @@ export default function OrdemServicoScreen() {
             <TouchableOpacity
               style={styles.newBtn}
               activeOpacity={0.85}
-              onPress={() => { vibrar('selecao'); setShowNova(true); }}
+              onPress={() => { vibrar('selecao'); if (cadeadoOS.trancado) { cadeadoOS.abrirGate(); return; } setShowNova(true); }}
             >
-              <MaterialCommunityIcons name="plus" size={20} color="#fff" />
+              <MaterialCommunityIcons name={cadeadoOS.trancado ? 'lock-outline' : 'plus'} size={20} color="#fff" />
               <Text style={styles.newBtnLabel}>Nova OS</Text>
             </TouchableOpacity>
           ) : undefined
@@ -383,7 +387,7 @@ export default function OrdemServicoScreen() {
                   : 'Crie a primeira ordem a partir de um orçamento aprovado ou manualmente.'
               }
               actionLabel={ehGestao && !busca ? 'Nova OS' : undefined}
-              onAction={ehGestao && !busca ? () => setShowNova(true) : undefined}
+              onAction={ehGestao && !busca ? () => { if (cadeadoOS.trancado) { cadeadoOS.abrirGate(); return; } setShowNova(true); } : undefined}
             />
           }
         />
@@ -436,6 +440,7 @@ function DetalheOS({
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
   const nav = useNavigation<Nav>();
+  const osTrancada = useCadeado('ordem_servico').trancado;
   const [showEncerrar, setShowEncerrar] = useState(false);
   const [ordem, setOrdem] = useState<OrdemServico | null>(null);
   // Contato/endereço do cliente para Ligar/WhatsApp/Ir até lá — a OS não os
@@ -743,6 +748,7 @@ function DetalheOS({
           >
             {/* Nuvem honesta (I0): pendências de envio + alerta >24h com [Tentar agora]. */}
             <SeloSync variante="cartao" />
+            {osTrancada ? <CartaoRecursoPlano recurso="ordem_servico" titulo="Editar a ordem de serviço" /> : null}
 
             <DicaDoRoteiro local="os" contexto={concluida ? ['primeira_os_concluida'] : ['primeira_os_aberta']} />
 
@@ -821,6 +827,8 @@ function DetalheOS({
               </View>
             ) : null}
 
+            {/* Somente leitura (D-2267): do Grátis depois da carência, a OS aparece e se lê, mas não recebe edição. */}
+            <View pointerEvents={osTrancada ? 'none' : 'auto'} style={{ gap: Spacing.base }}>
             {/* Atribuir técnico (só gestão com permissão) */}
             {podeAtribuir && (
               <TouchableOpacity
@@ -1016,6 +1024,7 @@ function DetalheOS({
                 ) : null}
               </View>
             ) : null}
+          </View>
           </ScrollView>
         )}
       </View>
@@ -1526,7 +1535,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   newBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: BorderRadius.full,
+    minHeight: 44, paddingHorizontal: 14, paddingVertical: 8, borderRadius: BorderRadius.full,
   },
   newBtnLabel: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
