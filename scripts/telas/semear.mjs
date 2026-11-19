@@ -155,26 +155,35 @@ async function adicionarItem(page, item) {
 }
 
 /**
- * Troca o status pelo menu real da tela do orçamento (o crachá é o gatilho).
+ * Troca o status pela folha real da tela do orçamento: o crachá do cabeçalho
+ * (rótulo de acessibilidade "Status: <atual>. Toque para alterar") abre a folha
+ * "Alterar status", e cada status é uma linha dela.
  *
- * A âncora de saída é o menu SUMIR, não o rótulo novo aparecer — o rótulo
- * "Aprovado" já está escrito no próprio menu, então esperar por ele passava na
- * hora, antes de o banco gravar. A navegação seguinte abortava a gravação no
- * meio e o orçamento voltava a ser rascunho, sem erro nenhum no caminho.
+ * A âncora de saída é o crachá VIRAR o status novo, e ela é honesta: o app só
+ * atualiza o estado DEPOIS do `await saveOrcamento` (`updateStatus` em
+ * `VisualizarOrcamentoScreen.tsx`). A versão antiga esperava a folha sumir; hoje
+ * a folha não some sozinha, então esperar por ela não ancora nada. Navegar antes
+ * da gravação abortava o `saveOrcamento` e o orçamento voltava a ser rascunho,
+ * sem erro nenhum no caminho.
+ *
+ * Aprovar abre a festa e, depois dela, a folha "Orçamento aprovado!": o "Depois"
+ * dela não perde nada e deixa a tela limpa para a próxima semeadura.
  */
 export async function mudarStatus(page, de, para) {
-  await clicar(page, de);
-  await esperarTexto(page, 'Alterar status:');
+  await page.getByLabel(`Status: ${de}. Toque para alterar`).first().click({ timeout: ESPERA });
+  await esperarTexto(page, 'Mude à mão quando o cliente responder fora do link.');
   await clicar(page, para);
   await page
-    .getByText('Alterar status:', { exact: true })
+    .getByLabel(`Status: ${para}. Toque para alterar`)
     .first()
-    .waitFor({ state: 'hidden', timeout: ESPERA });
-  await page.getByText(para, { exact: true }).first().waitFor({ state: 'visible', timeout: ESPERA });
+    .waitFor({ state: 'visible', timeout: ESPERA });
+  if (para === 'Aprovado') await clicarSeAparecer(page, 'Depois', { timeout: 15000 });
 }
 
 /**
- * Monta um orçamento inteiro pelos 4 passos e o gera.
+ * Monta um orçamento inteiro pelo fluxo de 3 passos (Cliente → Itens → Revisar)
+ * e o salva. Os botões são os do app de hoje: "Escolher itens", "Revisar" e
+ * "Salvar orçamento" (`rotuloDoBotaoPrincipal` em `src/utils/orcarRapido.ts`).
  * @returns a URL final, que já é /orcamentos/<id> (a tela de visualização).
  */
 export async function criarOrcamento(
@@ -188,36 +197,36 @@ export async function criarOrcamento(
 
   if (clienteJaExiste) await escolherClienteExistente(page, cliente);
   else await cadastrarCliente(page, cliente);
-  await clicar(page, 'Avançar');
+  await clicar(page, 'Escolher itens');
 
   await esperarTexto(page, 'Adicionar manual');
   for (const item of itens) await adicionarItem(page, item);
   if (pararEm === 'itens') return null;
-  await clicar(page, 'Avançar');
+  await clicar(page, 'Revisar');
 
-  // Passo 3 (Detalhes). Fica nos padrões do app para TODO orçamento — é o que o
-  // prestador apressado vê — menos quando `detalhes` é passado, que é o caso do
-  // orçamento-herói: sem garantia e sem condições de pagamento, a tela de
-  // orçamento aprovado (2ª screenshot da vitrine) publicava um painel "2/5
-  // sinais de confiança configurados" com três fichas de alerta. Ver
+  // Passo 3 (Revisar). Os detalhes (condições, garantia) vivem numa tela à parte
+  // que o passo abre pelo cartão "Ajustar". Ficam nos padrões do app para TODO
+  // orçamento — é o que o prestador apressado vê — menos quando `detalhes` é
+  // passado, que é o caso do orçamento-herói: sem garantia e sem condições de
+  // pagamento, a tela de orçamento aprovado publicava um painel "2/5 sinais de
+  // confiança configurados" com três fichas de alerta. Ver
   // `DETALHES_ORCAMENTO_HEROI` em elenco.mjs.
+  await esperarTexto(page, 'Confira antes de salvar');
   if (detalhes) {
-    // Âncora do passo 3: o título da seção só existe nele. Sem isto, o
-    // `preencher` abaixo poderia rodar antes de o passo trocar e falhar por
-    // "placeholder não encontrado" — que seria um erro honesto, mas tardio.
+    await clicar(page, 'Ajustar');
+    // Âncora da tela de detalhes: o título da seção só existe nela.
     await esperarTexto(page, 'Condições e garantia');
     if (detalhes.condicoesPagamento) {
-      await preencher(page, 'Ex: 50% de entrada, restante na entrega', detalhes.condicoesPagamento);
+      await preencher(page, 'Ex.: 50% na aprovação', detalhes.condicoesPagamento, { exato: false });
     }
     if (detalhes.garantia) {
       await preencher(page, 'Ex: 90 dias para mão de obra', detalhes.garantia);
     }
+    await clicar(page, 'Pronto');
+    await esperarTexto(page, 'Confira antes de salvar');
   }
 
-  // Passo 4 (Personalizar) fica sempre no padrão.
-  await clicar(page, 'Avançar');
-  await esperarTexto(page, 'Modelo do PDF');
-  await clicar(page, 'Gerar orçamento');
+  await clicar(page, 'Salvar orçamento');
 
   // `(?!novo$)`: sem isso a espera casa a própria URL de origem
   // (/orcamentos/novo) e volta na hora, antes de o orçamento existir.
@@ -763,7 +772,7 @@ async function conferirListaDeOrdens(page, titulos) {
  * Semeia tudo o que as telas escolhidas precisam mostrar, na ordem em que um
  * prestador de verdade faria: primeiro o negócio, depois o trabalho.
  */
-export async function semearTudo(page, base, log = () => {}) {
+export async function semearTudo(page, base, log = () => {}, { minimo = false } = {}) {
   const feito = {};
 
   /**
@@ -797,6 +806,10 @@ export async function semearTudo(page, base, log = () => {}) {
     detalhes: DETALHES_ORCAMENTO_HEROI,
   });
   await mudarStatus(page, 'Rascunho', 'Aprovado');
+
+  // Semeadura mínima: negócio + cliente + orçamento-herói. Basta para as telas
+  // que só precisam do cliente cadastrado (ex.: o passo de itens do orçamento).
+  if (minimo) return feito;
 
   for (const extra of ORCAMENTOS_EXTRA) {
     await criar(`orçamento ${extra.cliente.nome}`, extra.cliente, { itens: extra.itens });
