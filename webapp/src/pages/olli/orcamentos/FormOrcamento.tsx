@@ -53,6 +53,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/popover";
 import { Separator } from "@/ui/separator";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
+import { abrePassoEnviarAposSalvar } from "@/olli/envioAtivacao";
 import { registrarEtapaAtivacao } from "@/store/userStore";
 
 /* ═══════════════════════════════  A TRAVA  ═══════════════════════════════════ */
@@ -267,9 +268,14 @@ interface Props {
 	aoDuplicar?: (o: Orcamento) => void;
 	/** Orçamento de EXEMPLO da ativação: o editor avisa que valores são só referência. */
 	exemplo?: boolean;
+	/**
+	 * Chamado com o orçamento SALVO logo depois de "Criar orçamento" (rascunho novo), para quem
+	 * abriu o editor levar a pessoa ao próximo passo: enviar (CQ-ATIVACAO-LOTE1, achado 2).
+	 */
+	aoCriar?: (o: Orcamento) => void;
 }
 
-export default function FormOrcamento({ aberto, aoFechar, inicial, ehNovo, aoDuplicar, exemplo }: Props) {
+export default function FormOrcamento({ aberto, aoFechar, inicial, ehNovo, aoDuplicar, exemplo, aoCriar }: Props) {
 	const formId = useId();
 
 	// TRAVA (motivo 2 do cabeçalho): documento já enviado não abre para edição.
@@ -287,6 +293,7 @@ export default function FormOrcamento({ aberto, aoFechar, inicial, ehNovo, aoDup
 			inicial={inicial}
 			ehNovo={ehNovo}
 			exemplo={ehNovo && exemplo === true}
+			aoCriar={aoCriar}
 		/>
 	);
 }
@@ -302,6 +309,7 @@ function Editor({
 	inicial,
 	ehNovo,
 	exemplo,
+	aoCriar,
 }: {
 	formId: string;
 	aberto: boolean;
@@ -309,6 +317,7 @@ function Editor({
 	inicial: Orcamento;
 	ehNovo: boolean;
 	exemplo: boolean;
+	aoCriar?: (o: Orcamento) => void;
 }) {
 	// O estado NASCE do blob inteiro e só é PATCHED — ver motivo 1 do cabeçalho.
 	// `comDefaults` blinda blob legado (sem formasPagamento/itens) contra TypeError.
@@ -594,9 +603,12 @@ function Editor({
 				final = { ...final, numero: numeroCompradoRef.current };
 			}
 
-			await salvar.mutateAsync(final);
+			// `mutateAsync` devolve o que FOI gravado (o número pode ter mudado numa colisão).
+			const salvo = await salvar.mutateAsync(final);
 			if (ehNovo) void registrarEtapaAtivacao("quote_create");
 			aoFechar();
+			// Depois de criar, o próximo passo é ENVIAR: quem abriu o editor mostra o passo de envio.
+			if (abrePassoEnviarAposSalvar(ehNovo, salvo.status)) aoCriar?.(salvo);
 		} catch (err) {
 			setErro((err as Error)?.message ?? "Não foi possível salvar o orçamento.");
 		} finally {

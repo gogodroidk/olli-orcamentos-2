@@ -90,6 +90,7 @@ const DialogoContrato = lazyComRetry(() => import("./DialogoContrato"));
 
 import FormOrcamento, { criarRevisaoComoRascunho, duplicarComoRascunho, edicaoBloqueada } from "./FormOrcamento";
 import { FaixaOrcamentoParado } from "./FaixaOrcamentoParado";
+import PassoEnviar from "./PassoEnviar";
 import { dispensarFaixa, lerDispensados, prontosParados } from "./orcamentosParados";
 import { useEnviarWhatsApp } from "./useEnviarWhatsApp";
 import { useMarcarEnviado } from "./useMarcarEnviado";
@@ -137,6 +138,20 @@ const STATUS_VALIDOS = new Set<string>(STATUS);
  * é ruído, e tratá-lo como documento faria o painel salvar um objeto meia-boca por
  * cima do que o cliente tem em mãos.
  */
+/** A linha a partir do orçamento recém-salvo (o passo de envio usa as mesmas ações da lista). */
+function linhaDoOrcamento(o: Orcamento): LinhaOrcamento {
+	return {
+		id: o.id,
+		numero: o.numero || null,
+		cliente_nome: o.clienteNome || null,
+		status: o.status,
+		valor_total: o.valorTotal ?? null,
+		data_emissao: o.dataEmissao || null,
+		criado_em: o.criadoEm,
+		dados: o,
+	};
+}
+
 function blobDe(linha: LinhaOrcamento): Orcamento | null {
 	const d = linha.dados;
 	if (!d || typeof d !== "object" || !Array.isArray(d.itens)) return null;
@@ -353,6 +368,8 @@ export default function OrcamentosPage() {
 
 	/** O editor aberto. `ehNovo` decide se o número será gerado no submit. */
 	const [editor, setEditor] = useState<{ orc: Orcamento; ehNovo: boolean; exemplo?: boolean } | null>(null);
+	/** Orçamento que ACABOU de ser criado: abre o passo "Enviar para o cliente" (achado 2). */
+	const [recemCriado, setRecemCriado] = useState<Orcamento | null>(null);
 	/** id da linha cujo PDF está sendo montado — a linha mostra isso, não fica muda. */
 	const [pdfEmCurso, setPdfEmCurso] = useState<string | null>(null);
 	/** O orçamento que virou contrato — o diálogo abre em cima do BLOB, nunca da linha. */
@@ -528,6 +545,7 @@ export default function OrcamentosPage() {
 			const reserva = await reservarEnvioOrcamento(linha.id, "pdf");
 			if (!reserva.permitido) {
 				// P0-09: só o ENVIO para; o orçamento fica salvo. Falha de registro nunca cai aqui.
+				void registrarEtapaAtivacao("orcamento_salvar_barrado");
 				const aviso = avisoLimiteEnvios(reserva);
 				throw new Error(`${aviso.titulo}. ${aviso.mensagem}`);
 			}
@@ -963,8 +981,18 @@ export default function OrcamentosPage() {
 					ehNovo={editor.ehNovo}
 					exemplo={editor.exemplo}
 					aoDuplicar={criarRevisao}
+					aoCriar={setRecemCriado}
 				/>
 			)}
+
+			{/* Depois de "Criar orçamento": o próximo passo é enviar (WhatsApp, link ou PDF). */}
+			<PassoEnviar
+				orcamento={recemCriado}
+				aoFechar={() => setRecemCriado(null)}
+				aoWhatsApp={(o) => void enviarWhats(o.id, o, "whatsapp")}
+				aoCopiarLink={(o) => void enviarWhats(o.id, o, "link")}
+				aoVerPdf={(o) => void verPdf(linhaDoOrcamento(o))}
+			/>
 
 			{/* ─────────────  Contrato  ─────────────
 			    `key` no id do orçamento: o formulário do diálogo é semeado UMA vez, na
