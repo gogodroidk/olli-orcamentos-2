@@ -236,8 +236,18 @@ export function estadoAcessoRecurso(leitura: LeituraPlano, recurso: Recurso): Es
 export type DisponibilidadeRecurso = 'nao_incluido' | 'em_breve' | 'disponivel';
 
 export function disponibilidadeRecurso(plano: PlanoId, recurso: Recurso): DisponibilidadeRecurso {
-  if (!temAcessoRecurso(plano, recurso)) return 'nao_incluido';
+  if (!planoIncluiRecurso(plano, recurso)) return 'nao_incluido';
   return RECURSOS_EM_BREVE.has(recurso) ? 'em_breve' : 'disponivel';
+}
+
+/**
+ * O que o PLANO inclui (a tabela publicada), SEM a carência do D-2267. É o que comparativos e
+ * landing mostram: a landing é estática (congela no build) e o aviso diz que recibos, agenda, OS e
+ * importação em lote "passam a ser do Pro" — mostrar ✓ no Grátis durante a carência seria promessa
+ * falsa depois da tranca. Quem decide ACESSO de verdade é `temAcessoRecurso`.
+ */
+export function planoIncluiRecurso(plano: PlanoId, recurso: Recurso): boolean {
+  return RECURSOS_POR_PLANO[plano]?.has(recurso) ?? false;
 }
 
 /**
