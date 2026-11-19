@@ -16,11 +16,11 @@
  * os mesmos `save*` das telas de cadastro (sync + espelho na nuvem).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { GradientHeader } from '../components/GradientHeader';
 import { registrarEventoDica } from '../services/dicasRoteiroStore';
@@ -35,15 +35,21 @@ import { nowISO } from '../utils/date';
 import { montarParamsOrcamento } from '../utils/autopilotCadastro';
 import { prepararPreviaAutopilot, IA_AUTOPILOT_MAX_BYTES, type AutopilotPrevia } from '../services/iaAutopilot';
 import {
-  base64ParaBytes, CAMPOS_IMPORTACAO, detectarModelo, gravarImportacao, LIMITE_ARQUIVO_BYTES, linhasDaFoto,
+  base64ParaBytes, CAMPOS_IMPORTACAO, contatosParaLinhas, detectarModelo, gravarImportacao, LIMITE_ARQUIVO_BYTES, linhasDaFoto,
   MAPEAMENTO_FIXO, mapeamentoInicial, modeloPorId, MODELOS_COLUNAS, montarPrevia, normalizarChave, prepararLinhas,
   previaConferida, resumoRelatorio, selecaoInicialImportacao, totaisPrevia,
   type AcaoLinhaImportacao, type ExistentesImportacao, type LinhaBruta, type LinhaPrevia, type RelatorioImportacao,
   type TipoImportacaoCadastro,
 } from '../services/importacao';
 import { lerArquivoImportacao, type FormatoImportacao } from '../services/importacaoArquivo';
+import { lerContatosDoCelular } from '../services/contatosCelular';
+import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
+import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
+import { resumoImportacaoContatos } from '../services/contatosCelularNucleo';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Rota = RouteProp<RootStackParamList, 'Importar'>;
+const NOME_ESCOLHIDOS = 'Contatos escolhidos';
 type Origem = 'contatos' | 'planilha' | 'foto';
 type ArquivoCarregado = { nome: string; formato: FormatoImportacao; linhas: LinhaBruta[] };
 type Filtro = 'todos' | AcaoLinhaImportacao;
@@ -88,15 +94,29 @@ async function lerBytes(asset: DocumentPicker.DocumentPickerAsset): Promise<Uint
   return base64ParaBytes(base64);
 }
 
+/**
+ * D-2267: importar CLIENTES em lote (contatos, planilha, vCard) é do Pro, com carência do Grátis até
+ * `TRANCA_GRATIS_D2267` (entitlement `importar_lote`; `estadoAcessoRecurso` já aplica a carência).
+ * Catálogo (serviços/produtos) e foto de orçamento seguem no Grátis, como em `planosBase` e no painel.
+ * Trancado: no lugar do botão aparece o cartão "Disponível no Pro" (3 estados: carregando | não confirmei | bloqueado).
+ * Puxar UM telefone no orçamento NÃO passa por aqui e segue Grátis.
+ */
 export default function ImportarScreen() {
   const nav = useNavigation<Nav>();
+  const rota = useRoute<Rota>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const { pode, carregando: papelCarregando } = usePermissao();
   const podeClientes = pode('ver_clientes');
   const podeCatalogo = pode('ver_valores_agregados');
+  const { estado: estadoLote } = useRecursoPlano('importar_lote');
+  const loteTrancado = estadoLote !== 'liberado' && estadoLote !== 'em_breve';
 
-  const [origem, setOrigem] = useState<Origem | null>(null);
+  const [origem, setOrigem] = useState<Origem | null>(rota.params?.origem === 'contatos' ? 'contatos' : null);
+  // Agenda negada: guarda se dá para pedir de novo (senão o caminho é Ajustes) — 3 estados, nunca "sem contatos" por engano.
+  const [agendaNegada, setAgendaNegada] = useState<{ podePedirDeNovo: boolean } | null>(null);
+  // Contatos escolhidos 1 a 1 no seletor nativo: já vêm marcados (o usuário acabou de escolher).
+  const escolhidosRef = useRef<Set<string>>(new Set());
   const [tipo, setTipo] = useState<TipoImportacaoCadastro>('clientes');
   const [arquivo, setArquivo] = useState<ArquivoCarregado | null>(null);
   const [modeloId, setModeloId] = useState<string>('generica');
@@ -164,6 +184,7 @@ export default function ImportarScreen() {
   gravadosRef.current = gravados;
   useEffect(() => {
     const inicial = selecaoInicialImportacao(previa, origemSelecao);
+    for (const chave of escolhidosRef.current) if (previa.some((l) => l.chave === chave && l.acao !== 'erro')) inicial.add(chave);
     for (const chave of gravadosRef.current.keys()) inicial.delete(chave);
     setSelecionados(inicial);
     setLimite(PAGINA);
@@ -183,6 +204,7 @@ export default function ImportarScreen() {
   function limparFonte() {
     setArquivo(null); setFotoIa(null); setMapeamento({}); setCampoAberto(null); setErro(null);
     setGravados(new Map()); setRelatorio(null); setFiltro('todos'); setBusca(''); setProgresso(null);
+    setAgendaNegada(null); escolhidosRef.current = new Set();
   }
 
   function escolherOrigem(nova: Origem) {
@@ -225,6 +247,54 @@ export default function ImportarScreen() {
       setArquivo({ nome: asset.name ?? 'arquivo', formato: lido.formato, linhas: lido.linhas });
     } catch (e) {
       setErro(e instanceof Error && e.message ? e.message : 'Não consegui ler este arquivo.');
+    } finally {
+      setLendo(false);
+    }
+  }
+
+  /** Lê a agenda do celular (permissão pedida AQUI, ao tocar) e entrega a mesma prévia do arquivo .vcf. */
+  async function lerAgenda() {
+    if (lendo || gravando) return;
+    setLendo(true);
+    limparFonte();
+    try {
+      const r = await lerContatosDoCelular();
+      if (r.estado === 'ok') {
+        setTipo('clientes');
+        setMapeamento(MAPEAMENTO_FIXO.clientes);
+        setArquivo({ nome: 'Contatos do celular', formato: 'vcf', linhas: contatosParaLinhas(r.contatos) });
+      } else if (r.estado === 'negada') {
+        setAgendaNegada({ podePedirDeNovo: r.podePedirDeNovo });
+      } else if (r.estado === 'vazio') {
+        setErro('Não achei contatos salvos neste celular. Você pode escolher um por vez ou usar um arquivo.');
+      } else if (r.estado === 'indisponivel') {
+        setErro('Ler a agenda só funciona no app do celular. Aqui, use o arquivo de contatos.');
+      } else {
+        setErro(`${r.mensagem} Nada foi alterado.`);
+      }
+    } finally {
+      setLendo(false);
+    }
+  }
+
+  /** Seletor nativo, 1 contato por vez: não precisa de permissão da agenda. Cada escolha entra já marcada. */
+  async function escolherUm() {
+    if (lendo || gravando) return;
+    setErro(null);
+    setLendo(true);
+    try {
+      const r = await puxarTelefoneDosContatos();
+      if (r.estado === 'cancelado') return;
+      if (r.estado === 'erro') { setErro(r.mensagem); return; }
+      const nova = contatosParaLinhas([{ nome: r.nome, telefones: [r.telefone], endereco: '', cidade: '', estado: '', cep: '', empresa: '' }]);
+      const base = arquivo?.nome === NOME_ESCOLHIDOS ? arquivo.linhas : [];
+      if (!base.length) {
+        limparFonte();
+        setTipo('clientes');
+        setMapeamento(MAPEAMENTO_FIXO.clientes);
+      }
+      escolhidosRef.current.add(`cliente:${base.length}`);
+      setArquivo({ nome: NOME_ESCOLHIDOS, formato: 'vcf', linhas: [...base, ...nova] });
     } finally {
       setLendo(false);
     }
@@ -365,6 +435,8 @@ export default function ImportarScreen() {
   }, [fotoIa, existentes, previa, gravados]);
 
   const temFonte = Boolean(arquivo || fotoIa);
+  // Só importar CLIENTES é Pro; catálogo e foto ficam livres.
+  const bloqueioLote = loteTrancado && (origem === 'contatos' || (origem === 'planilha' && tipo === 'clientes'));
   const semPermissaoTipo = !papelCarregando && origem !== 'foto' && origem !== null && (tipo === 'clientes' ? !podeClientes : !podeCatalogo);
 
   return (
@@ -391,9 +463,30 @@ export default function ImportarScreen() {
           ))}
         </View>
 
-        {origem === 'contatos' && (
+        {origem === 'contatos' && bloqueioLote && <CartaoRecursoPlano recurso="importar_lote" />}
+        {origem === 'contatos' && !bloqueioLote && (
           <View style={styles.card}>
-            <Text style={styles.cardTitulo}>Como pegar seus contatos</Text>
+            {Platform.OS !== 'web' && (
+              <>
+                <Text style={styles.cardTitulo}>Pegar direto da agenda</Text>
+                <Text style={styles.texto}>O OLLI vai ler seus contatos só para você escolher quais virar clientes. Nada é enviado sem você escolher.</Text>
+                <OlliButton label={lendo ? 'Lendo…' : 'Ler meus contatos'} variant="gradient" fullWidth onPress={() => { void lerAgenda(); }} disabled={lendo || gravando} loading={lendo} icon={!lendo ? <MaterialCommunityIcons name="card-account-phone-outline" size={18} color="#fff" /> : undefined} style={{ marginTop: Spacing.sm }} />
+                {agendaNegada && (
+                  <View style={[styles.aviso, { marginTop: Spacing.sm }]} accessibilityRole="alert">
+                    <MaterialCommunityIcons name="alert-circle-outline" size={19} color={cores.warning} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.texto}>Sem acesso à sua agenda. Você ainda pode escolher um contato por vez ou usar um arquivo.</Text>
+                      {agendaNegada.podePedirDeNovo
+                        ? <TouchableOpacity onPress={() => { void lerAgenda(); }} accessibilityRole="button"><Text style={styles.link}>Permitir e tentar de novo</Text></TouchableOpacity>
+                        : <TouchableOpacity onPress={() => { void Linking.openSettings(); }} accessibilityRole="button"><Text style={styles.link}>Abrir os ajustes do celular</Text></TouchableOpacity>}
+                    </View>
+                  </View>
+                )}
+                <OlliButton label="Escolher um contato por vez" variant="outline" fullWidth onPress={() => { void escolherUm(); }} disabled={lendo || gravando} icon={<MaterialCommunityIcons name="account-search-outline" size={18} color={cores.primary} />} style={{ marginTop: Spacing.sm }} />
+                <Text style={[styles.rotulo, { marginTop: Spacing.base }]}>Ou use um arquivo</Text>
+              </>
+            )}
+            {Platform.OS === 'web' && <Text style={styles.cardTitulo}>Como pegar seus contatos</Text>}
             <Text style={styles.texto}>• Android: no app Contatos, use a opção de exportar contatos para arquivo (.vcf).</Text>
             <Text style={styles.texto}>• Google: em contacts.google.com, toque em Exportar e escolha vCard ou CSV do Google.</Text>
             <Text style={styles.texto}>• iPhone: em icloud.com/contacts, selecione os contatos e exporte o vCard.</Text>
@@ -413,8 +506,12 @@ export default function ImportarScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.textoMudo}>CSV ou XLSX até {Math.round(LIMITE_ARQUIVO_BYTES / 1024 / 1024)} MB, com uma linha de cabeçalho. Só a primeira aba do XLSX é lida; fórmulas não são executadas.</Text>
-            <OlliButton label={lendo ? 'Lendo…' : 'Escolher planilha'} variant="gradient" fullWidth onPress={() => { void escolherArquivo(); }} disabled={lendo || gravando} loading={lendo} icon={!lendo ? <MaterialCommunityIcons name="folder-open-outline" size={18} color="#fff" /> : undefined} style={{ marginTop: Spacing.md }} />
+            {bloqueioLote ? <CartaoRecursoPlano recurso="importar_lote" /> : (
+              <>
+              <Text style={styles.textoMudo}>CSV ou XLSX até {Math.round(LIMITE_ARQUIVO_BYTES / 1024 / 1024)} MB, com uma linha de cabeçalho. Só a primeira aba do XLSX é lida; fórmulas não são executadas.</Text>
+              <OlliButton label={lendo ? 'Lendo…' : 'Escolher planilha'} variant="gradient" fullWidth onPress={() => { void escolherArquivo(); }} disabled={lendo || gravando} loading={lendo} icon={!lendo ? <MaterialCommunityIcons name="folder-open-outline" size={18} color="#fff" /> : undefined} style={{ marginTop: Spacing.md }} />
+              </>
+            )}
           </View>
         )}
 
@@ -567,7 +664,7 @@ export default function ImportarScreen() {
         {/* 4. RELATÓRIO */}
         {relatorio && (
           <View style={[styles.card, relatorio.falhas > 0 ? styles.cardErro : styles.cardOk]} accessibilityLiveRegion="polite">
-            <Text style={styles.cardTitulo}>{resumoRelatorio(relatorio)}</Text>
+            <Text style={styles.cardTitulo}>{origem === 'contatos' && relatorio.itens.length ? resumoImportacaoContatos(relatorio.gravados, previa.filter((l) => l.acao === 'duplicado' && !gravados.has(l.chave)).length, relatorio.falhas) : resumoRelatorio(relatorio)}</Text>
             {relatorio.itens.filter((i) => !i.ok).map((i) => <Text key={i.chave} style={[styles.texto, { color: cores.danger }]}>• {i.rotulo} ({i.nome}): {i.ok ? '' : i.erro}</Text>)}
             {errosDaPrevia.length > 0 && (
               <>
@@ -616,9 +713,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   texto: { color: c.onSurfaceVariant, fontSize: 12.5, lineHeight: 18 },
   textoMudo: { color: c.onSurfaceMuted, fontSize: 13, lineHeight: 17 },
   textoAviso: { color: c.warning, fontSize: 13, lineHeight: 17, marginTop: 2 },
-  link: { color: c.accentLight, fontSize: 12.5, fontWeight: '800', paddingVertical: 6 },
+  link: { color: c.accentLight, fontSize: 12.5, fontWeight: '800', paddingVertical: 6, minHeight: 44, textAlignVertical: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingVertical: 4 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: c.surfaceVariant, minHeight: 36 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: c.surfaceVariant, minHeight: 44 },
   chipAtivo: { borderColor: c.primary, backgroundColor: c.primary + '22' },
   chipTexto: { color: c.onSurfaceVariant, fontSize: 12, fontWeight: '700' },
   chipTextoAtivo: { color: c.primaryLight },

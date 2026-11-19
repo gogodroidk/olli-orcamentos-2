@@ -28,6 +28,7 @@ import {
 } from "../../../src/services/entitlements";
 import type { PlanoId, Recurso } from "../../../src/services/entitlements";
 import {
+	recursosQueSairamDoGratis,
 	CELULA_ORCAMENTOS_GRATIS,
 	FRASE_GRATIS,
 	FRASE_GRATIS_CURTA,
@@ -41,6 +42,7 @@ import {
 	TEXTO_SELO_OLLI,
 } from "../../../src/services/planosBase";
 
+export { recursosQueSairamDoGratis };
 export { CELULA_ORCAMENTOS_GRATIS, FRASE_GRATIS, FRASE_GRATIS_CURTA, GRATIS_CONDICAO, GRATIS_LINHA_ANUNCIO, IA_USOS_GRATIS_MES, NOME_PLANO, NOTA_SELO_GRATIS, planoBase, TEXTO_SELO_OLLI };
 export type { PlanoId, Recurso };
 

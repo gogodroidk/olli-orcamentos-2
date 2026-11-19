@@ -49,10 +49,12 @@
   "vars": {
     "SUPABASE_URL": "https://yiaeplqinnnnniyvwtls.supabase.co",
     "SUPABASE_ANON_KEY": "sb_publishable_uDltTEnZAUek_YYGFhKaUw_q0DNu_6_", // gitleaks:allow — chave publicável, protegida por RLS
-    // Pix Automático (assinatura recorrente no Pix, Pro mensal, via AbacatePay) — DESLIGADO. Para ligar, quando a
-    // AbacatePay liberar Pix Automático na loja: criar o produto MONTHLY de R$ 39,00 lá, acrescentar aqui
-    //   "ABACATE_PA_PRODUTO_PRO_MENSAL": "prod_…"   e trocar este valor para "true". Ver docs/ABACATEPAY.md (Pix Automático).
-    "ABACATE_PIX_AUTOMATICO": "false",
+    // Pix Automático (assinatura recorrente no Pix, Pro mensal, via AbacatePay) — LIGADO em 18/11/2026 (D-2171).
+    // Produto MONTHLY de R$ 39,00 na AbacatePay de produção (externalId olli_pro_mensal_pix_automatico).
+    // Desligar = voltar a flag para "false" e fazer deploy (cancelar, status e webhook seguem funcionando).
+    // Ver docs/ABACATEPAY.md (Pix Automático).
+    "ABACATE_PA_PRODUTO_PRO_MENSAL": "prod_Y0WuHZsg2mwXRBaxjB2AYbFG",
+    "ABACATE_PIX_AUTOMATICO": "true",
     // E-mail REAL ligado (dono autorizou em 29/09/2026). Só linhas novas da
     // outbox nascem scope=production (config no banco, migration 20260929200000);
     // as boas-vindas antigas presas em hold foram descartadas sem envio.
@@ -102,15 +104,14 @@
     // 20260930130500 estar aplicada; aí trocar para "production". 10 visitas por
     // rodada (~4 requisições cada) cabem folgadas no limite de subrequests.
     "CONTRATOS_MOTOR_MODE": "off",
-    "CONTRATOS_MOTOR_MAX_CONTRATOS": "200",
-    "CONTRATOS_MOTOR_MAX_VISITAS": "10",
+    // Tetos (200 contratos / 10 visitas por rodada) = padrão do código (contratosJob.js). Sem var: o Workers Free
+    // aceita só 64 variáveis (secrets + texto) por worker (D-2171, 18/11). Para mudar o teto, recoloque a var.
     // Backfill da coordenada e do IBGE dos clientes (Onda I1, worker/src/geoClientes.js).
     // DESLIGADO até a migration 20261002100000 estar aplicada; aí trocar para
     // "production". Por rodada (1/min): 5 clientes e no máximo 10 consultas ao
     // Nominatim (política: 1 req/s para o app inteiro).
     "GEO_BACKFILL_MODE": "production",
-    "GEO_BACKFILL_MAX_POR_RODADA": "5",
-    "GEO_BACKFILL_MAX_NOMINATIM": "10",
+    // 5 clientes / 10 consultas por rodada = padrão do código (geoClientes.js); var removida pelo teto de 64 (D-2171).
     // D-1527 (28/10): texto no Workers AI (binding AI, cota grátis, sem treino com o dado). Rollback: "openrouter" (exige saldo).
     "AI_PROVIDER": "workersai",
     // Cadeia PAGA barata (dono autorizou em 29/09/2026): os :free morreram sob

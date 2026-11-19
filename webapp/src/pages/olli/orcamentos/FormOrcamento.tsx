@@ -35,7 +35,7 @@ import { AlertTriangle, Boxes, Check, Copy, Lightbulb, Loader2, Plus, RotateCw, 
 import { AVISO_EXEMPLO } from "@ativacao";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Campo, CampoMoeda, formatarMoeda } from "@/olli/components/campos";
+import { Campo, CampoMoeda, formatarMoeda, mascaraTelefone } from "@/olli/components/campos";
 import FormDialog from "@/olli/components/FormDialog";
 import { qtdParaTexto, textoParaNumero } from "@/olli/numero";
 import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/SeletorCliente";
@@ -645,7 +645,8 @@ function Editor({
 				)}
 				{/* ─────────────  Cliente  ───────────── */}
 				<section className="space-y-4">
-					<Campo rotulo="Cliente" obrigatorio>
+					{/* D-2151 #3: "Cliente *" + "Ou só o nome" se contradiziam; o obrigatório é ter UM dos dois. */}
+					<Campo rotulo="Cliente" dica={orc.clienteId ? undefined : "Escolha da sua lista ou, logo abaixo, escreva só o nome."}>
 						<SeletorCliente
 							valor={orc.clienteId ? orc : null}
 							aoSelecionar={escolherCliente}
@@ -663,6 +664,20 @@ function Editor({
 								placeholder="Ex.: Maria Souza"
 								maxLength={160}
 								aria-invalid={!orc.clienteNome.trim() && !!erro}
+							/>
+						</Campo>
+					)}
+					{!orc.clienteId && (
+						// D-2151 #2: sem número o envio pelo WhatsApp morria num aviso. Aqui ele já vai junto.
+						<Campo rotulo="WhatsApp do cliente" dica="Opcional. Com DDD: é para onde o orçamento vai quando você tocar em enviar.">
+							<Input
+								type="tel"
+								inputMode="tel"
+								autoComplete="off"
+								value={orc.clienteTelefone ?? ""}
+								onChange={(ev) => patch({ clienteTelefone: mascaraTelefone(ev.target.value) })}
+								placeholder="(11) 98123-4567"
+								maxLength={20}
 							/>
 						</Campo>
 					)}

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { registrarAtividadeUsuario } from '../services/equipe';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
-  TouchableOpacity, Modal, Alert, Keyboard,
+  TouchableOpacity, Modal, Alert, Keyboard, Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { vibrar } from '../utils/haptico';
@@ -18,8 +18,12 @@ import { AvisoClienteDuplicado } from '../components/AvisoClienteDuplicado';
 import { useCepLookup } from '../services/cep';
 import { AvisoCep } from '../components/AvisoCep';
 import { isValidCPF, isValidCNPJ } from '../utils/masks';
+import { isValidEmail } from '../utils/contatoAgenda';
+import { BotaoContatoAgenda } from '../components/BotaoContatoAgenda';
 import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { clienteParaOrc } from '../utils/orcamentoBase';
+import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
+import { gravarTelefoneNoCliente } from '../services/telefoneDoCliente';
 
 /** Quantos clientes recentes aparecem antes de digitar na busca. */
 const QTD_RECENTES = 5;
@@ -44,7 +48,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   const [showNew, setShowNew] = useState(false);
   const [nc, setNc] = useState<Partial<Cliente>>({});
   const [salvandoNovo, setSalvandoNovo] = useState(false);
-  const [ncErrors, setNcErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
+  const [ncErrors, setNcErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string; email?: string }>({});
   // Cadastro completo, só para o AVISO DE DUPLICADO (não bloqueia). 3 estados
   // explícitos (nunca colapsar erro em "sem duplicata"): se a leitura falhar,
   // `erroClientesDuplicados` avisa que a checagem não rodou — ver
@@ -116,7 +120,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
     // clientes (ClientesScreen) — sem isso, este formulário (o mais usado, por
     // ficar dentro do fluxo de orçamento) deixava passar CPF/CNPJ inválido só
     // com a máscara visual, divergindo do outro cadastro de cliente do app.
-    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string } = {};
+    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string; email?: string } = {};
     const cpfDigits = (nc.cpf ?? '').replace(/\D/g, '');
     const cnpjDigits = (nc.cnpj ?? '').replace(/\D/g, '');
     const telDigits = (nc.telefone ?? '').replace(/\D/g, '');
@@ -129,7 +133,11 @@ export default function Step1Cliente({ orc, onChange }: Props) {
     if (telDigits.length > 0 && telDigits.length < 10) {
       nextErrors.telefone = 'Telefone incompleto (informe DDD + número)';
     }
-    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone) {
+    // E-mail é OPCIONAL: só valida o formato se o prestador preencheu.
+    if ((nc.email ?? '').trim() && !isValidEmail(nc.email)) {
+      nextErrors.email = 'E-mail inválido (ex: nome@email.com)';
+    }
+    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone || nextErrors.email) {
       setNcErrors(nextErrors);
       vibrar('erro');
       return;
@@ -142,6 +150,7 @@ export default function Step1Cliente({ orc, onChange }: Props) {
       telefone: nc.telefone ?? '',
       cpf: nc.cpf,
       cnpj: nc.cnpj,
+      email: nc.email?.trim() || undefined,
       endereco: nc.endereco,
       complemento: nc.complemento,
       cidade: nc.cidade,
@@ -165,6 +174,29 @@ export default function Step1Cliente({ orc, onChange }: Props) {
   }
 
   const selected = !!orc.clienteNome;
+
+  // D-2245: orçamento sem telefone trava o envio no WhatsApp — "Puxar dos contatos" preenche SÓ o telefone.
+  // 3 estados: puxando (spinner no botão) | erro (mensagem, nada alterado) | valor (telefone aplicado).
+  const [puxando, setPuxando] = useState(false);
+  const [erroPuxar, setErroPuxar] = useState<string | null>(null);
+  const puxarDosContatos = useCallback(async () => {
+    if (puxando) return;
+    setErroPuxar(null);
+    setPuxando(true);
+    try {
+      const r = await puxarTelefoneDosContatos();
+      if (r.estado === 'cancelado') return;
+      if (r.estado === 'erro') { setErroPuxar(r.mensagem); return; }
+      onChange({ clienteTelefone: r.telefone });
+      vibrar('selecao');
+      // Guarda também no cadastro, para o próximo orçamento já sair com telefone.
+      if ((await gravarTelefoneNoCliente(orc.clienteId, r.telefone)) === 'erro') {
+        setErroPuxar('O telefone entrou no orçamento, mas não consegui guardar no cadastro do cliente agora.');
+      }
+    } finally {
+      setPuxando(false);
+    }
+  }, [puxando, onChange, orc.clienteId]);
 
   return (
     <ScrollView
@@ -256,7 +288,16 @@ export default function Step1Cliente({ orc, onChange }: Props) {
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.selectedName}>{orc.clienteNome}</Text>
-              {orc.clienteTelefone ? <Text style={styles.selectedInfo}>{orc.clienteTelefone}</Text> : null}
+              {orc.clienteTelefone ? <Text style={styles.selectedInfo}>{orc.clienteTelefone}</Text> : (
+                <>
+                  <Text style={styles.selectedInfo}>Sem telefone — o envio pelo WhatsApp precisa dele.</Text>
+                  {Platform.OS !== 'web' && <TouchableOpacity style={styles.puxarBtn} onPress={() => { void puxarDosContatos(); }} disabled={puxando} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Puxar o telefone dos contatos do celular">
+                    <MaterialCommunityIcons name="card-account-phone-outline" size={18} color={cores.primary} />
+                    <Text style={styles.puxarBtnLabel}>{puxando ? 'Abrindo contatos…' : 'Puxar dos contatos'}</Text>
+                  </TouchableOpacity>}
+                  {erroPuxar ? <Text style={[styles.selectedInfo, { color: cores.danger }]} accessibilityRole="alert">{erroPuxar}</Text> : null}
+                </>
+              )}
               {orc.clienteCpfCnpj ? <Text style={styles.selectedInfo}>{orc.clienteCpfCnpj}</Text> : null}
               {orc.clienteEndereco ? <Text style={styles.selectedInfo} numberOfLines={2}>{orc.clienteEndereco}</Text> : null}
             </View>
@@ -288,9 +329,11 @@ export default function Step1Cliente({ orc, onChange }: Props) {
             </TouchableOpacity>
           </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
+            <BotaoContatoAgenda onEscolher={c => { setNc(p => ({ ...p, nome: c.nome, telefone: c.telefone || p.telefone, email: c.email || p.email })); setNcErrors({}); }} />
             <OlliInput label="Nome completo" required autoFocus value={nc.nome ?? ''} onChangeText={v => setNc(p => ({ ...p, nome: v }))} placeholder="Ex: João da Silva" leftIcon="account" />
             <OlliInput label="Telefone / WhatsApp" mask="phone" value={nc.telefone ?? ''} onChangeText={v => { setNc(p => ({ ...p, telefone: v })); setNcErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={ncErrors.telefone} />
             <AvisoClienteDuplicado duplicados={duplicados} erro={erroClientesDuplicados} onAbrirExistente={usarClienteExistente} />
+            <OlliInput label="E-mail (opcional)" value={nc.email ?? ''} onChangeText={v => { setNc(p => ({ ...p, email: v })); setNcErrors(e => e.email ? { ...e, email: undefined } : e); }} placeholder="cliente@email.com" leftIcon="email-outline" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} error={ncErrors.email} />
             <OlliInput label="CPF" mask="cpf" value={nc.cpf ?? ''} onChangeText={v => { setNc(p => ({ ...p, cpf: v })); setNcErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={ncErrors.cpf} />
             <OlliInput label="CNPJ" mask="cnpj" value={nc.cnpj ?? ''} onChangeText={v => { setNc(p => ({ ...p, cnpj: v })); setNcErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={ncErrors.cnpj} />
             {/* CEP ANTES do endereço: enquanto ele era o último campo, o atalho
@@ -358,6 +401,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     gap: 8,
   },
   newBtnLabel: { fontSize: 15, color: c.primary, fontWeight: '700' },
+  puxarBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    minHeight: 44, marginTop: 6, paddingHorizontal: 12,
+    borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.primary,
+  },
+  puxarBtnLabel: { fontSize: 14, color: c.primary, fontWeight: '700' },
   modal: { flex: 1, backgroundColor: c.background },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

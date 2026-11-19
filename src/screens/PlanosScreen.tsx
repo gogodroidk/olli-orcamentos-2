@@ -1433,6 +1433,24 @@ function PlanoCard({
         </TouchableOpacity>
       )}
 
+      {/* D-2171 (Igor, 18/11): o Pix Automático vem ANTES do Pix avulso. Pix Automático: débito mensal sozinho no banco. Só o Pro mensal, só com o servidor confirmando a flag.
+          Preço, "todo mês" e como cancelar ficam escritos AQUI e na confirmação antes de pagar. */}
+      {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && pixAutoLigado && !plano.atual && plano.id === 'pro' && periodo === 'mensal' && preco ? (
+        <>
+          <TouchableOpacity style={[styles.ctaOutline, styles.ctaPix, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagarPixAuto} activeOpacity={0.85} disabled={carregandoPixAuto || carregandoPlano || !acoesDisponiveis} accessibilityRole="button" accessibilityState={{ disabled: carregandoPixAuto || carregandoPlano || !acoesDisponiveis }}>
+            {carregandoPixAuto ? (
+              <ActivityIndicator size="small" color={cores.primaryLight} />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="autorenew" size={17} color={cores.primaryLight} />
+                <Text style={styles.ctaOutlineText}>{`${ROTULO_PIX_AUTOMATICO} — ${reais(preco.mensalCentavos)}/mês`}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.pixAutoNota}>{textoCurtoPixAutomatico(reais(preco.mensalCentavos))}</Text>
+        </>
+      ) : null}
+
       {/* Pix (AbacatePay): paga o período da aba de uma vez, sem renovação
           automática. Só aparece com o Pix ligado de verdade no worker e onde há
           compra (web) — iPhone e Android da Play seguem sem compra no app. */}
@@ -1449,24 +1467,6 @@ function PlanoCard({
             </>
           )}
         </TouchableOpacity>
-      ) : null}
-
-      {/* Pix Automático: débito mensal sozinho no banco. Só o Pro mensal, só com o servidor confirmando a flag.
-          Preço, "todo mês" e como cancelar ficam escritos AQUI e na confirmação antes de pagar. */}
-      {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && pixAutoLigado && !plano.atual && plano.id === 'pro' && periodo === 'mensal' && preco ? (
-        <>
-          <TouchableOpacity style={[styles.ctaOutline, styles.ctaPix, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagarPixAuto} activeOpacity={0.85} disabled={carregandoPixAuto || carregandoPlano || !acoesDisponiveis} accessibilityRole="button" accessibilityState={{ disabled: carregandoPixAuto || carregandoPlano || !acoesDisponiveis }}>
-            {carregandoPixAuto ? (
-              <ActivityIndicator size="small" color={cores.primaryLight} />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="autorenew" size={17} color={cores.primaryLight} />
-                <Text style={styles.ctaOutlineText}>{`${ROTULO_PIX_AUTOMATICO} — ${reais(preco.mensalCentavos)}/mês`}</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          <Text style={styles.pixAutoNota}>{textoCurtoPixAutomatico(reais(preco.mensalCentavos))}</Text>
-        </>
       ) : null}
 
       {/* Pro: pagar em 12× no cartão. iOS: escondido (é compra). Fica DEPOIS do
