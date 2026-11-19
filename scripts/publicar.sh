@@ -5,8 +5,8 @@
 #
 # Uso (de dentro da SUA worktree, no commit que vai ao ar):
 #   bash scripts/publicar.sh painel  [--seco]
-#   bash scripts/publicar.sh worker  [--seco] [--mensagem "o que muda"]
-#   bash scripts/publicar.sh landing [--seco]
+#   bash scripts/publicar.sh worker  [--seco] [--mensagem "o que muda"] [--forcar-primeira]
+#   bash scripts/publicar.sh landing [--seco] [--forcar-primeira]
 #
 # Travas (qualquer uma falhando = não publica nada):
 #   1. Árvore limpa e commit já enviado ao GitHub.
@@ -24,9 +24,11 @@ ALVO="${1:-}"
 shift || true
 SECO=""
 MENSAGEM=""
+FORCAR_PRIMEIRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --seco) SECO=1 ;;
+    --forcar-primeira) FORCAR_PRIMEIRA=1 ;;
     --mensagem) MENSAGEM="${2:-}"; shift ;;
     *) echo "opção desconhecida: $1" >&2; exit 2 ;;
   esac
@@ -46,7 +48,7 @@ barra() { echo "BARRADO: $1" >&2; echo "Nada foi publicado." >&2; exit 1; }
 diz() { echo ">>> $*"; }
 
 # ── 1. árvore limpa e commit no GitHub ──
-[ -z "$(git status --porcelain --untracked-files=no)" ] || barra "a árvore tem mudança não commitada."
+[ -z "$(git status --porcelain)" ] || barra "a árvore tem mudança não commitada ou arquivo não rastreado (ele iria ao ar sem estar no commit)."
 HASH="$(git rev-parse HEAD)"
 CURTO="${HASH:0:8}"
 ARVORE="$(git rev-parse 'HEAD^{tree}')"
@@ -73,7 +75,7 @@ fi
 versao_worker() { # $1 = pasta com wrangler.jsonc
   (cd "$1" && "${WR[@]}" deployments list --json 2>/dev/null) | node -e '
     let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);const u=j[j.length-1];
-    process.stdout.write(String(u.versions[0].version_id))}catch{process.exit(1)}})'
+    process.stdout.write(String(u.versions[0].version_id)+"|"+String((u.annotations||{})["workers/message"]||""))}catch{process.exit(1)}})'
 }
 versao_painel() {
   "${WR[@]}" pages deployment list --project-name olli-painel-web --environment production --json 2>/dev/null | node -e '
@@ -84,6 +86,21 @@ case "$ALVO" in
   landing) ANTES="$(versao_worker site)" || barra "não consegui ler a versão da landing no ar (wrangler logado?)." ;;
   painel) ANTES="$(versao_painel)" || barra "não consegui ler a publicação do painel no ar (wrangler logado?)." ;;
 esac
+if [ "$ALVO" != painel ]; then
+  # Worker e landing: o que está NO AR manda, não a anotação local (P2-3 do LIVRE no #426). O publicar.sh grava
+  # "commit <hash>" na mensagem do deploy; se o deploy no ar não tem isso (feito à mão), barra sem --forcar-primeira.
+  MSG_NO_AR="${ANTES#*|}"
+  ANTES="${ANTES%%|*}"
+  NO_AR="$(echo "$MSG_NO_AR" | grep -oE '^publicar\.sh commit [0-9a-f]{7,40}' | awk '{print $3}')"
+  if [ -n "$NO_AR" ]; then
+    git cat-file -e "$NO_AR^{commit}" 2>/dev/null || barra "o $ALVO no ar saiu do commit $NO_AR, que não existe aqui. Traga essa branch antes."
+    git merge-base --is-ancestor "$NO_AR" "$HASH" || barra "este commit não contém o $ALVO que está no ar ($NO_AR). Publicar daqui apagaria o que está no ar."
+  elif [ -z "$FORCAR_PRIMEIRA" ]; then
+    barra "o $ALVO no ar foi publicado sem o publicar.sh (mensagem: '${MSG_NO_AR:0:120}'). Confira à mão que este commit contém o que está no ar e rode de novo com --forcar-primeira."
+  else
+    diz "AVISO: --forcar-primeira: o $ALVO no ar não diz de que commit saiu; você conferiu à mão."
+  fi
+fi
 diz "No ar agora ($ALVO): $ANTES"
 if [ "$ALVO" = painel ]; then
   # O painel no ar diz de que commit saiu (Source). Em 19/11 ele saía da branch claude/painel-publicar-1118, à frente da
@@ -106,7 +123,7 @@ fi
 
 # ── publicar ──
 QUEM="$(git config user.name 2>/dev/null || echo '?')"
-MSG="${MENSAGEM:-publicar.sh}: commit $CURTO (ci verde na árvore); voltar: ${ANTES%% *}"
+MSG="publicar.sh commit $CURTO | ${MENSAGEM:-sem nota} | ci verde na árvore | voltar: ${ANTES%% *}"
 case "$ALVO" in
   worker)
     (cd worker && "${WR[@]}" deploy --message "$MSG") || barra "o wrangler deploy do worker falhou (o que estava no ar continua)."
