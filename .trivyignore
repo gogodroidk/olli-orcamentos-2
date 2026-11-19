@@ -6,3 +6,8 @@
 #   decode-uri-component 0.5.0→0.5.1 (override da raiz), follow-redirects 1.16.1→1.16.2 (override do webapp).
 #   braces (CVE-2026-93687), http-cache-semantics (CVE-2026-93748) e zod (CVE-2023-54404) não aparecem mais no scan sem linha de base.
 # 07/10/2026: brace-expansion 5.0.9→5.0.12 e axios 1.19.0→1.20.0.
+
+# picomatch (2.3.2 / 4.0.4 / 4.0.5 / 4.0.7: raiz, web, webapp) -> CVE-2026-112366 (DoS por padrão extglob repetido), SEM correção publicada (4.0.7 é a última e também é afetada).
+# Só BUILD/DEV: entra via expo/metro, tinyglobby, fdir/vite e anymatch/chokidar para casar globs de ARQUIVO do nosso próprio config; não está no código do app, do worker nem no bundle do painel/landing (grep em src/worker/webapp/web = 0).
+# Padrão de entrada vem do nosso repo, nunca de usuário. Exceção registrada em 18/11/2026 (D: TECH-CTO); REVISAR até 18/12/2026 — se houver versão corrigida, subir e remover esta linha.
+CVE-2026-112366 exp:2026-12-18
