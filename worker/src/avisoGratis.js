@@ -10,6 +10,7 @@
  */
 import { chamarRpcServico } from './emailRpc.js';
 import { AVISO_GRATIS_TIPO } from './emailLembretesTemplate.js';
+import { avisoGratisVencido } from './emailLembretesPolicy.js';
 
 export const AVISO_GRATIS_VERSION = '2026-11-18.v1';
 export const AVISO_GRATIS_DADOS = Object.freeze({ tipo: AVISO_GRATIS_TIPO });
@@ -64,6 +65,8 @@ export async function executarAvisoGratis(env, { enviar = false, lote = AVISO_GR
   let tentados = 0;
   for (const id of ids) {
     let motivo = decidirAviso(fatos.get(id));
+    // Depois de 26/11 03:00Z o aviso não sai mais (nem no ensaio aparece como "sairia"); o banco também recusa.
+    if (motivo === 'sairia' && avisoGratisVencido(agora)) motivo = 'aviso_vencido';
     if (motivo === 'sairia' && enviar) {
       if (tentados >= lote) {
         motivo = 'fica_para_o_proximo_lote';

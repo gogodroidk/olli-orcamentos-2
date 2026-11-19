@@ -10,6 +10,8 @@
  *  · enqueue_aviso_gratis enfileira só Grátis, 1 vez por conta, e barra suprimido (e-mail OU WhatsApp, conta OU
  *    telefone), excluído, pago/teste ativo, já avisado, 1 e-mail/24 h, teto diário e `template_dados` diferente do exato;
  *  · contas_para_aviso_gratis lista só conta com e-mail confirmado, viva e não anônima;
+ *  · VALIDADE (26/11/2026 03:00Z): depois do corte o enqueue recusa `aviso_vencido` (inclusive reenvio atrasado de quem
+ *    já tinha passado nos portões), antes do corte segue normal; relógio exato no corte conta como vencido;
  *  · só service_role executa as RPCs novas.
  * `private.oferta_pro_fatos` é trocada por um stub (depende de plano/assinatura/organização).
  */
@@ -27,7 +29,11 @@ const emailBase = ler('../supabase/migrations/20260929200000_email_producao_lemb
 const optout = ler('../supabase/migrations/20261006090000_whatsapp_nao_contatar.sql');
 const regua = ler('../supabase/migrations/20261005090000_regua_reengajamento.sql');
 const ofertaPro = ler('../supabase/migrations/20261108120000_oferta_pro_email.sql');
-const migration = ler('../supabase/migrations/20261118150000_email_aviso_gratis.sql');
+const migrationOriginal = ler('../supabase/migrations/20261118150000_email_aviso_gratis.sql');
+// Os casos normais rodam "antes do vencimento" mesmo depois de 26/11/2026 (o relógio do teste é o real): a validade
+// é empurrada para 2099 aqui. O bloco 6 usa a migration ORIGINAL e simula o relógio passando do corte.
+const migration = `${migrationOriginal}
+create or replace function private.aviso_gratis_vence_em() returns timestamptz language sql immutable set search_path = '' as $$ select timestamptz '2099-01-01 00:00:00+00' $$;`;
 
 const tabelaSup = /create table if not exists public\.email_supressoes \([\s\S]*?\n\);/.exec(emailBase);
 assert.ok(tabelaSup, 'não achei email_supressoes');
@@ -218,6 +224,40 @@ const falha = async (p: Promise<unknown>, trecho: string, msg: string) => {
   for (const fn of ['public.enqueue_aviso_gratis(uuid, jsonb, integer, timestamptz)', 'public.fatos_aviso_gratis(uuid[], timestamptz)', 'public.contas_para_aviso_gratis(integer)']) {
     igual([await priv('service_role', fn), await priv('anon', fn), await priv('authenticated', fn)], [true, false, false], `${fn}: só service_role executa`);
   }
+}
+
+// ── 6. validade: depois de 26/11/2026 03:00Z o aviso não é mais enfileirado ─────────────────────────
+{
+  const db = await novoBanco();
+  await db.exec(migrationOriginal);
+  const vence = async () => (await db.query<{ v: string }>(`select to_char(private.aviso_gratis_vence_em() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as v`)).rows[0].v;
+  igual(await vence(), '2026-11-26T03:00:00Z', 'a validade na migration é 26/11/2026 03:00Z (00:00 em Brasília)');
+  const troca = (quando: string) => db.query(`create or replace function private.aviso_gratis_vence_em() returns timestamptz language sql immutable set search_path = '' as $$ select ${quando} $$`);
+
+  // antes do corte: normal
+  await troca(`now() + interval '1 day'`);
+  const antes = await usuario(db);
+  igual((await enq(db, antes)).motivo, 'enfileirado', 'antes do corte: enfileira');
+
+  // reenvio atrasado: conta Grátis ativa, limpa, que passaria em todos os portões — com o relógio já no corte, recusa
+  await troca(`now() - interval '1 day'`);
+  const atrasada = await usuario(db);
+  igual(await enq(db, atrasada), { enfileirado: false, motivo: 'aviso_vencido' }, 'reenvio atrasado (depois do corte): não enfileira');
+  igual((await db.query('select 1 from public.email_outbox where user_id = $1', [atrasada])).rows.length, 0, 'nada no outbox da conta atrasada');
+  igual((await enq(db, antes)).motivo, 'aviso_vencido', 'quem já foi avisado também recebe aviso_vencido (corte vale antes de qualquer portão)');
+  const inexistente = (await db.query<{ r: { motivo: string } }>(
+    `select public.enqueue_aviso_gratis(gen_random_uuid(), $1::jsonb) as r`, [JSON.stringify(DADOS)])).rows[0].r;
+  igual(inexistente.motivo, 'aviso_vencido', 'corte vale mesmo para conta que nem existe (não vaza estado)');
+
+  // fronteira: p_now exatamente no corte = vencido; 1 ms antes = ainda sai
+  const T = (await db.query<{ t: string }>(`select to_char(now() at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`)).rows[0].t;
+  const chamar = async (id: string) => (await db.query<{ r: { motivo: string } }>(
+    'select public.enqueue_aviso_gratis($1::uuid, $2::jsonb, 40, $3::timestamptz) as r', [id, JSON.stringify(DADOS), T])).rows[0].r.motivo;
+  await troca(`timestamptz '${T}'`);
+  const naBorda = await usuario(db);
+  igual(await chamar(naBorda), 'aviso_vencido', 'p_now == corte: vencido');
+  await troca(`timestamptz '${T}' + interval '1 millisecond'`);
+  igual(await chamar(naBorda), 'enfileirado', 'p_now 1 ms antes do corte: ainda enfileira');
 }
 
 console.log(`teste-email-aviso-gratis-sql: ${checks} verificações ok`);

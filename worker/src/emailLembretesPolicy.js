@@ -68,6 +68,19 @@ export const LEMBRETE_AVISO_GRATIS = Object.freeze({
   templateVersion: 'aviso_gratis.v1',
   purpose: 'plan_change_notice',
 });
+/**
+ * Validade do aviso (decisão de produto, CPO, 19/11/2026): a partir de 26/11/2026 03:00Z (= 00:00 em Brasília,
+ * quando a tranca passa a valer) o aviso "a partir de 26/11 muda" NÃO é enfileirado nem enviado/reenviado:
+ * o enqueue recusa (`aviso_vencido`) e o consumer marca o que já estava na fila como dead_letter `aviso_vencido`,
+ * sem texto novo. Quem não recebeu vê a explicação no painel/app (faixa e cadeado). Mesma data no banco:
+ * `private.aviso_gratis_vence_em()` (migration 20261118150000).
+ */
+export const AVISO_GRATIS_VENCE_EM = '2026-11-26T03:00:00.000Z';
+export const AVISO_GRATIS_ERRO_VENCIDO = 'aviso_vencido';
+export function avisoGratisVencido(agora) {
+  const t = agora instanceof Date ? agora.getTime() : Date.parse(agora);
+  return !Number.isFinite(t) || t >= Date.parse(AVISO_GRATIS_VENCE_EM); // relógio inválido = vencido (fecha)
+}
 export const REENGAJAMENTO_TIPOS = Object.freeze(['ativacao_ultima', 'parou', 'trial_acabando', 'trial_encerrado']);
 /**
  * Tipos de lembrete que a rodada pode enfileirar (sufixo de EMAIL_LEMBRETES_MODE, 07/10/2026):

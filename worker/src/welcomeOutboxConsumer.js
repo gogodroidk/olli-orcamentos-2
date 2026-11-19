@@ -1,6 +1,7 @@
 import { EMAIL_OUTBOX_VERSION } from './emailOutbox.js';
 import { renderizarEmailBoasVindas } from './welcomeEmailTemplate.js';
 import { renderizarEmailLembrete } from './emailLembretesTemplate.js';
+import { AVISO_GRATIS_ERRO_VENCIDO, LEMBRETE_AVISO_GRATIS, avisoGratisVencido } from './emailLembretesPolicy.js';
 import { renderizarEmailResumoDinheiro } from './resumoDinheiroTemplate.js';
 import { RESUMO_DINHEIRO } from './resumoDinheiroPolicy.js';
 import { criarResendTransactionalAdapter } from './resendTransactionalAdapter.js';
@@ -272,6 +273,7 @@ export async function processarWelcomeOutbox(env, dependencias = {}) {
   });
   let sent = 0;
   let failed = 0;
+  let expired = 0;
   // Resolvida uma vez por rodada; null = lembretes desta rodada falham fechado.
   let chave = null;
   try {
@@ -288,6 +290,12 @@ export async function processarWelcomeOutbox(env, dependencias = {}) {
       exigir(claim.dispatchScope === mode, 'claim_scope_divergente');
       if (mode === 'simulator') {
         exigir(claim.claimedItem.recipient === SIMULATOR_RECIPIENT, 'simulator_recipient_rejected');
+      }
+      // Aviso aos Grátis vencido (26/11 03:00Z): não envia nem reenvia; a fila marca como vencido, sem texto novo.
+      if (claim.claimedItem.template === LEMBRETE_AVISO_GRATIS.template && avisoGratisVencido(now())) {
+        await liquidarFalhaInterna(config, fetchImpl, claim, AVISO_GRATIS_ERRO_VENCIDO, now().toISOString());
+        expired += 1;
+        continue;
       }
       const message = await mensagemDoTemplate(claim, config, chave);
       providerInvoked = true;
@@ -324,6 +332,7 @@ export async function processarWelcomeOutbox(env, dependencias = {}) {
     claimed: rows.length,
     sent,
     failed,
+    ...(expired > 0 ? { expired } : {}),
   });
   if (rows.length > 0 || summary.failed > 0) {
     console.log(JSON.stringify({ event: 'welcome_dispatch_completed', ...summary }));

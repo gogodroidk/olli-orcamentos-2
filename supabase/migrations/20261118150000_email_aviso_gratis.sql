@@ -2,6 +2,7 @@
 -- O TEXTO não mora no banco: o renderer do worker lê `avisoMudancaGratis(preço)` de src/services/planosBase.ts.
 -- `template_dados` só carrega {"tipo":"tranca_gratis_d2267"}.
 -- Mesmo caminho dos lembretes: outbox -> consumer (link de descadastro assinado + List-Unsubscribe) -> Resend.
+-- VALIDADE: depois de 26/11/2026 03:00Z o aviso não é mais enfileirado (motivo `aviso_vencido`).
 -- Nada sai sozinho: só enfileira via `worker/scripts/aviso-gratis.mjs` (padrão = ensaio, lotes pequenos).
 -- Quem recebe: contas no plano GRÁTIS (efetivo), com e-mail confirmado, fora de funil_exclusoes/conta interna,
 -- sem supressão (e-mail OU WhatsApp, por conta OU só pelo telefone do cadastro), sem aviso anterior, e que não
@@ -33,6 +34,18 @@ begin
   end if;
 end
 $$;
+
+-- ─── 1b. Validade do aviso (decisão de produto, CPO, 19/11/2026) ──────────────────────────────────
+-- Depois de 26/11/2026 03:00Z (= 00:00 em Brasília, quando a tranca vale) o aviso "a partir de 26/11 muda" NÃO é
+-- enfileirado. O que já estiver na fila é marcado dead_letter `aviso_vencido` pelo consumer (sem texto novo).
+-- Mesma data de worker/src/emailLembretesPolicy.js (AVISO_GRATIS_VENCE_EM). Função própria para o teste simular.
+create or replace function private.aviso_gratis_vence_em()
+returns timestamptz
+language sql
+immutable
+set search_path = ''
+as $$ select timestamptz '2026-11-26 03:00:00+00' $$;
+revoke all on function private.aviso_gratis_vence_em() from public, anon, authenticated;
 
 -- ─── 2. Fatos por conta ──────────────────────────────────────────────────────────────────────
 create or replace function private.aviso_gratis_fatos(p_user_id uuid, p_now timestamptz)
@@ -140,6 +153,11 @@ begin
      or p_now is null or p_now > pg_catalog.now() + interval '5 minutes' or p_now < pg_catalog.now() - interval '1 hour'
   then
     raise exception 'aviso_gratis_argumentos_invalidos';
+  end if;
+
+  -- Vencido: não enfileira (nem reenvio atrasado). Vale para qualquer conta, antes de olhar fatos.
+  if p_now >= private.aviso_gratis_vence_em() then
+    return pg_catalog.jsonb_build_object('enfileirado', false, 'motivo', 'aviso_vencido');
   end if;
 
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('olli.aviso_gratis:' || p_user_id::text, 0));

@@ -13,6 +13,7 @@ import { avisoMudancaGratis } from '../../src/services/planosBase.ts';
 import { PRECO_PRO, reais } from '../../src/services/precosPlanos.ts';
 import { renderizarEmailLembrete } from '../src/emailLembretesTemplate.js';
 import { AVISO_GRATIS_DADOS, decidirAviso, executarAvisoGratis } from '../src/avisoGratis.js';
+import { AVISO_GRATIS_VENCE_EM, avisoGratisVencido } from '../src/emailLembretesPolicy.js';
 
 const ID = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const AGORA = new Date('2026-11-18T20:00:00.000Z');
@@ -148,6 +149,29 @@ await caso('saída e log sem dado pessoal; erro numa conta não derruba as outra
   await assert.rejects(() => executarAvisoGratis(ENV, { fetchImpl: fn, lote: 0 }), /lote_invalido/);
   await assert.rejects(() => executarAvisoGratis(ENV, { fetchImpl: fn, lote: 51 }), /lote_invalido/);
   await assert.rejects(() => executarAvisoGratis({}, { fetchImpl: fn }), /supabase_nao_configurado/);
+});
+
+await caso('validade 26/11 03:00Z: a partir do corte o script não enfileira (reenvio atrasado), antes segue; banco e worker têm a mesma data', async () => {
+  assert.equal(AVISO_GRATIS_VENCE_EM, '2026-11-26T03:00:00.000Z');
+  assert.equal(avisoGratisVencido(new Date('2026-11-26T02:59:59.999Z')), false);
+  assert.equal(avisoGratisVencido(new Date('2026-11-26T03:00:00.000Z')), true);
+  assert.equal(avisoGratisVencido(new Date('2026-12-01T00:00:00.000Z')), true);
+  assert.equal(avisoGratisVencido(new Date('invalida')), true, 'relógio inválido = vencido');
+  for (const [iso, vencido] of [['2026-11-26T02:59:59.999Z', false], ['2026-11-26T03:00:00.000Z', true], ['2026-11-28T12:00:00.000Z', true]]) {
+    const f = mundo(40);
+    const { fn, chamadas } = fakeFetch(f);
+    const r = await executarAvisoGratis(ENV, { fetchImpl: fn, now: () => new Date(iso), enviar: true, lote: 50 });
+    const enq = chamadas.filter((c) => c.rpc === 'enqueue_aviso_gratis').length;
+    if (vencido) {
+      assert.equal(enq, 0, `${iso}: nenhum enqueue depois do corte`);
+      assert.equal(r.contagens.aviso_vencido, esperado(40).sairia, 'quem sairia vira aviso_vencido');
+      assert.equal(r.contagens.sairia, undefined);
+    } else {
+      assert.ok(enq > 0 && r.contagens.aviso_vencido === undefined, `${iso}: antes do corte segue normal`);
+    }
+  }
+  const sql = readFileSync(new URL('../../supabase/migrations/20261118150000_email_aviso_gratis.sql', import.meta.url), 'utf8').replaceAll('\r', '');
+  assert.ok(sql.includes("timestamptz '2026-11-26 03:00:00+00'") && sql.includes("'aviso_vencido'"), 'o banco tem o mesmo corte e o motivo aviso_vencido');
 });
 
 await caso('migration: só service_role, catálogo com `aviso_gratis`, texto fora do banco, opt-out por telefone, teto 24 h', () => {
