@@ -15,6 +15,7 @@ import {
 	PackageOpen,
 	ShieldCheck,
 	Upload,
+	Lock,
 } from "lucide-react";
 import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -30,6 +31,7 @@ import { CAMPOS_IMPORTACAO, LIMITE_ARQUIVO_BYTES, type CampoImportacao, type Lin
 import { lerArquivoTabular } from "@/olli/importacao/arquivo";
 import { extrairOrcamentosOlli } from "@/olli/importacao/orcamento";
 import { useContextoDeEscrita, useExcluir, useSalvar } from "@/olli/mutacoes";
+import { usePortaoPro } from "@/olli/recursoPlano";
 import { type LinhaCatalogo, linhaParaItem } from "@/pages/olli/catalogo/FormItemCatalogo";
 import { type LinhaCliente, linhaParaCliente } from "@/pages/olli/clientes/FormCliente";
 import { type LinhaAsset } from "@/pages/olli/equipamentos/equipamento";
@@ -89,6 +91,8 @@ export default function CentralDeDadosPage() {
 	const navigate = useNavigate();
 	const arquivoRef = useRef<HTMLInputElement>(null);
 	const [tipo, setTipo] = useState<TipoImportacao>("clientes");
+	// D-2267: importar CLIENTES em lote é do Pro (exportar e os outros tipos seguem como estão).
+	const portaoLote = usePortaoPro("importar_lote");
 	const [linhasImportadas, setLinhasImportadas] = useState<LinhaBruta[]>([]);
 	const [orcamentosImportados, setOrcamentosImportados] = useState<Orcamento[]>([]);
 	const [mapeamento, setMapeamento] = useState<Record<string, string>>({});
@@ -453,7 +457,7 @@ export default function CentralDeDadosPage() {
 				<TabsContent value="importar" className="mt-4 space-y-4">
 					<Card><CardHeader><CardTitle>1. Escolha o que deseja conferir</CardTitle><CardDescription>{tipo === "orcamentos" ? "Orçamentos usam somente o JSON completo exportado pelo OLLI." : "CSV e XLSX até 10 MB e 5.000 linhas. XLS legado e PDF ficam de fora para não executar conteúdo inesperado."}</CardDescription></CardHeader><CardContent className="grid gap-3 md:grid-cols-[minmax(0,280px)_1fr] md:items-center">
 						<Select value={tipo} onValueChange={(valor) => { setTipo(valor as TipoImportacao); setLinhasImportadas([]); setOrcamentosImportados([]); setMapeamento({}); }}><SelectTrigger className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="clientes">Clientes</SelectItem><SelectItem value="produtos">Produtos</SelectItem><SelectItem value="servicos">Serviços</SelectItem><SelectItem value="orcamentos">Orçamentos (JSON OLLI)</SelectItem><SelectItem value="fornecedor">Atualizar custo de fornecedor</SelectItem></SelectContent></Select>
-						<div className="flex flex-wrap items-center gap-3"><input ref={arquivoRef} type="file" accept={tipo === "orcamentos" ? ".json,application/json" : ".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"} className="sr-only" onChange={aoEscolherArquivo} /><Button onClick={() => arquivoRef.current?.click()} disabled={lendo || !pronto}>{lendo ? <Loader2 className="animate-spin" /> : <FileUp />} Escolher arquivo</Button>{tipo === "fornecedor" && <span className="text-xs text-text-secondary">Atualiza apenas o custo do produto; preço de venda e orçamentos não mudam.</span>}{tipo === "orcamentos" && <span className="text-xs text-text-secondary">Documentos enviados ou aceitos nunca são sobrescritos.</span>}</div>
+						<div className="flex flex-wrap items-center gap-3"><input ref={arquivoRef} type="file" accept={tipo === "orcamentos" ? ".json,application/json" : ".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"} className="sr-only" onChange={aoEscolherArquivo} /><Button onClick={() => (tipo === "clientes" ? portaoLote.exigir(() => arquivoRef.current?.click()) : arquivoRef.current?.click())} disabled={lendo || !pronto}>{lendo ? <Loader2 className="animate-spin" /> : tipo === "clientes" && portaoLote.travado ? <Lock aria-label="Disponível no Pro" /> : <FileUp />} Escolher arquivo</Button>{portaoLote.dialogo}{tipo === "fornecedor" && <span className="text-xs text-text-secondary">Atualiza apenas o custo do produto; preço de venda e orçamentos não mudam.</span>}{tipo === "orcamentos" && <span className="text-xs text-text-secondary">Documentos enviados ou aceitos nunca são sobrescritos.</span>}</div>
 					</CardContent></Card>
 
 					{temImportacao && <>

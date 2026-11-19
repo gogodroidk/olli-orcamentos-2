@@ -105,7 +105,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 									<Input
 										type="password"
 										autoComplete="current-password"
-										placeholder="••••••••"
+										placeholder="Sua senha"
 										{...field}
 										suppressHydrationWarning
 									/>
@@ -146,12 +146,13 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 					{conviteToken ? null : <OAuthButtons />}
 
 					{/* 注册 */}
-					<div className="text-center text-sm">
-						{t("sys.login.noAccount")}
+					{/* D-2151 #5: "Criar conta" era um link pequeno no pé; quem chega novo procura um botão. */}
+					<div className="flex flex-col items-center gap-2 text-center text-sm">
+						<span className="text-muted-foreground">{t("sys.login.noAccount")}</span>
 						<Button
 							type="button"
-							variant="link"
-							className="px-1"
+							variant="outline"
+							className="min-h-[44px] w-full border-primary text-primary hover:bg-primary/5 hover:text-primary"
 							onClick={() => setLoginState(LoginStateEnum.REGISTER)}
 						>
 							{t("sys.login.signUpFormTitle")}

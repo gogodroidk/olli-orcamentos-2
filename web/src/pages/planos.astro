@@ -23,7 +23,7 @@ import {
 	reais,
 } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS, IA_USOS_GRATIS_MES } from "../data/recursos";
+import { FRASE_GRATIS, IA_USOS_GRATIS_MES, recursosQueSairamDoGratis } from "../data/recursos";
 
 const APP_URL = "https://app.olliorcamentos.online";
 const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
@@ -60,7 +60,7 @@ const doze =
 const faq = [
 	{
 		q: "O plano Grátis acaba depois de um tempo?",
-		a: `Não. O Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, ordem de serviço, recibos, clientes e histórico também ficam sem limite, e a IA tem ${IA_USOS_GRATIS_MES} usos mensais. Depois do primeiro envio, há um teste Pro opcional de 14 dias, sem cartão e sem cobrança automática.`,
+		a: `Não. O Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, clientes e histórico também ficam sem limite, e a IA tem ${IA_USOS_GRATIS_MES} usos mensais. ${recursosQueSairamDoGratis().replace(/^./, (c) => c.toUpperCase())} são do Pro. Depois do primeiro envio, há um teste Pro opcional de 14 dias, sem cartão e sem cobrança automática.`,
 	},
 	{
 		q: "Preciso de cartão de crédito para começar?",

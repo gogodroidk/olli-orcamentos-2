@@ -39,7 +39,7 @@ import {
 } from "../../data/oficios";
 // Preço só da FONTE (Stripe live) — sem literal de R$ nas FAQs desta página.
 import { PRECO_EMPRESA, PRECO_PRO, reais } from "../../data/planos";
-import { FRASE_GRATIS_CURTA, GRATIS_CONDICAO, TEXTO_SELO_OLLI } from "../../data/recursos";
+import { FRASE_GRATIS_CURTA, GRATIS_CONDICAO, recursosQueSairamDoGratis, TEXTO_SELO_OLLI } from "../../data/recursos";
 import { postsPublicados } from "../blog/_dados";
 import { TRIAL_PRO_DIAS } from "../../../../src/services/limitesComerciais";
 
@@ -132,8 +132,8 @@ const ogImagem = OG_PROPRIO_POR_SLUG.has(slug) ? `/og/${slug}.png` : undefined;
  */
 const descricao =
 	calculos.length > 0
-		? `${dor} Grátis para começar: orçamento, ordem de serviço e recibo no celular ou no computador, com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`
-		: `${dor} Grátis para começar: orçamento, ordem de serviço e recibo no celular ou no computador, com a sua marca.`;
+		? `${dor} Grátis para começar a orçar no celular ou no computador (ordem de serviço e recibo no Pro), com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`
+		: `${dor} Grátis para começar a orçar no celular ou no computador; ordem de serviço e recibo no Pro.`;
 
 /**
  * BreadcrumbList — o brief pede nas subpáginas. Ajuda o Google a entender a
@@ -191,7 +191,7 @@ if (palavrasResposta < 40 || palavrasResposta > 75) {
 const faqs = [
 	{
 		q: `Existe app de orçamento grátis para ${profissao}?`,
-		a: `Sim. A OLLI tem um plano Grátis, ${GRATIS_CONDICAO}, com orçamento, ordem de serviço, recibo, clientes e histórico. O que ele inclui hoje está na página de planos. Depois do primeiro envio, há ${TRIAL_PRO_DIAS} dias opcionais de Pro sem cartão e sem cobrança automática.`,
+		a: `Sim. A OLLI tem um plano Grátis, ${GRATIS_CONDICAO}, com orçamento, clientes e histórico; ${recursosQueSairamDoGratis()} são do Pro. O que cada plano inclui hoje está na página de planos. Depois do primeiro envio, há ${TRIAL_PRO_DIAS} dias opcionais de Pro sem cartão e sem cobrança automática.`,
 	},
 	...(calculos.length > 0
 		? [
