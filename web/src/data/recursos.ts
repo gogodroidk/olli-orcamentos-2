@@ -11,7 +11,7 @@
  * derivada da FONTE — e feature é copy que, se inventada, vira propaganda enganosa.
  *
  * Então a MATRIZ de ✓/✗ deste comparativo é COMPUTADA de `entitlements` via
- * `temAcessoRecurso`, o rótulo vem de `planosBase` e o "Em breve" de `RECURSOS_EM_BREVE`.
+ * `planoIncluiRecurso`, o rótulo vem de `planosBase` e o "Em breve" de `RECURSOS_EM_BREVE`.
  *
  * ═══ "EM BREVE" É VERDADE, NÃO FALTA ═══
  *
@@ -24,7 +24,7 @@ import {
 	IA_USOS_GRATIS_MES,
 	RECURSOS_EM_BREVE,
 	RECURSOS_EM_ORDEM,
-	temAcessoRecurso,
+	planoIncluiRecurso,
 } from "../../../src/services/entitlements";
 import type { PlanoId, Recurso } from "../../../src/services/entitlements";
 import {
@@ -98,7 +98,7 @@ function todosSim(): Record<PlanoId, Celula> {
  *     pagos mostram "Uso justo diário" (NÃO "Ilimitada": o worker aplica cota
  *     diária aos pagos, e os Termos §4 dizem "uso justo diário");
  *  3. uma linha por recurso gateado (menos `ia_ilimitada`, já coberta na #2),
- *     com ✓/✗/Em breve computado por `temAcessoRecurso`. A do selo ("Sem o selo
+ *     com ✓/✗/Em breve computado por `planoIncluiRecurso`. A do selo ("Sem o selo
  *     Feito com OLLI…") é ✗ no Grátis — é o "preço" honesto do Grátis ilimitado.
  */
 export function linhasComparativo(): LinhaComparativo[] {
@@ -119,7 +119,7 @@ export function linhasComparativo(): LinhaComparativo[] {
 	const recursos = RECURSOS_EM_ORDEM.filter((r) => r !== "ia_ilimitada").map((r) => {
 		const { titulo, emBreve } = ROTULO_RECURSO[r];
 		const celulaDe = (plano: PlanoId): Celula => {
-			if (!temAcessoRecurso(plano, r)) return { tipo: "nao" };
+			if (!planoIncluiRecurso(plano, r)) return { tipo: "nao" };
 			return emBreve ? { tipo: "texto", valor: "Em breve" } : { tipo: "sim" };
 		};
 		return {

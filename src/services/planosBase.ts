@@ -149,9 +149,10 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
   },
   // D-2267 (18/11): saíram do Grátis.
   recibos: {
-    titulo: 'Recibos',
-    beneficio: 'Emita o recibo do serviço na hora e mande pelo WhatsApp.',
-    curto: 'recibos',
+    // Corte da CPO (18/11): o Grátis REGISTRA o pagamento; o documento de recibo é do Pro.
+    titulo: 'Recibo em PDF e link para o cliente',
+    beneficio: 'Emita o recibo em PDF e mande o link para o cliente na hora, pelo WhatsApp.',
+    curto: 'recibo em PDF e link',
   },
   agenda: {
     titulo: 'Agenda de visitas',
@@ -169,9 +170,11 @@ export const ROTULO_RECURSO: Record<Recurso, RotuloRecurso> = {
     curto: 'importar clientes em lote',
   },
   nota_fiscal: {
-    titulo: 'Nota fiscal',
-    beneficio: 'Emitir a nota fiscal do serviço pelo OLLI.',
-    curto: 'nota fiscal',
+    // D-2267 (CPO 19/11): "Preparar nota fiscal" (copiar dados p/ o emissor do governo) é ABERTO a todos.
+    // O recurso Pro é só a emissão AUTOMÁTICA pela OLLI, que ainda não existe (RECURSOS_EM_BREVE): nunca vendido como pronto.
+    titulo: 'Nota fiscal automática pela OLLI',
+    beneficio: 'A OLLI emite a nota fiscal do serviço para você, sem copiar dados para o portal.',
+    curto: 'emissão automática da nota fiscal',
   },
 };
 
@@ -276,6 +279,8 @@ export const RECURSOS_GRATIS: readonly string[] = [
       ? `Orçamentos: PDF, link e WhatsApp, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês`
       : `Orçamentos: PDF, link e WhatsApp. Contas criadas a partir de ${dataCorteBR(CORTE_GRATIS_DATA)} enviam até ${LIMITE_ENVIOS_GRATIS_MES} por mês; contas anteriores seguem sem limite`,
   'Rascunhos, clientes e histórico sem limite',
+  // D-2267 (corte da CPO, 18/11): REGISTRAR o pagamento recebido é básico; EMITIR o recibo (PDF/link) é do Pro.
+  'Registro dos pagamentos recebidos',
   'Catálogo de serviços e produtos',
   'Diagnóstico por código de erro (offline)',
   'Link do orçamento para o cliente aprovar',
@@ -283,7 +288,7 @@ export const RECURSOS_GRATIS: readonly string[] = [
 ];
 
 /** O preço do Grátis, dito com honestidade: o que ele leva no documento. */
-export const NOTA_SELO_GRATIS = `O PDF, o recibo e o link do Grátis levam um selo discreto "${TEXTO_SELO_OLLI}".`;
+export const NOTA_SELO_GRATIS = `O PDF e o link do orçamento do Grátis levam um selo discreto "${TEXTO_SELO_OLLI}".`;
 
 /** Frase curta do Grátis para FAQ, SEO e ajuda. */
 export const FRASE_GRATIS =
@@ -312,7 +317,7 @@ const BULLETS_PRO: readonly BulletPlano[] = [
   bullet(ROTULO_RECURSO.remove_olli_brand.titulo, ['remove_olli_brand']),
   bullet(ROTULO_RECURSO.followup_automatico.titulo, ['followup_automatico']),
   bullet(ROTULO_RECURSO.link_pagamento.titulo, ['link_pagamento']),
-  bullet('Recibos, agenda de visitas e ordem de serviço com checklist, fotos e assinatura', ['recibos', 'agenda', 'ordem_servico']),
+  bullet('Recibo em PDF e link para o cliente, agenda de visitas e ordem de serviço com checklist, fotos e assinatura', ['recibos', 'agenda', 'ordem_servico']),
   bullet('Inteligência de campo: aviso de chuva na visita, hora de sair estimada e rota do dia ordenada', ['clima_visita', 'hora_de_sair']),
   bullet(ROTULO_RECURSO.termometro_orcamento.titulo, ['termometro_orcamento']),
   bullet(ROTULO_RECURSO.vespera_garantia.titulo, ['vespera_garantia']),
@@ -425,7 +430,7 @@ export function avisoMudancaGratis(precoMensal: string): { titulo: string; texto
     titulo: `A partir de ${dataTrancaGratisBR()}, o plano Grátis muda`,
     texto:
       `${recursosQueSairamDoGratis().replace(/^./, (c) => c.toUpperCase())} passam a ser do Pro (${precoMensal} por mês). ` +
-      `Criar e enviar orçamentos continua grátis, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês. ` +
+      `Criar e enviar orçamentos continua grátis, até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês, e registrar o pagamento recebido também. ` +
       'Tudo o que você já criou continua na sua conta, para ver quando quiser.',
   };
 }

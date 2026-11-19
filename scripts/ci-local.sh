@@ -30,6 +30,24 @@
 
 set -u
 
+# UMA execução por vez na máquina toda (19/11/2026: 5 ci-local + build Android esgotaram a memória e atrasaram o
+# WhatsApp dos clientes). Quem chega espera a vez; nada é pulado. Escape consciente: OLLI_CI_SEM_TRAVA=1.
+# Lock do kernel (flock -o): o script roda por baixo do flock e a trava fica só com o processo do flock, que termina
+# junto com o script; npm/vite/expo NÃO herdam o fd, então um órfão não segura a fila (P2 do LIVRE no #423).
+# Saída 75 = esperou 60 min e NÃO rodou (não é "CI vermelho": o CI nem começou).
+TRAVA_CI="${OLLI_CI_TRAVA:-/tmp/olli-ci-local.lock}"
+if [ -z "${OLLI_CI_SEM_TRAVA:-}" ] && [ -z "${OLLI_CI_NA_TRAVA:-}" ] && command -v flock >/dev/null 2>&1; then
+  if ! flock -n -o "$TRAVA_CI" true; then
+    echo ">>> ci-local: outro ci-local está rodando nesta máquina; esperando a vez (até 60 min; sem a vez, saio com 75 sem rodar)..."
+  fi
+  OLLI_CI_NA_TRAVA=1 exec flock -o -w 3600 -E 75 "$TRAVA_CI" bash "${BASH_SOURCE[0]}" "$@"
+fi
+# Prioridade baixa de CPU e disco (herdada por npm/vite/tsc/expo): o WhatsApp dos clientes (Chatwoot/Evolution)
+# roda nesta mesma máquina e tem de vencer qualquer build. Disco: classe normal, nível mais baixo (-c 2 -n 7), para o
+# CI não ficar parado indefinidamente atrás de outro processo de disco.
+renice -n 15 -p $$ >/dev/null 2>&1 || true
+ionice -c 2 -n 7 -p $$ >/dev/null 2>&1 || true
+
 RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$RAIZ" || exit 2
 
@@ -57,6 +75,8 @@ mkdir -p "$LOG_DIR"
 
 HASH="$(git rev-parse HEAD 2>/dev/null || echo desconhecido)"
 SUJO="$(git status --porcelain --untracked-files=no 2>/dev/null)"
+ARVORE0="$(git rev-parse 'HEAD^{tree}' 2>/dev/null)"  # árvore TESTADA (carimbo só se for a mesma no fim; P2-1 do LIVRE #426)
+NAO_RASTREADO="$(git status --porcelain 2>/dev/null | grep '^??' || true)"
 
 linha() { printf '%s\n' "=================================================================="; }
 
@@ -268,6 +288,17 @@ if [ "$FALHOU" -eq 0 ]; then
     echo "RESULTADO: VERDE — mas a árvore tinha mudança não commitada; commite e rode de novo antes de registrar no PR."
   else
     echo "RESULTADO: VERDE — registre no PR: \"ci-local.sh verde no commit $HASH\""
+    # Carimbo para scripts/publicar.sh: só rodada COMPLETA (todos os jobs), árvore limpa. Chave = hash da ÁRVORE, então
+    # um merge que não muda os arquivos (mesma árvore) herda o verde, e qualquer mudança exige CI de novo.
+    # Só carimba se: rodada completa; sem arquivo não rastreado no começo (ele entraria no build sem estar no commit);
+    # e a árvore do fim é a MESMA do começo, sem nada sujo (commit/edição durante o CI não herda o verde).
+    if [ "${#JOBS[@]}" -eq "${#TODOS_JOBS[@]}" ] && [ -z "$NAO_RASTREADO" ] \
+      && [ "$(git rev-parse 'HEAD^{tree}')" = "$ARVORE0" ] && [ -z "$(git status --porcelain)" ]; then
+      CARIMBOS="${OLLI_CI_CARIMBOS:-$HOME/.local/state/olli-ci/verde}"
+      mkdir -p "$CARIMBOS" && printf '%s %s\n' "$HASH" "$(date -u +%FT%TZ)" > "$CARIMBOS/$ARVORE0"
+    elif [ "${#JOBS[@]}" -eq "${#TODOS_JOBS[@]}" ]; then
+      echo "SEM CARIMBO de publicação: havia arquivo não rastreado ou a árvore mudou durante o CI."
+    fi
   fi
 else
   echo "RESULTADO: VERMELHO — não mescle."

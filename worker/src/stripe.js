@@ -347,6 +347,12 @@ export async function handleCheckout(request, env) {
     // Propaga o user_id para o metadata da subscription — é dele que o webhook
     // (customer.subscription.updated/deleted) casa o evento com a linha certa.
     fields['subscription_data[metadata][user_id]'] = user.id;
+    // Regra da CPO (19/11): Pro assinado durante o teste do Pro começa a cobrar no fim do teste (dias inteiros que faltam).
+    if (config.planoInterno === 'pro') {
+      const testeAte = await testeAteDaContaStripe(env, user.id);
+      const dias = testeAte ? Math.floor((testeAte - Date.now()) / 864e5) : 0;
+      if (dias >= 1) fields['subscription_data[trial_period_days]'] = String(Math.min(dias, 30));
+    }
   } else {
     // AVULSO (pagamento único → 12 meses de acesso), FIXADO EM CARTÃO.
     //
@@ -1049,4 +1055,20 @@ export async function handleStripe(request, env, url) {
   }
 
   return json({ erro: 'nao_encontrado' }, 404);
+}
+
+/** Fim do teste do Pro ativo (ms) ou null; mesma leitura de abacate.js#testeAteDaConta (sem import para não criar ciclo). */
+async function testeAteDaContaStripe(env, userId) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/trials_comerciais?owner_user_id=eq.${encodeURIComponent(userId)}&estado=eq.active&select=termina_em&order=termina_em.desc&limit=1`, {
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+    });
+    if (!r.ok) return null;
+    const l = await r.json();
+    const fim = Array.isArray(l) && l[0] ? Date.parse(l[0].termina_em) : NaN;
+    return Number.isFinite(fim) && fim > Date.now() ? fim : null;
+  } catch {
+    return null;
+  }
 }
