@@ -80,6 +80,12 @@ function texto(valor, max = 400) {
   return typeof valor === 'string' && valor.trim() ? valor.trim().slice(0, max) : null;
 }
 
+/** Identificador que só vale inteiro: devolve o valor ou null (nunca uma versão cortada). */
+function idInteiro(valor, max) {
+  const v = typeof valor === 'string' ? valor.trim() : '';
+  return v && v.length <= max ? v : null;
+}
+
 /** Valor mensal de referência do plano (fonte: src/services/precosPlanos.ts). */
 export function valorDoPlano(plano) {
   if (plano === 'pro') return PRECO_PRO.mensalCentavos / 100;
@@ -107,8 +113,10 @@ export async function montarEventoMeta(item, agoraMs = Date.now()) {
   // antes do hash. Qualquer outra forma é descartada em vez de adivinhada.
   const telefone = texto(item.telefone, 20);
   if (telefone && /^55[0-9]{10,11}$/.test(telefone)) userData.ph = [await sha256(telefone)];
-  const fbp = texto(item?.origem?.fbp, 200);
-  const fbc = texto(item?.origem?.fbc, 300);
+  // fbp/fbc são IDs opacos: cortar invalida o casamento do clique no Meta. Acima do teto, descarta inteiro.
+  // Teto do fbc = 'fb.1.<13 dígitos>.' (19) + fbclid de até 500 (web/src/lib/atribuicao.ts) com folga.
+  const fbp = idInteiro(item?.origem?.fbp, 200);
+  const fbc = idInteiro(item?.origem?.fbc, 600);
   if (fbp) userData.fbp = fbp;
   if (fbc) userData.fbc = fbc;
 
