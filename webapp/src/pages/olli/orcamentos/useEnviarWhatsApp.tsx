@@ -21,7 +21,8 @@
  *    não enviaram não tinham o número em nenhum orçamento.
  *  - "COPIAR LINK" funciona sem número (modo `link`): a pessoa cola onde quiser. Mesma porta do
  *    cadastro, mesmo registro do envio (canal `link`) e a mesma honestidade: copiar não é enviar,
- *    então só "Já enviei" marca o orçamento como enviado.
+ *    então só "Já enviei" confirma o envio (registro, teste do Pro, evento). Atenção: publicar o
+ *    link já promove o status para "enviado" no banco (trigger 20261024040000) — igual ao WhatsApp.
  *  - MEDIÇÃO: `envio_barrado_sem_whatsapp` (pediu o número), `orcamento_salvar_barrado` (limite do
  *    Grátis segurou) e, na porta, `envio_barrado_cadastro`. Sem dado pessoal.
  */
@@ -376,7 +377,7 @@ export function useEnviarWhatsApp() {
 							className="min-h-[44px] font-mono text-sm"
 						/>
 						<p className="text-xs text-text-secondary">
-							Copiar não é enviar: só marco o orçamento como enviado quando você tocar em “Já enviei”.
+							Copiar não é enviar: cole o link na conversa e, depois de mandar, toque em “Já enviei”.
 						</p>
 						<DialogFooter className="gap-2 sm:justify-between">
 							<div className="flex flex-col-reverse gap-2 sm:flex-row">
