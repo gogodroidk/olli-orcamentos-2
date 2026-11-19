@@ -254,7 +254,8 @@ assert.ok(pagina.includes('TEXTO_MAPA_PAINEL'), 'texto de privacidade honesto na
 assert.ok(pagina.includes('lazy(() => import("./MapaProspeccao"))'), 'Leaflet só nesta tela');
 assert.ok(mapaPainel.includes('tile.openstreetmap.org') && mapaPainel.includes('ATRIBUICAO_OSM'), 'tiles OSM com atribuição');
 assert.match(ATRIBUICAO_OSM, /OpenStreetMap/);
-assert.match(TEXTO_MAPA_PAINEL, /área que você está olhando/);
+assert.match(TEXTO_MAPA_PAINEL, /área que você está olhando e o endereço de internet do seu navegador/);
+assert.equal(/só a área/.test(TEXTO_MAPA_PAINEL), false, 'não promete que só a área sai (o IP também vai)');
 assert.match(TEXTO_MAPA_PAINEL, /lista de clientes não sai do OLLI/);
 assert.ok(mapaPainel.includes('textContent') && !/bindPopup\([^)]*nome/.test(mapaPainel), 'nome de cliente nunca vira HTML no popup');
 assert.ok(mapaPainel.includes('prefers-reduced-motion'), 'respeita menos movimento');

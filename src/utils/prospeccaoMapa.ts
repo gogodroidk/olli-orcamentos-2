@@ -437,11 +437,11 @@ export function linhaDaProspeccao(
 // ─── Mapa de verdade no painel (Leaflet + OpenStreetMap, 19/11, pedido da CPO) ──────────────────────
 
 /**
- * Privacidade honesta: os tiles do OpenStreetMap são pedidos pela área que a pessoa olha (e pelo IP
- * do navegador). Os nomes e endereços dos clientes não vão ao serviço de mapa.
+ * Privacidade honesta (LIVRE P2 #417): o servidor de tiles do OpenStreetMap recebe a área olhada e o IP
+ * do navegador (e o endereço do painel). Os nomes e endereços dos clientes não vão ao serviço de mapa.
  */
 export const TEXTO_MAPA_PAINEL =
-  'Mapa do OpenStreetMap. Para desenhar o fundo, o serviço de mapa recebe só a área que você está olhando; a sua lista de clientes não sai do OLLI.';
+  'Mapa do OpenStreetMap. Para desenhar o fundo, o serviço de mapa recebe a área que você está olhando e o endereço de internet do seu navegador; a sua lista de clientes não sai do OLLI.';
 
 /** Atribuição exigida pela licença do OpenStreetMap (ODbL), sempre visível no mapa. */
 export const ATRIBUICAO_OSM = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>';
