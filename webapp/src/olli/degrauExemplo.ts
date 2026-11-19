@@ -32,3 +32,12 @@ export function usarNomeDoExemplo(p: {
 }): boolean {
 	return p.ligada && p.exemplo && p.ehNovo && !p.clienteNome.trim();
 }
+
+/**
+ * CPO 19/11: o rascunho salvo como "Cliente do exemplo" NÃO conta como orçamento real — nem no evento
+ * `quote_create` (funil "orçou"), nem em relatório interno. Ele vira real quando a pessoa troca o nome.
+ * Consultas SQL usam a mesma regra: `cliente_nome is distinct from 'Cliente do exemplo'`.
+ */
+export function ehRascunhoDoExemplo(clienteNome: string | null | undefined): boolean {
+	return (clienteNome ?? "").trim() === NOME_CLIENTE_EXEMPLO;
+}
