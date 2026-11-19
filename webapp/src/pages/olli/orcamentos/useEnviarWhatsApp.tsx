@@ -22,6 +22,7 @@ import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { avisoLimiteEnvios, cancelarReservaEnvioOrcamento, confirmarEnvioOrcamento, obterEstadoOfertaComercial, reservarEnvioOrcamento } from "@/olli/cota-envios";
+import { ehRascunhoDoExemplo, NOME_CLIENTE_EXEMPLO } from "@/olli/degrauExemplo";
 import { usePortaDoCadastro } from "@/olli/exigirCadastro";
 import { linkWhatsApp } from "@/olli/linkWhatsApp";
 import { publicarLinkOrcamento } from "@/olli/publicarLink";
@@ -53,6 +54,14 @@ export function useEnviarWhatsApp() {
 	const enviar = useCallback(
 		async (orcamentoId: string, blob: Orcamento) => {
 			if (preparando) return;
+			// 0) Rascunho do exemplo da ativação (CPO 19/11): não sai com o nome "Cliente do exemplo".
+			if (ehRascunhoDoExemplo(blob.clienteNome)) {
+				toast.error("Troque o nome do cliente antes de enviar", {
+					description: `Este é o orçamento de exemplo, salvo como “${NOME_CLIENTE_EXEMPLO}”. Abra o orçamento, escolha ou cadastre o cliente e salve; depois é só enviar.`,
+					position: "top-center",
+				});
+				return;
+			}
 			// 1) WhatsApp do cliente: número que não dá para confiar não vira link.
 			const semLinkWa = linkWhatsApp(blob.clienteTelefone, "");
 			if (!semLinkWa) {

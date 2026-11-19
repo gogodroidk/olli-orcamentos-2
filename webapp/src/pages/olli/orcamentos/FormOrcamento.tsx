@@ -42,7 +42,7 @@ import SeletorCliente, { type ClienteSelecionado } from "@/olli/components/Selet
 import { calcularTotais, comTotais, subtotalDoItem } from "@/olli/components/totais";
 import { novoId } from "@/olli/contrato";
 import { useOlliList } from "@/olli/data";
-import { AVISO_NOME_EXEMPLO, chaveDegrauLigada, NOME_CLIENTE_EXEMPLO, usarNomeDoExemplo } from "@/olli/degrauExemplo";
+import { AVISO_NOME_EXEMPLO, chaveDegrauLigada, ehRascunhoDoExemplo, NOME_CLIENTE_EXEMPLO, usarNomeDoExemplo } from "@/olli/degrauExemplo";
 import { agoraIso, brParaIso, emDiasBr, hojeYmd } from "@/olli/datas";
 import { proximoNumeroDocumento, useSalvar } from "@/olli/mutacoes";
 import { Badge } from "@/ui/badge";
@@ -603,7 +603,8 @@ function Editor({
 			}
 
 			await salvar.mutateAsync(final);
-			if (ehNovo) void registrarEtapaAtivacao("quote_create");
+			// Rascunho do exemplo não é orçamento real: não conta como "orçou" (CPO 19/11).
+			if (ehNovo && !ehRascunhoDoExemplo(final.clienteNome)) void registrarEtapaAtivacao("quote_create");
 			aoFechar();
 		} catch (err) {
 			setErro((err as Error)?.message ?? "Não foi possível salvar o orçamento.");
