@@ -12,6 +12,7 @@ import { usePlano } from '../../hooks/usePlano';
 import { useVerticais } from '../../hooks/useVerticais';
 import type { Recurso } from '../../services/planos';
 import { PressableWebState } from './pressableWebState';
+import { uiV2Nav, dividirSidebar } from '../../services/uiFlags';
 
 /**
  * Barra lateral fixa do shell desktop — substitui a tab bar inferior quando
@@ -114,6 +115,9 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
   const { temAcesso } = usePlano();
   const { mostraHvac } = useVerticais();
   const rotaAtiva = state.routes[state.index]?.name;
+  // v1.3 (ui_v2_nav): 5 itens à vista + "Mais" recolhido. Abre sozinho se a
+  // tela atual mora dentro dele, para o item ativo nunca ficar escondido.
+  const [maisAberto, setMaisAberto] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -148,6 +152,9 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
       return true;
     });
   }, [tipo, papel, pode, mostraHvac]);
+
+  const grupos = useMemo(() => dividirSidebar(itensVisiveis, uiV2Nav()), [itensVisiveis]);
+  const maisVisivel = maisAberto || grupos.mais.some((i) => i.rota === rotaAtiva);
 
   function irPara(item: ItemMenu, trancado: boolean) {
     // Item pago sem acesso: em vez de abrir a rota, leva a Planos (mesmo destino
@@ -207,7 +214,33 @@ export function SidebarNav({ state, navigation }: BottomTabBarProps) {
       </View>
 
       <ScrollView style={styles.menu} contentContainerStyle={styles.menuConteudo} showsVerticalScrollIndicator={false}>
-        {itensVisiveis.map((item) => {
+        {grupos.principais.map((item) => {
+          const trancado = item.recurso ? !temAcesso(item.recurso) : false;
+          const label = item.rota === 'OrdensTab' ? rotuloOrdens : item.label;
+          return (
+            <ItemSidebar
+              key={item.rota}
+              item={{ ...item, label }}
+              ativo={rotaAtiva === item.rota && !trancado}
+              trancado={trancado}
+              onPress={() => irPara(item, trancado)}
+            />
+          );
+        })}
+        {grupos.mais.length > 0 && (
+          <Pressable
+            onPress={() => setMaisAberto((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={maisVisivel ? 'Mais: recolher' : 'Mais: mostrar o resto do menu'}
+            accessibilityState={{ expanded: maisVisivel }}
+            style={({ hovered, focused }: PressableWebState) => [styles.item, hovered && styles.itemHover, focused && styles.itemFocado]}
+          >
+            <MaterialCommunityIcons name="dots-horizontal" size={20} color={cores.tabInactive} />
+            <Text style={styles.itemLabel}>Mais</Text>
+            <MaterialCommunityIcons name={maisVisivel ? 'chevron-up' : 'chevron-down'} size={18} color={cores.tabInactive} style={styles.cadeado} />
+          </Pressable>
+        )}
+        {maisVisivel && grupos.mais.map((item) => {
           const trancado = item.recurso ? !temAcesso(item.recurso) : false;
           const label = item.rota === 'OrdensTab' ? rotuloOrdens : item.label;
           return (

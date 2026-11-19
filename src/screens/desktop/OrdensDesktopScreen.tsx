@@ -432,7 +432,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: 3,
   },
   statusChipTexto: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '800' as const,
   },
 
@@ -450,7 +450,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     justifyContent: 'center',
   },
   avatarMiniTexto: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '800' as const,
     color: c.accentLight,
   },

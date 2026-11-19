@@ -150,7 +150,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   contadorTexto: {
     ...Typography.caption,
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700' as const,
     color: c.onSurfaceVariant,
   },

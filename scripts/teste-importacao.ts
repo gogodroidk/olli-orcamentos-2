@@ -416,7 +416,7 @@ await ok('a tela usa a prévia e os saves do banco (sync), nunca grava sem confe
 });
 await ok('rota Importar registrada, com link /importar, e entrada em Clientes', async () => {
 	const navegador = await ler('src/navigation/AppNavigator.tsx');
-	assert.match(navegador, /Importar: undefined;/);
+	assert.match(navegador, /Importar: \{ origem\?: 'contatos' \} \| undefined;/);
 	assert.match(navegador, /<Stack\.Screen name="Importar" component=\{ImportarCentro\} \/>/);
 	assert.match(await ler('src/navigation/linking.ts'), /Importar: 'importar'/);
 	assert.match(await ler('src/screens/ClientesScreen.tsx'), /nav\.navigate\('Importar'\)/);

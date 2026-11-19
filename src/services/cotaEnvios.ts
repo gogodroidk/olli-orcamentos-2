@@ -12,8 +12,8 @@ import {
 } from './limitesComerciais';
 
 /**
- * REGISTRA o envio de um orçamento (não é mais um portão: o Grátis é ilimitado —
- * ver `limitesComerciais.ts`). Repetir o mesmo id no mês é idempotente. Nunca
+ * REGISTRA o envio de um orçamento (o portão do limite do Grátis
+ * é a resposta do servidor — ver `limitesComerciais.ts`). Repetir o mesmo id no mês é idempotente. Nunca
  * lança e nunca barra: falha de registro vira `motivo: 'sem_registro'`.
  */
 export async function reservarEnvioOrcamento(

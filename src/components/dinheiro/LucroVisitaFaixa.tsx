@@ -144,9 +144,9 @@ const criarEstilos = (c: Cores) =>
       gap: 4,
     },
     linha: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    rotulo: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.6, color: c.onSurfaceVariant },
+    rotulo: { fontSize: 13, fontWeight: '800', letterSpacing: 0.6, color: c.onSurfaceVariant },
     titulo: { fontSize: 14, fontWeight: '700', color: c.onSurface },
     texto: { fontSize: 13, lineHeight: 19, color: c.onSurface },
-    nota: { fontSize: 11, lineHeight: 15, color: c.onSurfaceMuted, marginTop: 2 },
+    nota: { fontSize: 13, lineHeight: 17, color: c.onSurfaceMuted, marginTop: 2 },
     acao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight, marginTop: 4 },
   });

@@ -576,8 +576,8 @@ export default function InicioDesktopScreen() {
                 xAxisColor={cores.outline}
                 rulesColor={cores.outline}
                 rulesType="dashed"
-                yAxisTextStyle={{ color: cores.onSurfaceMuted, fontSize: 10 }}
-                xAxisLabelTextStyle={{ color: cores.onSurfaceVariant, fontSize: 11 }}
+                yAxisTextStyle={{ color: cores.onSurfaceMuted, fontSize: 13 }}
+                xAxisLabelTextStyle={{ color: cores.onSurfaceVariant, fontSize: 13 }}
                 yAxisLabelWidth={44}
                 formatYLabel={(v: string) => {
                   const n = Number(v);
@@ -977,7 +977,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   // status de OS (badge inline no dashboard do técnico)
   osBadge: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3 },
-  osBadgeTexto: { fontSize: 11.5, fontWeight: '800' },
+  osBadgeTexto: { fontSize: 13, fontWeight: '800' },
 
   // gate PRO (cartão real, borrado pelo GatePro quando o plano não libera)
   gateCartao: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.lg, marginBottom: Spacing.lg },

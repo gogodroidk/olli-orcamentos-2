@@ -193,7 +193,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   endereco: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   feitaTexto: { color: c.onSurfaceMuted },
   pilula: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  pilulaTexto: { fontSize: 11, fontWeight: '800' },
+  pilulaTexto: { fontSize: 13, fontWeight: '800' },
   resto: { alignItems: 'center', paddingVertical: Spacing.sm, minHeight: 40, justifyContent: 'center' },
   restoTexto: { fontSize: 12.5, fontWeight: '700', color: c.accentLight },
   vazio: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.md },

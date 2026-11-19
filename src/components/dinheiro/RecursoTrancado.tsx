@@ -10,13 +10,14 @@
  * renderiza o recurso).
  */
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BorderRadius, Spacing, useCores, useEstilos, type Cores } from '../../theme';
 import { useRecursoPlano } from '../RecursoPlano';
 import { PressableAnimado } from '../motion/PressableAnimado';
 import { Skeleton } from '../motion/Skeleton';
 import { NOME_PLANO } from '../../services/planosBase';
+import { rotuloDisponibilidade } from '../../services/cadeadoRecurso';
 import type { Recurso } from '../../services/entitlements';
 
 interface Props {
@@ -53,10 +54,10 @@ export function RecursoTrancado({ recurso, titulo, beneficio }: Props) {
     );
   }
   return (
-    <View style={styles.caixa} accessibilityLabel={`${titulo}. Disponível no ${NOME_PLANO[planoMinimo]}. ${beneficio}`}>
+    <View style={styles.caixa} accessibilityLabel={`${titulo}. ${rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoMinimo])}. ${beneficio}`}>
       <View style={styles.linha}>
         <MaterialCommunityIcons name="crown-outline" size={15} color={cores.accentLight} />
-        <Text style={styles.selo}>DISPONÍVEL NO {NOME_PLANO[planoMinimo].toUpperCase()}</Text>
+        <Text style={styles.selo}>{rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoMinimo]).toUpperCase()}</Text>
       </View>
       <Text style={styles.titulo}>{titulo}</Text>
       <Text style={styles.texto}>{beneficio}</Text>
@@ -75,7 +76,7 @@ const criarEstilos = (c: Cores) =>
       gap: 4,
     },
     linha: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    selo: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.6, color: c.accentLight },
+    selo: { fontSize: 13, fontWeight: '800', letterSpacing: 0.6, color: c.accentLight },
     titulo: { fontSize: 14, fontWeight: '700', color: c.onSurface },
     texto: { fontSize: 12.5, lineHeight: 17, color: c.onSurfaceVariant },
     acao: { fontSize: 12.5, fontWeight: '800', color: c.accentLight, marginTop: 4 },

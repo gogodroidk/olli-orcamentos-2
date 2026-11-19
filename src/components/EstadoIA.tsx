@@ -59,7 +59,7 @@ export function EstadoIA({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reduzirMovimento, variante, tipoErro, titulo, mensagem]);
 
-  const mapeado = variante === 'erro' ? mapearErroIA(tipoErro ?? 'desconhecido') : null;
+  const mapeado = variante === 'erro' ? mapearErroIA(tipoErro ?? 'desconhecido', Platform.OS) : null;
   const tituloFinal = titulo ?? mapeado?.titulo ?? '';
   const mensagemFinal = mensagem ?? mapeado?.mensagem ?? '';
   const acaoFinal = acaoLabel ?? mapeado?.acao ?? 'Tentar de novo';

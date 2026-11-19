@@ -49,6 +49,7 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { generateId } from '../utils/id';
 import { CHECKLIST_KEY, PULSO_ULTIMO_KEY } from '../services/storageKeys';
 import { usePlano } from '../hooks/usePlano';
+import { useCadeado } from '../hooks/useCadeado';
 import { usePermissao } from '../hooks/usePermissao';
 import { useTipoConta } from '../hooks/useTipoConta';
 import { getCurrentUser } from '../services/supabase';
@@ -455,6 +456,8 @@ const VisitaNaLinha = React.memo(function VisitaNaLinha({
 
 export default function HojeScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: concluir/reabrir visita é edição de agenda (Pro, com carência do Grátis). Ver o dia segue liberado.
+  const cadeadoAgenda = useCadeado('agenda');
   const insets = useSafeAreaInsets();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -677,6 +680,7 @@ export default function HojeScreen() {
   }, [nav]);
 
   const mudarStatus = useCallback(async (a: OcorrenciaAgendamento, status: 'concluido' | 'agendado') => {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     setBaixando(a.id);
     try {
       await mudarStatusVisitaDoDia(a, status);
@@ -696,7 +700,7 @@ export default function HojeScreen() {
     } finally {
       setBaixando(null);
     }
-  }, [load]);
+  }, [load, cadeadoAgenda]);
   // O "Desfazer" do toast chama a versão MAIS NOVA da função (o toast vive mais
   // que o render em que nasceu).
   const mudarStatusRef = useRef(mudarStatus);
@@ -1196,11 +1200,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
 
   head: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: Spacing.lg },
   headAcoes: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
+  kicker: { fontSize: 13, fontWeight: '800', letterSpacing: 0, color: c.accentLight },
   title: { fontSize: 24, fontWeight: '800', color: c.onBackground, marginTop: 3 },
   date: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   resumoDia: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant, marginTop: 6 },
@@ -1253,12 +1257,12 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   visitaHora: { fontSize: 16, fontWeight: '800', color: c.onSurface },
   visitaDetalhe: { flexShrink: 1, fontSize: 12, fontWeight: '700', color: c.onSurfaceVariant },
   faseChip: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2 },
-  faseChipTexto: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.3 },
+  faseChipTexto: { fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
   visitaTitulo: { fontSize: 15, fontWeight: '700', color: c.onSurface, marginTop: 6 },
   visitaCliente: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   textoFeito: { color: c.onSurfaceMuted },
   tipoChip: { alignSelf: 'flex-start', borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 2, marginTop: 8 },
-  tipoChipText: { fontSize: 11, fontWeight: '800' },
+  tipoChipText: { fontSize: 13, fontWeight: '800' },
   visitaClima: { marginTop: 10 },
   acoesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
 
@@ -1272,7 +1276,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   checkText: { flex: 1, fontSize: 14, color: c.onSurface },
   checkTextDone: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
   checklistNota: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: c.outline },
-  checklistNotaText: { flex: 1, fontSize: 10.5, color: c.onSurfaceMuted },
+  checklistNotaText: { flex: 1, fontSize: 13, color: c.onSurfaceMuted },
 
   pulsoCard: {
     backgroundColor: c.surface, borderRadius: BorderRadius.lg,
@@ -1303,5 +1307,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Roxo fixo (base #7C3AED, mesma família de `c.plan`, mas sem "container" no
   // tema): decorativo, sem chave semântica exata (ver rule 7).
   relatorioProBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(124,58,237,0.14)', borderWidth: 1, borderColor: 'rgba(124,58,237,0.36)', borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 4 },
-  relatorioProBadgeText: { fontSize: 11, fontWeight: '800', color: c.plan },
+  relatorioProBadgeText: { fontSize: 13, fontWeight: '800', color: c.plan },
 });

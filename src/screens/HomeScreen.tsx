@@ -29,7 +29,8 @@
  */
 import { formatarNumeroExibicao } from '../utils/numeroDocumento';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, Pressable } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Modal, Pressable, Platform } from 'react-native';
+import { podeVerPlanosPara, rotuloDisponibilidade } from '../services/cadeadoRecurso';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -86,6 +87,7 @@ import { PedidosQrAvisoInicio } from '../components/equipamento/PedidosQrAvisoIn
 import { RecursoPlanoChip, useRecursoPlano } from '../components/RecursoPlano';
 import { deveConvidarImportar } from '../utils/conviteImportar';
 import { Aparecer, ContadorAnimado, PressableAnimado, Skeleton, curvas } from '../components/motion';
+import { uiV2Nav } from '../services/uiFlags';
 import { toast } from '../components/feedback';
 import { ClimaDoDia } from '../components/rua/ClimaDoDia';
 import { RadarTempoCard } from '../components/rua/RadarTempoCard';
@@ -94,6 +96,8 @@ import { RotaDeHoje, type EstadoRota } from '../components/rua/RotaDeHoje';
 import { MiniMapaDia } from '../components/rua/MiniMapaDia';
 import { AtalhosRua, type Atalho } from '../components/rua/AtalhosRua';
 import { usePlano } from '../hooks/usePlano';
+import { useCadeado } from '../hooks/useCadeado';
+import { NOME_PLANO } from '../services/planosBase';
 import { usePermissao } from '../hooks/usePermissao';
 import { useSyncInicial } from '../hooks/useSyncInicial';
 import { useVerticais } from '../hooks/useVerticais';
@@ -183,6 +187,9 @@ const VEU_HERO = ['rgba(11,111,206,0.38)', 'rgba(52,198,217,0.08)'] as const;
 
 export default function HomeScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: recibo e agenda são do Pro (com carência do Grátis): o atalho continua na Home, com cadeado.
+  const cadeadoRecibo = useCadeado('recibos');
+  const cadeadoAgenda = useCadeado('agenda');
   const insets = useSafeAreaInsets();
   // O banner fixo "Complete seu negócio" (AvisoCompletarNegocio, ~140 px) fica por
   // cima do fim da lista: enquanto ele aparece, a lista ganha esse espaço a mais.
@@ -642,9 +649,9 @@ export default function HomeScreen() {
   const atalhos: Atalho[] = [
     ...(ehTecnico ? [{ chave: 'os', icone: 'clipboard-check-outline' as const, rotulo: rotuloOS, descricao: 'Abrir minhas ordens de serviço', cor: cores.accentLight, onPress: () => nav.navigate('OrdemServico') }] : []),
     { chave: 'orcar', icone: 'file-document-edit-outline', rotulo: 'Orçar', descricao: 'Criar um orçamento novo', cor: cores.accentLight, onPress: () => nav.navigate('NovoOrcamento', {}) },
-    { chave: 'recibo', icone: 'receipt', rotulo: 'Recibo', descricao: 'Emitir um recibo', cor: cores.success, onPress: () => nav.navigate('EmitirRecibo', {}) },
-    { chave: 'agendar', icone: 'calendar-plus', rotulo: 'Agendar', descricao: 'Agendar uma visita', cor: cores.primaryLight, onPress: agendar },
-    { chave: 'clientes', icone: 'account-group', rotulo: 'Clientes', descricao: 'Abrir a lista de clientes', cor: corCategoria('#A78BFA', cores.surface), onPress: () => nav.navigate('Clientes') },
+    { chave: 'recibo', icone: 'receipt', rotulo: 'Recibo', descricao: cadeadoRecibo.trancado ? `Emitir um recibo. ${rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro)}` : 'Emitir um recibo', cor: cores.success, trancado: cadeadoRecibo.trancado, onPress: () => nav.navigate('EmitirRecibo', {}) },
+    { chave: 'agendar', icone: 'calendar-plus', rotulo: 'Agendar', descricao: cadeadoAgenda.trancado ? `Agendar uma visita. ${rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro)}` : 'Agendar uma visita', cor: cores.primaryLight, trancado: cadeadoAgenda.trancado, onPress: agendar },
+    { chave: 'clientes', icone: 'account-group', rotulo: 'Clientes', descricao: 'Abrir a lista de clientes', cor: corCategoria(cores.avatarLilac, cores.surface), onPress: () => nav.navigate('Clientes') },
   ];
 
   const abrirOlli = () => {
@@ -881,7 +888,7 @@ export default function HomeScreen() {
                       <MaterialCommunityIcons
                         name="whatsapp"
                         size={17}
-                        color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                        color={textoSobre(cores.whatsapp)}
                       />
                       <Text style={styles.heroWhatsBtnText}>{avisandoCliente ? 'Abrindo…' : 'Estou a caminho'}</Text>
                     </PressableAnimado>
@@ -906,6 +913,26 @@ export default function HomeScreen() {
             )}
           </LinearGradient>
         </Aparecer>
+
+        {/* v1.3 (ui_v2_nav): Hoje deixa de ser aba e vira esta seção do Início. */}
+        {uiV2Nav() && (
+          <Aparecer indice={2}>
+            <PressableAnimado
+              style={styles.hojeSecao}
+              onPress={() => (nav as any).navigate('HojeDia')}
+              haptic="light"
+              accessibilityRole="button"
+              accessibilityLabel="Abrir o seu dia: visitas, lembretes e cobranças de hoje"
+            >
+              <MaterialCommunityIcons name="white-balance-sunny" size={22} color={cores.accentLight} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.hojeSecaoTitulo}>Seu dia</Text>
+                <Text style={styles.hojeSecaoSub}>Visitas, lembretes e quem precisa de resposta hoje</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={22} color={cores.onSurfaceMuted} />
+            </PressableAnimado>
+          </Aparecer>
+        )}
 
         {/* MINI-MAPA DO DIA (Onda I2) — 160 px com os pins e a linha; tocar abre o
             Mapa do dia. Grátis (MapLibre + OpenFreeMap). Some nos estados que a
@@ -1164,7 +1191,7 @@ export default function HomeScreen() {
                         <MaterialCommunityIcons
                           name="whatsapp"
                           size={16}
-                          color="#0A1626" // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+                          color={textoSobre(cores.whatsapp)}
                         />
                         <Text style={styles.radarBtnPrimaryText}>Lembrar no WhatsApp</Text>
                       </PressableAnimado>
@@ -1184,7 +1211,7 @@ export default function HomeScreen() {
 
               {radarBloqueados > 0 && (
                 <Aparecer indice={radar.length}>
-                  <PressableAnimado style={styles.radarTeaser} onPress={() => irParaPlanos('radar_card')} escala={0.98}>
+                  <PressableAnimado style={styles.radarTeaser} onPress={() => { if (podeVerPlanosPara(Platform.OS)) irParaPlanos('radar_card'); }} escala={0.98}>
                     <View style={styles.radarTeaserIcon}>
                       <MaterialCommunityIcons name="lock-outline" size={18} color={cores.plan} />
                     </View>
@@ -1192,9 +1219,9 @@ export default function HomeScreen() {
                       <Text style={styles.radarTeaserTitle}>
                         +{radarBloqueados} cliente{radarBloqueados > 1 ? 's' : ''} na hora de lembrar
                       </Text>
-                      <Text style={styles.radarTeaserSub}>Veja todos e lembre com 1 toque no Pro</Text>
+                      <Text style={styles.radarTeaserSub}>{podeVerPlanosPara(Platform.OS) ? 'Veja todos e lembre com 1 toque no Pro' : rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro)}</Text>
                     </View>
-                    <MaterialCommunityIcons name="chevron-right" size={20} color={cores.plan} />
+                    {podeVerPlanosPara(Platform.OS) ? <MaterialCommunityIcons name="chevron-right" size={20} color={cores.plan} /> : null}
                   </PressableAnimado>
                 </Aparecer>
               )}
@@ -1407,6 +1434,9 @@ function MiniStep({ n, text }: { n: string; text: string }) {
 }
 
 const criarEstilos = (c: Cores) => StyleSheet.create({
+  hojeSecao: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: BorderRadius.lg, backgroundColor: c.surface, borderWidth: 1, borderColor: c.outline },
+  hojeSecaoTitulo: { fontSize: 16, fontWeight: '800', color: c.onSurface },
+  hojeSecaoSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   container: { flex: 1, backgroundColor: c.background },
   syncPill: {
     position: 'absolute', alignSelf: 'center', zIndex: 20,
@@ -1417,7 +1447,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 2.88:1 (7.25:1)
   topbar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.base, marginBottom: 4 },
   ajudaBtn: { marginRight: 6 },
   lembreteAssinatura: { marginHorizontal: Spacing.base, marginTop: Spacing.sm, marginBottom: Spacing.sm },
@@ -1427,9 +1457,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   company: { fontSize: 13, fontWeight: '600', color: c.onSurfaceMuted },
   // Cyan fixo (base #7FE9F5, não a cor de marca escolhida): decorativo.
   olliBtn: { width: 48, height: 48, borderRadius: BorderRadius.chip, backgroundColor: 'rgba(127,233,245,0.12)', borderWidth: 1, borderColor: 'rgba(127,233,245,0.3)', justifyContent: 'center', alignItems: 'center' },
-  olliBadge: { position: 'absolute', top: -3, right: -3, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: c.danger, borderWidth: 2, borderColor: c.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
+  olliBadge: { position: 'absolute', top: -3, right: -3, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.danger, borderWidth: 2, borderColor: c.background, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 },
   // Branco fixo: convenção universal de badge sobre cor de status saturada.
-  olliBadgeText: { fontSize: 9.5, fontWeight: '800', color: '#fff' },
+  olliBadgeText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.danger) },
 
   // HERO: véu translúcido por cima do fundo; as cores de texto vêm de
   // heroTexto/heroAcento (derivadas do fundo EFETIVO), não deste objeto.
@@ -1437,7 +1467,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.success },
-  liveLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0 },
+  liveLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 0 },
   heroLink: { fontSize: 12.5, fontWeight: '800' },
   heroCarregando: { marginTop: 14, gap: 10 },
   heroEmpty: { alignItems: 'center', paddingVertical: 14 },
@@ -1458,7 +1488,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   heroSaida: { marginTop: 10, alignSelf: 'stretch' },
   // Verde do WhatsApp com tinta escura: convenção única de "ação de WhatsApp" no app.
   heroWhatsBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, minHeight: 46, paddingHorizontal: 14 },
-  heroWhatsBtnText: { fontSize: 14, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366 (9.16:1)
+  heroWhatsBtnText: { fontSize: 14, fontWeight: '800', color: textoSobre(c.whatsapp) },
   heroActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
   heroBtnGhost: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, borderRadius: BorderRadius.full, paddingHorizontal: 16, minHeight: 46 },
   heroBtnGhostText: { fontSize: 14, fontWeight: '800' },
@@ -1467,8 +1497,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   kpis: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outlineDark, marginHorizontal: Spacing.base, marginTop: Spacing.md, padding: 8 },
   kpi: { flexGrow: 1, flexBasis: '45%', minHeight: 94, alignItems: 'flex-start', justifyContent: 'center', backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.lg, paddingHorizontal: 12, paddingVertical: 10 },
   kpiValue: { ...Typography.value, fontSize: 19, color: c.onSurface, marginTop: 4 },
-  kpiLabel: { fontSize: 11.5, color: c.onSurfaceVariant, fontWeight: '800' },
-  kpiHint: { fontSize: 10.5, color: c.onSurfaceMuted, marginTop: 3, fontWeight: '600' },
+  kpiLabel: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '800' },
+  kpiHint: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 3, fontWeight: '600' },
   kpiHintWarn: { color: c.warning },
 
   anzol: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.base, marginTop: Spacing.xl, padding: Spacing.base, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow },
@@ -1500,8 +1530,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   starterSub: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 17, marginTop: 2 },
   starterSteps: { flexDirection: 'row', gap: 8, marginTop: 14 },
   miniStep: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline, borderRadius: BorderRadius.full, paddingVertical: 8 },
-  miniStepN: { width: 18, height: 18, borderRadius: 9, overflow: 'hidden', backgroundColor: c.accentLight, textAlign: 'center', color: textoSobre(c.accentLight), fontSize: 11, fontWeight: '800', lineHeight: 18 },
-  miniStepText: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
+  miniStepN: { width: 20, height: 20, borderRadius: 10, overflow: 'hidden', backgroundColor: c.accentLight, textAlign: 'center', color: textoSobre(c.accentLight), fontSize: 13, fontWeight: '800', lineHeight: 20 },
+  miniStepText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   starterActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
   starterPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, minHeight: 44 },
   starterPrimaryText: { fontSize: 13.5, fontWeight: '800', color: textoSobre(c.accentLight) },
@@ -1520,7 +1550,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   radarMeta: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   radarActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
   radarBtnPrimary: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, backgroundColor: c.whatsapp, borderRadius: BorderRadius.full, minHeight: 44 },
-  radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: '#0A1626' }, // contraste-ok: sobre c.whatsapp #25D366, dark-on-green proposital (9.16:1)
+  radarBtnPrimaryText: { fontSize: 12.5, fontWeight: '800', color: textoSobre(c.whatsapp) },
   radarBtnGhost: { justifyContent: 'center', alignItems: 'center', borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.strokeGlow, backgroundColor: c.surfacePressed, paddingHorizontal: 14, minHeight: 44 },
   radarBtnGhostText: { fontSize: 12.5, fontWeight: '800', color: c.accentLight },
 

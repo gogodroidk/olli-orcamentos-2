@@ -255,5 +255,5 @@ const criarEstilos = (c: Cores) =>
       padding: Spacing.md,
     },
     avisoTxt: { flex: 1, fontSize: 12.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant, lineHeight: 18 },
-    base: { fontSize: 11.5, fontFamily: Fonts.regular, color: c.onSurfaceVariant, opacity: 0.8, lineHeight: 17 },
+    base: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, opacity: 0.8, lineHeight: 17 },
   });

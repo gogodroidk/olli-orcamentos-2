@@ -9,6 +9,12 @@ import { navigationRef } from '../navigation/navigationRef';
 
 interface Props {
   children: React.ReactNode;
+  /**
+   * Nome da tela quando o boundary é POR TELA (screenLayout do navegador).
+   * Nesse modo o "tentar de novo" só remonta a tela — o resto do app (abas,
+   * sessão, rascunho em memória) continua de pé, inclusive na web.
+   */
+  tela?: string;
 }
 
 interface State {
@@ -21,7 +27,7 @@ interface State {
  * classe abaixo só administra o estado da captura, que exige componentDidCatch
  * (só existe em class component).
  */
-function TelaDeErro({ onTentarDeNovo }: { onTentarDeNovo: () => void }) {
+function TelaDeErro({ onTentarDeNovo, porTela }: { onTentarDeNovo: () => void; porTela?: boolean }) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
 
@@ -29,7 +35,7 @@ function TelaDeErro({ onTentarDeNovo }: { onTentarDeNovo: () => void }) {
     // Na web um reload de página limpa qualquer estado de módulo que o boundary
     // sozinho não alcança (ex.: um singleton que quebrou no meio da inicialização).
     // No nativo não existe "reload de página" — o reset do boundary é o recurso.
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
+    if (!porTela && Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
       window.location.reload();
       return;
     }
@@ -44,8 +50,9 @@ function TelaDeErro({ onTentarDeNovo }: { onTentarDeNovo: () => void }) {
         Essa tela travou, mas seus dados estão salvos. Toque abaixo para tentar de novo.
       </Text>
       <OlliButton
-        label={Platform.OS === 'web' ? 'Recarregar' : 'Tentar de novo'}
+        label={!porTela && Platform.OS === 'web' ? 'Recarregar' : 'Tentar de novo'}
         onPress={recarregar}
+        accessibilityLabel="Tentar abrir esta tela de novo"
         style={styles.btn}
       />
     </View>
@@ -86,8 +93,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
     // eslint-disable-next-line no-console
     console.error('[ErrorBoundary] erro de render capturado:', erro, info.componentStack);
 
-    let tela: string | undefined;
-    try {
+    let tela: string | undefined = this.props.tela;
+    if (!tela) try {
       tela = navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name : undefined;
     } catch {
       tela = undefined;
@@ -119,8 +126,19 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   render(): React.ReactNode {
     if (this.state.temErro) {
-      return <TelaDeErro onTentarDeNovo={this.resetar} />;
+      return <TelaDeErro onTentarDeNovo={this.resetar} porTela={Boolean(this.props.tela)} />;
     }
     return this.props.children;
   }
+}
+
+/**
+ * `screenLayout` dos navegadores (React Navigation 7): um boundary POR TELA.
+ * Erro de render em Início, Orçamentos, Novo orçamento, Agenda, Entrar (e
+ * qualquer outra) vira a tela amigável com "Tentar de novo" ali mesmo — o app
+ * não fecha e as abas continuam navegáveis. O boundary de topo (App.tsx) fica
+ * como última rede.
+ */
+export function limiteDeTela({ children, route }: { children: React.ReactNode; route: { name: string } }) {
+  return <ErrorBoundary tela={route.name}>{children}</ErrorBoundary>;
 }

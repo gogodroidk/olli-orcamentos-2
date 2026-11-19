@@ -92,5 +92,5 @@ const criarEstilos = (c: Cores) =>
     icon: { marginTop: 1 },
     texto: { flex: 1, fontSize: 12.5, color: c.onSurface, lineHeight: 17 },
     btn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: BorderRadius.full, backgroundColor: c.accentContainer },
-    btnText: { fontSize: 11.5, fontWeight: '800', color: c.accentLight },
+    btnText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   });

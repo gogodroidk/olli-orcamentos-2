@@ -981,7 +981,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: 3,
   },
   situacaoTexto: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '800',
   },
 
@@ -993,7 +993,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: 3,
   },
   critTexto: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '800',
   },
 

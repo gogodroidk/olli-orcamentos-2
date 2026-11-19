@@ -3,7 +3,7 @@ import { registrarAtividadeUsuario } from '../services/equipe';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Share, ActivityIndicator, Image, Modal, RefreshControl, Linking,
+  Share, ActivityIndicator, Image, Modal, RefreshControl, Linking, Platform,
   type LayoutChangeEvent,
 } from 'react-native';
 import Animated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
@@ -14,6 +14,7 @@ import { Spacing, BorderRadius, Typography, useCores, useGradientes, useEstilos,
 import { OlliCard } from '../components/OlliCard';
 import { OlliButton } from '../components/OlliButton';
 import { GradientHeader } from '../components/GradientHeader';
+import { useCadeado } from '../hooks/useCadeado';
 import { EmptyState } from '../components/EmptyState';
 import { OlliPressable } from '../components/OlliPressable';
 import { Celebracao } from '../components/Celebracao';
@@ -33,7 +34,9 @@ import {
   type RetratoCelebracao,
 } from '../components/orcamento/linhaDoTempo';
 import { jaCelebrou, marcarCelebrado } from '../services/celebracoes';
-import { toast } from '../components/feedback';
+import { confirmar, toast } from '../components/feedback';
+import { puxarTelefoneDosContatos } from '../services/puxarTelefoneDosContatos';
+import { gravarTelefoneNoCliente } from '../services/telefoneDoCliente';
 import { getOrcamento, getEmpresa, getDepoimentos, getRecibos, saveOrcamento, getVersoesOrcamento, getNextOrcamentoNumber, edicaoBloqueada } from '../database/database';
 import { Orcamento, Empresa, Depoimento, Recibo, StatusOrcamento, OrcamentoVersao, EventoTrilhaCliente, STATUS_LABELS, STATUS_COLORS } from '../types';
 import { formatCurrency } from '../utils/currency';
@@ -152,6 +155,9 @@ let convidouIndicacaoNestaSessao = false;
 
 export default function VisualizarOrcamentoScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: criar OS e emitir recibo são do Pro (com carência do Grátis); o cadeado aparece no botão e o toque abre "Disponível no Pro".
+  const cadeadoOS = useCadeado('ordem_servico');
+  const cadeadoRecibo = useCadeado('recibos');
   // P0-09: "X de 5 envios" só em conta nova do Grátis, a partir do 3º envio (3 estados no hook).
   const contadorEstado = useContadorEnvios();
   const route = useRoute<Route>();
@@ -410,9 +416,9 @@ export default function VisualizarOrcamentoScreen() {
   }
 
   /**
-   * Registra o envio (teste automático do Pro + funil). O Grátis é ilimitado: falha do
+   * Registra o envio (teste automático do Pro + funil). Falha do
    * registro NUNCA barra o envio (`sem_registro`). Exceção única: `cota_esgotada` do
-   * limite de conta nova (P0-09), tratada logo abaixo (ver limitesComerciais.ts).
+   * limite do Grátis (P0-09), tratada logo abaixo (ver limitesComerciais.ts).
    */
   async function autorizarEntrega(canal: CanalEnvioOrcamento): Promise<ReservaEnvioOrcamento | null> {
     if (!orc) return null;
@@ -515,10 +521,49 @@ export default function VisualizarOrcamentoScreen() {
   const handleWhatsApp = () => comTravaDeEnvio(handleWhatsAppAgora);
   async function handleWhatsAppAgora() {
     if (!orc || enviandoWhats) return;
-    const telefone = (orc.clienteTelefone || '').trim();
+    let telefone = (orc.clienteTelefone || '').trim();
+    // Sem número, o envio NÃO para (antes era um aviso sem saída e o orçamento morria em rascunho:
+    // 6 de 9 contas novas paradas só em rascunho tinham todos os orçamentos sem telefone, 18/11).
+    // O WhatsApp abre com a mensagem pronta para a pessoa escolher o contato — o mesmo caminho de Contratos.
+    if (!telefone && Platform.OS !== 'web') {
+      // D-2245: 1ª saída — puxar o número dos contatos do celular. Grava no orçamento E no cliente,
+      // e o envio segue para esse número. Qualquer falha cai na saída do #383 (escolher no WhatsApp).
+      const puxar = await confirmar({
+        titulo: `Sem o WhatsApp de ${orc.clienteNome}`,
+        mensagem: 'Posso puxar o número dos seus contatos. Você escolhe um contato e eu guardo o telefone neste orçamento e no cliente.',
+        rotuloConfirmar: 'Puxar dos contatos',
+        rotuloCancelar: 'Outras opções',
+      });
+      if (puxar) {
+        const r = await puxarTelefoneDosContatos();
+        if (r.estado === 'ok') {
+          const atualizado = { ...orc, clienteTelefone: r.telefone, atualizadoEm: nowISO() };
+          try {
+            await saveOrcamento(atualizado);
+            setOrc(atualizado);
+            telefone = r.telefone;
+          } catch {
+            toast.erro('O orçamento continua sem telefone. Tente de novo em instantes.', { titulo: 'Não consegui guardar o telefone' });
+            return;
+          }
+          if ((await gravarTelefoneNoCliente(orc.clienteId, r.telefone)) === 'erro') {
+            toast.info('O número entrou no orçamento, mas não consegui guardar no cadastro do cliente agora.');
+          }
+        } else if (r.estado === 'erro') {
+          toast.info(r.mensagem);
+        } else {
+          return; // fechou o seletor de contatos: o prestador desistiu, não insiste.
+        }
+      }
+    }
     if (!telefone) {
-      toast.info(`Cadastre o WhatsApp de ${orc.clienteNome} para enviar por aqui.`);
-      return;
+      const seguir = await confirmar({
+        titulo: `Sem o WhatsApp de ${orc.clienteNome}`,
+        mensagem: 'Abro o WhatsApp com a mensagem pronta e você escolhe o contato. Para não perguntar de novo, cadastre o número no cliente.',
+        rotuloConfirmar: 'Escolher no WhatsApp',
+        rotuloCancelar: 'Agora não',
+      });
+      if (!seguir) return;
     }
     if (!(await exigirCadastroParaEnviar('orcamento'))) return;
     setEnviandoWhats(true);
@@ -842,6 +887,7 @@ export default function VisualizarOrcamentoScreen() {
   // direto daqui para poupar os 4-5 toques do caminho normal — e abre a OS criada.
   async function handleCriarOS() {
     if (!orc || criandoOS) return;
+    if (cadeadoOS.trancado) { cadeadoOS.abrirGate(); return; }
     setCriandoOS(true);
     setOverlayInfo({ titulo: 'Criando a ordem de serviço...', subtitulo: 'Já abre a OS em seguida.' });
     try {
@@ -1301,7 +1347,7 @@ export default function VisualizarOrcamentoScreen() {
                 )}
                 <CloseAction icon="cash-check" label="Registrar" onPress={() => setPagamentoAberto(true)} />
                 {orc.status === 'aprovado' && (
-                  <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+                  <CloseAction icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'} label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
                 )}
               </View>
 
@@ -1358,10 +1404,10 @@ export default function VisualizarOrcamentoScreen() {
               <View style={styles.closeActions}>
                 {servicoPago && <CloseAction icon="calendar-plus" label="Agendar" onPress={agendarVisita} />}
                 {orc.status === 'aprovado' && (
-                  <CloseAction icon="clipboard-check-outline" label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
+                  <CloseAction icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'} label="Criar OS" onPress={handleCriarOS} loading={criandoOS} />
                 )}
                 {podeFinanceiro && (
-                  <CloseAction icon="receipt" label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
+                  <CloseAction icon={cadeadoRecibo.trancado ? 'lock-outline' : 'receipt'} label="Recibo" onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })} />
                 )}
               </View>
             </OlliCard>
@@ -1752,7 +1798,7 @@ export default function VisualizarOrcamentoScreen() {
         />
         {orc.status === 'aprovado' ? (
           <ItemFolha
-            icon="clipboard-check-outline"
+            icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'}
             label="Criar ordem de serviço"
             descricao="A partir deste orçamento aprovado."
             onPress={handleCriarOS}
@@ -1769,7 +1815,7 @@ export default function VisualizarOrcamentoScreen() {
         ) : null}
         {podeFinanceiro ? (
           <ItemFolha
-            icon="receipt"
+            icon={cadeadoRecibo.trancado ? 'lock-outline' : 'receipt'}
             label="Recibo"
             descricao="Emitir ou reenviar o recibo deste orçamento."
             onPress={() => nav.navigate('EmitirRecibo', { orcamentoId: orc.id })}
@@ -1825,7 +1871,7 @@ export default function VisualizarOrcamentoScreen() {
         ) : null}
         {orc.status === 'aprovado' ? (
           <ItemFolha
-            icon="clipboard-check-outline"
+            icon={cadeadoOS.trancado ? 'lock-outline' : 'clipboard-check-outline'}
             destaque={!precisaAssinatura}
             label="Criar ordem de serviço"
             descricao="Já abre a OS deste orçamento para a equipe."
@@ -2016,7 +2062,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   revisaoTitulo: { fontSize: 13.5, fontWeight: '800', color: c.onSurface },
   revisaoTexto: { fontSize: 12.5, color: c.onSurfaceVariant, lineHeight: 18, marginTop: 2 },
   editadoEm: {
-    fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant,
+    fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant,
     textAlign: 'right', marginBottom: 8,
   },
 
@@ -2030,7 +2076,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderWidth: 1, borderColor: comAlfa(c.accentLight, 0.28),
     alignItems: 'center', justifyContent: 'center',
   },
-  closeEyebrow: { fontSize: 11, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
+  closeEyebrow: { fontSize: 13, fontWeight: '800', color: c.accentLight, textTransform: 'uppercase', letterSpacing: 0.4 },
   closeTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface, marginTop: 2 },
   closeSub: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   closePrimary: {
@@ -2070,10 +2116,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     justifyContent: 'center',
     gap: 4,
   },
-  closeActionText: { fontSize: 11.5, fontWeight: '800', color: c.accentLight },
+  closeActionText: { fontSize: 13, fontWeight: '800', color: c.accentLight },
   closeChecklist: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   closeCheck: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 6 },
-  closeCheckText: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant },
+  closeCheckText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   closeCheckTextWarn: { color: c.warning },
 
   // Aceite do cliente (assinatura) — reusa closeTop/closeEyebrow/closeTitle/
@@ -2098,7 +2144,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     minHeight: 44, marginTop: 6,
   },
   assinRefazerTexto: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
-  assinNota: { fontSize: 11, color: c.onSurfaceVariant, lineHeight: 16, marginTop: 10 },
+  assinNota: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 17, marginTop: 10 },
 
   cardTitle: { fontSize: 14, fontWeight: '800', color: c.onSurfaceVariant, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   clientHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -2156,7 +2202,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full,
     paddingHorizontal: 8, paddingVertical: 2,
   },
-  versaoBadgeText: { fontSize: 11, fontWeight: '800', color: c.onSurfaceVariant },
+  versaoBadgeText: { fontSize: 13, fontWeight: '800', color: c.onSurfaceVariant },
   versaoData: { flex: 1, fontSize: 12.5, color: c.onSurfaceVariant },
   versaoValor: { fontSize: 13.5, fontWeight: '700', color: c.onSurface },
   versaoResumo: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 4 },

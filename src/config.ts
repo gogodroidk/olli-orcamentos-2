@@ -9,6 +9,7 @@ declare const process: {
     EXPO_PUBLIC_WHATSAPP_SUPORTE?: string;
     EXPO_PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID?: string;
     EXPO_PUBLIC_MAPS_KEY?: string;
+    EXPO_PUBLIC_SENTRY_ENV?: string;
   };
 };
 
@@ -103,3 +104,11 @@ export const APP_VERSION_CODE: number | null = (() => {
  *  abrir a página de assinaturas da Play Store direto no OLLI. */
 export const ANDROID_PACKAGE: string =
   (appJson as { expo?: { android?: { package?: string } } }).expo?.android?.package ?? '';
+
+/**
+ * Ambiente do Sentry. Build de loja: vazio (o App usa 'production'). Build de
+ * teste no aparelho (ex.: `online.olliorcamentos.app.e2e`) passa
+ * EXPO_PUBLIC_SENTRY_ENV=e2e para as sessões de teste não entrarem na taxa de
+ * crash-free da produção, que decide a liberação gradual.
+ */
+export const SENTRY_AMBIENTE_FORCADO: string = (process.env.EXPO_PUBLIC_SENTRY_ENV ?? '').trim();

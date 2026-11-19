@@ -23,6 +23,8 @@ import { formatDate, formatDateTime } from '../../utils/date';
 import { ehDiaSemHora } from '../../utils/ordemServicoDoOrcamento';
 import type { PatchDadosOS } from '../../utils/ordemServicoEdicao';
 import { avisar } from './dialogo';
+import { CartaoRecursoPlano } from '../../components/RecursoPlano';
+import { useCadeado } from '../../hooks/useCadeado';
 
 const STATUS_OS_ORDEM: StatusOS[] = ['aberta', 'agendada', 'em_execucao', 'pausada', 'concluida', 'cancelada'];
 
@@ -71,6 +73,8 @@ interface Props {
 export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, focoInicial, aoFechar, aoMudou }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // D-2267: editar OS (status, checklist, agenda, dados, atribuir) é do Pro (com carência do Grátis): a OS segue legível, sem toque.
+  const osTrancada = useCadeado('ordem_servico').trancado;
   const [ordem, setOrdem] = useState<OrdemServico | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [salvandoStatus, setSalvandoStatus] = useState<StatusOS | null>(null);
@@ -127,6 +131,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   }, [visivel]);
 
   async function mudarStatus(status: StatusOS) {
+    if (osTrancada) return;
     if (!ordem || ordem.status === status) return;
     setSalvandoStatus(status);
     try {
@@ -141,6 +146,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   }
 
   function toggleItem(itemId: string) {
+    if (osTrancada) return;
     if (!ordem) return;
     let listaParaSalvar: ItemChecklist[] | null = null;
     setOrdem((prev) => {
@@ -158,6 +164,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   }
 
   function removerItem(itemId: string) {
+    if (osTrancada) return;
     if (!ordem) return;
     let listaParaSalvar: ItemChecklist[] | null = null;
     setOrdem((prev) => {
@@ -171,6 +178,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   }
 
   function adicionarItem(texto: string) {
+    if (osTrancada) return;
     if (!ordem) return;
     const t = texto.trim();
     if (!t) return;
@@ -190,6 +198,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   // de campo não a expõe) — reusa a MESMA função de persistência (saveOrdemServico)
   // que o serviço usa por baixo, sem reimplementar numeração/dedupe/nenhuma regra.
   async function salvarAgenda() {
+    if (osTrancada) return;
     if (!ordem) return;
     setSalvandoAgenda(true);
     try {
@@ -214,6 +223,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
   }
 
   async function salvarDados(patch: PatchDadosOS, limpar: () => void) {
+    if (osTrancada) return;
     if (!ordem) return;
     setSalvandoDados(true);
     try {
@@ -272,6 +282,8 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
             </View>
           ) : (
             <ScrollView contentContainerStyle={styles.conteudo} keyboardShouldPersistTaps="handled">
+              {osTrancada ? <CartaoRecursoPlano recurso="ordem_servico" titulo="Editar a ordem de serviço" /> : null}
+              <View pointerEvents={osTrancada ? 'none' : 'auto'} style={{ gap: Spacing.base }}>
               {ehGestao && !editandoDados ? (
                 <Pressable
                   onPress={() => { setEditandoAgenda(false); setEditandoDados(true); }}
@@ -483,6 +495,7 @@ export function PainelOS({ ordemId, orgId, ehGestao, podeAtribuir, visivel, foco
                 icon={<MaterialCommunityIcons name="check-circle-outline" size={20} color="#fff" />}
                 style={{ marginTop: Spacing.sm }}
               />
+              </View>
             </ScrollView>
           )}
         </View>
@@ -705,7 +718,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   conteudo: { padding: Spacing.xl, gap: Spacing.base },
 
   statusChip: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  statusChipTexto: { fontSize: 11, fontWeight: '800' as const },
+  statusChipTexto: { fontSize: 13, fontWeight: '800' as const },
 
   bloco: {
     backgroundColor: c.surfaceGlass, borderRadius: BorderRadius.lg,

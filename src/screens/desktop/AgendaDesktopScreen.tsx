@@ -27,6 +27,7 @@ import { CampoVisitaExterna } from '../../components/agenda/CampoVisitaExterna';
 import { SugestaoEncaixe } from '../../components/agenda/SugestaoEncaixe';
 import { ClimaDaVisita } from '../../components/clima/ClimaDaVisita';
 import { useEncaixe } from '../../hooks/useEncaixe';
+import { useCadeado } from '../../hooks/useCadeado';
 import { sugerirVisitaExterna } from '../../services/verticais';
 import { getClientes } from '../../database/database';
 import { duracaoEstimadaMin } from '../../utils/agendaDominio';
@@ -105,6 +106,8 @@ interface EditState {
  */
 export default function AgendaDesktopScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: agendar, editar, concluir, cancelar e excluir visita são do Pro (com carência do Grátis). Ver segue liberado.
+  const cadeadoAgenda = useCadeado('agenda');
   const route = useRoute<AgendaRoute>();
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
@@ -211,6 +214,7 @@ export default function AgendaDesktopScreen() {
   useEffect(() => onSyncAplicado(load), [load]);
 
   function abrirNovo(prefill?: Partial<EditState>) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const base = prefill?.data ?? new Date();
     const inicioPadrao = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 9, 0, 0, 0);
     setEditing({
@@ -266,6 +270,7 @@ export default function AgendaDesktopScreen() {
   }
 
   function abrirEdicao(a: Agendamento) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const iniRaw = new Date(a.inicio);
     const ini = isNaN(iniRaw.getTime()) ? new Date() : iniRaw;
     setDetalhe(null);
@@ -295,6 +300,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function salvar(e: EditState) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const ini = combinarDataHora(e.data, e.horaInicio);
     const fimDt = e.horaFim ? combinarDataHora(e.data, e.horaFim) : undefined;
     if (fimDt && fimDt <= ini) {
@@ -346,6 +352,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function concluir(a: Agendamento) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     setSalvando(true);
     try {
       await saveAgendamento({ ...a, status: 'concluido', atualizadoEm: nowISO() });
@@ -359,6 +366,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function cancelar(a: Agendamento) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     setSalvando(true);
     try {
       await saveAgendamento({ ...a, status: 'cancelado', atualizadoEm: nowISO() });
@@ -372,6 +380,7 @@ export default function AgendaDesktopScreen() {
   }
 
   async function remover(id: string, serie = false) {
+    if (cadeadoAgenda.trancado) { cadeadoAgenda.abrirGate(); return; }
     const titulo = serie ? 'Excluir a série inteira' : 'Excluir agendamento';
     const texto = serie
       ? 'Todas as repetições deste compromisso saem da agenda. Ele vai para a Lixeira.'
@@ -466,7 +475,7 @@ export default function AgendaDesktopScreen() {
                 </View>
                 <ScrollView style={styles.colunaScroll} showsVerticalScrollIndicator={false}>
                   {doDia.length === 0 ? (
-                    <Pressable
+                    <Pressable accessibilityRole="button" accessibilityLabel="Novo compromisso neste dia"
                       onPress={() => abrirNovo({ data: dia })}
                       style={({ hovered, focused }: PressableWebState) => [styles.colunaVazia, hovered && styles.colunaVaziaHover, focused && styles.focoVisivel]}
                     >
@@ -495,7 +504,7 @@ export default function AgendaDesktopScreen() {
                     {TIPO_AGENDAMENTO_LABELS[detalhe.tipo]}
                   </Text>
                 </View>
-                <Pressable onPress={() => setDetalhe(null)} hitSlop={10}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Fechar" onPress={() => setDetalhe(null)} hitSlop={10}>
                   <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
                 </Pressable>
               </View>
@@ -628,7 +637,7 @@ export default function AgendaDesktopScreen() {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitulo}>{editing.id ? 'Editar agendamento' : 'Novo agendamento'}</Text>
-                  <Pressable onPress={() => setEditing(null)} hitSlop={10}>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Fechar" onPress={() => setEditing(null)} hitSlop={10}>
                     <MaterialCommunityIcons name="close" size={22} color={cores.onSurface} />
                   </Pressable>
                 </View>
@@ -884,7 +893,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   colunaHoje: { backgroundColor: c.accentContainer, borderColor: c.accent + '55' },
   colunaHeader: { alignItems: 'center', marginBottom: Spacing.sm, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: c.outline },
-  colunaDiaSemana: { ...Typography.label, color: c.onSurfaceVariant, fontSize: 11 },
+  colunaDiaSemana: { ...Typography.label, color: c.onSurfaceVariant, fontSize: 13 },
   colunaDiaNumero: { ...Typography.h3, color: c.onSurface, marginTop: 2 },
   colunaHojeTexto: { color: c.accentLight },
   colunaScroll: { flex: 1 },
@@ -896,10 +905,10 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     padding: Spacing.sm, marginBottom: Spacing.xs,
   },
   cardHover: { backgroundColor: c.surfacePressed },
-  cardHora: { fontSize: 11, fontWeight: '700', color: c.onSurfaceMuted },
+  cardHora: { fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted },
   cardTitulo: { ...Typography.bodySmall, color: c.onSurface, marginTop: 2 },
-  cardCliente: { ...Typography.caption, color: c.onSurfaceVariant, fontSize: 11, marginTop: 1 },
-  cardStatus: { fontSize: 10.5, fontWeight: '700', marginTop: 3 },
+  cardCliente: { ...Typography.caption, color: c.onSurfaceVariant, fontSize: 13, marginTop: 1 },
+  cardStatus: { fontSize: 13, fontWeight: '700', marginTop: 3 },
   strike: { textDecorationLine: 'line-through', color: c.onSurfaceMuted },
 
   // Scrim do modal: preto translúcido fixo (mesmo padrão em toda a base), não
@@ -912,7 +921,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   formCard: { maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md },
   tipoChip: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
-  tipoChipText: { fontSize: 11, fontWeight: '800' },
+  tipoChipText: { fontSize: 13, fontWeight: '800' },
   modalTitulo: { ...Typography.h3, color: c.onSurface },
   modalCliente: { ...Typography.body, color: c.onSurfaceVariant, marginTop: 2, marginBottom: Spacing.md },
   modalLinha: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm },

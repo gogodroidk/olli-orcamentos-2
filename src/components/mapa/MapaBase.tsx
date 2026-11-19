@@ -183,7 +183,7 @@ const criarEstilos = (c: Cores) =>
       paddingHorizontal: 6,
       paddingVertical: 2,
     },
-    atribuicaoTexto: { fontSize: 10, fontWeight: '600', color: c.onSurfaceVariant },
+    atribuicaoTexto: { fontSize: 13, fontWeight: '600', color: c.onSurfaceVariant },
     falhou: {
       position: 'absolute',
       left: 12,

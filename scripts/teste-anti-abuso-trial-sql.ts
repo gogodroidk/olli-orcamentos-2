@@ -32,7 +32,7 @@ assert.doesNotMatch(sqlNova, /limite_gratis_config/, 'não liga o corte do Grát
 assert.doesNotMatch(sqlNova, /até 5/, 'não publica teto');
 assert.doesNotMatch(sqlNova, /delete\s+from\s+public\.trials_comerciais/i, 'não apaga teste');
 assert.doesNotMatch(sqlNova, /delete\s+from\s+auth\.users/i, 'não apaga conta');
-assert.match(ler('../src/services/limitesComerciais.ts'), /GRÁTIS = ORÇAMENTOS ILIMITADOS/, 'o contrato do Grátis ilimitado continua escrito');
+assert.match(ler('../src/services/limitesComerciais.ts'), /GRÁTIS = ATÉ 5 ORÇAMENTOS ENVIADOS POR MÊS/, 'o contrato do Grátis (5 envios por mês) continua escrito');
 for (const arquivo of [
   '../src/screens/PlanosScreen.tsx',
   '../src/hooks/useLembreteAssinatura.ts',

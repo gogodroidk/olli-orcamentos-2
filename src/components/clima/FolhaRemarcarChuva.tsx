@@ -209,7 +209,7 @@ const criarEstilos = (c: Cores) =>
     subtitulo: { color: c.onSurfaceMuted, fontSize: 13, marginTop: 2 },
     conteudo: { padding: Spacing.base },
     motivo: { color: c.onSurface, fontSize: 15, fontWeight: '700', marginBottom: 2 },
-    credito: { color: c.onSurfaceMuted, fontSize: 11, marginTop: 2 },
+    credito: { color: c.onSurfaceMuted, fontSize: 13, marginTop: 2 },
     rotulo: { color: c.onSurface, fontSize: 13, fontWeight: '700', marginTop: Spacing.lg, marginBottom: Spacing.sm },
     mensagem: {
       backgroundColor: c.surfaceVariant,

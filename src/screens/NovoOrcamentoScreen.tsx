@@ -3,7 +3,7 @@ import { registrarAtividadeUsuario } from '../services/equipe';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform,
-  Keyboard, Alert, TextInput,
+  Keyboard, Alert, TextInput, useWindowDimensions,
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { useNavigation, useRoute, type RouteProp, usePreventRemove, type NavigationAction } from '@react-navigation/native';
@@ -115,6 +115,9 @@ export default function NovoOrcamentoScreen() {
   const nav = useNavigation<Nav>();
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
+  // Fonte do sistema grande (≥ 120%): "Cancelar/Voltar" e "Preencher por voz" viram só
+  // ícone (o leitor de tela continua lendo o rótulo) para os botões não se encavalarem.
+  const fonteGrande = useWindowDimensions().fontScale >= 1.2;
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const isEdit = (route.name as string) === 'EditarOrcamento';
@@ -680,7 +683,7 @@ export default function NovoOrcamentoScreen() {
             accessibilityLabel="Preencher orçamento por voz"
           >
             <MaterialCommunityIcons name="microphone" size={16} color={textoSobre(cores.voice)} />
-            <Text style={styles.voiceText} numberOfLines={1}>Preencher por voz</Text>
+            {fonteGrande ? null : <Text style={styles.voiceText} numberOfLines={1}>Preencher por voz</Text>}
           </TouchableOpacity>
         }
       >
@@ -807,7 +810,7 @@ export default function NovoOrcamentoScreen() {
           accessibilityLabel={passo === 'cliente' ? 'Cancelar' : passo === 'ajustar' ? 'Voltar para a revisão' : 'Voltar ao passo anterior'}
         >
           <MaterialCommunityIcons name="chevron-left" size={22} color={cores.primary} />
-          <Text style={styles.backLabel}>{passo === 'cliente' ? 'Cancelar' : 'Voltar'}</Text>
+          {fonteGrande ? null : <Text style={styles.backLabel}>{passo === 'cliente' ? 'Cancelar' : 'Voltar'}</Text>}
         </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', gap: 8, flex: 1, justifyContent: 'flex-end' }}>
@@ -857,7 +860,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
   },
-  revisionBannerText: { flex: 1, color: '#fff', fontSize: 11.5, fontWeight: '700', lineHeight: 16 },
+  revisionBannerText: { flex: 1, color: '#fff', fontSize: 13, fontWeight: '700', lineHeight: 17 },
   progressTrack: {
     height: 4,
     borderRadius: 2,
@@ -922,7 +925,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: 5,
   },
   summaryChipFlex: { flex: 1, maxWidth: 168 },
-  summaryChipText: { flexShrink: 1, fontSize: 11.5, fontWeight: '800', color: c.onSurface },
+  summaryChipText: { flexShrink: 1, fontSize: 13, fontWeight: '800', color: c.onSurface },
   footer: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: c.surfaceGlass,
