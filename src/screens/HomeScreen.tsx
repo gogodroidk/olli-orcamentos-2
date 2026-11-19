@@ -51,6 +51,7 @@ import { emAndamento, montarRotaDoDia, rotuloQuandoVisita, type ParadaDoDia } fr
 import { enderecosDaRota } from '../utils/rotaDoDia';
 import type { OcorrenciaAgendamento } from '../utils/contratoRecorrente';
 import { onSyncAplicado } from '../services/cloudSync';
+import { verificarRecompensaIndicacaoThrottle } from '../services/indicacao';
 import { getEtaAgendamento, temDestinoEta, mensagemEstouACaminho, type ResultadoEta } from '../services/eta';
 import { useClimaDoDia } from '../services/clima';
 import { useReservaClima, type LeituraCadastro } from '../services/climaReserva';
@@ -461,7 +462,7 @@ export default function HomeScreen() {
   }, [loadRadar, loadCobranca, loadFollowUp]));
 
   // Recarrega quando um sync com a nuvem terminar (ex.: login recém-feito).
-  useEffect(() => onSyncAplicado(() => { setSincronizando(true); void carregarTudo(); }), [carregarTudo]);
+  useEffect(() => onSyncAplicado(() => { setSincronizando(true); void carregarTudo(); void verificarRecompensaIndicacaoThrottle(); }), [carregarTudo]);
 
   const refresh = async () => {
     setRefreshing(true);
