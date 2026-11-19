@@ -81,19 +81,19 @@ A Play Store não tem campo de keywords separado — a indexação usa o texto d
 a descrição longa (seção 3) já repete termos como "orçamento", "recibo", "ordem de serviço",
 "eletricista", "técnico" e "HVAC" naturalmente.
 
-## 5. O que há de novo (release notes desta versão — v1.2.2 / versionCode definido pelo EAS, acima do 25)
+## 5. O que há de novo (release notes desta versão — v1.3.0 / versionCode 27)
 
 ```
-- Ordem de serviço: agora dá para editar depois de criada
-- Assistente com conversa em bolhas e histórico
-- Diagnóstico por IA para mais aparelhos: geladeira, TV, lavadora e outros
-- Agenda: exportar e assinar o calendário no celular (iCal)
-- Mapa dos clientes por região, com rota
-- Etiqueta adesiva dos equipamentos e central de documentos
-- Plano Grátis mostra quantos envios do mês você já usou
-- Correções de estabilidade
+- Menu novo: Início, Orçamentos, botão +, Agenda e Mais
+- O Início mostra o seu dia: visitas e o que fazer hoje
+- Orçamentos com filtros: Com o cliente, Aprovados e Rascunhos
+- Puxe nome e telefone do cliente dos contatos do celular
+- No Pro: traga vários contatos do celular de uma vez
+- Recibos, agenda e ordem de serviço passam a ser do Pro; o que você já criou segue visível
+- Funciona melhor com letra grande e leitor de tela
+- Se uma tela falhar, aparece "Tentar de novo" e o app não fecha
 ```
-Cada linha vem de PR já mesclado desde a 1.2.1 (06/10): edição da OS (D1438-G05), chat (G08), diagnóstico (G11), iCal, mapa (G19), etiqueta 99×38 e central de documentos, contador 'X de 5 envios' (P0-09). Pix fica de fora: no app da Play o botão de Pix não aparece (lojaRegras). Limite da Play: 500 caracteres por idioma.
+Produção está na 1.2.0 (24); a 1.2.2 (26) só saiu no teste interno, por isso as novidades dela entram aqui. Origem de cada linha e checklist de liberação: `docs/RELEASE-1.3.0.md`. Pix fica de fora (não aparece no app da Play). Limite da Play: 500 caracteres por idioma (este texto: 495).
 
 ## 6. Categoria e classificação etária
 

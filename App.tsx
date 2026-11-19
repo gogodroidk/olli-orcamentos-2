@@ -57,7 +57,7 @@ import * as Sentry from '@sentry/react-native';
 import { limparBreadcrumbSentry, limparEventoSentry } from './src/services/sentryScrub';
 import { capturarExcecao, conectarSentry } from './src/services/sentryCaptura';
 import { atualizarChaveRemotaUi, carregarChaveRemotaUi } from './src/services/chaveRemotaUi';
-import { DIAGNOSTICO_URL } from './src/config';
+import { DIAGNOSTICO_URL, SENTRY_AMBIENTE_FORCADO } from './src/config';
 
 /**
  * Sentry — crash reporting. Roda no import, ANTES de qualquer render, para pegar
@@ -92,7 +92,7 @@ const navegacaoSentry = Sentry.reactNavigationIntegration({
 
 Sentry.init({
   dsn: 'https://5c5495085721aace9d32dbd79121c084@o4511745793327104.ingest.us.sentry.io/4511745839661061',
-  environment: __DEV__ ? 'development' : 'production',
+  environment: SENTRY_AMBIENTE_FORCADO || (__DEV__ ? 'development' : 'production'),
   // LGPD: nada de IP/dado pessoal. Mesma regra do errorReport.
   sendDefaultPii: false,
   beforeSend: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
