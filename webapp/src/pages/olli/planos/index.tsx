@@ -63,7 +63,7 @@ import {
 	precoNoPeriodo,
 	reais,
 } from "./precos";
-import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
+import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, planoIncluiRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
 import { urlGerenciarNaPlay } from "@play-billing-regras";
@@ -1010,7 +1010,7 @@ function Celula({ plano, recurso, emBreve }: { plano: PlanoId; recurso: (typeof 
 			</>
 		);
 	}
-	if (!temAcessoRecurso(plano, recurso)) return <NaoIncluido />;
+	if (!planoIncluiRecurso(plano, recurso)) return <NaoIncluido />;
 	// Libera no mapa, mas o produto ainda marca "(em breve)" — não vender como pronto.
 	if (emBreve) return <span className="text-xs font-medium text-text-secondary">Em breve</span>;
 	return <Incluido />;
