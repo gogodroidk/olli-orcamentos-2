@@ -30,7 +30,7 @@ const SENSIVEL = [
   [/\b(senha|password|token|pin)\b/, 'senha'], [/\b(cartao|credito|debito|cvv|validade do cartao)\b/, 'cartão'], [/(\d[ -]?){13,19}/, 'número de cartão'],
   [/(saude|doenc|diagnostic|cancer|diabet|depress|ansiedade|hiv|aids|gravidez|gravida|remedio|medicamento|tratamento medico|deficien|cirurgia|laudo|psiqui|transtorno)/, 'saúde'],
   [/(religi|igreja|evangelic|catolic|umbanda|candomble|espirit|ateu|ateia|judeu|muculmano|islam|budis|pastor|crente)/, 'religião'],
-  [/(politic|partido|eleicao|eleitor|filiad|sindicat|voto|lula|bolsonar|petista|esquerda|direita)/, 'opinião política'],
+  [/(politic|partido|eleicao|eleitor|filiad|sindicat|voto|lula|bolsonar|petista)/, 'opinião política'],
   [/(orientacao|homossex|heterossex|bissex|\bgay\b|lesbica|\blgbt|transgenero|identidade de genero)/, 'orientação sexual/gênero'],
   [/(biometri|impressao digital|reconhecimento facial|\bdna\b|genetic)/, 'biometria/genético'],
   [/(\bnegro\b|\bnegra\b|\braca\b|etnia|origem racial)/, 'origem racial/étnica'],
