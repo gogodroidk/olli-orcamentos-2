@@ -232,8 +232,14 @@ export const PRIVACIDADE: LegalDoc = {
     {
       titulo: '5. Com quem compartilhamos dados',
       paragrafos: [
-        'Não vendemos os seus dados. Compartilhamos apenas com fornecedores que operam a ' +
-          'infraestrutura do serviço, cada um tratando somente o necessário e sob contrato:',
+        'Não vendemos os seus dados. Compartilhamos dados com fornecedores da ' +
+          'infraestrutura do serviço, listados abaixo, cada um tratando somente o ' +
+          'necessário e sob contrato.',
+        'À parte dessa lista, a nossa equipe usa ferramentas de inteligência artificial ' +
+          'de terceiros no atendimento (inclusive no WhatsApp do OLLI), nas vendas e no ' +
+          'desenvolvimento do produto. Mantemos desligado o uso do conteúdo para ' +
+          'treinamento e enviamos só o necessário para a tarefa. Listas de contatos e ' +
+          'documentos pessoais não são enviados a essas ferramentas.',
       ],
       itens: [
         'Supabase — banco de dados, autenticação e armazenamento de arquivos (fotos, logomarcas ' +
