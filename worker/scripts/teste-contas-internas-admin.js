@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import { handleAdmin } from '../src/admin.js';
 import { montarPreviaOrg, particionarContas, soDeClientes, validarPedidoOrg } from '../src/contasInternas.js';
-import { contextoContasInternas } from '../src/assinaturasPagantes.js';
+import { contextoContasInternas, motivoContaInterna, resumirReceita } from '../src/assinaturasPagantes.js';
 
 let ok = 0;
 async function caso(nome, fn) {
@@ -30,6 +30,7 @@ const LUISA = 'a0000000-0000-4000-8000-000000000002';
 const CLI1 = 'b0000000-0000-4000-8000-000000000001';
 const CLI2 = 'b0000000-0000-4000-8000-000000000002';
 const DONO_ENV = 'c0000000-0000-4000-8000-000000000003'; // e-mail = ADMIN_EMAIL (interna "dono")
+const TESTE = 'e0000000-0000-4000-8000-000000000004'; // +qa2, fora da lista: o placar tem de tirar
 const ORG = 'd0000000-0000-4000-8000-000000000001';
 
 const agora = Date.now();
@@ -40,6 +41,7 @@ const USUARIOS = [
   { id: CLI1, email: 'cliente1@exemplo.test', created_at: iso(1), last_sign_in_at: iso(0), app_metadata: { provider: 'google' }, user_metadata: {}, email_confirmed_at: iso(1) },
   { id: CLI2, email: 'cliente2@exemplo.test', created_at: iso(10), last_sign_in_at: null, app_metadata: { provider: 'email' }, user_metadata: {}, email_confirmed_at: iso(10) },
   { id: DONO_ENV, email: 'dono@exemplo.test', created_at: iso(20), last_sign_in_at: iso(1), app_metadata: { provider: 'email' }, user_metadata: {}, email_confirmed_at: iso(20) },
+  { id: TESTE, email: 'alguem+qa2@gmail.com', created_at: iso(1), last_sign_in_at: iso(0), app_metadata: { provider: 'email' }, user_metadata: {}, email_confirmed_at: iso(1) },
 ];
 const ORCAMENTOS = [
   { user_id: IGOR, status: 'aprovado', valor_total: 1000, criado_em: iso(1) },
@@ -47,6 +49,7 @@ const ORCAMENTOS = [
   { user_id: LUISA, status: 'aprovado', valor_total: 2000, criado_em: iso(1) },
   { user_id: CLI1, status: 'aprovado', valor_total: 300, criado_em: iso(0) },
   { user_id: CLI2, status: 'rascunho', valor_total: 80, criado_em: iso(5) },
+  { user_id: TESTE, status: 'aprovado', valor_total: 9000, criado_em: iso(0) },
 ];
 const CLIENTES_CRM = [{ id: 'x1', user_id: IGOR }, { id: 'x2', user_id: IGOR }, { id: 'x3', user_id: CLI1 }];
 const ATIVIDADES = [
@@ -54,7 +57,12 @@ const ATIVIDADES = [
   { user_id: CLI1, id: 2, evento: 'login', plataforma: 'web', criado_em: iso(0) },
 ];
 // Igor tem um plano PAGO de teste (Pix do dono): não é receita.
-const ASSINATURAS = [{ user_id: IGOR, plano: 'pro', status: 'active', current_period_end: new Date(agora + 20 * 86400000).toISOString(), stripe_subscription_id: 'sub_real_1', stripe_customer_id: 'cus_1' }];
+const FIM = new Date(agora + 20 * 86400000).toISOString();
+const ASSINATURAS = [
+  { user_id: IGOR, plano: 'pro', status: 'active', current_period_end: FIM, stripe_subscription_id: 'sub_real_1', stripe_customer_id: 'cus_1' },
+  { user_id: CLI1, plano: 'pro', status: 'active', current_period_end: FIM, stripe_subscription_id: 'sub_1NxCliente', stripe_customer_id: 'cus_PxCliente' },
+  { user_id: TESTE, plano: 'pro', status: 'active', current_period_end: FIM, stripe_subscription_id: 'sub_1NxTesteQa', stripe_customer_id: 'cus_PxTesteQa' },
+];
 
 const env = {
   SUPABASE_URL: 'https://projeto.supabase.co',
@@ -127,7 +135,7 @@ console.log('Contas internas — módulo puro');
 await caso('particionarContas: interna por id, por e-mail do dono e por lista; lista ilegível = indeterminado, ninguém marcado', () => {
   const ctx = contextoContasInternas({ emailsDono: ['dono@exemplo.test'], exclusoes: [{ user_id: IGOR }], admins: [{ user_id: LUISA }] });
   const p = particionarContas(USUARIOS, ctx, true);
-  assert.deepEqual(p.internas.map((u) => u.id).sort(), [DONO_ENV, IGOR, LUISA].sort());
+  assert.deepEqual(p.internas.map((u) => u.id).sort(), [DONO_ENV, IGOR, LUISA, TESTE].sort());
   assert.deepEqual(p.clientes.map((u) => u.id).sort(), [CLI1, CLI2].sort());
   assert.equal(p.escopo, 'confirmado');
   const sem = particionarContas(USUARIOS, ctx, false);
@@ -135,6 +143,63 @@ await caso('particionarContas: interna por id, por e-mail do dono e por lista; l
   assert.equal(sem.internas.length, 0);
   assert.equal(sem.clientes.length, USUARIOS.length);
   assert.deepEqual(soDeClientes([{ user_id: IGOR }, { user_id: CLI1 }], new Set([IGOR])), [{ user_id: CLI1 }]);
+});
+await caso('etiqueta de teste fora da lista sai do placar; +testemunho, +obra e example.com.br continuam cliente', () => {
+  const ctx = contextoContasInternas({ emailsDono: [], exclusoes: [], admins: [] });
+  const matriz = [
+    ['gogodroidk+z99chromium@gmail.com', 'etiqueta_teste'],
+    [' Alguem+QA2@Gmail.com ', 'etiqueta_teste'],
+    ['x@mailinator.com', 'etiqueta_teste'],
+    ['y@example.com', 'etiqueta_teste'],
+    ['z@example.net', 'etiqueta_teste'],
+    ['w@example.org', 'etiqueta_teste'],
+    ['a@yopmail.com', 'etiqueta_teste'],
+    ['b+teste@gmail.com', 'etiqueta_teste'],
+    ['b+test@gmail.com', 'etiqueta_teste'],
+    ['b+smoke@gmail.com', 'etiqueta_teste'],
+    ['b+probe@gmail.com', 'etiqueta_teste'],
+    ['b+agente@gmail.com', 'etiqueta_teste'],
+    ['b+e2e12@gmail.com', 'etiqueta_teste'],
+    ['maria.silva@gmail.com', null],
+    ['joao+obra@gmail.com', null],
+    ['ana+testemunho@gmail.com', null],
+    ['ana+agendamento@gmail.com', null],
+    ['ana+problema@gmail.com', null],
+    ['ana+qualidade@gmail.com', null],
+    ['teste.silva@gmail.com', null],
+    ['contato@exemplo.com.br', null],
+    ['pessoa@example.com.br', null],
+  ];
+  for (const [email, esperado] of matriz) {
+    assert.equal(motivoContaInterna('u', email, ctx), esperado, email);
+  }
+  const users = [
+    { id: 't1', email: 'alguem+qa2@gmail.com' },
+    { id: 't2', email: 'caixa@mailinator.com' },
+    { id: 'c1', email: 'joao+obra@gmail.com' },
+    { id: 'c2', email: 'pessoa@example.com.br' },
+  ];
+  const p = particionarContas(users, ctx, true);
+  assert.deepEqual(p.internas.map((u) => u.id).sort(), ['t1', 't2']);
+  assert.deepEqual(p.clientes.map((u) => u.id).sort(), ['c1', 'c2']);
+  const fim = new Date(Date.now() + 20 * 86400000).toISOString();
+  const linha = (id) => ({
+    user_id: id, plano: 'pro', status: 'active', current_period_end: fim,
+    stripe_subscription_id: 'sub_1NxProva', stripe_customer_id: 'cus_PxProva',
+  });
+  const receita = resumirReceita({
+    assinaturas: [linha('t1'), linha('c1')],
+    usuarios: [
+      { id: 't1', email: 'alguem+qa2@gmail.com', ultimoUso: new Date().toISOString() },
+      { id: 'c1', email: 'joao+obra@gmail.com', ultimoUso: new Date().toISOString() },
+    ],
+    contexto: ctx,
+    precoMensal: { pro: 39, empresa: 99 },
+  });
+  assert.equal(receita.pagantes, 1, 'só o cliente +obra paga de verdade');
+  assert.equal(receita.manuais, 1, 'o plano da etiqueta +qa2 não vira MRR');
+  assert.equal(receita.mrrEstimado, 39);
+  assert.equal(receita.porPlano.pro, 1);
 });
 await caso('validarPedidoOrg: marcar exige id, confirmação numérica e motivo; desfazer só id', () => {
   assert.equal(validarPedidoOrg({ id: 'x', interna: true, confirmar: 2, motivo: 'equipe' }).erro, 'sem_id');
@@ -164,10 +229,10 @@ try {
     assert.equal(m.escopo, 'confirmado');
     assert.equal(m.internasLegiveis, true);
     assert.equal(m.usuarios, 2, 'só CLI1 e CLI2 são clientes');
-    assert.equal(m.contasInternas, 3, 'igor, luisa e o dono (ADMIN_EMAIL)');
+    assert.equal(m.contasInternas, 4, 'igor, luisa, o dono e a etiqueta +qa2');
     assert.equal(m.orcamentos, 2, 'só os 2 orçamentos dos clientes');
     assert.equal(m.aprovados, 1);
-    assert.equal(m.faturamento, 300, 'o faturamento de 3.000 das internas não entra');
+    assert.equal(m.faturamento, 300, 'o faturamento das internas, inclusive os 9.000 da etiqueta +qa2, não entra');
     assert.equal(m.clientes, 1, 'CRM: só o cliente final do CLI1');
     assert.equal(m.agendamentos, 1);
     assert.equal(m.ativados, 2, 'ativação conta só contas de cliente com orçamento');
@@ -178,9 +243,10 @@ try {
   await caso('receita: o plano pago da conta interna NÃO é pagante nem MRR, e continua aparecendo em "manuais"', async () => {
     const r = await get('metrics');
     assert.equal(r.body.receita.estado, 'ok');
-    assert.equal(r.body.receita.pagantes, 0);
-    assert.equal(r.body.receita.mrrEstimado, 0);
-    assert.equal(r.body.receita.manuais, 1, 'a assinatura do Igor segue visível como plano liberado');
+    assert.equal(r.body.receita.pagantes, 1, 'só CLI1, com id de gateway real');
+    assert.equal(r.body.receita.porPlano.pro, 1);
+    assert.ok(r.body.receita.mrrEstimado > 0);
+    assert.equal(r.body.receita.manuais, 2, 'Igor e a etiqueta +qa2 com plano pago ficam em manuais, fora do MRR');
   });
   await caso('lista de internas ILEGÍVEL: escopo indeterminado, números incluem todas e o painel é avisado (não finge "só clientes")', async () => {
     modo = 'lista_fora';
@@ -196,9 +262,10 @@ try {
   await caso('GET users: cada conta diz se é interna e por quê; lista ilegível = ninguém marcado e aviso', async () => {
     const r = await get('users');
     const por = Object.fromEntries(r.body.users.map((u) => [u.id, u]));
-    assert.deepEqual([por[IGOR].interna, por[LUISA].interna, por[DONO_ENV].interna, por[CLI1].interna, por[CLI2].interna], [true, true, true, false, false]);
+    assert.deepEqual([por[IGOR].interna, por[LUISA].interna, por[DONO_ENV].interna, por[CLI1].interna, por[CLI2].interna, por[TESTE].interna], [true, true, true, false, false, true]);
     assert.equal(por[DONO_ENV].internaMotivo, 'dono');
     assert.equal(por[IGOR].internaMotivo, 'lista_interna');
+    assert.equal(por[TESTE].internaMotivo, 'etiqueta_teste');
     assert.equal(por[CLI1].internaMotivo, '');
     assert.equal(r.body.contasInternasLegiveis, true);
     modo = 'lista_fora';

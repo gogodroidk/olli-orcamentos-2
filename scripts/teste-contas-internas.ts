@@ -73,6 +73,49 @@ const doDono = await Promise.all(['gogodroidk@gmail.com', 'IgorELuisa@Gmail.com'
   (await db.query(`insert into auth.users (email, email_confirmed_at) values ($1, now() - interval '5 days') returning id`, [e])).rows[0].id as string));
 await db.exec(mig);
 await db.exec(mig); // idempotente (inclusive os remendos e a semente)
+// D-0914: conta de TESTE (etiqueta no e-mail ou caixa descartável) nasce interna; e-mail comum segue cliente.
+await db.exec(ler('../supabase/migrations/20261105180000_conta_interna_teste.sql'));
+await db.exec(ler('../supabase/migrations/20261105180000_conta_interna_teste.sql')); // idempotente
+const idTeste = async (e: string) =>
+  (await db.query(`insert into auth.users (email) values ($1) returning id`, [e])).rows[0].id as string;
+{
+  const eh = async (u: string) => ((await db.query('select public.conta_interna($1) r', [u])).rows[0] as { r: boolean }).r;
+  const regra = '\\+(z99[a-z0-9._-]*|(teste|test|qa|e2e|smoke|probe|agente)[0-9]*)@';
+  const dominio = '@(example\\.(com|net|org)|mailinator\\.com|yopmail\\.com)$';
+  const jsRegra = ler('../worker/src/assinaturasPagantes.js');
+  const sqlRegra = ler('../supabase/migrations/20261105180000_conta_interna_teste.sql');
+  igual([jsRegra.includes(regra), sqlRegra.includes(regra), jsRegra.includes(dominio), sqlRegra.includes(dominio)], [true, true, true, true], 'placar e SQL usam a mesma expressão de etiqueta e de domínio');
+  igual(
+    [
+      await eh(await idTeste('gogodroidk+z99chromium@gmail.com')),
+      await eh(await idTeste('Alguem+QA2@Gmail.com')),
+      await eh(await idTeste('x@mailinator.com')),
+      await eh(await idTeste('y@example.com')),
+      await eh(await idTeste('z@example.net')),
+      await eh(await idTeste('w@example.org')),
+      await eh(await idTeste('a@yopmail.com')),
+      await eh(await idTeste('b+teste@gmail.com')),
+      await eh(await idTeste('b+e2e12@gmail.com')),
+    ],
+    [true, true, true, true, true, true, true, true, true],
+    'e-mail com etiqueta de teste ou caixa descartável = conta interna',
+  );
+  igual(
+    [
+      await eh(await idTeste('maria.silva@gmail.com')),
+      await eh(await idTeste('joao+obra@gmail.com')),
+      await eh(await idTeste('teste.silva@gmail.com')),
+      await eh(await idTeste('contato@exemplo.com.br')),
+      await eh(await idTeste('ana+testemunho@gmail.com')),
+      await eh(await idTeste('ana+agendamento@gmail.com')),
+      await eh(await idTeste('ana+problema@gmail.com')),
+      await eh(await idTeste('ana+qualidade@gmail.com')),
+      await eh(await idTeste('pessoa@example.com.br')),
+    ],
+    [false, false, false, false, false, false, false, false, false],
+    'cliente comum (inclusive com +alias que não é de teste) continua cliente',
+  );
+}
 checks++;
 
 const q = async (sql: string, p: unknown[] = []) => (await db.query(sql, p)).rows as any[];
