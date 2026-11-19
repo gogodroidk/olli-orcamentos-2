@@ -133,11 +133,6 @@ const STATUS: StatusOrcamento[] = [
 /** Os mesmos slugs de `STATUS`, num Set — só pra validar o que a URL manda. */
 const STATUS_VALIDOS = new Set<string>(STATUS);
 
-/**
- * O blob, se ele existir DE VERDADE. Um `dados` sem `itens` não é um orçamento —
- * é ruído, e tratá-lo como documento faria o painel salvar um objeto meia-boca por
- * cima do que o cliente tem em mãos.
- */
 /** A linha a partir do orçamento recém-salvo (o passo de envio usa as mesmas ações da lista). */
 function linhaDoOrcamento(o: Orcamento): LinhaOrcamento {
 	return {
@@ -152,6 +147,11 @@ function linhaDoOrcamento(o: Orcamento): LinhaOrcamento {
 	};
 }
 
+/**
+ * O blob, se ele existir DE VERDADE. Um `dados` sem `itens` não é um orçamento —
+ * é ruído, e tratá-lo como documento faria o painel salvar um objeto meia-boca por
+ * cima do que o cliente tem em mãos.
+ */
 function blobDe(linha: LinhaOrcamento): Orcamento | null {
 	const d = linha.dados;
 	if (!d || typeof d !== "object" || !Array.isArray(d.itens)) return null;
