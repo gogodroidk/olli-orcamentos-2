@@ -41,6 +41,14 @@ function pendencia(extra = {}) {
 
 console.log('CAPI server-side');
 
+await caso('fbc com fbclid longo (até 500) vai inteiro; acima do teto é descartado, nunca cortado', async () => {
+  const fbcLongo = `fb.1.1790000000000.IwY2xjaw${'A'.repeat(490)}`;
+  const { evento } = await montarEventoMeta(pendencia({ origem: { fbp: 'fb.1.1790000000000.123456789', fbc: fbcLongo } }), AGORA.getTime());
+  assert.equal(evento.user_data.fbc, fbcLongo);
+  const { evento: e2 } = await montarEventoMeta(pendencia({ origem: { fbc: `fb.1.1790000000000.${'z'.repeat(700)}` } }), AGORA.getTime());
+  assert.equal(e2.user_data.fbc, undefined);
+});
+
 await caso('cadastro: e-mail, telefone e id da conta vão SÓ como SHA-256; nada em claro no evento', async () => {
   const { evento } = await montarEventoMeta(pendencia(), AGORA.getTime());
   assert.equal(evento.event_name, 'CompleteRegistration');
