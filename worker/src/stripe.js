@@ -928,7 +928,11 @@ export async function handleWebhook(request, env) {
 }
 
 // ─── (4) páginas GET /stripe/sucesso e /stripe/cancelado ─────
-function pagina(emoji, titulo, sub, tomOk = true) {
+// Volta ao painel web. O checkout do painel abre na MESMA aba, então sem este botão
+// quem pagou (ou desistiu) pelo navegador ficava preso aqui, sem caminho de volta.
+const PAINEL_PLANOS_URL = 'https://app.olliorcamentos.online/planos';
+
+function pagina(emoji, titulo, sub, tomOk = true, cta = null) {
   const accent = tomOk ? '#15B66E' : '#C0392B';
   const grad = tomOk ? '#0B6FCE' : '#8A93A2';
   return html(`<!DOCTYPE html>
@@ -950,6 +954,7 @@ function pagina(emoji, titulo, sub, tomOk = true) {
   .title{font-family:'Spectral',Georgia,serif;font-size:24px;font-weight:700;margin-top:16px;color:${accent}}
   .sub{font-size:15px;color:#5A6575;margin-top:12px;line-height:1.55}
   .hint{margin-top:26px;font-size:13px;color:#8A93A2;background:#F6F8FB;border:1px solid #EDEFF2;border-radius:14px;padding:14px 16px;line-height:1.5}
+  .cta{display:block;margin-top:24px;background:${grad};color:#fff;text-decoration:none;font-weight:700;font-size:15px;border-radius:14px;padding:14px 18px;min-height:44px}
   .foot{text-align:center;font-size:12px;color:#9AA3B2;margin-top:20px;font-weight:600}
 </style>
 </head>
@@ -961,7 +966,8 @@ function pagina(emoji, titulo, sub, tomOk = true) {
         <div class="emoji">${emoji}</div>
         <div class="title">${esc(titulo)}</div>
         <div class="sub">${sub}</div>
-        <div class="hint">Pode fechar esta janela e voltar para o app OLLI. Suas informações são atualizadas automaticamente.</div>
+        ${cta ? `<a class="cta" href="${esc(cta.href)}">${esc(cta.texto)}</a>` : ''}
+        <div class="hint">Está no app do celular? É só fechar esta janela e voltar para o OLLI. Suas informações são atualizadas automaticamente.</div>
       </div>
     </div>
     <div class="foot">OLLI · o escritório de bolso do prestador</div>
@@ -974,8 +980,9 @@ export function renderSucesso() {
   return pagina(
     '✅',
     'Assinatura confirmada!',
-    'Deu tudo certo com o seu pagamento. Volte ao app OLLI — seus recursos do plano já estão liberados.',
+    'Deu tudo certo com o seu pagamento. Volte ao OLLI — seus recursos do plano já estão liberados.',
     true,
+    { href: PAINEL_PLANOS_URL, texto: 'Voltar para o OLLI' },
   );
 }
 
@@ -983,8 +990,9 @@ export function renderCancelado() {
   return pagina(
     '↩️',
     'Pagamento cancelado',
-    'Nada foi cobrado. Você pode assinar quando quiser, direto pelo app OLLI.',
+    'Nada foi cobrado. Você pode assinar quando quiser, direto pelo OLLI.',
     false,
+    { href: PAINEL_PLANOS_URL, texto: 'Voltar para os planos' },
   );
 }
 
