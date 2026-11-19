@@ -11,6 +11,7 @@ import { spawn } from 'node:child_process';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { CFG, DIR, api, carregarCredenciais, numerosInternos } from './lib.mjs';
 import { criarNucleo } from './nucleo.mjs';
+import { carregarFicha, anexarFicha, tratarEventoParar } from './ficha.mjs';
 
 carregarCredenciais();
 const HOST = process.env.ACORDADOR_HOST || '172.20.0.1';
@@ -44,9 +45,18 @@ await carregarAgentes();
 // fila por agente: um ask de cada vez por terminal
 const filas = new Map();
 
+// Ficha do cliente como nota interna [ficha] ANTES de entregar a conversa ao agente (falha da ficha nunca trava a entrega).
+async function fichaNaConversa(convId) {
+  if (SECO) return;
+  try {
+    const r = await anexarFicha({ api, tok: TOK, c: await api(TOK, `/conversations/${convId}`), ficha: await carregarFicha() });
+    log({ ficha: r.acao, conversa: convId, motivo: r.motivo });
+  } catch (e) { log({ erro: 'ficha', conversa: convId, msg: e.message }); }
+}
+
 function enfileirar(agente, texto, convId) {
   const f = filas.get(agente.terminal) || Promise.resolve();
-  const prox = f.then(() => new Promise((res) => {
+  const prox = f.then(() => fichaNaConversa(convId)).then(() => new Promise((res) => {
     if (SECO) { log({ seco: true, acordaria: agente.terminal, conversa: convId, texto }); return res(); }
     const p = spawn('node', [HIBERNAR, 'ask', agente.terminal, texto], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
@@ -71,7 +81,11 @@ const nucleo = criarNucleo({
     if (ev.conversation?.status === 'pending') await api(TOK, `/conversations/${convId}/toggle_status`, 'POST', { status: 'open' }).catch(() => {});
   },
 });
-const tratar = (ev) => nucleo.tratar(ev);
+const tratar = async (ev) => {
+  // etiqueta parar-contato / resposta "sair-lgpd": apaga a ficha ANTES de qualquer outra regra (vale até para número nosso)
+  if (!SECO) await tratarEventoParar(ev, { api, tok: TOK, ficha: await carregarFicha(), log }).catch((e) => log({ erro: 'parar', msg: e.message }));
+  return nucleo.tratar(ev);
+};
 
 // Sem a lista de números internos não sobe (sem ela o acordador não sabe cortar o laço entre os números da casa).
 try { log({ numerosInternos: numerosInternos().length }); } catch (e) { console.error(`lista de números internos ilegível: ${e.message}`); process.exit(1); }

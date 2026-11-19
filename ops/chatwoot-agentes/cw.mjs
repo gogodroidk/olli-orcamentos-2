@@ -11,15 +11,17 @@
 //   node cw.mjs passar    <AGENTE> <conversa> <PARA> "motivo"   passa ao dono (nota + atribuição)
 //   node cw.mjs etiqueta  <AGENTE> <conversa> <etiqueta> [...]  acrescenta etiquetas (não apaga as que já tem)
 //   node cw.mjs resolver  <AGENTE> <conversa>
+//   node cw.mjs ficha     <AGENTE> <conversa> ["fato"]   sem fato: mostra a ficha do cliente; com fato: registra UM fato (origem = esta conversa)
 // AGENTE = IRIS | CARTEIRA | ACOLHE | DESTRAVA | FECHA | SDR | PROSPECCAO | BRUNO (supervisor) — lista em agentes.json
 import { CFG, api, meuId, agentePorChave, tokenDe, carregarCredenciais, ehNumeroInterno, final4 } from './lib.mjs';
 import { motivosDeBarrar, ehTeste } from './travas.mjs';
+import { carregarFicha, anexarFicha, registrarFato, apagarFicha, pedidoDeParar } from './ficha.mjs';
 
 carregarCredenciais();
 const [cmd, quem, convArg, ...resto] = process.argv.slice(2);
 const sair = (msg, cod = 1) => { console.error(msg); process.exit(cod); };
 const ag = agentePorChave(quem);
-if (!cmd || !ag) sair(`uso: node cw.mjs <fila|novas|ler|responder|nota|pegar|passar|etiqueta|resolver> <AGENTE> [conversa] [...]\nAGENTE: ${CFG.agentes.map((a) => a.chave).join(' | ')}`);
+if (!cmd || !ag) sair(`uso: node cw.mjs <fila|novas|ler|responder|nota|pegar|passar|etiqueta|resolver|ficha> <AGENTE> [conversa] [...]\nAGENTE: ${CFG.agentes.map((a) => a.chave).join(' | ')}`);
 const tok = tokenDe(ag.chave);
 if (!tok) sair(`sem a variável CHATWOOT_TOKEN_${ag.chave}`);
 const caixasPermitidas = new Set(ag.caixas.map((c) => CFG.caixas[c]));
@@ -105,6 +107,8 @@ if (cmd === 'fila') {
   const meu = (await meuId(tok));
   await api(tok, `/conversations/${conv}/assignments`, 'POST', { assignee_id: meu });
   console.log(`ok: #${conv} agora é de ${ag.nome}`);
+  try { const r = await anexarFicha({ api, tok, c: await api(tok, `/conversations/${conv}`), ficha: await carregarFicha() }); console.log(`ficha: ${r.acao}${r.motivo ? ` (${r.motivo})` : ''}`); }
+  catch (e) { console.log(`ficha: não anexada (${e.message})`); } // a ficha nunca derruba o "pegar"
 } else if (cmd === 'passar') {
   const para = agentePorChave(resto[0]);
   if (!para) sair(`PARA inválido: ${CFG.agentes.map((a) => a.chave).join(' | ')}`);
@@ -121,6 +125,24 @@ if (cmd === 'fila') {
   const novas = [...new Set([...(c.labels || []), ...resto])];
   await api(tok, `/conversations/${conv}/labels`, 'POST', { labels: novas });
   console.log(`ok: etiquetas ${novas.join(',')}`);
+  if (pedidoDeParar({ labels: resto })) { // parar-contato: apaga a ficha, grava só o hash e bloqueia nova ficha (LGPD)
+    const r = apagarFicha({ c: { ...c, labels: novas }, ficha: await carregarFicha() });
+    console.log(r.ok ? `ficha apagada e bloqueada (apagou: ${r.apagou}). PARE de contatar este cliente.` : `ficha: nada apagado (${r.motivo}). PARE de contatar este cliente.`);
+  }
+} else if (cmd === 'ficha') {
+  const c = await pegarConversa();
+  const ficha = await carregarFicha();
+  const fato = resto.join(' ').trim();
+  if (!fato) {
+    const linhas = ficha.ver(c.meta?.sender?.phone_number);
+    console.log(linhas.length ? linhas.join('\n') : '(sem ficha)');
+  } else {
+    const r = registrarFato({ c, fato, ficha });
+    if (!r.ok) sair(`RECUSADO: ${r.motivo}`);
+    console.log(r.repetido ? 'ok: esse fato já estava na ficha' : 'ok: fato registrado');
+    const a = await anexarFicha({ api, tok, c, ficha }); // mantém a nota [ficha] da conversa em dia
+    console.log(`nota [ficha]: ${a.acao}`);
+  }
 } else if (cmd === 'resolver') {
   await pegarConversa();
   await api(tok, `/conversations/${conv}/toggle_status`, 'POST', { status: 'resolved' });

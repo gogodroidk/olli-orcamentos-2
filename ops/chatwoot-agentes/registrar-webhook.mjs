@@ -26,8 +26,14 @@ const meu = atuais.find((w) => w.url === url);
 if (process.argv.includes('--remover')) {
   if (meu) await api(TOK, `/webhooks/${meu.id}`, 'DELETE');
   console.log(meu ? `webhook ${meu.id} removido` : 'nada a remover');
-} else if (meu) console.log(`webhook já existe (id ${meu.id}, ${meu.subscriptions.join(',')})`);
+} else if (meu) {
+  // CQ-CENTRAL-FICHA: a etiqueta parar-contato posta na tela do Chatwoot chega como conversation_updated
+  if (!meu.subscriptions.includes('conversation_updated')) {
+    await api(TOK, `/webhooks/${meu.id}`, 'PATCH', { webhook: { subscriptions: [...new Set([...meu.subscriptions, 'conversation_updated'])] } });
+    console.log(`webhook ${meu.id} atualizado: agora também ouve conversation_updated`);
+  } else console.log(`webhook já existe (id ${meu.id}, ${meu.subscriptions.join(',')})`);
+}
 else {
-  const r = await api(TOK, '/webhooks', 'POST', { webhook: { url, subscriptions: ['message_created'], name: 'Acordador dos agentes' } });
+  const r = await api(TOK, '/webhooks', 'POST', { webhook: { url, subscriptions: ['message_created', 'conversation_updated'], name: 'Acordador dos agentes' } });
   console.log(`webhook criado (id ${r.payload?.webhook?.id ?? r.id ?? '?'}) → http://${HOST}:${PORTA}/chatwoot/<segredo>`);
 }
