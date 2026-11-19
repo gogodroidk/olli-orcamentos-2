@@ -11,7 +11,7 @@
  *  4. Landing e FAQ não prometem mais recibo, agenda nem OS no Grátis (CDC: mesma coisa em todo lugar).
  */
 import { readFileSync } from 'node:fs';
-import { avisoMudancaGratis, dataTrancaGratisBR, recursosQueSairamDoGratis } from '../src/services/planosBase.ts';
+import { avisoMudancaGratis, dataTrancaGratisBR, recursosQueSairamDoGratis, ROTULO_RECURSO, tituloRecurso } from '../src/services/planosBase.ts';
 
 let falhas = 0;
 const ok = (nome: string, cond: boolean) => {
@@ -27,6 +27,10 @@ ok('aviso diz o que sai do Grátis', /recibo em PDF/i.test(av.texto) && av.texto
 ok('aviso diz o preço que recebeu (nunca digitado)', av.texto.includes('R$ 39,00 por mês'));
 ok('aviso diz o que continua grátis', /Criar e enviar orçamentos continua grátis/.test(av.texto));
 ok('aviso diz que o já criado continua', /já criou continua/.test(av.texto));
+ok('aviso diz que registrar o pagamento continua grátis (CPO 19/11) e não promete PDF/link grátis', /registrar o pagamento recebido também/.test(av.texto) && !/(PDF|link)[^.]*continua grátis/i.test(av.texto));
+// CPO 19/11: "Preparar nota fiscal" é aberto a todos; o recurso Pro é só a emissão automática pela OLLI, em breve.
+ok('nota fiscal Pro = emissão automática pela OLLI, em breve (nunca "emitir pelo OLLI" como pronto)',
+  /automática/.test(ROTULO_RECURSO.nota_fiscal.titulo) && tituloRecurso('nota_fiscal').endsWith('(em breve)'));
 ok('aviso sem pressão falsa nem "responda SAIR"', !/últimas vagas|só hoje|SAIR/i.test(av.titulo + av.texto));
 ok('frase do que saiu do Grátis', recursosQueSairamDoGratis() === 'recibo em PDF e link, agenda de visitas, ordem de serviço e importar clientes em lote');
 
