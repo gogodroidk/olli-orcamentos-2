@@ -119,6 +119,8 @@ export default defineConfig({
         // /servicos/ é noindex enquanto PAGINA_PUBLICADA=false (data/servicos.ts).
         // Ao publicar de verdade, tire '/servicos/' desta lista no mesmo PR.
         if (['/admin/', '/404/', '/excluir-conta/', '/servicos/'].includes(caminho)) return false;
+        // /loja/<codigo>/ (Balcão OLLI): página de parceria com noindex, não é conteúdo de busca.
+        if (caminho.startsWith('/loja/')) return false;
         if (VARIANTES_DE_ANUNCIO.includes(caminho)) return false;
         if (ALIASES_PARA_FORA.includes(caminho)) return false;
         if (!caminho.startsWith('/blog/')) return true;
