@@ -55,11 +55,28 @@ export const DIAS_VESPERA_TESTE = 3;
 /** Depois de 14 dias do fim, o resumo some (a pessoa já decidiu). */
 export const DIAS_DEPOIS_DO_FIM = 14;
 
+const FORMATO_DIA_BR = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** Dia do calendário de São Paulo como número de dias (UTC meia-noite do mesmo Y-M-D). */
+function diaCivilBr(ms: number): number {
+  const [a, m, d] = FORMATO_DIA_BR.format(ms).split('-').map(Number);
+  return Date.UTC(a, m - 1, d) / DIA_MS;
+}
+
+/**
+ * Dias de CALENDÁRIO (America/Sao_Paulo) até o fim do teste: 0 = hoje, 1 = amanhã.
+ * Nada de `ceil` de 24 h: um teste que acaba hoje às 23h, visto às 10h, é "hoje", não "amanhã".
+ */
 function diasAte(iso: string | null, agora: Date): number | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
-  return Math.ceil((t - agora.getTime()) / DIA_MS);
+  return diaCivilBr(t) - diaCivilBr(agora.getTime());
 }
 
 function quando(dias: number): string {

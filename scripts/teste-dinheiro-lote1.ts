@@ -177,6 +177,21 @@ caso('véspera: teste ativo acabando em até 3 dias', () => {
   assert.equal(r?.titulo, 'Seu teste do Pro acaba amanhã');
   assert.equal(resumoTestePro(base({ trialEstado: 'active', planoEfetivo: 'pro', terminaEm: '2026-11-28T10:00:00Z' })), null, 'longe do fim');
 });
+caso('P2 LIVRE: dias de CALENDÁRIO em São Paulo (acaba hoje à noite = "hoje", não "amanhã")', () => {
+  const v = (agora: string, termina: string) =>
+    resumoTestePro(base({ agora: new Date(agora), trialEstado: 'active', planoEfetivo: 'pro', terminaEm: termina }))?.titulo;
+  // 19/11 10h em SP (13h UTC); o teste acaba 19/11 23h em SP (02h UTC do dia 20).
+  assert.equal(v('2026-11-19T13:00:00Z', '2026-11-20T02:00:00Z'), 'Seu teste do Pro acaba hoje');
+  // acaba amanhã de manhã (20/11 08h em SP), visto 19/11 23h em SP → amanhã
+  assert.equal(v('2026-11-20T02:00:00Z', '2026-11-20T11:00:00Z'), 'Seu teste do Pro acaba amanhã');
+  assert.equal(v('2026-11-19T13:00:00Z', '2026-11-22T13:00:00Z'), 'Seu teste do Pro acaba em 3 dias');
+  // 21h em SP do dia 19 ainda é dia 19 (00h UTC do dia 20 já cruzou em UTC, não em SP)
+  assert.equal(v('2026-11-20T00:30:00Z', '2026-11-20T15:00:00Z'), 'Seu teste do Pro acaba amanhã');
+});
+caso('P2 LIVRE: nenhum texto do limite/resumo promete Pix do plano sem conferir se está ligado', () => {
+  assert.doesNotMatch(ler('../webapp/src/olli/cota-envios.ts').split('export function avisoLimiteEnvios')[1].split('export ')[0], /por Pix|com Pix/);
+  assert.doesNotMatch(ler('../webapp/src/pages/olli/planos/ResumoTesteProCard.tsx'), /pagar com Pix/);
+});
 caso('não mostra para quem já paga, converteu, foi revogado ou acabou há mais de 14 dias', () => {
   assert.equal(resumoTestePro(base({ planoEfetivo: 'pro' })), null);
   assert.equal(resumoTestePro(base({ planoEfetivo: 'empresa' })), null);

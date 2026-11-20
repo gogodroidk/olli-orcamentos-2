@@ -125,7 +125,7 @@ export function ResumoTesteProCard({
 						) : null}
 						{resumo.naoUsou ? <p className="mt-1 text-sm text-text-secondary">{resumo.naoUsou}</p> : null}
 						<p className="mt-2 text-xs text-text-secondary">
-							Seus dados continuam salvos, em qualquer plano. Dá para pagar com Pix.
+							Seus dados continuam salvos, em qualquer plano.
 						</p>
 						<div className="mt-3 flex flex-col gap-2 sm:flex-row">
 							<Button className="min-h-11" onClick={() => (aoPagar ? aoPagar() : navigate(URL_PAGAR_PRO_DO_TESTE))}>
