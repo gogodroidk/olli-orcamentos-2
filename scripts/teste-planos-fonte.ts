@@ -99,6 +99,18 @@ checar('PlanosScreen sem "39"/"99" solto', telaSemLiteralDePreco(tela), true);
 checar('PlanosScreen importa precosPlanos', tela.includes("from '../services/precosPlanos'"), true);
 checar('PlanosScreen usa precoNoPeriodo (derivado)', tela.includes('precoNoPeriodo('), true);
 checar('PlanosScreen usa o rótulo de desconto da fonte', tela.includes('DESCONTO_ANUAL_ROTULO'), true);
+{
+  // Recursos que saíram do Grátis (D-2267) não podem aparecer como ✓ do Grátis nas linhas base da
+  // tabela: a mesma tela os mostra com ✗ nas linhas geradas dos recursos com cadeado.
+  const base = /const LINHAS_BASE[^=]*=\s*\[([\s\S]*?)\n\];/.exec(tela)?.[1] ?? '';
+  const rotulosBase = [...base.matchAll(/rotulo:\s*'([^']+)'/g)].map((m) => m[1]);
+  checar('LINHAS_BASE achou as linhas', rotulosBase.length >= 3, true);
+  checar(
+    'LINHAS_BASE não promete recibos nem agenda no Grátis (D-2267)',
+    rotulosBase.filter((r) => /recibo|agenda/i.test(r)),
+    [],
+  );
+}
 checar('PlanosScreen NÃO faz a conta de desconto na mão', REGEX_DESCONTO_NA_MAO.test(tela), false);
 checar('comparativo derivado de entitlements (temAcessoRecurso)', tela.includes('temAcessoRecurso('), true);
 checar('comparativo varre os recursos gateados da fonte', tela.includes('RECURSOS_GATEADOS'), true);
