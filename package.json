@@ -86,6 +86,7 @@
     "test:banco-conexao": "node scripts/teste-banco-conexao.ts",
     "test:rastreio-nucleo": "node scripts/teste-rastreio-nucleo.ts",
     "test:rastreio-sql": "node scripts/teste-rastreio-sql.ts",
+    "test:numeros-sem-internas-sql": "node scripts/teste-numeros-sem-internas-sql.ts",
     "test:pix-validade": "node scripts/teste-pix-validade.ts",
     "test:ui-v2-nav": "node scripts/teste-ui-v2-nav.ts",
     "test:error-boundary-tela": "node scripts/teste-error-boundary-tela.ts",
