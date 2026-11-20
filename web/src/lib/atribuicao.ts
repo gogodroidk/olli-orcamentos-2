@@ -8,7 +8,8 @@
  * parser e a persistência têm teste unitário (`scripts/teste-atribuicao-marketing.ts`).
  *
  * O QUE GUARDA
- *   utm_source/medium/campaign/content/term + fbclid + gclid, em DOIS toques:
+ *   utm_source/medium/campaign/content/term + fbclid + gclid + cupom (código de
+ *   influenciador, `?cupom=ANA10`), em DOIS toques:
  *   `primeiro` (first-touch: nunca é sobrescrito) e `ultimo` (last-touch: troca a
  *   cada visita que traga parâmetro — visita direta NÃO apaga a campanha).
  *
@@ -54,6 +55,8 @@ export const PARAMETROS_ATRIBUICAO = [
 	"utm_term",
 	"fbclid",
 	"gclid",
+	/** Código de influenciador (`?cupom=ANA10`): só letras e números, 4 a 20, em maiúsculas. */
+	"cupom",
 ] as const;
 
 export type ParametroAtribuicao = (typeof PARAMETROS_ATRIBUICAO)[number];
@@ -110,7 +113,15 @@ function idInteiro(bruto: unknown, max: number): string | null {
 const TAMANHO_MAXIMO_FBP = 200;
 const TAMANHO_MAXIMO_FBC = 600;
 
+/** Código de influenciador: mesmo formato de `cupons_influenciador.codigo`. Fora disso, descarta. */
+export function normalizarCupom(bruto: unknown): string | null {
+	if (typeof bruto !== "string") return null;
+	const codigo = bruto.trim().toUpperCase();
+	return /^[A-Z0-9]{4,20}$/.test(codigo) ? codigo : null;
+}
+
 function lerParametro(chave: string, bruto: unknown): string | null {
+	if (chave === "cupom") return normalizarCupom(bruto);
 	return CHAVES_CLICK_ID.has(chave) ? idInteiro(bruto, TAMANHO_MAXIMO_CLICK_ID) : limparValor(bruto, TAMANHO_MAXIMO_VALOR);
 }
 

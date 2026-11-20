@@ -83,7 +83,7 @@ import {
 } from './adminFerramentas.js';
 import { adminHtml } from './adminPagina.js';
 import { enviarOfertaPro, rotaCandidatasOfertaPro, rotaResumoEmails } from './adminEmails.js';
-import { criarCupom, desativarCupom, resolverDiferenca, rotaListarCupons, rotaListarDiferencas } from './adminCupom.js';
+import { criarCupom, desativarCupom, resolverDiferenca, rotaListarCupons, rotaListarDiferencas, rotaOrigemCupom } from './adminCupom.js';
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
@@ -1204,6 +1204,9 @@ export async function handleAdmin(request, env, url) {
     // Cupom de influenciador: códigos e atribuição por código (só admin + AAL2; mudanças auditadas antes de gravar).
     if (m === 'GET' && p === '/admin/api/cupons') {
       return exigir(user, 'admin', { aal2: true }) || rotaListarCupons(env);
+    }
+    if (m === 'GET' && p === '/admin/api/cupons/origem') {
+      return exigir(user, 'admin', { aal2: true }) || rotaOrigemCupom(env, url);
     }
     if (m === 'POST' && p === '/admin/api/cupons/criar') {
       return exigir(user, 'admin', { aal2: true }) || criarCupom(env, user, body, { auditar });

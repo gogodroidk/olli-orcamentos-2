@@ -169,6 +169,7 @@
     "test:indicacao-texto": "node scripts/teste-indicacao-texto.ts",
     "test:indicacao": "node worker/scripts/teste-indicacao.js",
     "test:cupom-sql": "node scripts/teste-cupom-sql.ts",
+    "test:cupom-origem-sql": "node scripts/teste-cupom-origem-sql.ts",
     "test:cupom": "node worker/scripts/teste-cupom.js",
     "test:admin-cupom": "node worker/scripts/teste-admin-cupom.js",
     "test:cupom-procedimento": "node worker/scripts/teste-cupom-procedimento.js",
