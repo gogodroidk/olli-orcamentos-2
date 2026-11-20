@@ -49,7 +49,16 @@ try {
     window.__enviados = [];
     class WSFalso {
       constructor() { this.readyState = 0; window.__ws = this; setTimeout(() => { this.readyState = 1; this.onopen?.(); }, 10); }
-      send(s) { window.__enviados.push(s); if (String(s).includes('"setup"')) setTimeout(() => this.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) }), 10); }
+      send(s) {
+        window.__enviados.push(s);
+        if (!String(s).includes('"setup"')) return;
+        setTimeout(() => {
+          if (window.__quotaNoSetup) {
+            this.onerror?.();
+            this.onclose?.({ code: 1011, reason: "RESOURCE_EXHAUSTED: quota exceeded" });
+          } else this.onmessage?.({ data: JSON.stringify({ setupComplete: {} }) });
+        }, 10);
+      }
       close() { this.readyState = 3; }
     }
     window.WebSocket = WSFalso;
@@ -119,6 +128,23 @@ try {
   await igorDiz("Sim, pode mandar."); await espera(1000);
   assert.equal(chamadas().length, 0);
   ok("destinatário lido incorretamente: o 'sim' não confirma");
+  const pcm = Buffer.alloc(24000 * 2 * 3).toString("base64");
+  await emitir({ serverContent: {
+    outputTranscription: { text: m3.leitura },
+    modelTurn: { parts: [{ inlineData: { data: pcm, mimeType: "audio/pcm;rate=24000" } }] },
+    turnComplete: true,
+  } });
+  await espera(800);
+  await igorDiz("Sim, pode mandar.");
+  await espera(1000);
+  assert.equal(chamadas().length, 0);
+  await emitir({ serverContent: { interrupted: true } });
+  await espera(800);
+  await igorDiz("Sim, pode mandar.");
+  await espera(1000);
+  assert.equal(chamadas().length, 0);
+  ok("áudio ainda na fila ou interrompido: a leitura não arma confirmação");
+
   // eco: um "sim" colado no fim da fala da voz (< 700 ms) não vale
   await vozDiz("Recado para a Camila: prioriza a campanha da GR Tech amanhã. Confirma?");
   await igorDiz("Sim, pode mandar."); await espera(1500);
@@ -158,12 +184,40 @@ try {
   assert.equal(tokens.length, 3); // m2, m3, m4 (as injeções nem geraram token)
   for (const t of tokens) assert.ok(!tudo.includes(t));
   ok(`nenhum dos ${tokens.length} tokens de confirmação apareceu no que a página mandou ao modelo`);
+  let liberarPreparo;
+  const retido = new Promise((resolve) => { liberarPreparo = resolve; });
+  let chegouPreparo;
+  const emPreparo = new Promise((resolve) => { chegouPreparo = resolve; });
+  await pag.route("**/api/preparar", async (route) => {
+    const response = await route.fetch();
+    chegouPreparo();
+    await retido;
+    await route.fulfill({ response });
+  });
+  await emitir({ toolCall: { functionCalls: [{ id: "m-atrasado", name: "mandar_recado", args: { destino: "a Camila", texto: "Revise a fila" } }] } });
+  await emPreparo;
+  const resume = pag.waitForRequest((r) => r.url().endsWith("/api/token"));
+  await emitir({ goAway: { timeLeft: "1s" } });
+  await resume;
+  await pag.waitForFunction(() => document.querySelector("#status").textContent === "Ouvindo…");
+  liberarPreparo();
+  await espera(250);
+  assert.equal(await pag.isVisible("#cartao"), false);
+  assert.doesNotMatch(await pag.evaluate(() => window.__enviados.join("\n")), /"id":"m-atrasado"/);
+  ok("a retomada descarta preparo pendente e resposta da conexão anterior");
+
+  const antesCota = viaToken;
   await pag.evaluate(() => window.__ws.onclose({ code: 1011, reason: "RESOURCE_EXHAUSTED: quota exceeded" }));
   await pag.waitForFunction(() => /limite do Gemini foi atingido/i.test(document.querySelector("#status").textContent));
   await espera(1700);
-  assert.equal(viaToken, 1);
+  assert.equal(viaToken, antesCota);
   assert.equal(await pag.isVisible("#ligar"), true);
-  ok("limite do Gemini avisa na tela e aguarda novo toque, sem reconectar");
+  ok("limite do Gemini durante a ligação avisa na tela e aguarda novo toque, sem reconectar");
+  await pag.evaluate(() => { window.__quotaNoSetup = true; });
+  await pag.click("#ligar");
+  await pag.waitForFunction(() => /limite do Gemini foi atingido/i.test(document.querySelector("#status").textContent));
+  assert.equal(viaToken, antesCota + 1);
+  ok("limite do Gemini antes do setup mantém a mensagem de cota");
 
   await ctx.close();
 } finally {

@@ -10,15 +10,8 @@ const CONFIRMA = /^\s*(sim|confirmo|confirmado|pode mandar|pode sim|pode ir|mand
 // pergunta embutida (a transcrição nem sempre põe "?"): "ok, como está…", "sim, e a fila" não confirmam
 const PERGUNTA_DENTRO = /\b(o que|como|qual|quais|quando|quem|onde|quant[oa]s?|por ?qu[eê]|me fal\w*|me diz\w*|e a|e o|e os|e as)\b/i;
 const NEGA = /\b(n[ãa]o|nada|cancela|esquece|deixa)\b/i;
-// mesma regra de lib/confirmacao.mjs → cobre: o que a voz leu tem de conter o pedido guardado
-const VAZIAS = new Set("para pela pelo como esta este essa esse isso aqui agora voce voces mais menos muito muita sobre entre depois antes ainda tambem quer quero manda mandar recado salomao igor confirma".split(" "));
-const palavras = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9$]+/g, " ").trim().split(" ").filter(Boolean);
-function cobre(pergunta, texto) {
-  const alvo = [...new Set(palavras(texto).filter((p) => p.length >= 4 && !VAZIAS.has(p)))];
-  const ouvido = new Set(palavras(pergunta));
-  if (!alvo.length) return palavras(pergunta).join(" ").includes(palavras(texto).join(" "));
-  return alvo.filter((p) => ouvido.has(p)).length / alvo.length >= 0.6;
-}
+// A leitura só arma a voz se repetir a frase do servidor, com os mesmos termos, ordem e pontuação.
+const normalizarLeitura = (s) => String(s).normalize("NFC").toLocaleLowerCase("pt-BR").trim().replace(/\s+/g, " ");
 const el = { ligar: $("ligar"), desligar: $("desligar"), mudo: $("mudo"), status: $("status"), tempo: $("tempo"), anel: $("anel"), legenda: $("legenda"),
   cartao: $("cartao"), pedidoTitulo: $("cartao-titulo"), pedidoTexto: $("pedido-texto"), confirmar: $("confirmar"), cancelar: $("cancelar") };
 
@@ -30,6 +23,7 @@ let pend = null;       // { pedido, token, texto, perguntado } — o token NUNCA
 let timerVoz = null, timerPend = null;
 let conexaoPronta = false, filaFerramentas = Promise.resolve();
 const avisos = [];
+let leituraNaFila = "";
 let fimVoz = 0, inicioIgor = 0; // eco no viva-voz (P3 LIVRE): "sim" que chega < 700 ms depois da fala da voz não vale
 const ECO_MS = 700;
 
@@ -59,10 +53,37 @@ function tocar(base64, mime) {
   const f = ctxSom.createBufferSource(); f.buffer = buf; f.connect(ctxSom.destination);
   const agora = ctxSom.currentTime; if (proxTempo < agora + 0.03) proxTempo = agora + 0.03;
   f.start(proxTempo); proxTempo += buf.duration; fontes.push(f);
-  f.onended = () => { fontes = fontes.filter((x) => x !== f); if (!fontes.length && ativo) estado("Ouvindo…", "ouvindo"); };
+  f.onended = () => {
+    fontes = fontes.filter((x) => x !== f);
+    if (!fontes.length && ativo) {
+      estado("Ouvindo…", "ouvindo");
+      if (leituraNaFila) registrarFimVoz(leituraNaFila);
+    }
+  };
   estado("Assistente falando", "falando");
 }
 function calar() { for (const f of fontes) { try { f.stop(); } catch {} } fontes = []; proxTempo = 0; }
+
+function invalidarLeitura() {
+  leituraNaFila = "";
+  if (pend) pend.perguntado = "";
+  clearTimeout(timerVoz);
+}
+
+function registrarFimVoz(frase) {
+  leituraNaFila = "";
+  falaTurno = "";
+  estadoDepois = false;
+  fimVoz = Date.now();
+  inicioIgor = 0;
+  if (pend) {
+    const confere = normalizarLeitura(frase) === normalizarLeitura(pend.leitura);
+    pend.perguntado = confere ? frase : "";
+    if (!confere && PERGUNTOU.test(frase)) {
+      estado("A leitura saiu diferente. Peça para repetir ou confirme na tela.", "ouvindo");
+    }
+  }
+}
 
 function enviar(obj) {
   if (ws?.readyState !== 1) return false;
@@ -101,17 +122,16 @@ async function conectar(retomada) {
     conexaoPronta = false;
     const falhou = (erro) => {
       if (ws !== socket) return;
+      clearTimeout(timerSetup);
       if (!conexaoPronta) falha(erro);
       else {
         conexaoPronta = false;
         if (ativo && !reconectando) void retomar(erro);
       }
     };
+    const timerSetup = setTimeout(() => falhou(new Error("O Google demorou a abrir a ligação.")), 10000);
     socket.onopen = () => {
       if (ws === socket) enviar({ setup: { model: `models/${modelo}`, sessionResumption: handle ? { handle } : {} } });
-    };
-    socket.onerror = () => {
-      if (!conexaoPronta) falhou(new Error("Não consegui conectar ao Google."));
     };
     socket.onclose = (e) => falhou(erroGemini(e));
     socket.onmessage = async (m) => {
@@ -120,6 +140,7 @@ async function conectar(retomada) {
       if (ws !== socket || !ativo) return;
       if (d.error) { falhou(erroGemini(d.error)); return; }
       if (d.setupComplete) {
+        clearTimeout(timerSetup);
         conexaoPronta = true;
         ok();
         if (!retomada) enviar({ realtimeInput: { text: "[A ligação abriu. Cumprimente o Igor e diga que é a assistente da OLLI.]" } });
@@ -132,35 +153,39 @@ async function conectar(retomada) {
         const chamada = ligacao;
         for (const fc of d.toolCall.functionCalls || []) {
           filaFerramentas = filaFerramentas.then(() => {
-            if (ativo && ligacao === chamada && ws === socket) return ferramenta(fc);
+            if (ativo && ligacao === chamada && ws === socket) return ferramenta(fc, socket);
           });
         }
       }
       const sc = d.serverContent; if (!sc) return;
-      if (sc.interrupted) calar();
+      if (sc.interrupted) {
+        invalidarLeitura();
+        calar();
+        falaDele = "";
+        pDele = null;
+      }
       if (sc.inputTranscription?.text) {
         if (!inicioIgor) inicioIgor = Date.now();
         falaTurno = (falaTurno + sc.inputTranscription.text).slice(-300);
         if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${falaTurno.slice(-200)}`;
         agendarVoz();
       }
-      if (sc.outputTranscription?.text) {
+      if (!sc.interrupted && sc.outputTranscription?.text) {
+        if (!falaDele && !leituraNaFila) invalidarLeitura();
         falaDele += sc.outputTranscription.text;
         if (!pDele) pDele = legenda("", "dele"); pDele.textContent = `Assistente: ${falaDele.slice(-260)}`;
         pIgor = null;
       }
-      for (const p of sc.modelTurn?.parts || []) if (p.inlineData?.data) tocar(p.inlineData.data, p.inlineData.mimeType);
-      // falaTurno = só o que o Igor disse depois da última fala da voz
-      if (sc.turnComplete) {
-        pDele = null;
-        if (falaDele.trim()) {
-          falaTurno = ""; estadoDepois = false; fimVoz = Date.now(); inicioIgor = 0;
-          // a voz leu o pedido guardado e perguntou "confirma?": a partir daqui um "sim" do Igor vale
-          if (pend) {
-            pend.perguntado = PERGUNTOU.test(falaDele) && leuDestino(falaDele, pend.para) && cobre(falaDele, pend.texto) ? falaDele : "";
+      if (!sc.interrupted) {
+        for (const p of sc.modelTurn?.parts || []) if (p.inlineData?.data) tocar(p.inlineData.data, p.inlineData.mimeType);
+        if (sc.turnComplete) {
+          pDele = null;
+          if (falaDele.trim()) {
+            if (fontes.length) leituraNaFila = falaDele;
+            else registrarFimVoz(falaDele);
           }
+          falaDele = "";
         }
-        falaDele = "";
       }
     };
   });
@@ -171,6 +196,10 @@ async function retomar(erro) {
   if (erro.status === 429) { await desligar(erro.message); return; }
   reconectando = true;
   conexaoPronta = false;
+  invalidarLeitura();
+  calar();
+  falaDele = "";
+  pDele = null;
   estado("Reconectando…", "pensando");
   const velho = ws;
   ws = null;
@@ -183,11 +212,6 @@ async function retomar(erro) {
   } finally {
     reconectando = false;
   }
-}
-
-function leuDestino(pergunta, para) {
-  const frase = palavras(pergunta).join(" ");
-  return [para, para.replace(/^[oa] /, "")].some((nome) => frase.startsWith(`recado para ${palavras(nome).join(" ")} `));
 }
 
 // "sim" falado: só depois de a voz ler o pedido guardado e perguntar "confirma?", sem leitura do estado no meio
@@ -251,7 +275,7 @@ async function cancelarPedido(motivo) {
   aviso(`Pedido cancelado (${motivo}). Nada foi enviado. Diga isso ao Igor em poucas palavras.`);
 }
 
-async function ferramenta(fc) {
+async function ferramenta(fc, socket) {
   const chamada = ligacao;
   estado("Consultando…", "pensando");
   let resposta;
@@ -261,10 +285,10 @@ async function ferramenta(fc) {
       resposta = { resultado: (await post("estado")).resultado };
     } else if (fc.name === "mandar_recado") {
       const r = await post("preparar", { destino: fc.args?.destino, texto: fc.args?.texto });
-      if (!ativo || ligacao !== chamada) return;
+      if (!ativo || ligacao !== chamada || ws !== socket) return;
       if (r.estado !== "aguardando") resposta = { erro: r.resultado };
       else {
-        pend = { pedido: r.pedido, token: r.token, destino: r.destino, para: r.para, texto: r.texto, perguntado: "" };
+        pend = { pedido: r.pedido, token: r.token, destino: r.destino, para: r.para, texto: r.texto, leitura: r.leitura, perguntado: "" };
         mostrarCartao(pend);
         clearTimeout(timerPend);
         timerPend = setTimeout(() => cancelarPedido("passou o tempo de confirmar"), 170e3);
@@ -276,7 +300,7 @@ async function ferramenta(fc) {
   } catch (e) {
     resposta = { erro: String(e.message || e).slice(0, 200) };
   }
-  if (!ativo || ligacao !== chamada) return;
+  if (!ativo || ligacao !== chamada || ws !== socket) return;
   estado(pend ? "Aguardando confirmação" : "Ouvindo…", "ouvindo");
   enviar({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response: resposta }] } });
 }
@@ -341,9 +365,12 @@ async function ligar() {
 async function limpar() {
   conexaoPronta = false;
   pendentes.clear(); avisos.length = 0;
+  invalidarLeitura();
   calar();
   pend = null; clearTimeout(timerPend); clearTimeout(timerVoz); mostrarCartao(null);
-  try { ws?.close(); } catch {} ws = null;
+  const anterior = ws;
+  ws = null;
+  try { anterior?.close(); } catch {}
   try { fluxo?.getTracks().forEach((t) => t.stop()); } catch {}
   try { ctxMic && (await ctxMic.close()); } catch {}
   try { ctxSom && (await ctxSom.close()); } catch {}

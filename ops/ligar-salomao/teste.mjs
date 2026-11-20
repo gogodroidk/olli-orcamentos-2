@@ -268,6 +268,8 @@ test("token de confirmação: só com ligação + identidade + token certos, uso
   // voz: precisa de "sim" depois de a voz LER o pedido guardado
   assert.equal(K.confirmarPedido({ ...base, token: p.token, via: "voz", fala: "sim", pergunta: "Recado para o Salomão: consulte o calendário. Confirma?" }).motivo, "o que a voz leu não bate com o pedido guardado");
   assert.equal(K.confirmarPedido({ ...base, token: p.token, via: "voz", fala: "ok, como está a empresa?", pergunta: P }).ok, false);
+  assert.equal(K.confirmarPedido({ ...base, token: p.token, via: "voz", fala: "sim", pergunta: P.replace("prioriza", "não prioriza") }).motivo,
+    "o que a voz leu não bate com o pedido guardado");
   const ok = K.confirmarPedido({ ...base, token: p.token, via: "voz", fala: "Sim, pode mandar.", pergunta: P });
   assert.deepEqual(ok, { ok: true, destino: SALOMAO, para: "o Salomão", texto: "prioriza a campanha da GR Tech amanhã", leitura: P }, "o texto enviado é o GUARDADO no servidor");
   assert.match(K.confirmarPedido({ ...base, token: p.token }).motivo, /uso único/, "token não vale 2 vezes");

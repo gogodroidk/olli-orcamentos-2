@@ -27,7 +27,7 @@ const pedidos = new Map(); // id -> { ligacao, dono, destino, texto, hash, criad
 export const donoDe = (identidade) => String(identidade?.chave || "");
 
 const hashToken = (token, p) => createHash("sha256")
-  .update(JSON.stringify([p.ligacao, p.dono, p.destino, p.texto, token])).digest();
+  .update(JSON.stringify([p.ligacao, p.dono, p.destino, p.texto, p.leitura, token])).digest();
 
 export function abrirLigacao(identidade, agora = Date.now()) {
   const dono = donoDe(identidade);
@@ -95,14 +95,7 @@ export function origemSuspeita(texto, l) {
   return "";
 }
 
-/** A pergunta lida em voz cobre o texto guardado? (≥ 60% das palavras com 4+ letras). */
-const VAZIAS = new Set("para pela pelo como esta este essa esse isso aqui agora voce voces mais menos muito muita sobre entre depois antes ainda tambem quer quero manda mandar recado salomao igor confirma".split(" "));
-export function cobre(pergunta, texto) {
-  const alvo = [...new Set(palavras(texto).filter((p) => p.length >= 4 && !VAZIAS.has(p)))];
-  const ouvido = new Set(palavras(pergunta));
-  if (!alvo.length) return palavras(pergunta).join(" ").includes(palavras(texto).join(" "));
-  return alvo.filter((p) => ouvido.has(p)).length / alvo.length >= 0.6;
-}
+const normalizarLeitura = (s) => String(s).normalize("NFC").toLocaleLowerCase("pt-BR").trim().replace(/\s+/g, " ");
 
 /** Cria o pedido pendente. Devolve { ok, pedido, token, texto } ou { ok:false, motivo }. */
 export function prepararPedido(id, identidade, destino, texto, agora = Date.now()) {
@@ -123,10 +116,10 @@ export function prepararPedido(id, identidade, destino, texto, agora = Date.now(
     if (p.ligacao === id && p.estado === "aguardando") p.estado = "cancelado";
   }
   const pedido = randomUUID(), token = randomBytes(32).toString("base64url");
-  const p = { ligacao: id, dono: l.dono, destino: lider.terminal, texto: t, versaoEstado: l.versaoEstado, criado: agora, estado: "aguardando", erros: 0 };
+  const p = { ligacao: id, dono: l.dono, destino: lider.terminal, texto: t, leitura: textoConfirmacao(lider, t), versaoEstado: l.versaoEstado, criado: agora, estado: "aguardando", erros: 0 };
   p.hash = hashToken(token, p);
   pedidos.set(pedido, p);
-  return { ok: true, pedido, token, destino: p.destino, para: lider.fala, texto: t, leitura: textoConfirmacao(lider, t) };
+  return { ok: true, pedido, token, destino: p.destino, para: lider.fala, texto: t, leitura: p.leitura };
 }
 
 /**
@@ -156,12 +149,12 @@ export function confirmarPedido({ ligacao, pedido, token, destino, identidade, v
   if (via === "voz") {
     if (typeof confirmouFn !== "function" || !confirmouFn(fala, pergunta)) return { ok: false, motivo: "a fala não é uma confirmação depois de 'confirma?'" };
     if (!leuDestino(pergunta, lider)) return { ok: false, motivo: "a voz leu outro destinatário; escute o recado novamente" };
-    if (!cobre(pergunta, p.texto)) return { ok: false, motivo: "o que a voz leu não bate com o pedido guardado" };
+    if (normalizarLeitura(pergunta) !== normalizarLeitura(p.leitura)) return { ok: false, motivo: "o que a voz leu não bate com o pedido guardado" };
     // conferido pelo SERVIDOR (não vem do navegador): se a voz leu o estado depois do pedido, o "sim" falado não vale
     if (l.versaoEstado !== p.versaoEstado) return { ok: false, motivo: "o estado da empresa foi lido depois do pedido; confirme no botão da tela" };
   }
   p.estado = "usado";
-  return { ok: true, destino: p.destino, para: lider.fala, texto: p.texto, leitura: textoConfirmacao(lider, p.texto) };
+  return { ok: true, destino: p.destino, para: lider.fala, texto: p.texto, leitura: p.leitura };
 }
 
 export function cancelarPedido(ligacao, pedido, identidade) {

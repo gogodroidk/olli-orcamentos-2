@@ -128,7 +128,7 @@ export const servidor = createServer(async (req, res) => {
       if (!dentroDoLimite("confirmar", 10, 10 * 60e3)) return json(res, 429, { estado: "recusado", resultado: "Muitas confirmações seguidas; nada foi enviado." });
       const c = confirmarPedido({
         ligacao, pedido: b.pedido, token: b.token, destino: b.destino, identidade: quem, via: b.via,
-        fala: limparTexto(b.fala, 300), pergunta: limparTexto(b.pergunta, 600), confirmouFn: confirmou,
+        fala: limparTexto(b.fala, 300), pergunta: limparTexto(b.pergunta, 900), confirmouFn: confirmou,
       });
       if (!c.ok) {
         log("confirmacao_recusada", { motivo: c.motivo, via: String(b.via || "").slice(0, 10) });
