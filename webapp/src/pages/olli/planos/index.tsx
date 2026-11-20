@@ -250,7 +250,7 @@ export default function Planos() {
 	}, [pedidoRenovarPix, pixLigado, planoParaRenovarPix]);
 
 	return (
-		<div className="mx-auto w-full max-w-6xl p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] p-4 md:p-6">
 			<header className="mb-5">
 				<h1 className="text-2xl font-bold tracking-tight text-text-primary">Planos</h1>
 				<p className="mt-1 text-sm text-text-secondary">Sua assinatura e o que cada plano libera.</p>

@@ -437,7 +437,7 @@ export default function CentralDeDadosPage() {
 	}
 
 	return (
-		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] p-4 md:p-6">
 			<AutopilotPanel referencias={referenciasAutopilot} onUsarNoOrcamento={levarAutopilotAoOrcamento} onConfirmarCatalogo={confirmarAutopilotCatalogo} />
 			<div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 				<div><h1 className="text-2xl font-bold tracking-tight text-text-primary">Central de dados</h1><p className="mt-1 max-w-2xl text-sm text-text-secondary">Leve seu cadastro com você. Importações passam por prévia e nunca apagam registros ou reprecificam orçamentos já emitidos.</p></div>

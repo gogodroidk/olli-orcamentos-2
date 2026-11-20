@@ -66,7 +66,7 @@ export default function IntegracoesPage() {
 	const emBreve = listarEmBreve();
 
 	return (
-		<div className="mx-auto w-full max-w-6xl space-y-8 p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] space-y-8 p-4 md:p-6">
 			<header className="rounded-2xl border border-primary/20 bg-primary/5 p-5 md:p-7">
 				<div className="flex items-center gap-2.5">
 					<Plug className="size-6 text-primary" aria-hidden="true" />

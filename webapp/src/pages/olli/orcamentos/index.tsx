@@ -667,7 +667,7 @@ export default function OrcamentosPage() {
 	/* ────────────────────────────────  Render  ───────────────────────────────── */
 
 	return (
-		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] p-4 md:p-6">
 			{/* ─────────────  Cabeçalho  ───────────── */}
 			<div className="mb-5 flex flex-col gap-4">
 				<div className="flex flex-wrap items-end justify-between gap-3">

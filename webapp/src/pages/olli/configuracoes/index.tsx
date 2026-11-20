@@ -163,7 +163,7 @@ export default function ConfiguracoesPage() {
 	}
 
 	return (
-		<div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6">
 			<header>
 				<div className="flex items-center gap-2.5"><span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Settings2 className="size-5" /></span><h1 className="text-2xl font-bold text-text-primary">Configurações</h1></div>
 				<p className="mt-1 text-sm text-text-secondary">Empresa, dados, aparência, privacidade e cobrança em um só lugar.</p>

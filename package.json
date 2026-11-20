@@ -272,6 +272,7 @@
     "test:auth-lifecycle": "node scripts/teste-auth-lifecycle.ts",
     "test:oauth-retorno": "node scripts/teste-oauth-retorno.ts",
     "test:acesso-codigo": "node scripts/teste-acesso-codigo.ts",
+    "test:seguranca-conta": "node scripts/teste-seguranca-conta.ts",
     "test:dataset-policy": "node scripts/teste-dataset-policy.ts",
     "test:ia-quota": "node scripts/teste-ia-quota.ts",
     "test:voz-conversa": "node scripts/teste-voz-conversa.ts",

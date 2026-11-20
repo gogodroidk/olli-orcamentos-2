@@ -61,7 +61,9 @@ const Main = () => {
 					"px-4 sm:px-6 py-4 sm:py-6 md:px-8 mx-auto",
 					{
 						"max-w-full": themeStretch,
-						"xl:max-w-screen-xl": !themeStretch,
+						// Antes: xl:max-w-screen-xl (1280px) — em monitor grande sobravam ~350px vazios de cada lado
+						// (pedido do dono, áudio de 27/10). Teto largo só para linha de leitura não esticar demais.
+						"max-w-[1680px]": !themeStretch,
 					},
 				)}
 				style={{

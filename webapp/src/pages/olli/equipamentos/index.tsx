@@ -245,7 +245,7 @@ export default function EquipamentosPage() {
 		!!busca.trim() || filtroSituacao !== "todas" || filtroCliente !== "todos" || filtroCategoria !== "todas";
 
 	return (
-		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] p-4 md:p-6">
 			{/* ── Cabeçalho ── */}
 			<div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 				<div className="min-w-0">
