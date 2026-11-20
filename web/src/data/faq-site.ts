@@ -37,7 +37,7 @@ export const FAQ: Record<string, Faq> = {
 	plataformas: {
 		id: "plataformas",
 		q: "Funciona no celular e no computador?",
-		a: "Sim, com a mesma conta. O app Android está na Google Play. No iPhone e no computador, você usa pelo navegador; o app da App Store chega em breve.",
+		a: "Sim, com a mesma conta. O app Android está na Google Play. No iPhone e no computador, você usa pelo navegador.",
 	},
 	aprova: {
 		id: "aprova",

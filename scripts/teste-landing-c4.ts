@@ -32,6 +32,10 @@ assert.match(dadosSite, /URL_PLAY = "https:\/\/play\.google\.com\/store\/apps\/d
 assert.match(home, /target="_blank"[\s\S]*?rel="noopener"/, 'link externo da Play abre com isolamento da aba');
 const faqSite = ler('../web/src/data/faq-site.ts');
 assert.match(faqSite, /No iPhone e no computador, você usa pelo navegador/, 'landing deixa claro que no iPhone se usa o navegador');
-assert.match(faqSite, /app da App Store chega em breve/, 'landing não anuncia app de iPhone como disponível');
+// D-2876 (LIVRE/CTO, 20/11): prazo de App Store é promessa sem controle (conta da Apple em análise) — não aparece em texto nem em selo.
+const rodapeSite = ler('../web/src/components/site/SiteFooter.astro');
+for (const [nome, fonte] of [['home', home], ['faq', faqSite], ['rodapé', rodapeSite]] as const) {
+  assert.doesNotMatch(fonte, /App Store chega|App Store: em breve|em breve na App Store|app-store\.svg/i, `${nome}: não promete App Store`);
+}
 
 console.log('OK — landing multi-vertical, rota genérica e descoberta por agentes validadas.');

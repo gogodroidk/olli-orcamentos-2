@@ -30,3 +30,6 @@ footer .grid a { display: flex; }
 /* Celular: título, texto e botão ANTES da foto. Com a foto primeiro, o botão "Começar grátis" ficava atrás do aviso de
    cookies (ou abaixo da dobra) na primeira visita — medido em 360x740, 390x844 e 412x915. Em tela larga a foto segue ao lado. */
 @media (max-width: 699px) { .hero .hg > .hero-vis { order: 2 !important; margin-top: 8px; } }
+
+/* Foto do topo é pessoa gerada por IA: marca visível "Ilustração" (régua D-2874). O rodapé também diz. */
+.selo-ilustracao { position: absolute; left: 14px; bottom: 10px; z-index: 6; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.3; letter-spacing: .01em; background: color-mix(in srgb, var(--bg) 82%, transparent); color: var(--ink, currentColor); box-shadow: 0 0 0 1px var(--line); backdrop-filter: blur(6px); pointer-events: none; }
