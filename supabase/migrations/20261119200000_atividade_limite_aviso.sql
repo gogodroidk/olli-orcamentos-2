@@ -13,6 +13,11 @@
 --
 -- NÃO APLICADA. Depende da 20261119080000 já estar no banco (está em produção desde 19/11 08h).
 -- Rollback: reaplicar a 20261119080000 (mesma CHECK e função, sem os 2 eventos).
+-- UNIÃO (TECH — CTO, 19/11 23h): #421 e #424 reescrevem a mesma CHECK e a mesma função. Para nenhuma apagar
+-- os eventos da outra, as DUAS trazem os 4 eventos novos (lista de produção lida por pg_get_constraintdef
+-- em 19/11 22h58 = os 15 da 20261119080000 + estes 4). Qualquer ordem de aplicação deixa os 19.
+-- Rollback das duas: delete from public.user_activity_log where evento in ('envio_barrado_cadastro',
+--   'envio_barrado_sem_whatsapp', 'limite_aviso_visto', 'limite_aviso_pagar_clicado'); e reaplicar a 20261119080000.
 begin;
 
 alter table public.user_activity_log
@@ -24,6 +29,7 @@ alter table public.user_activity_log
     'ativacao_card_visto', 'ativacao_card_clicado', 'oficio_escolhido',
     'orcamento_novo_aberto', 'empresa_salva', 'orcamento_enviado',
     'planos_visto', 'plano_pagar_clicado', 'orcamento_salvar_barrado',
+    'envio_barrado_cadastro', 'envio_barrado_sem_whatsapp',
     'limite_aviso_visto', 'limite_aviso_pagar_clicado'
   ));
 
@@ -45,6 +51,7 @@ begin
     'ativacao_card_visto', 'ativacao_card_clicado', 'oficio_escolhido',
     'orcamento_novo_aberto', 'empresa_salva', 'orcamento_enviado',
     'planos_visto', 'plano_pagar_clicado', 'orcamento_salvar_barrado',
+    'envio_barrado_cadastro', 'envio_barrado_sem_whatsapp',
     'limite_aviso_visto', 'limite_aviso_pagar_clicado'
   ) then
     raise exception 'evento_invalido';
