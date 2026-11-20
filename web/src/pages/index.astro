@@ -1,7 +1,6 @@
 ---
 import EsteiraTelas from "../components/EsteiraTelas.astro";
 import Footer from "../components/Footer.astro";
-import FotoPrestador from "../components/FotoPrestador.astro";
 import Header from "../components/Header.astro";
 import HeroDevices from "../components/HeroDevices.tsx";
 import Icone from "../components/Icone.astro";
@@ -18,7 +17,11 @@ import {
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
 import { FRASE_GRATIS, recursosQueSairamDoGratis } from "../data/recursos";
-import { AVISO_ILUSTRATIVA, FOTOS, ORDEM_HOME } from "../data/fotos";
+import { EMPRESA, identidadePublicavel } from "../data/empresa";
+
+const identidade = identidadePublicavel();
+const WHATSAPP_URL = `https://wa.me/${EMPRESA.whatsapp}`;
+const CONSULTA_CNPJ = "https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
 const APP_URL = "https://app.olliorcamentos.online";
@@ -424,26 +427,53 @@ const schemaFaq = {
        em cada foto (CDC) e também no alt. Sem depoimento, sem nome, sem "nosso técnico", sem número.
        Cada cartão leva à página do ofício; oficina e limpeza não têm vertical própria e vão para a página
        "qualquer serviço", que já diz a verdade sobre o que a OLLI entrega nesses casos. */}
-  <section class="mx-auto max-w-7xl px-6 pb-24" aria-labelledby="quem-executa">
+  <section class="mx-auto max-w-7xl px-6 pb-24" aria-labelledby="da-pra-conferir">
+    {/* ANTES: seis fotos de pessoas geradas por IA com aviso. Seriedade não vem de rosto
+         de banco de imagem: vem de coisa que o visitante consegue CONFERIR. Esta seção só
+         usa fatos que moram na fonte (planos.ts, empresa.ts) e que já estão na página.
+         Nenhum depoimento, nenhum número de cliente, nenhuma pessoa: o acervo da OLLI não
+         tem foto real de cliente, e foto de IA segurando o produto não é prova (CDC art. 37). */}
     <div class="mx-auto max-w-2xl text-center">
-      <span class="eyebrow">Pensado pra quem executa</span>
-      <h2 id="quem-executa" class="mt-4 text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">
-        Do quadro de luz à oficina.
+      <span class="eyebrow">Dá pra conferir</span>
+      <h2 id="da-pra-conferir" class="mt-4 text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">
+        Preço na tela, empresa com CNPJ e o que ainda não existe, dito de frente.
       </h2>
-      <p class="mt-4 text-lg leading-relaxed text-slate">
-        O ciclo é o mesmo em qualquer serviço: orçamento, ordem de serviço e recibo, no celular.
-      </p>
     </div>
-    <ul class="mt-10 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
-      {ORDEM_HOME.map((chave) => (
-        <li>
-          <a href={FOTOS[chave].href} class="group block min-h-11 transition hover:-translate-y-1">
-            <FotoPrestador chave={chave} aviso={false} sizes="(min-width:1024px) 190px, (min-width:768px) 30vw, 46vw" />
-            <span class="mt-3 block text-base font-bold text-ink group-hover:text-brand-fg">{FOTOS[chave].rotulo}</span>
-            <span class="mt-0.5 block text-xs leading-snug text-muted">{AVISO_ILUSTRATIVA}</span>
-          </a>
-        </li>
-      ))}
+    <ul class="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <li class="rounded-bloco border border-line bg-card p-6 shadow-e1">
+        <h3 class="text-base font-bold text-ink">Preço publicado</h3>
+        <p class="mt-2 text-sm leading-relaxed text-slate">
+          Grátis sem prazo. Pro {reais(PRECO_PRO.mensalCentavos)}/mês e Empresa {reais(PRECO_EMPRESA.mensalCentavos)}/mês.
+          Sem consultor no meio.
+        </p>
+        <a href="/planos/" class="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2">Ver todos os planos</a>
+      </li>
+      <li class="rounded-bloco border border-line bg-card p-6 shadow-e1">
+        <h3 class="text-base font-bold text-ink">Empresa registrada</h3>
+        {identidade ? (
+          <p class="mt-2 text-sm leading-relaxed text-slate">
+            {identidade.razaoSocial}<br />CNPJ <span class="tnum">{identidade.cnpj}</span>
+          </p>
+        ) : (
+          <p class="mt-2 text-sm leading-relaxed text-slate">Os dados da empresa ficam no rodapé desta página.</p>
+        )}
+        <a href={CONSULTA_CNPJ} target="_blank" rel="noopener noreferrer" class="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2">Consultar na Receita<span class="sr-only"> (abre em nova guia)</span></a>
+      </li>
+      <li class="rounded-bloco border border-line bg-card p-6 shadow-e1">
+        <h3 class="text-base font-bold text-ink">Seus dados são seus</h3>
+        <p class="mt-2 text-sm leading-relaxed text-slate">
+          Você pode exportar e excluir quando quiser, conforme a LGPD.
+        </p>
+        <a href="/legal/privacidade/" class="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2">Ler a política de privacidade</a>
+      </li>
+      <li class="rounded-bloco border border-line bg-card p-6 shadow-e1">
+        <h3 class="text-base font-bold text-ink">O que ainda não existe</h3>
+        <p class="mt-2 text-sm leading-relaxed text-slate">
+          Aplicativo só para Android, em teste fechado; nada para iPhone ainda. A OLLI não emite nota fiscal.
+          Atendimento em dias úteis pelo WhatsApp.
+        </p>
+        <a href={WHATSAPP_URL} class="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2">WhatsApp {EMPRESA.whatsappLegivel}</a>
+      </li>
     </ul>
   </section>
 
