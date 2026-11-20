@@ -4,7 +4,7 @@
   "max_tokens_saida": 400,
   "tarifa_usd_por_milhao": {"entrada": 0.10, "saida": 0.50},
   "dolar_em_reais": 6.0,
-  "teto_diario_reais": 10,
+  "teto_diario_reais": 2,
   "caixas_permitidas": [3, 4],
   "caixas_proibidas": [2, 5],
   "autonomo": {

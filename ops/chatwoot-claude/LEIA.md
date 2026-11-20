@@ -16,7 +16,7 @@ Para o **chefe de tecnologia** (instalar) e o **revisor** (conferir). Código: b
 - **Contato frio:** o serviço só reage a mensagem de cliente que chega; o CLI `responder` recusa conversa em que o cliente ainda não escreveu. Logo o número de atendimento do app nunca inicia contato.
 - **Preço só da tabela** (`precos.json`, com vigência por data: R$ 997 do Site vale até 19/11 20h29; R$ 1.397 a partir das 20h30 (janela do Salomão); Pro R$ 39, Empresa R$ 99). Qualquer R$ fora da tabela barra a resposta. Conversa com etiqueta `preco-combinado` não recebe sugestão de preço.
 - **Prazo, resultado, nº de clientes, %:** barrados se não vierem da tabela.
-- **Teto diário** (`teto_diario_reais`, padrão **R$ 10**): ao bater, **não chama a API**, põe etiqueta `claude-teto` e volta ao sombra. Gasto por conversa em `gasto.jsonl` (`node cwc.mjs gasto`).
+- **Teto diário** (`teto_diario_reais`, nesta fase **R$ 2** (~740 sugestões a R$ 0,0027; Salomão, 20/11): ao bater, **não chama a API**, põe etiqueta `claude-teto` e volta ao sombra. Gasto por conversa em `gasto.jsonl` (`node cwc.mjs gasto`).
 - Resposta torta, recusa do modelo ou erro de API: nota "fica com humano" + `claude-humano`.
 
 ## Conferir (revisor, 1 minuto, sem rede e sem gasto)
