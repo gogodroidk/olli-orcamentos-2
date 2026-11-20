@@ -137,6 +137,15 @@ O plano anual sai mais barato que o mensal. O Grátis é ${GRATIS_CONDICAO}; dep
 ${pagamento}
 Comparativo completo dos planos: ${ORIGEM}/planos/
 
+## Páginas do site
+
+- [Recursos](${ORIGEM}/como-funciona/): orçamento, atendimento, clientes, agenda e equipe, com o que é de cada plano.
+- [Para técnicos](${ORIGEM}/para/): o fluxo do prestador autônomo, da proposta ao recibo.
+- [Para empresas](${ORIGEM}/para-empresas/): técnicos com permissões, PMOC e contratos de manutenção (plano Empresa).
+- [Planos e preços](${ORIGEM}/planos/): Grátis, Pro e Empresa, mensal e anual.
+- [Dúvidas](${ORIGEM}/duvidas/): respostas curtas sobre limites, pagamento, Android, iPhone e conta.
+- [Central de ajuda](${ORIGEM}/ajuda/): guias passo a passo.
+
 ## Páginas por ofício
 
 ${oficios}

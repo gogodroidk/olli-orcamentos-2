@@ -15,7 +15,8 @@ export interface Faq {
 }
 
 const semPonto = (t: string) => t.replace(/\.$/, "");
-const minuscula = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+/** Minúscula na primeira letra, exceto sigla (PMOC) — "pMOC" seria erro de texto. */
+const minuscula = (t: string) => (/^[A-ZÀ-Ý]{2}/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1));
 const bulletEmpresa = (trecho: string) => planoBase("empresa").bullets.find((b) => b.texto.includes(trecho) && !b.emBreve)?.texto;
 /** "vários técnicos e permissões por papel, PMOC e contratos de manutenção" — só o que a fonte diz que o Empresa tem. */
 const equipeEmpresa = [bulletEmpresa("técnicos"), bulletEmpresa("PMOC")].filter((x): x is string => !!x).map((t) => minuscula(semPonto(t)));
@@ -71,7 +72,7 @@ export const FAQ: Record<string, Faq> = {
 	offline: {
 		id: "offline",
 		q: "O que funciona sem internet?",
-		a: "A consulta de códigos de erro funciona offline. Isso não significa que todos os recursos do app estejam disponíveis sem conexão.",
+		a: "No app Android, a consulta de códigos de erro funciona offline; no navegador é preciso estar online. Isso não significa que todos os recursos do app estejam disponíveis sem conexão.",
 	},
 	pmoc: {
 		id: "pmoc",

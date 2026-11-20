@@ -414,7 +414,7 @@ export const SEGMENTOS_SITE: Record<string, SegmentoSite> = {
 		"cards": [
 			{
 				"h": "Código de erro sem internet",
-				"p": "Consulte os códigos de erro mesmo sem sinal. A Oli, assistente de IA do app, apoia o diagnóstico dentro do limite do seu plano."
+				"p": "No app Android, consulte os códigos de erro mesmo sem sinal. A Oli, assistente de IA do app, apoia o diagnóstico dentro do limite do seu plano."
 			},
 			{
 				"h": "Aprovação pelo link",
