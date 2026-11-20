@@ -1,0 +1,27 @@
+{
+  "_leia": "Entregue em MODO SOMBRA. Só mude 'autonomo.ligado' para true depois do parecer do Salomão/Igor.",
+  "modelo": "claude-haiku-5-5",
+  "max_tokens_saida": 400,
+  "tarifa_usd_por_milhao": {"entrada": 0.10, "saida": 0.50},
+  "dolar_em_reais": 6.0,
+  "teto_diario_reais": 2,
+  "caixas_permitidas": [3, 4],
+  "caixas_proibidas": [2, 5],
+  "autonomo": {
+    "ligado": false,
+    "caixas": [],
+    "tipos": []
+  },
+  "tipos_de_pergunta": ["saudacao", "preco", "como-funciona", "suporte-app", "outro"],
+  "etiquetas": {
+    "sugestao": "claude-sugestao",
+    "respondeu": "claude-respondeu",
+    "humano": "claude-humano",
+    "parar": "parar-contato",
+    "teto": "claude-teto"
+  },
+  "preco_combinado_etiqueta": "preco-combinado",
+  "historico_mensagens": 15,
+  "numeros_internos": "/home/igor/chatwoot-central/data/numeros-internos.json",
+  "porta": 3025
+}
