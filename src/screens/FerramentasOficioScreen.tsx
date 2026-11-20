@@ -10,7 +10,7 @@ import { GradientHeader } from '../components/GradientHeader';
 import { OlliInput } from '../components/OlliInput';
 import { OlliButton } from '../components/OlliButton';
 import { OlliCard } from '../components/OlliCard';
-import { calculosDoOficio, type CalculoOficio, type CampoCalc } from '../services/calculosOficio';
+import { calculosDoOficio, prefillDoItemCalculo, type CalculoOficio, type CampoCalc } from '../services/calculosOficio';
 import { useVerticais } from '../hooks/useVerticais';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
@@ -58,7 +58,7 @@ export default function FerramentasOficioScreen() {
     const item = resultado?.itemOrcamento;
     if (!item) return;
     nav.navigate('NovoOrcamento', {
-      prefillItem: { tipo: 'produto', nome: item.nome, descricao: item.descricao },
+      prefillItem: prefillDoItemCalculo(item),
     });
   }
 
