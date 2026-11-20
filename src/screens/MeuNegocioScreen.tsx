@@ -85,6 +85,14 @@ const GARANTIAS_PADRAO: { dias: number; label: string; texto: string }[] = [
   },
 ];
 
+
+/**
+ * Dica do campo "Chave Pix" no app. Verdadeira em qualquer plano: diz onde a chave vai
+ * sempre e que, no link do orçamento, o cliente só paga ali mesmo no Pro/Empresa.
+ */
+export const HELPER_CHAVE_PIX_APP =
+  'Vai no recibo e na cobrança pelo WhatsApp. No link do orçamento, o cliente paga ali mesmo só nos planos Pro e Empresa; no Grátis, ele combina o pagamento com você. O dinheiro cai direto na sua conta — a OLLI não passa por ele.';
+
 export default function MeuNegocioScreen() {
   // Identidade comercial da empresa: marca, preços/garantia padrão e dados que vão
   // em todo PDF — camada de valores do negócio que o contrato nega ao técnico.
@@ -731,7 +739,10 @@ const [empresa, setEmpresa] = useState<Empresa | null>(null);
             error={empresa.chavePix.trim() && !normalizarChavePix(empresa.chavePix)
               ? 'Não reconhecemos essa chave. Use CPF, CNPJ, e-mail, celular com DDD ou a chave aleatória — até corrigir, as cobranças vão sem Pix.'
               : undefined}
-            helper="Vai no recibo, na cobrança pelo WhatsApp e no link do orçamento depois que o cliente aprova. O dinheiro cai direto na sua conta — a OLLI não passa por ele."
+            // CDC (CQ-DINHEIRO-LOTE1): o Pix no LINK do orçamento é só do Pro/Empresa
+            // (`link_pagamento`); no Grátis a página diz "combine a forma de pagamento".
+            // Texto de loja: sem preço e sem "Pix" junto do nome do plano (`lojaRegras`).
+            helper={HELPER_CHAVE_PIX_APP}
             leftIcon="key-variant"
           />
           <OlliInput label="Normas técnicas" value={empresa.normas} onChangeText={v => set('normas', v)} multiline containerStyle={{ marginBottom: 0 }} />
