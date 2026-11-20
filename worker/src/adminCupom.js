@@ -87,3 +87,13 @@ export async function resolverDiferenca(env, actor, body, { auditar, fetchImpl =
   if (!r.ok) return resp({ ok: false, erro: r.status === 404 ? 'cupom_sem_migration' : 'cupom_indisponivel' }, 503);
   return resp({ ok: true, cobrancaId, baixada: r.dados === true });
 }
+
+/** GET /admin/api/cupons/origem?codigo=ANA10 → { codigo, cadastros, orcaram, pagaram } (só contagem, sem dado pessoal). */
+export async function rotaOrigemCupom(env, url, { fetchImpl = fetch } = {}) {
+  const codigo = normalizarCodigoCupom(url.searchParams.get('codigo'));
+  if (!codigo) return resp({ ok: false, erro: 'codigo_invalido' }, 400);
+  const r = await rpc(env, 'cupom_origem_funil', { p_codigo: codigo }, fetchImpl);
+  const linha = Array.isArray(r.dados) ? r.dados[0] : null;
+  if (!r.ok || !linha) return resp({ ok: false, erro: r.status === 404 ? 'cupom_sem_migration' : 'cupom_indisponivel' }, 503);
+  return resp({ ok: true, codigo, cadastros: Number(linha.cadastros) || 0, orcaram: Number(linha.orcaram) || 0, pagaram: Number(linha.pagaram) || 0 });
+}

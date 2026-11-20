@@ -4,7 +4,7 @@
  * Prende: validação ANTES de auditar; auditoria antes de gravar (sem auditoria = 503 e nada gravado);
  * limites espelham a migration; a atribuição só traz código e contagens; "não sei" = 503.
  */
-import { criarCupom, desativarCupom, resolverDiferenca, rotaListarDiferencas, rotaListarCupons, CUPOM_USOS_MAX, CUPOM_VALIDADE_DIAS_MAX } from '../src/adminCupom.js';
+import { criarCupom, desativarCupom, resolverDiferenca, rotaListarDiferencas, rotaListarCupons, rotaOrigemCupom, CUPOM_USOS_MAX, CUPOM_VALIDADE_DIAS_MAX } from '../src/adminCupom.js';
 import { CUPOM_USOS_MAX as USOS_APP, CUPOM_VALIDADE_DIAS_MAX as DIAS_APP } from '../../src/services/limitesComerciais.ts';
 
 let ok = 0; let falhas = 0;
@@ -86,6 +86,19 @@ checar('baixa sem motivo = 400 e nada gravado', r.status === 400 && !chamadas.le
 reset(); auditoriaOk = false;
 r = await resolverDiferenca(env, admin, { cobrancaId: 'bill_2', motivo: 'resolvido' }, { auditar, fetchImpl });
 checar('baixa sem auditoria = 503 e nada gravado', r.status === 503 && !chamadas.length);
+
+reset(); rpcs.cupom_origem_funil = [{ codigo: 'ANA10', cadastros: '7', orcaram: '3', pagaram: '1' }];
+r = await rotaOrigemCupom(env, new URL('https://x/admin/api/cupons/origem?codigo=ana10'), { fetchImpl }); j = await r.json();
+checar('origem por código: só contagens, código normalizado', r.status === 200 && j.cadastros === 7 && j.orcaram === 3 && j.pagaram === 1 && rpcFeita('cupom_origem_funil').body.p_codigo === 'ANA10' && !('email' in j) && !('user_id' in j));
+reset();
+r = await rotaOrigemCupom(env, new URL('https://x/admin/api/cupons/origem?codigo=a-1'), { fetchImpl });
+checar('origem com código inválido = 400 e banco intocado', r.status === 400 && !chamadas.length);
+reset();
+r = await rotaOrigemCupom(env, new URL('https://x/admin/api/cupons/origem?codigo=ANA10'), { fetchImpl });
+checar('origem com banco fora = 503 (não sei ≠ zero cadastros)', r.status === 503);
+reset(); rpcs.cupom_origem_funil = '404';
+r = await rotaOrigemCupom(env, new URL('https://x/admin/api/cupons/origem?codigo=ANA10'), { fetchImpl }); j = await r.json();
+checar('origem sem a migration = cupom_sem_migration', r.status === 503 && j.erro === 'cupom_sem_migration');
 
 console.log(`\n${ok} ok, ${falhas} falha(s)`);
 process.exit(falhas ? 1 : 0);

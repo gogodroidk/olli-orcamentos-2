@@ -521,4 +521,18 @@ assert.deepEqual(await processarConversoesAnuncios(envSemSegredo, { forcar: true
 assert.deepEqual(await processarConversoesAnuncios(envSemSegredo, { forcar: true, agora: new Date(AGORA), fetchImpl: fetchComVault(new Response('x', { status: 500 })) as unknown as typeof fetch }), { estado: 'erro_token' }, 'erro no Vault ≠ desligado');
 assert.ok(!chamadas.some((c) => c.url.includes('graph.facebook.com')), 'sem token, nada vai ao Meta');
 
+// ─── 8) código de influenciador (?cupom=) ───────────────────────────────────
+const tCupom = lerToqueDaUrl('?cupom=ana10&utm_source=instagram', '/', T0)!;
+assert.equal(tCupom.cupom, 'ANA10', 'cupom entra em maiúsculas');
+assert.equal(lerToqueDaUrl('?cupom=ab', '/', T0), null, 'cupom curto demais é descartado (e sem outro parâmetro não é toque)');
+assert.equal(lerToqueDaUrl('?cupom=ANA-10', '/', T0), null, 'cupom com símbolo é descartado');
+assert.equal(lerToqueDaUrl(`?cupom=${'A'.repeat(21)}`, '/', T0), null, 'cupom acima de 20 é descartado');
+const cupomPrimeiro = registrarToque(registrarToque(ATRIBUICAO_VAZIA, tCupom), lerToqueDaUrl('?utm_source=google', '/', T0 + DIA)!);
+assert.equal(cupomPrimeiro.primeiro?.cupom, 'ANA10', 'first-touch guarda o cupom');
+assert.equal(cupomPrimeiro.ultimo?.cupom, undefined, 'visita seguinte sem cupom não apaga o primeiro toque');
+assert.equal(montarOrigemUtm(cupomPrimeiro, '')?.primeiro_toque?.cupom, 'ANA10', 'cupom vai em origem_utm.primeiro_toque');
+assert.equal(new URL(anexarAtribuicaoAoLink('https://app.olliorcamentos.online/auth/login?modo=cadastro', registrarToque(ATRIBUICAO_VAZIA, tCupom))).searchParams.get('cupom'), 'ANA10', 'o link para o painel leva o cupom');
+assert.equal(lerAtribuicao(serializarAtribuicao(registrarToque(ATRIBUICAO_VAZIA, tCupom)), T0).primeiro?.cupom, 'ANA10', 'cupom sobrevive a gravar e ler');
+assert.equal(lerAtribuicao(JSON.stringify({ primeiro: { ts: T0, cupom: '<script>' }, ultimo: null }), T0).primeiro, null, 'cupom adulterado no armazenamento é rejeitado');
+
 console.log('PASSOU: parser, first/last-touch, expiração, cookie, propagação, origem_utm, consentimento, Pixel, Google tag, CSP, fiação e CAPI do worker.');
