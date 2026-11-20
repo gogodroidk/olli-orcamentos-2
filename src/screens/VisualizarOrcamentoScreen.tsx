@@ -47,6 +47,7 @@ import { generateId } from '../utils/id';
 import { baseParaNovoDocumento, type ModoNovoDocumento } from '../utils/novoDocumento';
 import { exigirCadastroParaEnviar } from '../services/exigirCadastro';
 import { compartilharPdfOrcamento, abrirWhatsApp } from '../utils/pdfGenerator';
+import { falhaPdfParaTela } from '../utils/tempoLimite';
 import {
   montarMensagemCobranca,
   montarMensagemCobrancaLink,
@@ -480,26 +481,41 @@ export default function VisualizarOrcamentoScreen() {
     // Cadastro do negócio incompleto segura o PDF (o app não fecha mais por isso).
     if (!(await exigirCadastroParaEnviar('orcamento'))) return;
     if (!empresa) return;
+    // Falha ao gerar o PDF NUNCA some em silêncio: com o loading já fechado, abre a folha com o motivo e
+    // "Tentar de novo" (o toast sumia em 5 s e deixava a pessoa sem saber se o PDF saiu — QA, 20/11).
+    // A trava de toque duplo segue valendo enquanto a folha está aberta (ela é modal).
+    for (;;) {
+      const falha = await gerarEEntregarPdf(empresa);
+      if (!falha) return;
+      const { titulo, mensagem } = falhaPdfParaTela(falha.erro);
+      const tentarDeNovo = await confirmar({ titulo, mensagem, rotuloConfirmar: 'Tentar de novo', rotuloCancelar: 'Fechar' });
+      if (!tentarDeNovo) return;
+    }
+  }
+
+  /** Reserva o envio, gera o PDF e abre o compartilhar. Devolve `{ erro }` se falhou; undefined se deu certo. */
+  async function gerarEEntregarPdf(empresaDoPdf: NonNullable<typeof empresa>): Promise<{ erro: unknown } | undefined> {
+    if (!orc) return undefined;
     setSharing(true);
     setOverlayInfo({ titulo: 'Gerando seu orçamento...', subtitulo: 'Deixando bonito para o cliente...' });
     let reserva: ReservaEnvioOrcamento | null = null;
     try {
       reserva = await autorizarEntrega('pdf');
-      if (!reserva) return;
-      await compartilharPdfOrcamento(orc, empresa, depoimentos, orc.corMarca, {
+      if (!reserva) return undefined;
+      await compartilharPdfOrcamento(orc, empresaDoPdf, depoimentos, orc.corMarca, {
         removerMarca: temAcesso(RECURSO_REMOVE_MARCA),
       });
       await confirmarEntrega(reserva);
       void registrarAtividadeUsuario('orcamento_enviado');
       if (orc.status === 'rascunho') await updateStatus('enviado');
-    } catch (e: any) {
+      return undefined;
+    } catch (e: unknown) {
       if (reserva?.requerConfirmacao) {
         await cancelarReservaEnvioOrcamento(orc.id, reserva.reservaToken);
       }
-      // Quando o compartilhamento não está disponível no dispositivo, a
-      // mensagem já vem específica (e diz onde o PDF foi salvo); nos demais
-      // casos cai no texto genérico.
-      toast.erro(e?.message || 'Não foi possível gerar o PDF.');
+      // O motivo (tempo esgotado, compartilhar indisponível — que já diz onde o PDF foi salvo —, ou o
+      // texto genérico) sai em `falhaPdfParaTela`, mostrado por `handleShareAgora` depois do loading fechar.
+      return { erro: e };
     } finally {
       // SEMPRE volta o loading — inclusive na web, onde a impressão é assíncrona.
       setSharing(false);
@@ -1124,7 +1140,10 @@ export default function VisualizarOrcamentoScreen() {
         const link = await statusDoLink(orc.id);
         if (link?.status !== 'aprovado' || (comPix && saldo !== undefined)) throw new Error('link_nao_serve');
         const url = await gerarLinkOrcamento(orc, empresa);
-        mensagem = montarMensagemCobrancaLink(orc, dias, `${url}#pagar`, { comPix, valorEmAberto: saldo });
+        // CDC: a página só mostra o Pix se o plano do dono tem `link_pagamento` (Pro/Empresa).
+        // No Grátis (ou plano não confirmado), a mensagem NÃO promete "paga por Pix pelo link".
+        const pixNoLink = comPix && estadoLinkPagamento === 'liberado';
+        mensagem = montarMensagemCobrancaLink(orc, dias, `${url}#pagar`, { comPix: pixNoLink, valorEmAberto: saldo });
         semLink = false;
       } catch {
         // segue sem link (ver acima)
