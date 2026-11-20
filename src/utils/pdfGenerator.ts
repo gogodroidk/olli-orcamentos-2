@@ -7,6 +7,7 @@ import { escapeHtml } from './html';
 import { corMarcaNoPapel } from './coresMarca';
 import { DEFAULT_ACCENT, monogramSvg, seloOlliHtml } from './marcaOlli';
 import { formatarNumeroExibicao } from './numeroDocumento';
+import { comTempoLimite, TEMPO_LIMITE_LINK_MS } from './tempoLimite';
 import {
   CAIXA_LOGO_CABECALHO,
   CAIXA_LOGO_CAPA,
@@ -903,7 +904,13 @@ async function obterLinkPublico(o: Orcamento, empresa: Empresa | null): Promise<
   try {
     const { gerarLinkOrcamento, linkConfigurado } = await import('../services/clienteLink');
     if (!linkConfigurado()) return undefined;
-    return await gerarLinkOrcamento(o, empresa);
+    // Teto: rede morta não segura o botão de PDF; sem resposta a tempo, o PDF sai sem link.
+    return await comTempoLimite(
+      gerarLinkOrcamento(o, empresa),
+      TEMPO_LIMITE_LINK_MS,
+      'link-publico',
+      'O link público não respondeu a tempo.',
+    );
   } catch {
     return undefined;
   }
