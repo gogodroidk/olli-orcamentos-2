@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { linkApiWhatsApp, linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp';
+import { comTempoLimite, MENSAGEM_PDF_DEMOROU, TEMPO_LIMITE_PDF_MS } from './tempoLimite';
 
 /** A regra única do número de WhatsApp, à mão de quem já importa daqui (o shim web espelha). */
 export { linkApiWhatsApp, linkWaMe, numeroWhatsAppBR } from './telefoneWhatsapp';
@@ -162,7 +163,15 @@ async function exportarHtmlNativo(
   const Sharing = require('expo-sharing');
   const FileSystem = require('expo-file-system/legacy');
 
-  const { uri } = await Print.printToFileAsync({ html, base64: false });
+  // Teto de 20 s: o `printToFileAsync` só resolve quando o WebView do sistema termina de carregar e
+  // imprimir. Se o WebView trava (visto no Galaxy S20 FE com WebView Beta, 20/11/2026), a Promise
+  // nunca resolve nem rejeita e o botão gira para sempre. Com o teto, vira um erro legível.
+  const { uri } = await comTempoLimite<{ uri: string }>(
+    Print.printToFileAsync({ html, base64: false }),
+    TEMPO_LIMITE_PDF_MS,
+    'gerar-pdf',
+    MENSAGEM_PDF_DEMOROU,
+  );
   const fileName = nomeArquivo.toLowerCase().endsWith('.pdf') ? nomeArquivo : `${nomeArquivo}.pdf`;
   const dest = FileSystem.documentDirectory + fileName;
   await FileSystem.copyAsync({ from: uri, to: dest });
