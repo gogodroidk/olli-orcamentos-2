@@ -47,7 +47,7 @@ export function avisoLimiteEnvios(reserva: ReservaEnvioOrcamento): { titulo: str
   const precoTexto = preco ? ` (${reais(preco.mensalCentavos)} por mês)` : "";
   return {
     titulo: "Limite do mês atingido",
-    mensagem: `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Para enviar agora, libere o Pro${precoTexto} e pague por Pix; se preferir esperar, os envios voltam no próximo mês.`,
+    mensagem: `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Para enviar agora, libere o Pro${precoTexto}; se preferir esperar, os envios voltam no próximo mês.`,
     rotuloAcao: "Liberar no Pro",
   };
 }
