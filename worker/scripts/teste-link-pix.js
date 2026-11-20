@@ -566,4 +566,16 @@ await caso('texto pequeno legível: nenhum cinza claro (#9AA3B2 / #8A93A2) em te
   assert.doesNotMatch(html, /\.cond-l\{font-size:9\.5px/);
 });
 
+await caso('"Já paguei" não recarrega a página: troca o botão pelo aviso (sem location.reload no fluxo)', async () => {
+  const { html } = await pagina(linhaBase());
+  const ini = html.indexOf('async function informarPagamento()');
+  const fim = html.indexOf('// Link de cobrança (/o/<token>#pagar)');
+  assert.ok(ini > 0 && fim > ini, 'achou o trecho do script');
+  const trecho = html.slice(ini, fim);
+  assert.doesNotMatch(trecho, /location\.reload/);
+  assert.match(trecho, /replaceWith\(av\)/);
+  assert.match(html, /data-prestador="Frio Bom"/);
+  assert.match(html, /prefers-reduced-motion:reduce\)\{\.pix-avisado\.entra\{animation:none/);
+});
+
 console.log(`\nteste-link-pix: ${ok} casos OK`);

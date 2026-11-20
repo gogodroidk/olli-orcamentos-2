@@ -937,6 +937,9 @@ ${og}
   .btn-copiar{width:100%;margin-top:10px;background:#1A2230;color:#fff}
   .btn-paguei{width:100%;margin-top:10px;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
   .pix-nota{font-size:11.5px;color:#5A6575;margin-top:6px;line-height:1.4}
+  .pix-avisado.entra{animation:avisoEntra .24s ease-out}
+  @keyframes avisoEntra{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.pix-avisado.entra{animation:none}}
   .pix-avisado{margin-top:12px;font-size:12.5px;color:#1A7F4B;background:#E9F9F1;border:1px solid #BFE6CF;border-radius:11px;padding:10px;line-height:1.4}
   .olli-cta{text-align:center;margin:22px auto 10px}
 </style>
@@ -999,7 +1002,7 @@ function blocoPagamento(row, d, total, numero, nomePrestador) {
     ? `<div class="pix-avisado">Você avisou que pagou em ${esc(informadoEm)}. ${esc(nomePrestador)} vai conferir e confirmar o recebimento.</div>`
     : '';
   const botaoInformar = podeInformar
-    ? `<button id="btnPaguei" class="btn btn-paguei" onclick="informarPagamento()">Já paguei</button>
+    ? `<button id="btnPaguei" class="btn btn-paguei" data-prestador="${esc(nomePrestador)}" onclick="informarPagamento()">Já paguei</button>
        <div class="pix-nota">Isso só avisa ${esc(nomePrestador)}. O pagamento é confirmado por ele quando cair na conta.</div>`
     : '';
 
@@ -1317,7 +1320,18 @@ function pageOrcamento(row, preSelecao = '') {
       try {
         var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ acao: 'informar_pagamento' }) });
         var j = await r.json();
-        if (j && j.ok) { location.reload(); return; }
+        if (j && j.ok) {
+          // Sem recarregar a página (a tela não pisca): troca o botão pelo aviso, o mesmo
+          // texto que o servidor mostra ao reabrir o link. textContent: nada entra como HTML.
+          var nota = b ? b.nextElementSibling : null;
+          var av = document.createElement('div');
+          av.className = 'pix-avisado entra';
+          av.setAttribute('role', 'status');
+          av.textContent = 'Você avisou que pagou agora. ' + ((b && b.dataset.prestador) || 'O prestador') + ' vai conferir e confirmar o recebimento.';
+          if (b){ b.replaceWith(av); }
+          if (nota && nota.classList.contains('pix-nota')){ nota.remove(); }
+          return;
+        }
         alert(j && j.erro === 'muitas_requisicoes' ? 'Muitas tentativas. Aguarde um instante e tente de novo.' : 'Não consegui avisar agora. Tente de novo em instantes.');
       } catch(e){
         alert('Não consegui avisar agora. Verifique a internet e tente de novo.');
