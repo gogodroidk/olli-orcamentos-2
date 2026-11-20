@@ -128,8 +128,12 @@ globalThis.fetch = async (entrada, init = {}) => {
       return ok(s);
     }
     if (url.pathname === '/v2/subscriptions/checkouts/delete') {
-      abacate.checkouts.delete(JSON.parse(corpo).id);
-      return ok({ id: JSON.parse(corpo).id });
+      // Fiel à API real (18/11): o id vem na query; só no corpo = 400.
+      const idQ = url.searchParams.get('id');
+      if (!idQ) return erro(400, "Expected property 'id' to be string but found: undefined");
+      if (!abacate.checkouts.has(idQ)) return erro(400, 'Failed to delete billing');
+      abacate.checkouts.delete(idQ);
+      return ok({ id: idQ });
     }
     return erro(404, 'rota');
   }

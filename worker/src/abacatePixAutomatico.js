@@ -548,7 +548,8 @@ export async function cancelarPixAutomaticoDoUsuario(env, userId, h) {
   if (!abertos.ok) return ligado ? 'falha' : 'ok';
   for (const linha of abertos.linhas) {
     // Melhor esforço: checkout já pago/excluído devolve erro e não impede nada (a assinatura dele, se existe, já foi cancelada acima).
-    await chamar(env, h, '/subscriptions/checkouts/delete', { method: 'POST', body: JSON.stringify({ id: linha.event_id }) });
+    // A API lê o id da QUERY (conferido em produção 18/11: com o id só no corpo responde "Expected property 'id' to be string").
+    await chamar(env, h, `/subscriptions/checkouts/delete?id=${encodeURIComponent(linha.event_id)}`, { method: 'POST' });
   }
   return 'ok';
 }
