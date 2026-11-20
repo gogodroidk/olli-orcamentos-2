@@ -33,7 +33,7 @@ export interface ResultadoCalc {
   /** Frase pronta (ex.: para copiar/observação). */
   resumo?: string;
   /** Item pré-montado para "adicionar ao orçamento". */
-  itemOrcamento?: { nome: string; descricao: string };
+  itemOrcamento?: { nome: string; descricao: string; quantidade?: number; unidade?: string };
   /** Ressalva técnica (norma/manual) — sempre mostrada quando presente. */
   aviso?: string;
 }
@@ -205,7 +205,7 @@ export const CALCULOS: CalculoOficio[] = [
           { label: 'Massa/textura necessária', valor: `${br(kg)} kg`, destaque: true },
         ],
         resumo: `${br(area, 1)} m² · ${demaos} demãos → ${br(kg)} kg.`,
-        itemOrcamento: { nome: 'Massa / textura', descricao: `${br(area, 1)} m² · ${demaos} demãos → ${br(kg)} kg` },
+        itemOrcamento: { nome: 'Massa / textura', descricao: `${br(area, 1)} m² · ${demaos} demãos → ${br(kg)} kg`, quantidade: kg, unidade: 'kg' },
         aviso: 'O rendimento varia por marca e por textura da superfície — confira a lata.',
       };
     },
@@ -269,7 +269,7 @@ export const CALCULOS: CalculoOficio[] = [
           { label: 'Adubo de plantio', valor: `${br(aduboKg, 1)} kg` },
         ],
         resumo: `${br(area)} m² → ${br(placas)} placas + ${br(aduboKg, 1)} kg de adubo.`,
-        itemOrcamento: { nome: 'Grama em placa', descricao: `${br(area)} m² → ${br(placas)} placas (${br(num(v.perda))}% de perda)` },
+        itemOrcamento: { nome: 'Grama em placa', descricao: `${br(area)} m² → ${br(placas)} placas (${br(num(v.perda))}% de perda)`, quantidade: placas, unidade: 'placa' },
       };
     },
   },
@@ -958,6 +958,8 @@ export const CALCULOS: CalculoOficio[] = [
       itemOrcamento: {
         nome: 'Selador/primer',
         descricao: `${br(area, 1)} m² · ${demaos} demão${demaos > 1 ? 's' : ''} → ${br(litros, 2)} L (${br(latas)} un. de ${br(embalagem, 1)} L)`,
+        quantidade: latas,
+        unidade: 'un',
       },
       aviso: 'Rendimento varia por porosidade do substrato e marca — confira a ficha técnica do produto; reboco novo/gesso pode reduzir o rendimento em até 30%.',
     };
@@ -1044,6 +1046,8 @@ export const CALCULOS: CalculoOficio[] = [
         itemOrcamento: {
           nome: 'Mudas para cerca viva',
           descricao: `${br(comprimento, 1)} m · espaçamento ${br(espacamento, 2)} m${fileiras === 2 ? ' · fileira dupla' : ''} → ${br(comMargem)} mudas`,
+          quantidade: comMargem,
+          unidade: 'un',
         },
         aviso: 'Espaçamento entre mudas varia por espécie (ex.: arbustos densos ~0,3–0,4 m; espécies de maior porte ~0,5–0,8 m) — confirme na ficha da planta escolhida.',
       };
@@ -1117,4 +1121,23 @@ export function calculosDoOficio(verticais: VerticalId | VerticalId[] | undefine
  */
 export function haCalculoParaOficio(mostraVertical: (v: VerticalId) => boolean): boolean {
   return CALCULOS.some((c) => c.verticais.some((v) => mostraVertical(v)));
+}
+
+/**
+ * Item de orçamento a partir do resultado de uma calculadora. Leva a QUANTIDADE
+ * calculada (kg, placas, mudas, embalagens) quando a calculadora a produz, para o
+ * prestador não redigitar. O PREÇO nunca vem daqui: fica vazio para ele pôr o da
+ * tabela dele. Quantidade inválida (≤0, NaN) é descartada, nunca vira "0 un".
+ */
+export function prefillDoItemCalculo(item: NonNullable<ResultadoCalc['itemOrcamento']>): {
+  tipo: 'produto';
+  nome: string;
+  descricao: string;
+  quantidade?: number;
+  unidade?: string;
+} {
+  const base = { tipo: 'produto' as const, nome: item.nome, descricao: item.descricao };
+  const q = item.quantidade;
+  if (typeof q !== 'number' || !Number.isFinite(q) || q <= 0) return base;
+  return { ...base, quantidade: q, ...(item.unidade ? { unidade: item.unidade } : {}) };
 }
