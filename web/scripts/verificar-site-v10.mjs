@@ -126,6 +126,20 @@ for (const p of paginas.filter((x) => DE_V10(x.rota))) {
 	if (!/<script[^>]+src="\/_astro\/[^"]+"/.test(p.txt)) erros.push(`MEDIÇÃO: ${p.rota} sem o bundle de marketing (utm/Pixel)`);
 }
 
+// 7. LIMITE DA LEI (D-2937): foto de pessoa gerada por IA nunca é cliente, depoimento, nome nem equipe. A imagem fica sem selo,
+//    então a descrição (alt) e a página não podem dizer o contrário. Só pega o que aparece escrito; a regra editorial é do SITE.
+const FOTOS_DE_IA = /\/(?:site\/img\/fotos\/grok|fotos)\/[^"]*\.webp/;
+for (const p of paginas) {
+	for (const m of p.txt.matchAll(/<img\b[^>]*>/g)) {
+		const tag = m[0];
+		const src = tag.match(/\ssrc="([^"]+)"/)?.[1] ?? "";
+		if (!FOTOS_DE_IA.test(src)) continue;
+		const alt = tag.match(/\salt="([^"]*)"/)?.[1] ?? "";
+		if (/cliente|depoimento|avalia|nossa equipe|nosso time|funcion[áa]rio|colaborador|\bnosso t[ée]cnico/i.test(alt)) erros.push(`FOTO DE IA: ${p.rota} descreve ${src} como cliente/equipe/depoimento: "${alt}"`);
+	}
+	if (/depoimento/i.test(semTags(p.txt)) && FOTOS_DE_IA.test(p.txt)) erros.push(`FOTO DE IA: ${p.rota} fala em depoimento e tem foto de IA na página`);
+}
+
 console.log(`Site v10 conferido — ${paginas.length} páginas, ${indexaveis.length} indexáveis, ${noSitemap.size} URLs no sitemap.`);
 if (erros.length) {
 	console.error(`\n${erros.length} problema(s):\n- ` + erros.slice(0, 60).join("\n- "));

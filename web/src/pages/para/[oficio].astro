@@ -20,7 +20,7 @@
  */
 import FaqSite from "../../components/site/FaqSite.astro";
 import LayoutSite from "../../layouts/LayoutSite.astro";
-import { AVISO_ILUSTRATIVA, FOTOS, FOTO_POR_ALIAS, FOTO_POR_OFICIO } from "../../data/fotos";
+import { FOTOS, FOTO_POR_ALIAS, FOTO_POR_OFICIO } from "../../data/fotos";
 import { SEGMENTOS_SITE } from "../../data/segmentos-site";
 import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PROFISSAO_NOVA, ROTA, SEGMENTOS_NOVOS, SERVICOS_FORA_DO_MENU, SERVICOS_MENU, URL_CADASTRO } from "../../data/site";
 import { calculosDoOficio } from "../../../../src/services/calculosOficio";
@@ -266,7 +266,6 @@ const schemaFaq = {
 						loading="eager"
 						decoding="async"
 					/>
-					<figcaption>{AVISO_ILUSTRATIVA}</figcaption>
 				</figure>
 			)}
 		</div>
