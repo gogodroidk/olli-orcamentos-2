@@ -1,0 +1,18 @@
+---
+import type { Faq } from "../../data/faq-site";
+interface Props {
+	itens: Faq[];
+	/** Abre o primeiro item. */
+	abrirPrimeiro?: boolean;
+}
+const { itens, abrirPrimeiro = false } = Astro.props;
+---
+
+<div class="faq">
+	{itens.map((f, i) => (
+		<details class="gl" open={abrirPrimeiro && i === 0 ? true : undefined}>
+			<summary>{f.q}</summary>
+			<p>{f.a}</p>
+		</details>
+	))}
+</div>

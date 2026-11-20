@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build && node scripts/verificar-saida-publica.mjs && node scripts/gerar-headers.mjs",
+    "build": "astro build && node scripts/verificar-saida-publica.mjs && node scripts/verificar-site-v10.mjs && node scripts/gerar-headers.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },

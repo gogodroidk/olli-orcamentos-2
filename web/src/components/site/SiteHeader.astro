@@ -1,0 +1,56 @@
+---
+/**
+ * Cabeçalho + menu móvel da v10 (D-2876). Marcação e classes da v10; links vindos de `data/site.ts`.
+ * `aria-current` sai do caminho atual, não de texto fixo por página.
+ */
+import { ROTA, SERVICOS_MENU, URL_CADASTRO, URL_ENTRAR } from "../../data/site";
+
+const atual = Astro.url.pathname;
+const ehServico = atual.startsWith("/para/") && atual !== ROTA.tecnicos;
+const cur = (rota: string) => (atual === rota ? "page" : undefined);
+---
+
+<header class="top">
+	<div class="inner">
+		<a class="logo" href="/" aria-label="OLLI Orçamentos, início"><img src="/site/img/olli-simbolo.svg" width="30" height="30" alt="" />OLLI<span>.</span></a>
+		<nav class="nav" aria-label="Principal">
+			<a href={ROTA.inicio} aria-current={cur(ROTA.inicio)}>Início</a>
+			<div class="nav-drop">
+				<a href={ROTA.tecnicos} aria-current={cur(ROTA.tecnicos) ?? (ehServico ? "true" : undefined)}>Para técnicos</a>
+				<button type="button" aria-expanded="false" aria-controls="segmentos-menu" aria-label="Abrir páginas por tipo de serviço">⌄</button>
+				<div id="segmentos-menu" class="nav-submenu">
+					{SERVICOS_MENU.map((s) => <a href={`/para/${s.slug}/`} aria-current={cur(`/para/${s.slug}/`)}>{s.nome}</a>)}
+				</div>
+			</div>
+			<a href={ROTA.empresas} aria-current={cur(ROTA.empresas)}>Para empresas</a>
+			<a href={ROTA.recursos} aria-current={cur(ROTA.recursos)}>Recursos</a>
+			<a href={ROTA.planos} aria-current={cur(ROTA.planos)}>Planos</a>
+			<a href={ROTA.duvidas} aria-current={cur(ROTA.duvidas)}>Dúvidas</a>
+		</nav>
+		<div class="nav-cta">
+			<a class="bt ghost" href={URL_ENTRAR}>Entrar</a>
+			<a class="bt p" href={URL_CADASTRO}>Começar grátis</a>
+		</div>
+		<button class="theme-bt" type="button" aria-label="Alternar tema claro ou escuro" title="Tema claro/escuro">
+			<svg class="i-lua" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg>
+			<svg class="i-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+		</button>
+		<button class="burger" aria-label="Abrir menu" aria-expanded="false"><span></span></button>
+	</div>
+</header>
+<div class="drawer" role="dialog" aria-label="Menu">
+	<a href={ROTA.inicio} class="drawer-home" aria-current={cur(ROTA.inicio)}>Início</a>
+	<a href={ROTA.tecnicos} aria-current={cur(ROTA.tecnicos)}>Para técnicos</a>
+	<details class="drawer-segments" id="segmentos-drawer" open={ehServico || undefined}>
+		<summary>Escolha seu tipo de serviço</summary>
+		{SERVICOS_MENU.map((s) => <a href={`/para/${s.slug}/`} aria-current={cur(`/para/${s.slug}/`)}>{s.nome}</a>)}
+	</details>
+	<a href={ROTA.empresas} aria-current={cur(ROTA.empresas)}>Para empresas</a>
+	<a href={ROTA.recursos} aria-current={cur(ROTA.recursos)}>Recursos</a>
+	<a href={ROTA.planos} aria-current={cur(ROTA.planos)}>Planos</a>
+	<a href={ROTA.duvidas} aria-current={cur(ROTA.duvidas)}>Dúvidas</a>
+	<div class="row">
+		<a class="bt s" href={URL_ENTRAR}>Entrar</a>
+		<a class="bt p" href={URL_CADASTRO}>Começar grátis</a>
+	</div>
+</div>

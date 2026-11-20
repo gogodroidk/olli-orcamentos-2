@@ -51,13 +51,17 @@ const LASTMOD = lastmodPorRota();
  * molde (`pages/para/[oficio].astro`).
  */
 const LASTMOD_PAGINAS = new Map([
-  ['/', '2026-10-01'],
-  ['/planos/', '2026-10-01'],
+  ['/', '2026-11-21'],
+  ['/planos/', '2026-11-21'],
+  ['/como-funciona/', '2026-11-21'],
+  ['/para-empresas/', '2026-11-21'],
+  ['/duvidas/', '2026-11-21'],
+  ['/para/', '2026-11-21'],
   ['/ajuda/', '2026-10-02'],
   ['/legal/privacidade/', '2026-09-29'],
   ['/legal/termos/', '2026-09-29'],
 ]);
-const LASTMOD_PARA = '2026-10-01';
+const LASTMOD_PARA = '2026-11-21';
 
 /**
  * VARIANTES DE ANÚNCIO: /eletricista/ e /refrigeracao/ são as páginas de destino dos anúncios (mesmo ofício de
@@ -66,7 +70,7 @@ const LASTMOD_PARA = '2026-10-01';
  */
 const VARIANTES_DE_ANUNCIO = ['/eletricista/', '/refrigeracao/'];
 /** Aliases por palavra de /para/ (D-1013): página no ar, canonical na de SEO, fora do sitemap. Slugs de `ALIASES_PARA` em `src/data/oficios.ts`. */
-const ALIASES_PARA_FORA = ['/para/ar-condicionado/', '/para/refrigeracao/', '/para/hidraulica/', '/para/marido-de-aluguel/', '/para/manutencao/'];
+const ALIASES_PARA_FORA = ['/para/ar-condicionado/', '/para/refrigeracao/', '/para/hidraulica/', '/para/manutencao/'];
 
 // Site de marketing da OLLI — separado do app (react-native-web). Aqui mora o
 // design extraordinário: SSG p/ SEO + Lighthouse alto, ilhas React só onde há

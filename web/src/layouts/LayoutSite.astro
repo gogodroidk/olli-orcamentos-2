@@ -1,0 +1,56 @@
+---
+/**
+ * LayoutSite — o visual da v10 (D-2876). Mesma cabeça do Layout antigo (canonical, og, JSON-LD) via `Cabeca`,
+ * e o corpo da v10: menu, miolo, rodapé, barra de cadastro fixa no celular.
+ *
+ * O CSS da v10 mora em /site/css e é carregado só aqui; o Tailwind do Layout antigo NÃO entra nestas páginas.
+ * `scripts/marketing.ts` (utm, fbclid, Pixel, consentimento) roda em toda página, como no Layout antigo.
+ */
+import Cabeca from "../components/Cabeca.astro";
+import SiteFooter from "../components/site/SiteFooter.astro";
+import SiteHeader from "../components/site/SiteHeader.astro";
+import { GRATIS_SEM, URL_CADASTRO } from "../data/site";
+
+interface Props {
+	titulo?: string;
+	descricao?: string;
+	schemas?: unknown[];
+	noindex?: boolean;
+	ogImagem?: string;
+	canonicalPath?: string;
+	/** Imagem do topo que precisa de preload (LCP). */
+	preloadImagem?: { href: string; srcset: string; sizes: string };
+}
+const { preloadImagem, ...cabeca } = Astro.props;
+---
+
+<!doctype html>
+<html lang="pt-BR">
+	<head>
+		<script is:inline>document.documentElement.classList.add("js")</script>
+		<Cabeca {...cabeca} />
+		{preloadImagem && <link rel="preload" as="image" href={preloadImagem.href} imagesrcset={preloadImagem.srcset} imagesizes={preloadImagem.sizes} fetchpriority="high" />}
+		<link rel="preload" href="/site/fonts/rubik-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+		<meta name="color-scheme" content="light dark" />
+		<script is:inline>try{var t=localStorage.getItem("olli-tema");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+		<link rel="stylesheet" href="/site/devices/devices.css" />
+		<link rel="stylesheet" href="/site/css/site.css" />
+		<link rel="stylesheet" href="/site/css/devices-layout.css" />
+		<link rel="stylesheet" href="/site/css/telas-produto.css" />
+		<link rel="stylesheet" href="/site/css/v10-melhorias.css" />
+		<link rel="stylesheet" href="/site/css/ponte.css" />
+	</head>
+	<body>
+		<a class="skip" href="#conteudo">Pular para o conteúdo</a>
+		<div class="aur" aria-hidden="true"><i></i><i></i><i></i></div>
+		<SiteHeader />
+		<main id="conteudo"><slot /></main>
+		<SiteFooter />
+		<div class="stk" role="region" aria-label="Cadastro rápido">
+			<a class="bt p" href={URL_CADASTRO}>Começar grátis</a>
+			<span>{GRATIS_SEM.replace(" e sem prazo", "").replace(/^./, (c) => c.toUpperCase())}</span>
+		</div>
+		<script is:inline src="/site/js/site.js" defer></script>
+		<script src="../scripts/marketing.ts"></script>
+	</body>
+</html>

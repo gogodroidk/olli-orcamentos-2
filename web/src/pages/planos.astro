@@ -1,205 +1,30 @@
 ---
 /**
- * /planos — a página dedicada de planos e preços.
- *
- * POR QUE EXISTE (e não é só a âncora #planos da home): quem já decidiu que quer o
- * produto e está comparando preço digita "planos OLLI" / "preço OLLI" — merece uma
- * URL própria, que entra no sitemap (automático no Astro) e é linkada do rodapé e
- * das páginas de ofício. A home dá o resumo com o alternador; aqui mora o
- * COMPARATIVO completo, a verdade do 12× e as perguntas que travam a compra.
- *
- * Preço, features e a matriz do comparativo saem TODOS da fonte — `data/planos.ts`
- * (Stripe live) e `src/services/entitlements.ts` via `data/recursos.ts`. Nenhum
- * literal de R$ é digitado nesta página.
+ * Página gerada do port da v10 (D-2876) e DEPOIS editada à mão: o que depende de plano, preço, limite ou data vem
+ * de data/site.ts e da fonte (planosBase/entitlements), nunca de literal. Editar aqui é o caminho; regerar apaga.
  */
-import ComparativoPlanos from "../components/ComparativoPlanos.astro";
-import Footer from "../components/Footer.astro";
-import Header from "../components/Header.astro";
-import PlanosPrecos from "../components/PlanosPrecos.astro";
-import Layout from "../layouts/Layout.astro";
-import {
-	DESCONTO_ANUAL_ROTULO,
-	PRECO_PRO,
-	reais,
-} from "../data/planos";
-import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS, IA_USOS_GRATIS_MES, recursosQueSairamDoGratis } from "../data/recursos";
-
-const APP_URL = "https://app.olliorcamentos.online";
-const APP_CADASTRO_URL = `${APP_URL}/auth/login?modo=cadastro`;
-
-// Números do Pro para a FAQ — derivados, nunca digitados.
-const proMensal = reais(PRECO_PRO.mensalCentavos);
-const proAnualPorMes = reais(PRECO_PRO.anualPorMesCentavos);
-const proAnualTotal = reais(PRECO_PRO.anualCentavos);
-const proEconomia = reais(PRECO_PRO.economiaAnualCentavos);
-// O 12× (só o Pro tem produto avulso na Stripe).
-const parceladoCentavos = PRECO_PRO.parceladoCentavos;
-const parcelaCentavos = PRECO_PRO.parcelaCentavos;
-const doze =
-	parceladoCentavos !== null && parcelaCentavos !== null
-		? {
-				parcela: reais(parcelaCentavos),
-				total: reais(parceladoCentavos),
-				aMais: reais(parceladoCentavos - PRECO_PRO.anualCentavos),
-			}
-		: null;
-
-/**
- * FAQ DE DECISÃO — as perguntas que travam a assinatura, respondidas com a VERDADE
- * lida do código e dos Termos:
- *  - grátis sem prazo → entitlements + planosBase (orçamentos sem teto até o corte, ver CORTE_GRATIS_DATA, desde
- *    01/10/2026, com o selo "Feito com OLLI") + Termos §4 (plano gratuito existe);
- *  - cartão só no pago → Termos §4 (cartão pela Stripe; Pix por período, que só
- *    aparece quando `data/pix.ts` confirmou no build que o Pix está ligado);
- *  - cancelamento → Termos §5 (portal Stripe; acesso até o fim do período pago;
- *    volta ao grátis; sem multa; arrependimento de 7 dias, CDC art. 49);
- *  - dados ao parar de pagar → Termos §5 (volta ao grátis, não apaga) + Privacidade
- *    §8 (só some ao ENCERRAR a conta: lixeira 30 dias, depois definitivo).
- */
-const faq = [
-	{
-		q: "O plano Grátis acaba depois de um tempo?",
-		a: `Não. O Grátis é permanente, com ${FRASE_GRATIS}; rascunhos, clientes e histórico também ficam sem limite, e a IA tem ${IA_USOS_GRATIS_MES} usos mensais. ${recursosQueSairamDoGratis().replace(/^./, (c) => c.toUpperCase())} são do Pro. Depois do primeiro envio, há um teste Pro opcional de 14 dias, sem cartão e sem cobrança automática.`,
-	},
-	{
-		q: "Preciso de cartão de crédito para começar?",
-		a: PIX_PLANO_LIGADO
-			? "Não. Tanto o Grátis permanente quanto o teste Pro opcional de 14 dias começam sem cartão, e o teste não renova nem cobra automaticamente. Na hora de assinar um plano pago, você escolhe: cartão ou Pix."
-			: "Não. Tanto o Grátis permanente quanto o teste Pro opcional de 14 dias começam sem cartão. Só pedimos cartão quando você decide assinar um plano pago pela Stripe; o teste não renova nem cobra automaticamente.",
-	},
-	...(PIX_PLANO_LIGADO
-		? [
-				{
-					q: "Dá pra pagar com Pix?",
-					a: "Dá. O Pro e o Empresa podem ser pagos por Pix, pelo mesmo preço do cartão, por 1 mês ou por 1 ano. O Pix não renova sozinho: perto do vencimento a OLLI avisa, e você paga de novo só se quiser continuar — sem cartão cadastrado e sem nada para cancelar. O pagamento é feito pelo navegador, na tela de Planos.",
-				},
-			]
-		: []),
-	{
-		q: "Posso cancelar quando quiser?",
-		a: `Pode, a qualquer momento, pelo portal de assinatura da Stripe dentro do app — sem multa e sem falar com ninguém. Você continua com o plano pago até o fim do período que já pagou; depois a conta volta ao Grátis.${PIX_PLANO_LIGADO ? " Quem pagou por Pix não tem o que cancelar: o período pago termina e a conta volta ao Grátis do mesmo jeito." : ""} Nos 7 primeiros dias vale ainda o direito de arrependimento (art. 49 do Código de Defesa do Consumidor).`,
-	},
-	{
-		q: "O que acontece com meus dados se eu parar de pagar?",
-		a: "Nada é apagado. Ao cancelar, sua conta volta para o plano Grátis — orçamentos, clientes, histórico e documentos continuam lá. Você só perde os recursos do Pro/Empresa, não os seus dados. Eles só são removidos se você mesmo encerrar a conta: aí os itens vão para uma lixeira recuperável por 30 dias e depois são apagados de forma definitiva.",
-	},
-	{
-		q: "Qual a diferença de pagar mensal ou anual?",
-		a: `O anual sai ${DESCONTO_ANUAL_ROTULO} mais barato. No Pro, por exemplo, o mensal é ${proMensal}/mês; no anual o mês equivale a ${proAnualPorMes} (${proAnualTotal} no ano), uma economia de ${proEconomia}. O mensal você cancela quando quiser; o anual você paga uma vez e trava o desconto por 12 meses.`,
-	},
-	...(doze
-		? [
-				{
-					q: "E o parcelamento em 12×?",
-					a: `Dá pra parcelar o ano do Pro em 12× de ${doze.parcela} no cartão. Mas seja transparente com você mesmo: isso soma ${doze.total} — ${doze.aMais} a mais que o anual à vista. O 12× é comodidade de fluxo de caixa, não um desconto. Se o objetivo é economizar, o anual à vista é o melhor negócio.`,
-				},
-			]
-		: []),
-];
-
-const schemaFaq = {
-	"@context": "https://schema.org",
-	"@type": "FAQPage",
-	mainEntity: faq.map((f) => ({
-		"@type": "Question",
-		name: f.q,
-		acceptedAnswer: { "@type": "Answer", text: f.a },
-	})),
-};
-
-const schemaBreadcrumb = {
-	"@context": "https://schema.org",
-	"@type": "BreadcrumbList",
-	itemListElement: [
-		{ "@type": "ListItem", position: 1, name: "OLLI", item: Astro.site?.origin },
-		{ "@type": "ListItem", position: 2, name: "Planos", item: Astro.url.href },
-	],
-};
+import FaqSite from "../components/site/FaqSite.astro";
+import PlanosSite from "../components/site/PlanosSite.astro";
+import LayoutSite from "../layouts/LayoutSite.astro";
+import { FAQ_PLANOS, schemaFaq } from "../data/faq-site";
+import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
+import { LINK_COM_PIX } from "../data/site";
 ---
 
-<Layout
-	titulo="Planos e preços da OLLI — Grátis, Pro e Empresa"
-	descricao="Compare os planos da OLLI lado a lado. Grátis sem prazo e sem cartão; Pro e Empresa no mensal ou no anual com desconto. Veja o que cada plano inclui e cancele quando quiser."
-	schemas={[schemaBreadcrumb, schemaFaq]}
->
-	<Header>
-		<div slot="nav" class="hidden items-center gap-8 md:flex">
-			<a href="/#recursos" class="text-sm font-medium text-slate transition hover:text-ink">Recursos</a>
-			<a href="/#oficios" class="text-sm font-medium text-slate transition hover:text-ink">Seu ofício</a>
-		</div>
-		<a href={APP_URL} class="inline-flex min-h-11 items-center rounded-campo px-4 py-2.5 text-sm font-semibold text-slate transition hover:text-ink">Entrar</a>
-		<a href={APP_CADASTRO_URL} class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong">Começar grátis</a>
-	</Header>
-
-	<main id="conteudo">
-		{/* ══════════ HERO ══════════ */}
-		<section class="mx-auto max-w-4xl px-6 pb-8 pt-14 text-center">
-			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
-				<span aria-hidden="true" class="mx-1.5">/</span>
-				<span class="text-slate">Planos</span>
-			</nav>
-			<span class="eyebrow mt-6 inline-flex">Planos e preços</span>
-			<h1 class="mx-auto mt-4 max-w-2xl text-[clamp(2.2rem,5vw,3.4rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
-				Preço na cara, sem letra miúda.
-			</h1>
-			<p class="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-slate">
-				Comece de graça, sem cartão e sem prazo. Suba pro Pro ou pro Empresa quando o
-				trabalho crescer — no mensal, ou no anual com <strong class="text-ink">{DESCONTO_ANUAL_ROTULO} de desconto</strong>.
-			</p>
-		</section>
-
-		{/* ══════════ CARTÕES + ALTERNADOR ══════════ */}
-		<section class="mx-auto max-w-7xl px-6 pb-8">
-			<PlanosPrecos />
-		</section>
-
-		{/* ══════════ COMPARATIVO COMPLETO ══════════ */}
-		<section class="faixa-recuo">
-			<div class="mx-auto max-w-5xl px-6 py-20">
-				<div class="olli-revela mx-auto max-w-2xl text-center">
-					<span class="eyebrow">Comparativo</span>
-					<h2 class="mt-4 text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">O que entra em cada plano.</h2>
-					<p class="mt-4 text-slate">
-						O que cada plano libera vem direto do código que controla o acesso no app — a
-						tabela não promete nada que o produto não entregue.
-					</p>
-				</div>
-				<div class="mt-12">
-					<ComparativoPlanos />
-				</div>
-			</div>
-		</section>
-
-		{/* ══════════ FAQ DE DECISÃO ══════════ */}
-		<section class="mx-auto max-w-3xl px-6 py-20">
-			<div class="text-center">
-				<span class="eyebrow">Antes de decidir</span>
-				<h2 class="mt-4 text-[clamp(1.8rem,3.5vw,2.6rem)] font-extrabold tracking-tight text-ink">As perguntas que importam.</h2>
-			</div>
-			<div class="mt-10 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-card shadow-e1">
-				{faq.map((f) => (
-					<details class="group">
-						<summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
-							{f.q}
-							<span class="text-brand-fg transition group-open:rotate-45" aria-hidden="true">+</span>
-						</summary>
-						<p class="px-6 pb-5 text-slate">{f.a}</p>
-					</details>
-				))}
-			</div>
-		</section>
-
-		{/* ══════════ CTA FINAL ══════════ */}
-		<section class="mx-auto max-w-7xl px-6 pb-24">
-			<div class="olli-revela relative overflow-hidden rounded-bloco px-8 py-16 text-center text-white" style="background: linear-gradient(135deg, var(--color-brand-strong), var(--color-brand-ink))">
-				<h2 class="mx-auto max-w-2xl text-[clamp(1.8rem,4vw,2.8rem)] font-extrabold leading-tight">Comece pelo Grátis. Suba quando fizer sentido.</h2>
-				<p class="mx-auto mt-4 max-w-xl text-white/85">Sem cartão pra testar, sem prazo pra acabar. No celular e no computador.</p>
-				<a href={APP_CADASTRO_URL} class="mt-8 inline-block rounded-acao bg-white px-8 py-3.5 text-base font-bold text-brand-fg shadow-lg transition hover:bg-white/90">Criar minha conta grátis</a>
-			</div>
-		</section>
-	</main>
-
-	<Footer />
-</Layout>
+<LayoutSite titulo="Planos e preços — OLLI Orçamentos" descricao={`Compare Grátis, Pro (${PRECO.proMes}/mês) e Empresa (${PRECO.empresaMes}/mês). Anual com ${PRECO.desconto} de desconto. Grátis sem cartão.`} schemas={[schemaFaq(FAQ_PLANOS)]}>
+<section class="page-hero"><div class="w">
+<p class="crumbs"><a href="/">Início</a> · Planos</p>
+<h1>Escolha como você <em>quer trabalhar.</em></h1>
+<p class="lead">Comece com {GRATIS_ORC}, sem cartão. Escolha o Pro {LINK_COM_PIX ? "para receber pelo Pix no link" : "para tirar o selo e liberar os recursos de campo"} ou o Empresa para organizar o trabalho da equipe.</p>
+</div></section>
+<section class="dark" aria-labelledby="comparar-planos"><div class="w">
+<h2 id="comparar-planos">Grátis, Pro ou Empresa.</h2>
+<p class="sub">Preços em reais. No plano anual você paga 20% a menos.</p>
+<PlanosSite />
+</div></section>
+<section aria-labelledby="duvidas-planos"><div class="w">
+<h2 id="duvidas-planos">Antes de escolher.</h2>
+<FaqSite itens={FAQ_PLANOS} abrirPrimeiro />
+<p class="faq-contact">Quer esclarecer algo antes de assinar? <a href="https://wa.me/5511941727487" rel="noopener">Fale com o OLLI no WhatsApp</a>.</p>
+</div></section>
+</LayoutSite>

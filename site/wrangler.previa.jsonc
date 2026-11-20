@@ -1,0 +1,16 @@
+{
+  // Prévia da v10 (D-2876): worker SEPARADO do olli-site, em endereço próprio (workers.dev), nunca no domínio.
+  // Publicar a prévia:
+  //   cd web && OLLI_PREVIA=1 SENTRY_AUTH_TOKEN= npm run build
+  //   cd ../site && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy -c wrangler.previa.jsonc
+  // O build com OLLI_PREVIA=1 grava X-Robots-Tag noindex em todas as rotas e fecha o robots.txt.
+  // NÃO toca em `olli-site` (o que serve olliorcamentos.online). Apagar a prévia: `wrangler delete --name olli-site-previa`.
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "olli-site-previa",
+  "compatibility_date": "2026-06-29",
+  "workers_dev": true,
+  "assets": {
+    "directory": "../web/dist",
+    "not_found_handling": "404-page"
+  }
+}

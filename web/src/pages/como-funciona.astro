@@ -1,0 +1,54 @@
+---
+/**
+ * Página gerada do port da v10 (D-2876) e DEPOIS editada à mão: o que depende de plano, preço, limite ou data vem
+ * de data/site.ts e da fonte (planosBase/entitlements), nunca de literal. Editar aqui é o caminho; regerar apaga.
+ */
+import FaqSite from "../components/site/FaqSite.astro";
+import PlanosSite from "../components/site/PlanosSite.astro";
+import LayoutSite from "../layouts/LayoutSite.astro";
+import { schemaFaq } from "../data/faq-site";
+import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
+---
+
+<LayoutSite titulo="Recursos: orçamento, atendimento e organização — OLLI Orçamentos" descricao="Recursos do OLLI: catálogo, orçamento com a sua marca, aprovação pelo link, ordem de serviço, recibo, agenda e equipe." schemas={[]}>
+<section class="page-hero"><div class="w">
+<p class="crumbs"><a href="/">Início</a> · Recursos</p>
+<h1>O combinado com o cliente. <em>O registro do serviço.</em></h1>
+<p class="lead">Orçamento com a sua marca no celular e no computador. Ordem de serviço, recibo e agenda são do plano Pro.</p>
+<div class="cta"><a class="bt p" href="https://app.olliorcamentos.online/auth/login?modo=cadastro">Começar grátis →</a><a class="bt s" href="/planos/">Comparar planos</a></div>
+</div></section>
+<section aria-labelledby="orcamento-recurso"><div class="w"><div class="seg-grid">
+<div>
+<p class="section-kicker">Orçamento e aprovação</p>
+<h2 id="orcamento-recurso">Itens claros para o cliente decidir.</h2>
+<p class="sub">Use seu catálogo de serviços e produtos, ajuste quantidades e valores e envie o orçamento com a marca do seu negócio por PDF, link ou WhatsApp.</p>
+<p class="sub">No link, o cliente confere a proposta e aprova. {FRASE_PIX_LINK}</p>
+<p class="mini">No Grátis, os documentos levam o selo “Feito com OLLI”. Pro e Empresa retiram o selo.</p>
+</div>
+<figure class="seg-tela"><div class="phone-mini"><div class="device device-iphone-14-pro"><div class="device-frame"><img class="device-screen" src="/site/app/telas/link-cliente-refrigeracao.webp" srcset="/site/app/telas/link-cliente-refrigeracao.webp 1x, /site/app/telas/link-cliente-refrigeracao@2x.webp 2x" alt="Tela real do OLLI: link do orçamento de refrigeração aberto pelo cliente no celular" width="390" height="844" loading="lazy" decoding="async"></div><div class="device-header"></div><div class="device-sensors"></div><div class="device-btns"></div><div class="device-power"></div></div></div><figcaption>Dados de exemplo</figcaption></figure>
+</div></div></section>
+<section aria-labelledby="atendimento-recurso"><div class="w"><div class="seg-grid">
+<div>
+<p class="section-kicker">Atendimento e recibo · Pro e Empresa</p>
+<h2 id="atendimento-recurso">Guarde o que foi feito na visita.</h2>
+<p class="sub">A ordem de serviço (OS) reúne checklist, fotos e assinatura do cliente. Você mantém o registro do atendimento no próprio app.</p>
+<p class="sub">Com o pagamento feito, gere o recibo com sua marca. O recibo não substitui uma nota fiscal.</p>
+</div>
+<figure class="seg-tela"><div class="phone-mini"><div class="device device-iphone-14-pro"><div class="device-frame"><img class="device-screen" src="/site/app/telas/ordem-servico.webp" srcset="/site/app/telas/ordem-servico.webp 393w, /site/app/telas/ordem-servico@2x.webp 786w, /site/app/telas/ordem-servico@3x.webp 1179w" sizes="(min-width: 768px) 172px, 141px" alt="Tela real do OLLI: ordem de serviço, com o registro do atendimento" width="393" height="852" loading="lazy" decoding="async"></div><div class="device-header"></div><div class="device-sensors"></div><div class="device-btns"></div><div class="device-power"></div></div></div><figcaption>Dados de exemplo</figcaption></figure>
+</div></div></section>
+<section aria-labelledby="organizacao-recurso"><div class="w">
+<p class="section-kicker">Organização e equipe</p>
+<h2 id="organizacao-recurso">O que você consulta entre os atendimentos.</h2>
+<div class="bento">
+<div class="gl"><h3>Clientes e agenda</h3><p>Cadastre seus clientes, consulte o histórico e marque as visitas. No Pro e no Empresa, a confirmação de véspera permite ao cliente confirmar ou pedir para remarcar.</p></div>
+<div class="gl"><h3>Apoio ao diagnóstico</h3><p>Consulte códigos de erro mesmo sem internet. A Oli é a assistente de IA do app e apoia o diagnóstico dentro do limite do plano.</p></div>
+<div class="gl"><h3>Gestão de equipe</h3><p>No Empresa, cada técnico tem acesso por papel. PMOC organiza o plano de manutenção de cada equipamento, e os contratos recorrentes ficam no mesmo sistema.</p></div>
+</div>
+<p class="bloco-acao"><a class="bt s" href="/para-empresas/">Conhecer os recursos para empresas</a></p>
+</div></section>
+<section><div class="w"><div class="fin gl">
+<h2>Monte seu primeiro orçamento com a sua marca.</h2>
+<p class="sub">No Grátis: {GRATIS_ORC}, {GRATIS_SEM}.</p>
+<div class="cta"><a class="bt p" href="https://app.olliorcamentos.online/auth/login?modo=cadastro">Começar grátis →</a><a class="bt s" href="/ajuda/">Tirar dúvidas</a></div>
+</div></div></section>
+</LayoutSite>

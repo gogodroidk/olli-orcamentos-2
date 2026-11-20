@@ -1,0 +1,71 @@
+/* Melhorias trazidas do loop multi-IA (17/11/2026). Só acessibilidade, sem mudar o visual. */
+/* Botões de tema e menu: alvo de toque de 44 px (antes 42 px). */
+.theme-bt,.burger{width:44px;height:44px}
+/* Dúvidas: a pergunta inteira vira alvo de 44 px; padding e margem negativa se anulam, o desenho fica igual. */
+.faq summary{padding:10px 0;margin:-10px 0}
+.faq details[open] summary{margin-bottom:-10px}
+/* Rodapé no celular: uma regra posterior (1060 px) deixava 3 colunas a 390 px e cortava "Conta" e "Contato".
+   Volta ao que o próprio site.css já pedia para até 768 px: 2 colunas. */
+@media(max-width:768px){footer .grid{grid-template-columns:1fr 1fr}}
+.rodape-frase{margin-top:12px;max-width:280px}
+footer .trust{margin-top:16px}
+
+/* Fase 3 — brilho só em azul e ciano (h1, aurora e borda do card Pro). */
+.aur i:nth-child(3){background:#1e8fdc44}
+:root:not([data-theme=dark]) h1 em{background-image:linear-gradient(120deg,#08668f,#0a4fa3,#0b6fce,#08668f)}
+:root[data-theme=dark] h1 em{background-image:linear-gradient(120deg,#9af0fa,#7ec8ff,#4fa8f5,#9af0fa)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]) h1 em{background-image:linear-gradient(120deg,#9af0fa,#7ec8ff,#4fa8f5,#9af0fa)}}
+.pc.f::before{background:conic-gradient(from var(--a,0deg),#3fd8ea,#0b6fce,#7fe9f5,#3fd8ea)}
+
+/* Fase 3 — menu do celular: o cabeçalho fica acima da gaveta, para o botão de fechar aparecer e receber foco. */
+.top.menu-open{z-index:60;background:var(--bg);box-shadow:0 1px 0 var(--line)}
+.burger[aria-expanded=true] span{background:transparent}
+.burger[aria-expanded=true] span::before{top:0;transform:rotate(45deg)}
+.burger[aria-expanded=true] span::after{top:0;transform:rotate(-45deg)}
+
+/* Fase 3 — Esc e segundo toque fecham de verdade o submenu e a lupa, mesmo com foco ou ponteiro em cima. */
+.nav-drop.sub-off .nav-submenu{opacity:0;visibility:hidden;transform:translateY(-6px)}
+.hero-technician-v7.zoom-off .technician-phone-detail{opacity:0!important;visibility:hidden!important;pointer-events:none!important;transform:translate3d(-12px,10px,0) scale(.78)!important}
+.hero-technician-v7.zoom-off>img{filter:drop-shadow(18px 26px 24px #0a25472e)!important}
+
+/* Fase 3 — fluxo da home em 4 telas reais, cada uma na moldura de celular. */
+.fluxo-telas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px 18px;margin-top:44px}
+.fluxo-passo{text-align:center;min-width:0}
+.phone-mini{position:relative;height:392px;margin-bottom:14px}
+.fluxo-telas .phone-mini>.device-iphone-14-pro,.fluxo-telas .phone-mini>.device-iphone-14-pro:hover{position:absolute;left:50%;top:0;transform:translateX(-50%) scale(.44);transform-origin:top center;filter:drop-shadow(0 20px 28px #0a25472a)}
+.phone-mini .device-screen{border-radius:49px}
+.fluxo-passo h3{font-size:19px;margin:6px 0}
+.fluxo-passo p{color:var(--muted);font-size:14.5px;max-width:250px;margin:0 auto}
+.fluxo-nota{margin-top:36px;max-width:760px;color:var(--muted);font-size:16px}
+.fluxo-nota strong{color:var(--ink)}
+.bloco-acao{margin-top:28px}
+@media(max-width:1024px){.fluxo-telas{grid-template-columns:repeat(2,minmax(0,1fr));gap:36px 18px}}
+@media(max-width:520px){.phone-mini{height:322px}.fluxo-telas .phone-mini>.device-iphone-14-pro,.fluxo-telas .phone-mini>.device-iphone-14-pro:hover{transform:translateX(-50%) scale(.36)}}
+
+/* Fase 3 — planos: respiro do bloco, observação do selo, todos os itens no celular e preço anual sem estourar o card. */
+.planos-w{padding-block:72px;position:relative}
+.pc-obs{display:block;margin:-12px 0 22px;font-size:12.5px;line-height:1.4;color:#a9bdd8}
+@media(max-width:560px){#planos-home .pc ul li:nth-child(n+3){display:block}}
+@media(min-width:901px) and (max-width:1180px){.pc .pr{font-size:clamp(28px,3.1vw,38px);white-space:nowrap}}
+@media(max-width:560px){.pc .pr{font-size:38px;white-space:nowrap}}
+
+/* Fase 3 — páginas internas: texto da chamada final centralizado e link visível dentro da nota. */
+.fin .sub{margin-left:auto;margin-right:auto}
+.fluxo-nota a{color:var(--brand-on-glass);font-weight:600;text-decoration:underline;text-underline-offset:3px}
+
+/* Fase 3 — páginas de segmento: lista de serviços ao lado de uma tela real na moldura. */
+.seg-grid .checklist{margin-top:24px}
+.seg-tela{margin:0;text-align:center}
+.seg-tela .phone-mini>.device-iphone-14-pro,.seg-tela .phone-mini>.device-iphone-14-pro:hover{position:absolute;left:50%;top:0;transform:translateX(-50%) scale(.44);transform-origin:top center;filter:drop-shadow(0 20px 28px #0a25472a)}
+.seg-tela figcaption{font-size:12px;color:var(--muted)}
+/* Fase 3 — passada final: com movimento reduzido, param a aurora, o brilho do título, a borda do card Pro e a entrada dos blocos. */
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.aur i,h1 em,.pc.f::before,.chip i{animation:none}.rv{transition:none}}
+/* Fase 3 — passada final: âncora e foco não ficam sob o cabeçalho fixo nem sob a barra fixa do celular. */
+html{scroll-padding-top:calc(var(--nav-h) + 8px)}
+@media(max-width:900px){html{scroll-padding-bottom:80px}}
+/* Segmentos com div.checklist > ul: a lista interna fica sem marcador e sem recuo padrão. */
+div.checklist>ul{list-style:none;padding:0;margin:24px 0 0;display:grid;gap:10px}
+/* Fase 3 — passada final: botão de pausar o título girando. Fica oculto e aparece só quando recebe foco pelo teclado. */
+.rot-pausa{position:absolute;width:1px;height:1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.rot-pausa:focus-visible{width:auto;height:auto;min-height:44px;padding:0 18px;overflow:visible;clip-path:none;z-index:5;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--sh);outline:2px solid var(--brand);outline-offset:2px}
+@media(max-width:520px){.seg-tela .phone-mini>.device-iphone-14-pro,.seg-tela .phone-mini>.device-iphone-14-pro:hover{transform:translateX(-50%) scale(.36)}}

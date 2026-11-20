@@ -1,0 +1,129 @@
+/* Layout OLLI para as molduras MIT de devices.css; telas sempre retas e sem homografia. */
+:root{--device-scale:1}
+.device-screen{object-fit:cover;object-position:top center;background:#fff}
+.device-macbook-pro .device-screen{object-fit:cover}
+.device-iphone-14-pro .device-screen{object-fit:cover}
+/* No fluxo, a captura inteira fica visível mesmo quando sua proporção difere ligeiramente da moldura. */
+.phone-mini .device-screen{object-fit:contain;object-position:top center;background:#fff}
+.hero-device-workspace{position:relative;width:100%;height:430px;max-width:590px;margin:0 auto}
+.hero-macbook{position:absolute;left:0;top:48px;transform:scale(.61);transform-origin:top left;width:740px}
+.hero-iphone{position:absolute;right:0;top:90px;transform:scale(.29);transform-origin:top left;width:428px}
+.device-caption{position:absolute;left:0;bottom:0;font-size:11px;color:var(--muted)}
+.hero-technician{position:relative;width:210px;max-width:45%;margin:0 auto}
+.hero-technician img{width:100%;height:auto;max-height:330px;object-fit:contain;object-position:bottom;mask-image:linear-gradient(#000 92%,transparent)}
+.hero-technician figcaption{font-size:10px;text-align:center;color:var(--muted);margin-top:-4px}
+.showcase-devices{position:relative;height:300px;width:100%;max-width:620px;margin:10px auto 0}
+.showcase-macbook{position:absolute;left:0;top:0;transform:scale(.48);transform-origin:top left}
+.showcase-iphone{position:absolute;right:0;top:12px;transform:scale(.24);transform-origin:top left}
+.showcase-grid{display:grid;gap:24px}
+.code-device-pair{position:relative;height:310px;max-width:740px;margin:36px auto 0}
+.pair-macbook{position:absolute;left:0;top:0;transform:scale(.55);transform-origin:top left}
+.pair-iphone{position:absolute;right:0;top:5px;transform:scale(.27);transform-origin:top left}
+@media(min-width:700px){
+ .client-hero{display:grid;grid-template-columns:1.25fr .75fr;align-items:end;gap:0}
+ .hero-technician{max-width:none;width:100%;margin:0 0 0 -58px;z-index:3}
+ .hero-technician img{max-height:490px}
+ .hero-device-workspace{height:410px}
+ .hero-macbook{transform:scale(.53);top:56px}
+ .hero-iphone{transform:scale(.27);top:96px;right:5px}
+ .showcase-grid{grid-template-columns:.75fr 1.25fr;align-items:center;gap:36px}
+ .showcase-devices{height:410px}
+ .showcase-macbook{transform:scale(.67)}
+ .showcase-iphone{transform:scale(.32);top:20px}
+ .code-device-pair{height:470px;max-width:900px}
+ .pair-macbook{transform:scale(.8);left:50%;margin-left:-320px}
+ .pair-iphone{transform:scale(.36);right:1%;top:26px}
+}
+@media(min-width:1100px){
+ .client-hero{grid-template-columns:1.45fr .55fr;min-width:0}
+ .hero-device-workspace{height:430px}
+ .hero-macbook{transform:scale(.58);top:72px;left:-8px}
+ .hero-iphone{transform:scale(.29);top:112px;right:-10px}
+ .hero-technician img{max-height:570px}
+}
+@media(max-width:420px){
+ .hero-device-workspace{height:365px}
+ .hero-macbook{transform:scale(.46);top:44px;left:0}
+ .hero-iphone{transform:scale(.23);top:82px;right:0}
+ .hero-technician{width:170px}
+ .hero-technician img{max-height:280px}
+ .showcase-devices{height:230px}
+ .showcase-macbook{transform:scale(.43)}
+ .showcase-iphone{transform:scale(.205);top:7px}
+ .code-device-pair{height:245px}
+ .pair-macbook{transform:scale(.43)}
+ .pair-iphone{transform:scale(.205)}
+}
+
+/* Alinhamento das caixas escaladas às colunas visíveis. */
+.hero-macbook,.hero-iphone,.showcase-macbook,.showcase-iphone,.pair-macbook,.pair-iphone{will-change:transform}
+.hero-technician img{display:block}
+@media(min-width:700px){.hero-macbook{left:0}.hero-iphone{right:-14px}.client-hero{align-items:center}.hero-technician{align-self:end}}
+@media(max-width:699px){.hero-technician{margin-top:-46px}.hero-device-workspace{margin-bottom:0}}
+/* Telas reais também nas grades internas: moldura única MIT, sem recorte CSS de aparelho. */
+.css-phone{transform:scale(.36);transform-origin:top left;width:428px;height:868px}
+.css-laptop{transform:scale(.55);transform-origin:top left;width:740px;height:434px}
+.grid-phones figure>.css-phone{position:absolute;left:50%;margin-left:-77px;top:0}
+.grid-phones figure{position:relative;padding-top:320px;min-width:0}
+.grid-phones figure figcaption{margin-top:0}
+figure>.css-laptop{width:740px;margin:0;position:relative;left:0}
+.sp figure:has(.css-laptop){min-height:250px}
+.sp figure>.css-laptop{position:absolute;left:0;top:0}
+.sp figure:has(.css-laptop){position:relative;width:100%}
+@media(min-width:900px){.sp figure:has(.css-laptop){min-height:390px}.css-laptop{transform:scale(.8)}}
+@media(max-width:560px){.grid-phones figure{padding-top:290px}.grid-phones figure>.css-phone{transform:scale(.32);margin-left:-68px}.sp figure:has(.css-laptop){min-height:205px}.css-laptop{transform:scale(.47)}}
+
+/* Hero: pessoa à frente, aparelhos como apoio visual e sem cena repetida na home. */
+.client-hero{position:relative;isolation:isolate}
+.hero-technician{position:relative;z-index:4;pointer-events:none}
+.hero-device-workspace{position:relative;z-index:1}
+@media(min-width:700px){.hero-technician{margin-left:-80px;width:125%}.client-hero{grid-template-columns:1.3fr .7fr}.hero-technician img{filter:drop-shadow(8px 10px 12px #0a25472a)}}
+@media(max-width:699px){.hero-technician{width:240px;max-width:60%;margin-top:-85px}.hero-technician img{max-height:350px}}
+/* Correção de sobreposição: no celular a cena é um bloco próprio antes do texto. */
+@media(max-width:699px){
+ .client-hero{display:flex!important;flex-direction:column;align-items:center;height:auto;max-width:420px;background:none}
+ .hero-device-workspace{order:0;height:285px;flex:none;width:100%}
+ .hero-technician{order:1;width:210px;max-width:58%;margin:-70px 0 0 auto;position:relative;right:14px}
+ .hero-technician img{max-height:300px}
+ .hero-technician figcaption{position:absolute;right:0;top:0;background:#f4f7fbe8;padding:2px 4px;border-radius:4px}
+ .hero .hg{display:flex!important;flex-direction:column;gap:0}
+ .hero .hg>div:first-child{order:2;width:100%}
+ .hero .client-hero{order:1!important}
+ .hero h1.rot-h{margin-top:10px}
+ .hero-macbook{transform:scale(.43);top:20px;left:0}
+ .hero-iphone{transform:scale(.2);top:45px;right:0}
+ .device-caption{bottom:0}
+}
+@media(min-width:700px){
+ .hero-technician{margin-left:-44px;width:120%;max-width:250px;align-self:end}
+ .hero-technician img{max-height:460px}
+ .client-hero{align-items:end;grid-template-columns:1.35fr .65fr}
+ .hero-device-workspace{height:390px}
+ .hero-macbook{transform:scale(.48);top:64px}
+ .hero-iphone{transform:scale(.25);top:100px}
+}
+@media(min-width:1100px){
+ .hero-technician{max-width:280px;width:130%;margin-left:-90px}
+ .hero-technician img{max-height:550px}
+ .hero-device-workspace{height:430px}
+ .hero-macbook{transform:scale(.56);top:65px}
+ .hero-iphone{transform:scale(.28);top:115px}
+}
+/* figure tem margem padrão: zerar explicitamente para a imagem reservar altura real */
+.hero-technician{margin-top:0;margin-bottom:0;margin-left:0;margin-right:0}
+@media(max-width:699px){
+ .client-hero{height:auto!important;min-height:500px;justify-content:flex-start}
+ .hero-device-workspace{height:285px;flex:0 0 285px}
+ .hero-technician{flex:0 0 270px;width:185px;max-width:none;margin:-70px 10px 0 auto!important;height:270px}
+ .hero-technician img{width:100%;height:270px;max-height:none}
+}
+@media(min-width:700px) and (max-width:1099px){
+ .client-hero{min-height:460px}
+ .hero-technician{width:220px;max-width:none;min-height:440px;margin:0 0 0 -40px!important;align-self:end}
+ .hero-technician img{height:440px;width:100%;max-height:none}
+}
+@media(min-width:1100px){
+ .client-hero{min-height:550px}
+ .hero-technician{width:230px;max-width:none;min-height:520px;margin:0 0 0 -80px!important;align-self:end}
+ .hero-technician img{height:520px;width:100%;max-height:none}
+}

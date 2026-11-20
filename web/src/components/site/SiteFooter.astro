@@ -1,0 +1,57 @@
+---
+/** Rodapé da v10 (D-2876). Identidade jurídica e contato vêm de `data/empresa.ts`; links de `data/site.ts`. */
+import { EMPRESA, emailContatoPublicavel, identidadePublicavel } from "../../data/empresa";
+import { GRATIS_SEM, ROTA, SERVICOS_MENU, URL_CADASTRO, URL_ENTRAR, URL_PLAY } from "../../data/site";
+
+const empresa = identidadePublicavel();
+const email = emailContatoPublicavel();
+---
+
+<footer>
+	<div class="w">
+		<div class="grid">
+			<div>
+				<a class="logo" href="/" aria-label="OLLI Orçamentos, início"><img src="/site/img/olli-simbolo.svg" width="30" height="30" alt="" />OLLI<span>.</span></a>
+				<p class="rodape-frase">Orçamentos, ordens de serviço e recibos com a sua marca, para quem presta serviço.</p>
+				<div class="trust">
+					<span>Plano Grátis {GRATIS_SEM.replace(" e sem prazo", "")}</span>
+					<span>Android na Google Play</span>
+				</div>
+				<div class="lojas lj-rod">
+					<a href={URL_PLAY} rel="noopener" target="_blank" aria-label="Baixar o app OLLI na Google Play"><img src="/site/img/lojas/google-play.svg" alt="Disponível na Google Play" width="147" height="44" loading="lazy" /></a>
+					<span class="breve" role="img" aria-label="App Store: em breve"><img src="/site/img/lojas/app-store.svg" alt="" width="147" height="44" loading="lazy" /></span>
+				</div>
+			</div>
+			<div>
+				<h2 class="fh">Produto</h2>
+				<a href={ROTA.tecnicos}>Para técnicos</a>
+				<a href={ROTA.empresas}>Para empresas</a>
+				<a href={ROTA.recursos}>Recursos</a>
+				<a href={ROTA.planos}>Planos</a>
+			</div>
+			<div class="footer-segments" id="segmentos-rodape">
+				<h2 class="fh">Para o seu serviço</h2>
+				{SERVICOS_MENU.map((s) => <a href={`/para/${s.slug}/`}>{s.nome}</a>)}
+			</div>
+			<div>
+				<h2 class="fh">Conta</h2>
+				<a href={URL_ENTRAR}>Entrar</a>
+				<a href={URL_CADASTRO}>Começar grátis</a>
+				<a href={URL_PLAY} rel="noopener">App Android</a>
+				<a href={ROTA.duvidas}>Dúvidas</a>
+				<a href={ROTA.ajuda}>Central de ajuda</a>
+			</div>
+			<div>
+				<h2 class="fh">Contato</h2>
+				<a href={`https://wa.me/${EMPRESA.whatsapp}`} rel="noopener">WhatsApp</a>
+				{email && <a href={`mailto:${email}`}>{email}</a>}
+				<a href="/legal/privacidade/">Privacidade</a>
+				<a href="/legal/termos/">Termos</a>
+			</div>
+		</div>
+		<div class="bot">
+			<span>{empresa ? `© 2026 ${empresa.razaoSocial} · CNPJ ${empresa.cnpj}` : "© 2026 OLLI"}</span>
+			<span>Foto do topo: imagem ilustrativa criada com IA</span>
+		</div>
+	</div>
+</footer>
