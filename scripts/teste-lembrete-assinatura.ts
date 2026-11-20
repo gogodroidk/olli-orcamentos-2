@@ -89,6 +89,18 @@ checar('vence em 10 dias → nada ainda', lembreteAssinatura(pagoPix(10)), null)
 checar('vence em 5 dias → renovar (info, dispensável 24h)', [lembreteAssinatura(pagoPix(5))?.tipo, lembreteAssinatura(pagoPix(5))?.urgencia, lembreteAssinatura(pagoPix(5))?.dispensavelPorHoras], ['renovar_pix', 'info', 24]);
 checar('vence em 2 dias → atenção e NÃO dispensável', [lembreteAssinatura(pagoPix(2))?.urgencia, lembreteAssinatura(pagoPix(2))?.dispensavelPorHoras], ['atencao', null]);
 checar('vence amanhã → crítico', [lembreteAssinatura(pagoPix(1))?.urgencia, lembreteAssinatura(pagoPix(1))?.titulo], ['critico', 'Seu Pro vence amanhã']);
+// Dia do vencimento: o app falava "vence amanhã" na manhã do próprio dia (Math.ceil de 11 h = 1).
+// Conta o dia pelo calendário de Brasília (UTC−3): vence 10/12 21:59 BRT, visto 10/12 10:00 BRT → hoje.
+{
+  const fim = '2026-12-11T00:59:20.001Z';
+  const vista = (agoraIso: string) => lembreteAssinatura({
+    agora: new Date(agoraIso), oferta: null, precoProMensal: 'R$ 39,00',
+    assinatura: { planoEfetivo: 'pro', planoContratado: 'pro', origem: 'pagamento', renovaSozinho: false, proximaCobranca: fim },
+  });
+  checar('vence às 21:59 de hoje, visto de manhã → "vence hoje" crítico não dispensável', [vista('2026-12-10T13:00:00Z')?.titulo, vista('2026-12-10T13:00:00Z')?.urgencia, vista('2026-12-10T13:00:00Z')?.dispensavelPorHoras], ['Seu Pro vence hoje', 'critico', null]);
+  checar('visto na véspera (09/12 12:00 BRT) → "vence amanhã"', vista('2026-12-09T15:00:00Z')?.titulo, 'Seu Pro vence amanhã');
+  checar('visto 08/12 10:00 BRT → "vence em 2 dias"', vista('2026-12-08T13:00:00Z')?.titulo, 'Seu Pro vence em 2 dias');
+}
 checar('cartão recorrente (renova sozinho) → nunca lembra', lembreteAssinatura(pagoPix(1, true)), null);
 checar('venceu há 3 dias → plano_vencido crítico', [lembreteAssinatura(pagoPix(-3))?.tipo, lembreteAssinatura(pagoPix(-3))?.urgencia], ['plano_vencido', 'critico']);
 checar('venceu há 40 dias → não insiste mais', lembreteAssinatura(pagoPix(-40)), null);
