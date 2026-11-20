@@ -9,9 +9,11 @@ import {
 	type EstadoOfertaComercial,
 	type InicioTrialPro,
 } from "@limites-comerciais";
+import { precoDoPlano, reais } from "@/pages/olli/planos/precos";
 
 /**
- * REGISTRA o envio (o Grátis é ilimitado — ver `limitesComerciais.ts`). Nunca barra:
+ * REGISTRA o envio e aplica o limite do Grátis (5 por mês em conta nova; vale para todas
+ * as contas desde o corte de 07/11 — `limite_gratis_config`). Só a recusa do LIMITE barra:
  * falha de registro vira `motivo: 'sem_registro'` e o PDF sai do mesmo jeito.
  */
 export async function reservarEnvioOrcamento(
@@ -34,15 +36,28 @@ export async function reservarEnvioOrcamento(
 
 /**
  * P0-09: texto da recusa do limite do Grátis em conta nova (única recusa do contrato).
- * Mesmo texto do app (VisualizarOrcamentoScreen): sem a palavra "bloqueado", orçamento salvo.
+ * Sem a palavra "bloqueado"; o orçamento fica salvo. No momento de maior vontade de
+ * enviar, o aviso leva ao Pix do Pro (CQ-DINHEIRO-LOTE1): `rotuloAcao` é o botão e
+ * `URL_PAGAR_PRO_DO_LIMITE` o destino — o MESMO Pix da tela de Planos, nada de cobrança nova.
+ * Preço da fonte única (`web/src/data/planos.ts`), nunca digitado aqui.
  */
-export function avisoLimiteEnvios(reserva: ReservaEnvioOrcamento): { titulo: string; mensagem: string } {
+export function avisoLimiteEnvios(reserva: ReservaEnvioOrcamento): { titulo: string; mensagem: string; rotuloAcao: string } {
   const teto = reserva.limiteEnvios ?? 5;
+  const preco = precoDoPlano("pro");
+  const precoTexto = preco ? ` (${reais(preco.mensalCentavos)} por mês)` : "";
   return {
     titulo: "Limite do mês atingido",
-    mensagem: `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, veja os planos.`,
+    mensagem: `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Para enviar agora, libere o Pro${precoTexto}; se preferir esperar, os envios voltam no próximo mês.`,
+    rotuloAcao: "Liberar no Pro",
   };
 }
+
+/**
+ * Destino do botão do aviso de limite: Planos já com a intenção do Pro mensal e o pedido
+ * de abrir o Pix (`pagar=pix`, lido em `planos/index.tsx`). Parâmetros allowlistados
+ * (`lerIntencaoPlano`), sem destino livre.
+ */
+export const URL_PAGAR_PRO_DO_LIMITE = "/planos?plano=pro&periodo=mensal&origem=limite&pagar=pix";
 
 export async function obterEstadoOfertaComercial(): Promise<EstadoOfertaComercial | null> {
 	try {

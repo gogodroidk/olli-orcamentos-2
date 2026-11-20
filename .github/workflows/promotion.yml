@@ -47,6 +47,9 @@ jobs:
           node-version: '22'
       - name: Root dependencies
         run: npm ci
+      # Mesmo passo do app-gate do ci.yml: o teste-error-boundary-tela precisa do Chromium do Playwright.
+      - name: Chromium do Playwright (teste do ErrorBoundary)
+        run: npx playwright install --with-deps chromium
       - name: Root preflight
         run: npm run preflight
       - name: Shared landing dependencies
