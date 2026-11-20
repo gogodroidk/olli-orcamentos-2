@@ -60,6 +60,10 @@ const planosPagina = ler('../web/src/pages/planos.astro');
 const llms = ler('../web/src/pages/llms.txt.ts');
 const recursos = ler('../web/src/data/recursos.ts');
 const cartoes = ler('../web/src/components/PlanosPrecos.astro');
+// D-2876: a v10 tira plano, preço, limite e Pix da fonte em data/site.ts, data/faq-site.ts e components/site/PlanosSite.astro.
+const dadosSite = ler('../web/src/data/site.ts');
+const faqSite = ler('../web/src/data/faq-site.ts');
+const planosSite = ler('../web/src/components/site/PlanosSite.astro');
 const oficios = ler('../web/src/data/oficios.ts');
 const ajuda = ler('../src/content/ajuda/index.ts');
 const termos = ler('../src/content/legal/termos.ts');
@@ -67,8 +71,8 @@ const privacidade = ler('../src/content/legal/privacidade.ts');
 
 // ─── 2. Offline é do app Android, não da web ───────────────────────────────────
 assert.doesNotMatch(home, /a: "Funciona\. O app guarda tudo/, 'FAQ de offline não pode responder "Funciona." sem dizer que é só no app');
-assert.match(home, /No aplicativo Android \(em teste fechado\)/, 'FAQ de offline deve limitar a promessa ao app Android');
-assert.match(home, /Pelo navegador — no celular ou no computador — a OLLI precisa de internet/, 'FAQ de offline deve dizer que a web precisa de internet');
+assert.match(faqSite, /No app Android, a consulta de códigos de erro funciona offline; no navegador é preciso estar online/, 'FAQ de offline deve limitar a promessa ao app Android e dizer que a web precisa de internet');
+assert.doesNotMatch(home, /[^.]\s(funciona|funcionam) sem internet/i, 'home: offline só dito como do app Android');
 assert.doesNotMatch(home, /benchmark|das 25 ferramentas/i, 'benchmark de concorrente é bastidor, não copy');
 assert.doesNotMatch(oficio, /sem sinal\./, 'página de ofício leva à web, que não funciona sem sinal');
 assert.doesNotMatch(ajuda, /Tudo funciona offline/, 'Central de Ajuda não pode prometer offline sem dizer que é do app');
@@ -78,10 +82,10 @@ assert.match(ajuda, /pelo navegador, o OLLI precisa de conexão/, 'Central de Aj
 assert.doesNotMatch(home, /DAS do MEI/, 'comparação com o DAS era falsa para o plano Empresa');
 // Contagem de calculadoras derivada, nunca digitada.
 assert.doesNotMatch(home, /21 calculadoras|3 de elétrica/, 'contagem de calculadoras tem de vir de data/oficios.ts');
-assert.match(home, /\$\{TOTAL_CALCULADORAS\} calculadoras de campo divididas por ofício/, 'FAQ de calculadoras deve usar TOTAL_CALCULADORAS');
+assert.doesNotMatch(home, /\b\d+ calculadoras/, 'a home não digita contagem de calculadoras (D-2876: a v10 não tem esse FAQ)');
 
 // ─── 3. Zero não vira copy ─────────────────────────────────────────────────────
-assert.match(oficio, /calculos\.length > 0\s*\?\s*`\$\{dor\} Grátis para começar/, 'meta description precisa de ramo sem calculadora');
+assert.match(oficio, /const descricao = `Orçamento para \$\{profissao\} no celular/, 'meta description da página de ofício não estampa contagem (D-2876: ≤160 caracteres)');
 assert.match(llms, /n > 0\s*\?\s*` Inclui \$\{n\} ferramenta/, 'llms.txt não pode dizer "Inclui 0 ferramenta"');
 assert.doesNotMatch(oficios, /Do áudio do cliente/, 'a OLLI não lê áudio do cliente — frase ambígua');
 assert.doesNotMatch(oficio, /Do áudio do cliente/, 'a OLLI não lê áudio do cliente — frase ambígua');
@@ -92,10 +96,17 @@ assert.match(recursos, /valor: "Uso justo diário"/, 'comparativo deve dizer "Us
 assert.doesNotMatch(planosPagina, /a IA tem 3 usos/, 'cota do Grátis vem de IA_USOS_GRATIS_MES');
 // Item "em breve" não ganha o ✓ de pronto no cartão do plano.
 assert.match(cartoes, /b\.emBreve \?/, 'cartão de plano precisa de terceiro estado para "em breve"');
+assert.match(planosSite, /b\.emBreve && /, 'cartão de plano da v10 precisa de terceiro estado para "em breve"');
 
 // ─── 5. Pix: condicionado e pelo mesmo preço ──────────────────────────────────
-for (const [nome, fonte] of [['home', home], ['planos', planosPagina], ['cartões', cartoes], ['llms.txt', llms]] as const) {
+for (const [nome, fonte] of [['data/site.ts', dadosSite], ['cartões', cartoes], ['llms.txt', llms]] as const) {
   assert.match(fonte, /PIX_PLANO_LIGADO/, `${nome}: copy de Pix tem de ficar atrás do PIX_PLANO_LIGADO`);
+}
+// D-2876: nas páginas da v10 o Pix da ASSINATURA só sai por `PIX` (= PIX_PLANO_LIGADO) e o Pix do LINK por `FRASE_PIX_LINK` (entitlement); nunca digitado.
+assert.match(planosSite, /\{PIX && /, 'PlanosSite: Pix da assinatura atrás do PIX');
+assert.match(faqSite, /\$\{PIX \? /, 'FAQ: Pix da assinatura atrás do PIX');
+for (const [nome, fonte] of [['home', home], ['planos', planosPagina]] as const) {
+  assert.doesNotMatch(fonte.replace(/\{FRASE_PIX_LINK\}/g, ''), /\bPix\b/, `${nome}: Pix escrito à mão (use FRASE_PIX_LINK / PIX)`);
 }
 const pix = ler('../web/src/data/pix.ts');
 assert.match(pix, /obj\.ok !== true \|\| typeof obj\.pix !== "boolean"\) return "desconhecido"/, 'resposta estranha do worker é "não sei", não "ligado"');

@@ -375,28 +375,20 @@ const privacidade = ler('../src/content/legal/privacidade.ts');
 
 assert.match(layout, /<script src="\.\.\/scripts\/marketing\.ts"><\/script>/, 'Layout carrega o marketing da landing');
 const home = ler('../web/src/pages/index.astro');
-assert.match(
-	home,
-	/order-1 mt-5 flex flex-col gap-3 sm:flex-row lg:order-none/,
-	'no celular o botão do hero fica logo abaixo do título, fora do aviso de cookies',
-);
-assert.match(home, /Daikin <span class="tnum">A6<\/span>/, 'o exemplo da home é o Daikin A6 da base');
-assert.match(home, /Confiança alta/, 'a confiança do card é palavra, como na base');
-assert.match(home, /A ART continua sendo do responsável técnico/, 'a home não promete emitir a ART');
+// D-2876 (v10): no celular o texto e o botão vêm ANTES da foto (ponte.css), senão o "Começar grátis" ficava atrás do
+// aviso de cookies na primeira visita (medido em 360x740, 390x844 e 412x915).
+const ponte = ler('../web/public/site/css/ponte.css');
+assert.match(ponte, /\.hero \.hg > \.hero-vis \{ order: 2 !important/, 'no celular o botão do hero fica antes da foto, fora do aviso de cookies');
+assert.match(home, /<div class="cta">\s*<a class="bt p" href=\{?"?https:\/\/app\.olliorcamentos\.online\/auth\/login\?modo=cadastro|class="bt p" href="https:\/\/app\.olliorcamentos\.online\/auth\/login\?modo=cadastro"/, 'a home tem o botão de cadastro no hero');
+assert.doesNotMatch(home, /emitir a ART|ART emitida|emite a ART/i, 'a home não promete emitir a ART');
 assert.doesNotMatch(home, /confiança 82%/, 'a home não mostra confiança em porcentagem');
 assert.doesNotMatch(home, /45\/5 µF/, 'a home não inventa a medida do capacitor');
 assert.doesNotMatch(home, /papelada da climatização resolvida/, 'a home não diz que a papelada da ART está resolvida');
 assert.doesNotMatch(home, /não é só nota fiscal/, 'a home não dá a entender que emite nota');
 const oficio = ler('../web/src/pages/para/[oficio].astro');
-assert.match(
-	oficio,
-	/order-1 mt-8 flex flex-col gap-3 sm:flex-row lg:order-none/,
-	'no celular o botão da página do ofício fica logo abaixo do título, fora do aviso de cookies',
-);
-assert.ok(
-	oficio.indexOf('id="resposta-curta"') < oficio.indexOf('Criar meu primeiro orçamento'),
-	'a resposta curta continua antes do botão no HTML',
-);
+// D-2876 (v10): a página do ofício tem texto + botão na primeira coluna e a foto ao lado/depois; a "resposta curta" (AEO) segue na página.
+assert.ok(oficio.indexOf('class="cta"') < oficio.indexOf('<figure class="seg-foto">'), 'no celular o botão da página do ofício vem antes da foto, fora do aviso de cookies');
+assert.match(oficio, /id="resposta-curta"/, 'a resposta curta continua na página do ofício');
 assert.match(
 	oficio,
 	/Licença e a assinatura do responsável técnico continuam com você/,

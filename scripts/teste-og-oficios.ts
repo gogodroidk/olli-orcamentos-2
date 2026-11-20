@@ -29,7 +29,8 @@ assert.equal(OG_PROPRIO_POR_SLUG.has('climatizacao-e-refrigeracao'), true);
 // A página passa a imagem ao Layout e o Layout usa nos dois metas.
 const pagina = readFileSync(new URL('../web/src/pages/para/[oficio].astro', import.meta.url), 'utf8');
 assert.match(pagina, /ogImagem=\{ogImagem\}/);
-const layout = readFileSync(new URL('../web/src/layouts/Layout.astro', import.meta.url), 'utf8');
+// D-2876: o <head> (canonical, og, JSON-LD) mora em components/Cabeca.astro, compartilhado por Layout e LayoutSite.
+const layout = readFileSync(new URL('../web/src/layouts/Layout.astro', import.meta.url), 'utf8') + readFileSync(new URL('../web/src/components/Cabeca.astro', import.meta.url), 'utf8');
 assert.match(layout, /og:image" content=\{new URL\(ogImagem,/);
 assert.match(layout, /twitter:image" content=\{new URL\(ogImagem,/);
 console.log(`teste-og-oficios: ${OG_PROPRIO_POR_SLUG.size} cards conferidos`);

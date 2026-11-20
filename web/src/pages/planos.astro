@@ -9,18 +9,20 @@ import LayoutSite from "../layouts/LayoutSite.astro";
 import { FAQ_PLANOS, schemaFaq } from "../data/faq-site";
 import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
 import { LINK_COM_PIX } from "../data/site";
+import { recursosQueSairamDoGratis } from "../data/recursos";
 ---
 
 <LayoutSite titulo="Planos e preços — OLLI Orçamentos" descricao={`Compare Grátis, Pro (${PRECO.proMes}/mês) e Empresa (${PRECO.empresaMes}/mês). Anual com ${PRECO.desconto} de desconto. Grátis sem cartão.`} schemas={[schemaFaq(FAQ_PLANOS)]}>
 <section class="page-hero"><div class="w">
 <p class="crumbs"><a href="/">Início</a> · Planos</p>
 <h1>Escolha como você <em>quer trabalhar.</em></h1>
-<p class="lead">Comece com {GRATIS_ORC}, sem cartão. Escolha o Pro {LINK_COM_PIX ? "para receber pelo Pix no link" : "para tirar o selo e liberar os recursos de campo"} ou o Empresa para organizar o trabalho da equipe.</p>
+<p class="lead">Comece com {GRATIS_ORC}, sem cartão. Escolha o Pro {LINK_COM_PIX ? "para receber o pagamento no próprio link do orçamento" : "para tirar o selo e liberar os recursos de campo"} ou o Empresa para organizar o trabalho da equipe.</p>
 </div></section>
 <section class="dark" aria-labelledby="comparar-planos"><div class="w">
 <h2 id="comparar-planos">Grátis, Pro ou Empresa.</h2>
 <p class="sub">Preços em reais. No plano anual você paga 20% a menos.</p>
 <PlanosSite />
+<p class="mini plano-rodape">No Grátis, {recursosQueSairamDoGratis()} são do Pro.</p>
 </div></section>
 <section aria-labelledby="duvidas-planos"><div class="w">
 <h2 id="duvidas-planos">Antes de escolher.</h2>

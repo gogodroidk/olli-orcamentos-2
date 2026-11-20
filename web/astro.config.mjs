@@ -51,17 +51,17 @@ const LASTMOD = lastmodPorRota();
  * molde (`pages/para/[oficio].astro`).
  */
 const LASTMOD_PAGINAS = new Map([
-  ['/', '2026-11-21'],
-  ['/planos/', '2026-11-21'],
-  ['/como-funciona/', '2026-11-21'],
-  ['/para-empresas/', '2026-11-21'],
-  ['/duvidas/', '2026-11-21'],
-  ['/para/', '2026-11-21'],
+  ['/', '2026-11-20'],
+  ['/planos/', '2026-11-20'],
+  ['/como-funciona/', '2026-11-20'],
+  ['/para-empresas/', '2026-11-20'],
+  ['/duvidas/', '2026-11-20'],
+  ['/para/', '2026-11-20'],
   ['/ajuda/', '2026-10-02'],
   ['/legal/privacidade/', '2026-09-29'],
   ['/legal/termos/', '2026-09-29'],
 ]);
-const LASTMOD_PARA = '2026-11-21';
+const LASTMOD_PARA = '2026-11-20';
 
 /**
  * VARIANTES DE ANÚNCIO: /eletricista/ e /refrigeracao/ são as páginas de destino dos anúncios (mesmo ofício de

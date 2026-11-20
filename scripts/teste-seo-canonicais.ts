@@ -19,7 +19,9 @@ const caso = (nome: string, fn: () => void) => {
   console.log(`  ok  ${nome}`);
 };
 
-const layout = ler('web/src/layouts/Layout.astro');
+// D-2876: o <head> mora em components/Cabeca.astro, compartilhado por Layout e LayoutSite.
+const PROMOVIDOS_NA_V10 = new Set(['marido-de-aluguel']);
+const layout = ler('web/src/layouts/Layout.astro') + ler('web/src/components/Cabeca.astro');
 const anuncio = ler('web/src/components/PaginaAnuncio.astro');
 const config = ler('web/astro.config.mjs');
 const oficios = ler('web/src/data/oficios.ts');
@@ -80,6 +82,11 @@ caso('aliases de /para/ (D-1013): cada um aponta para vertical existente, fica f
   const aliases = [...oficios.matchAll(/\{ slug: '([a-z0-9-]+)', id: '([a-z_]+)'/g)];
   assert.equal(aliases.length, 5, 'esperava 5 aliases');
   for (const [, slug, id] of aliases) {
+    // D-2876: "marido de aluguel" virou página própria da v10 (menu de serviços, texto próprio, canonical próprio, no sitemap).
+    if (PROMOVIDOS_NA_V10.has(slug)) {
+      assert.ok(!config.includes(`'/para/${slug}/'`), `${slug} foi promovido a página própria e não pode ficar em ALIASES_PARA_FORA`);
+      continue;
+    }
     assert.ok(config.includes(`'/para/${slug}/'`), `alias ${slug} fora de ALIASES_PARA_FORA (entraria no sitemap)`);
     assert.match(oficios, new RegExp(`\\b${id}: '[a-z0-9-]+'`), `vertical ${id} sem slug`);
   }

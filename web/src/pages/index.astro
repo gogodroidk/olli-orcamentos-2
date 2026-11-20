@@ -10,6 +10,7 @@ import { FAQ_HOME, schemaFaq } from "../data/faq-site";
 import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
 import { EMPRESA } from "../data/empresa";
 import { LINK_COM_PIX } from "../data/site";
+import { recursosQueSairamDoGratis } from "../data/recursos";
 ---
 
 <LayoutSite titulo="OLLI Orçamentos — orçamento, OS e recibo com a sua marca" preloadImagem={{ href: "/site/img/fotos/grok/tecnico-olli.webp", srcset: "/site/img/fotos/grok/tecnico-olli.webp 820w, /site/img/fotos/grok/tecnico-olli@2x.webp 1640w, /site/img/fotos/grok/tecnico-olli@3x.webp 2460w", sizes: "(max-width: 520px) calc(100vw - 68px), (max-width: 1024px) 480px, 520px" }} descricao={`Orçamento, OS e recibo com a sua marca no celular. O cliente aprova pelo link. Comece grátis, sem cartão.`} schemas={[schemaFaq(FAQ_HOME)]}>
@@ -75,6 +76,7 @@ import { LINK_COM_PIX } from "../data/site";
 <h2 class="rv">Comece grátis. Cresça quando fizer sentido.</h2>
 <p class="sub rv">Preços em reais. No plano anual você paga 20% a menos.</p>
 <PlanosSite />
+<p class="mini plano-rodape">No Grátis, {recursosQueSairamDoGratis()} são do Pro.</p>
 <p class="bloco-acao"><a class="bt s rv" href="/planos/">Comparar os planos →</a></p>
 </div></section>
 

@@ -26,3 +26,7 @@ footer .grid a { display: flex; }
 .nav-drop > button { min-width: 44px; min-height: 44px; }
 .segment-links a { min-height: 44px; display: inline-flex; align-items: center; }
 .crumbs a { min-width: 44px; justify-content: center; }
+
+/* Celular: título, texto e botão ANTES da foto. Com a foto primeiro, o botão "Começar grátis" ficava atrás do aviso de
+   cookies (ou abaixo da dobra) na primeira visita — medido em 360x740, 390x844 e 412x915. Em tela larga a foto segue ao lado. */
+@media (max-width: 699px) { .hero .hg > .hero-vis { order: 2 !important; margin-top: 8px; } }

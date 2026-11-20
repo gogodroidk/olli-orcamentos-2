@@ -308,6 +308,17 @@ const schemaFaq = {
 		</section>
 	)}
 
+	{oficio.documentos.length > 0 && (
+		<section aria-labelledby="documentos-oficio">
+			<div class="w">
+				<p class="section-kicker">Documentos</p>
+				<h2 id="documentos-oficio">Os documentos de {profissao} que a OLLI monta.</h2>
+				<p class="sub">A lista é esta. Licença e a assinatura do responsável técnico continuam com você.</p>
+				<ul class="checklist">{oficio.documentos.map((d) => <li>{d}</li>)}</ul>
+			</div>
+		</section>
+	)}
+
 	{calculos.length > 0 && (
 		<section aria-labelledby="calculadoras-oficio">
 			<div class="w">
