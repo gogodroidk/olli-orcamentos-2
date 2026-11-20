@@ -876,15 +876,15 @@ ${og}
   .item{display:flex;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid #EDEFF2}
   .item-name{font-size:14.5px;font-weight:600}
   .badge{font-size:9.5px;font-weight:800;color:${accent};background:#EAF3FC;border-radius:5px;padding:1px 6px;letter-spacing:.3px;vertical-align:middle}
-  .item-desc{font-size:12px;color:#8A93A2;margin-top:2px}
-  .item-qtd{font-size:12px;color:#8A93A2;margin-top:3px}
+  .item-desc{font-size:13px;color:#667085;margin-top:2px}
+  .item-qtd{font-size:13px;color:#667085;margin-top:3px}
   .item-val{font-size:14px;font-weight:700;white-space:nowrap}
   .total{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:15px 16px;background:#EAF3FC;border:1px solid #BBD6F2;border-radius:14px}
   .total-l{font-size:13px;font-weight:700;letter-spacing:.3px}
   .total-v{font-family:'Spectral',Georgia,serif;font-size:24px;font-weight:700;color:${accent}}
   .conds{display:flex;gap:10px;margin-top:16px}
   .cond{flex:1;background:#F6F8FB;border:1px solid #EDEFF2;border-radius:12px;padding:11px}
-  .cond-l{font-size:9.5px;font-weight:800;letter-spacing:.8px;color:#9AA3B2;text-transform:uppercase}
+  .cond-l{font-size:11px;font-weight:800;letter-spacing:.8px;color:#667085;text-transform:uppercase}
   .cond-v{font-size:12.5px;color:#3C4756;margin-top:4px;line-height:1.4}
   .actions{margin-top:20px;display:flex;flex-direction:column;gap:10px}
   .approve-hint{font-size:12px;color:#5A6575;text-align:center;line-height:1.4;padding:0 6px}
@@ -899,8 +899,8 @@ ${og}
   .btn:active{transform:scale(.98)}
   /* Passo-a-passo do que acontece ao aprovar/recusar (transparência para o cliente). */
   .comofunciona{margin-top:16px;background:#F6F8FB;border:1px solid #EDEFF2;border-radius:14px;padding:14px 16px}
-  .cf-t{font-size:11px;font-weight:800;letter-spacing:.6px;color:#9AA3B2;text-transform:uppercase}
-  .cf-step{display:flex;align-items:flex-start;gap:9px;margin-top:9px;font-size:12.5px;color:#3C4756;line-height:1.4}
+  .cf-t{font-size:11px;font-weight:800;letter-spacing:.6px;color:#667085;text-transform:uppercase}
+  .cf-step{display:flex;align-items:flex-start;gap:9px;margin-top:9px;font-size:13px;color:#3C4756;line-height:1.4}
   .cf-n{flex-shrink:0;width:19px;height:19px;border-radius:6px;background:#EAF3FC;color:${accent};font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;margin-top:1px}
   /* Painel de recusa: aparece ao clicar "Recusar" — pede o motivo antes de enviar. */
   .recusa-panel{margin-top:14px;background:#FDF6F5;border:1px solid #F0D2CE;border-radius:14px;padding:15px}
@@ -919,7 +919,7 @@ ${og}
   .status-emoji{font-size:30px}
   .status-title{font-size:16px;font-weight:800;margin-top:6px}
   .status-sub{font-size:13px;color:#5A6575;margin-top:3px}
-  .foot{text-align:center;font-size:11px;color:#9AA3B2;margin-top:18px;font-weight:600}
+  .foot{text-align:center;font-size:12px;color:#667085;margin-top:18px;font-weight:600}
   .err{background:#fff;border-radius:22px;padding:40px 26px;text-align:center;box-shadow:0 18px 50px rgba(10,37,64,.14)}
   .err-emoji{font-size:40px}
   .err-title{font-size:18px;font-weight:800;margin-top:10px}
@@ -937,6 +937,9 @@ ${og}
   .btn-copiar{width:100%;margin-top:10px;background:#1A2230;color:#fff}
   .btn-paguei{width:100%;margin-top:10px;background:#fff;color:#1A7F4B;border:1.5px solid #BFE6CF}
   .pix-nota{font-size:11.5px;color:#5A6575;margin-top:6px;line-height:1.4}
+  .pix-avisado.entra{animation:avisoEntra .24s ease-out}
+  @keyframes avisoEntra{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.pix-avisado.entra{animation:none}}
   .pix-avisado{margin-top:12px;font-size:12.5px;color:#1A7F4B;background:#E9F9F1;border:1px solid #BFE6CF;border-radius:11px;padding:10px;line-height:1.4}
   .olli-cta{text-align:center;margin:22px auto 10px}
 </style>
@@ -999,7 +1002,7 @@ function blocoPagamento(row, d, total, numero, nomePrestador) {
     ? `<div class="pix-avisado">Você avisou que pagou em ${esc(informadoEm)}. ${esc(nomePrestador)} vai conferir e confirmar o recebimento.</div>`
     : '';
   const botaoInformar = podeInformar
-    ? `<button id="btnPaguei" class="btn btn-paguei" onclick="informarPagamento()">Já paguei</button>
+    ? `<button id="btnPaguei" class="btn btn-paguei" data-prestador="${esc(nomePrestador)}" onclick="informarPagamento()">Já paguei</button>
        <div class="pix-nota">Isso só avisa ${esc(nomePrestador)}. O pagamento é confirmado por ele quando cair na conta.</div>`
     : '';
 
@@ -1014,7 +1017,7 @@ function blocoPagamento(row, d, total, numero, nomePrestador) {
       <div class="pix-sub">O dinheiro vai direto para a conta de ${esc(nomePrestador)}.</div>
       ${pix.svg ? `<div class="pix-qr">${pix.svg}</div>` : ''}
       <div class="pix-l">Pix copia e cola</div>
-      <textarea id="pixCodigo" class="pix-code" readonly rows="3">${esc(pix.codigo)}</textarea>
+      <textarea id="pixCodigo" class="pix-code" readonly rows="${Math.max(4, Math.ceil(String(pix.codigo || '').length / 32))}">${esc(pix.codigo)}</textarea>
       ${avisado}
       ${botaoInformar}
     </div>`;
@@ -1177,9 +1180,10 @@ function pageOrcamento(row, preSelecao = '') {
         </div>`
       : '';
 
-    actionsHtml = `${comoFunciona}
-      <div class="actions" id="actions">
-        ${allowApprove ? `<div class="approve-hint">Aprovando aqui, a sua resposta fica registrada para ${esc(nomePrestador)} — sem cadastro e sem burocracia.</div>` : ''}
+    // O botão de aprovar vem ANTES do "Como funciona": é o passo que gera dinheiro e,
+    // com o texto na frente, ficava abaixo da primeira tela do celular. A frase
+    // "aprovando aqui, a resposta fica registrada…" repetia o passo 2 e saiu.
+    actionsHtml = `<div class="actions" id="actions">
         ${allowApprove ? `<button id="btnAprovar" class="btn btn-aprovar" onclick="responder('aprovar')">✓ Aprovar orçamento</button>` : ''}
         <div class="btn-row">
           ${allowReject ? `<button class="btn btn-recusar" onclick="abrirRecusa()">Recusar</button>` : ''}
@@ -1195,7 +1199,8 @@ function pageOrcamento(row, preSelecao = '') {
           <button class="btn btn-voltar" onclick="fecharRecusa()">Voltar</button>
           <button class="btn btn-conf-recusa" onclick="confirmarRecusa()">Confirmar recusa</button>
         </div>
-      </div>` : ''}`;
+      </div>` : ''}
+      ${comoFunciona}`;
     if (!allowApprove && !allowReject && !zapHref) {
       actionsHtml = `<div class="status-box status-ok"><div class="status-title">Orçamento enviado para conferência</div><div class="status-sub">Responda pelo canal combinado para aprovar ou tirar dúvidas.</div></div>`;
     }
@@ -1315,7 +1320,18 @@ function pageOrcamento(row, preSelecao = '') {
       try {
         var r = await fetch(location.pathname, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ acao: 'informar_pagamento' }) });
         var j = await r.json();
-        if (j && j.ok) { location.reload(); return; }
+        if (j && j.ok) {
+          // Sem recarregar a página (a tela não pisca): troca o botão pelo aviso, o mesmo
+          // texto que o servidor mostra ao reabrir o link. textContent: nada entra como HTML.
+          var nota = b ? b.nextElementSibling : null;
+          var av = document.createElement('div');
+          av.className = 'pix-avisado entra';
+          av.setAttribute('role', 'status');
+          av.textContent = 'Você avisou que pagou agora. ' + ((b && b.dataset.prestador) || 'O prestador') + ' vai conferir e confirmar o recebimento.';
+          if (b){ b.replaceWith(av); }
+          if (nota && nota.classList.contains('pix-nota')){ nota.remove(); }
+          return;
+        }
         alert(j && j.erro === 'muitas_requisicoes' ? 'Muitas tentativas. Aguarde um instante e tente de novo.' : 'Não consegui avisar agora. Tente de novo em instantes.');
       } catch(e){
         alert('Não consegui avisar agora. Verifique a internet e tente de novo.');
