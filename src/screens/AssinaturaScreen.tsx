@@ -41,6 +41,7 @@ import {
   type TomPilula,
 } from '../services/assinaturaTextos';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
+import { podeVerPlanosPara } from '../services/cadeadoRecurso';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -595,7 +596,7 @@ export default function AssinaturaScreen() {
                   </View>
                   {BUILD_PLAY_SEM_COMPRA_EXTERNA && !VENDA_PELA_PLAY ? (
                     <Text style={[styles.gerenciarHint, { marginTop: Spacing.base }]}>A assinatura pelo app está indisponível no momento.</Text>
-                  ) : (
+                  ) : !podeVerPlanosPara(Platform.OS) ? null : (
                     <OlliButton
                       label={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}
                       variant="gradient"
@@ -696,7 +697,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   planName: { fontSize: 20, fontWeight: '800', color: c.onSurface, marginTop: 1 },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 5 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 11.5, fontWeight: '800' },
+  statusText: { fontSize: 13, fontWeight: '800' },
 
   priceRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: Spacing.base },
   priceValue: { fontSize: 26, fontWeight: '800', color: c.accentLight },
@@ -756,7 +757,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   faturaValor: { fontSize: 15, fontWeight: '800', color: c.onSurface },
   faturaData: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 2 },
   faturaStatus: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  faturaStatusText: { fontSize: 11.5, fontWeight: '800' },
+  faturaStatusText: { fontSize: 13, fontWeight: '800' },
   reciboBtn: {
     width: 38, height: 38, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center',
     backgroundColor: c.accentContainer, borderWidth: 1, borderColor: c.strokeGlow,

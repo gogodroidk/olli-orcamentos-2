@@ -285,5 +285,5 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, paddingVertical: 10,
   },
   seloGarantia: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  seloGarantiaTxt: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.2 },
+  seloGarantiaTxt: { fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
 });

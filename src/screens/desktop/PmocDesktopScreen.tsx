@@ -651,13 +651,13 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full,
     paddingHorizontal: 8, paddingVertical: 3, maxWidth: 96,
   },
-  miniChipText: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
+  miniChipText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
 
   statusBadge: {
     alignSelf: 'flex-start', borderRadius: BorderRadius.full, borderWidth: 1,
     paddingHorizontal: 10, paddingVertical: 4, maxWidth: '100%',
   },
-  statusBadgeText: { fontSize: 11, fontWeight: '800' },
+  statusBadgeText: { fontSize: 13, fontWeight: '800' },
 
   acoesLinha: { flexDirection: 'row', gap: 2 },
   acaoIcone: {

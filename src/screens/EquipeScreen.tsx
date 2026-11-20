@@ -566,7 +566,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   mapaEquipeSub: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 2 },
   // Selo neutro (não é alerta nem sucesso): só avisa que o recurso ainda não está ligado.
   seloEmBreve: { alignSelf: 'flex-start', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2, marginTop: 4 },
-  seloEmBreveTexto: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
+  seloEmBreveTexto: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
 
   sectionTitle: { fontSize: 16, fontWeight: '800', color: c.onBackground, paddingHorizontal: Spacing.base, marginTop: Spacing.xl, marginBottom: Spacing.sm },
 
@@ -582,8 +582,8 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   membroNome: { fontSize: 15, fontWeight: '700', color: c.onSurface },
   membroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   papelChip: { borderWidth: 1, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 2 },
-  papelChipText: { fontSize: 11, fontWeight: '800' },
-  inativoTag: { fontSize: 11, fontWeight: '700', color: c.warning },
+  papelChipText: { fontSize: 13, fontWeight: '800' },
+  inativoTag: { fontSize: 13, fontWeight: '700', color: c.warning },
   membroEmail: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 3 },
 
   rodapeHint: { fontSize: 12.5, color: c.onSurfaceMuted, lineHeight: 18, paddingHorizontal: Spacing.base, marginTop: Spacing.lg },

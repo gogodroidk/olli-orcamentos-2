@@ -554,7 +554,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   kickerRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   kickerDot: { width: 8, height: 8, borderRadius: 4 },
-  kicker: { fontSize: 11, fontWeight: '800' },
+  kicker: { fontSize: 13, fontWeight: '800' },
 
   // O número é o herói: grande, em reais, na tinta de maior contraste da tela.
   // Dinheiro é FATO — quem carrega a urgência é o tempo (subtítulo), não o susto.
@@ -583,7 +583,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // neutra — par padrão onSurface/surfacePressed, sem competir com quem falta cobrar.
   linhaBtnFeito: { backgroundColor: c.surfacePressed, borderWidth: 1, borderColor: c.outline },
   linhaBtnTextoFeito: { color: c.onSurface },
-  linhaNota: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 2, fontWeight: '700' },
+  linhaNota: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2, fontWeight: '700' },
 
   avisoPix: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: Spacing.md },
   avisoPixTexto: { flex: 1, fontSize: 12.5, fontWeight: '700', lineHeight: 17 },

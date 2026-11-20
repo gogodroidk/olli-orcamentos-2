@@ -48,6 +48,7 @@ import { escolherFotoPerfil } from '../utils/escolherFotoPerfil';
 import { criarOrganizacao, aceitarConvite, extrairToken, listarMembros, PAPEL_LABEL, type Organizacao } from '../services/equipe';
 import { APP_VERSION, APP_VERSION_CODE } from '../config';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP, TEXTOS_LOJA, URL_EXCLUIR_CONTA_WEB } from '../config/loja';
+import { podeVerPlanosPara } from '../services/cadeadoRecurso';
 import { navigationRef } from '../navigation/navigationRef';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Empresa, SEGMENTOS } from '../types';
@@ -1099,7 +1100,7 @@ export default function ContaScreen() {
                   <Text style={styles.proBadgeText}>OLLI PRO</Text>
                 </View>
                 {/* Android: sem o preço da web (Payments policy) — o preço é o da loja, na tela de Planos. */}
-                {BUILD_PLAY_SEM_COMPRA_EXTERNA ? null : (
+                {BUILD_PLAY_SEM_COMPRA_EXTERNA || !COMPRA_NO_APP ? null : (
                   <View style={styles.soonPill}><Text style={styles.soonPillText}>{reais(PRECO_PRO.mensalCentavos)}/mês</Text></View>
                 )}
               </View>
@@ -1109,8 +1110,9 @@ export default function ContaScreen() {
                   ? 'Relatórios avançados, metas de vendas e suporte prioritário. Assine direto no app — mensal ou anual com desconto.'
                   : Platform.OS === 'android'
                     ? 'Relatórios avançados, metas de vendas e suporte prioritário. Veja o que cada plano libera.'
-                    : 'Relatórios avançados, metas de vendas e suporte prioritário. A assinatura ainda não está disponível no iPhone.'}
+                    : 'Relatórios avançados, metas de vendas e suporte prioritário. Recursos do plano Pro.'}
               </Text>
+              {podeVerPlanosPara(Platform.OS) ? (
               <OlliPressable
                 style={styles.proBtn}
                 haptic={false}
@@ -1121,6 +1123,7 @@ export default function ContaScreen() {
                 <Text style={styles.proBtnText}>{COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA ? 'Ver planos e assinar' : 'Ver os planos'}</Text>
                 <MaterialCommunityIcons name="arrow-right" size={16} color={cores.accentLight} />
               </OlliPressable>
+              ) : null}
             </View>
           )}
         </Aparecer>
@@ -2048,7 +2051,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   guardWrap: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl },
   guardTitle: { fontSize: 22, fontWeight: '800', color: c.onBackground, marginTop: Spacing.lg },
@@ -2116,16 +2119,16 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   profilePhone: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 1 },
   // Cyan fixo (não segue a cor de marca escolhida): decorativo, sem chave semântica exata.
   segChip: { alignSelf: 'flex-start', backgroundColor: 'rgba(52,198,217,0.14)', borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 3, marginTop: 6 },
-  segChipText: { fontSize: 11.5, fontWeight: '700', color: c.accentLight },
+  segChipText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
   editBtn: { alignItems: 'center', gap: 2 },
-  editBtnText: { fontSize: 11, fontWeight: '700', color: c.accentLight },
+  editBtnText: { fontSize: 13, fontWeight: '700', color: c.accentLight },
 
   proCard: { backgroundColor: c.surfaceElevated, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.base, marginHorizontal: Spacing.base, marginTop: Spacing.base, ...sombrasDe(c).sm },
   proHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   proBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
   proBadgeText: { fontSize: 12, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0 },
   soonPill: { backgroundColor: comAlfa(c.onSurface, 0.06), borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  soonPillText: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
+  soonPillText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
   proTitle: { fontSize: 16, fontWeight: '800', color: c.onSurface },
   proSub: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 19 },
   proBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },

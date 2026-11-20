@@ -19,7 +19,7 @@ import {
   IA_USOS_GRATIS_MES,
   TRIAL_PRO_DIAS,
 } from '../../services/entitlements.ts';
-import { FRASE_GRATIS, FRASE_GRATIS_CURTA, planoBase } from '../../services/planosBase.ts';
+import { recursosQueSairamDoGratis, FRASE_GRATIS, FRASE_GRATIS_CURTA, planoBase } from '../../services/planosBase.ts';
 import { PRECO_EMPRESA, PRECO_PRO, reais } from '../../services/precosPlanos.ts';
 import {
   MODELOS_ORCAMENTO,
@@ -847,7 +847,7 @@ export const ARTIGOS_AJUDA: AjudaArtigo[] = [
       {
         tipo: 'paragrafo',
         conteudo:
-          `O Grátis tem ${FRASE_GRATIS}; rascunhos, recibos, clientes, agenda e histórico também ficam sem limite. Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem pagar nada e sem cobrança automática. Os planos pagos liberam recursos extras:`,
+          `O Grátis tem ${FRASE_GRATIS}; rascunhos, clientes e histórico também ficam sem limite; ${recursosQueSairamDoGratis()} são do Pro (o que você já criou continua na conta). Depois do primeiro envio, o dono pode ativar ${TRIAL_PRO_DIAS} dias de Pro sem pagar nada e sem cobrança automática. Os planos pagos liberam recursos extras:`,
       },
       {
         // Preço de tabela da web: some nas lojas (a Play mostra só o preço da própria

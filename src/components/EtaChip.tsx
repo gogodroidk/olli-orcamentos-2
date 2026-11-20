@@ -162,7 +162,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  texto: { fontSize: 11.5, fontWeight: '700' },
+  texto: { fontSize: 13, fontWeight: '700' },
   skeleton: { alignSelf: 'flex-start' },
 });
 

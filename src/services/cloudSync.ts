@@ -145,6 +145,8 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
     telefone: c.telefone ?? null,
     cpf: c.cpf ?? null,
     cnpj: c.cnpj ?? null,
+    // E-mail opcional (migration 20261113120000). Sem a coluna na nuvem: o push recua (clientesSemColunaEmail).
+    ...(clientesSemColunaEmail ? {} : { email: c.email?.trim() || null }),
     endereco: c.endereco ?? null,
     complemento: c.complemento ?? null,
     estado: c.estado ?? null,
@@ -169,6 +171,8 @@ function clienteToRow(c: Cliente): Record<string, unknown> {
  */
 const COLUNAS_CLIENTE_GEO = ['lat', 'lon', 'ibge', 'geo_precisao'] as const;
 let clientesSemColunasGeo = false;
+/** Nuvem sem a coluna `clientes.email` (migration 20261113120000 ainda não aplicada). */
+let clientesSemColunaEmail = false;
 
 function geoParaRow(c: Cliente): Record<string, unknown> {
   if (clientesSemColunasGeo) return {};
@@ -359,6 +363,13 @@ function erroDeColunaDesconhecida(error: { code?: string } | null | undefined): 
  * ("Could not find the 'materiais' column…" / column "materiais" … does not
  * exist); sem nome reconhecível na mensagem, cai no comportamento antigo (true).
  */
+/** A mensagem do erro cita ESTA coluna entre aspas (diferente de `erroDeColunaDesconhecidaDe`, que aceita mensagem sem nome). */
+function nomeiaColuna(error: { message?: string } | null | undefined, coluna: string): boolean {
+  const msg = typeof error?.message === 'string' ? error.message : '';
+  const m = /['"]([A-Za-z0-9_]+)['"]/.exec(msg);
+  return !!m && m[1] === coluna;
+}
+
 function erroDeColunaDesconhecidaDe(
   error: { code?: string; message?: string } | null | undefined,
   coluna: string,
@@ -482,6 +493,7 @@ function rowToCliente(row: any): Cliente {
     telefone: row.telefone ?? '',
     cpf: row.cpf ?? undefined,
     cnpj: row.cnpj ?? undefined,
+    email: lerEmailDaLinhaNuvem(row),
     endereco: row.endereco ?? undefined,
     complemento: row.complemento ?? undefined,
     estado: row.estado ?? undefined,
@@ -495,6 +507,12 @@ function rowToCliente(row: any): Cliente {
     atualizadoEm: row.atualizado_em ?? row.criado_em ?? undefined,
     ...lerGeoDaLinhaNuvem(row),
   };
+}
+
+/** `select('*')` sem a coluna `email` = nuvem sem a migration: liga o modo "preservar o local" (ver localUpsertCliente). */
+function lerEmailDaLinhaNuvem(row: any): string | undefined {
+  if (row && typeof row === 'object' && !('email' in row)) clientesSemColunaEmail = true;
+  return row?.email ?? undefined;
 }
 
 /** `select('*')` sem a coluna = servidor sem a migration de geo: liga o modo "preservar o local". */
@@ -1155,6 +1173,12 @@ async function pushRowUnchecked(table: SyncTable, objLocal: unknown): Promise<vo
     let { error } = await supabase
       .from(remoteNome(table))
       .upsert(row, opcoesUpsert(table, ON_CONFLICT[table]));
+    if (error && table === 'clientes' && !clientesSemColunaEmail && erroDeColunaDesconhecida(error) && nomeiaColuna(error, 'email')) {
+      // Servidor sem a migration do e-mail: reenvia sem a coluna (ver clientesSemColunaEmail).
+      clientesSemColunaEmail = true;
+      delete (row as Record<string, unknown>).email;
+      ({ error } = await supabase.from(remoteNome(table)).upsert(row, opcoesUpsert(table, ON_CONFLICT[table])));
+    }
     if (error && table === 'clientes' && !clientesSemColunasGeo && erroDeColunaDesconhecida(error)) {
       // Servidor sem a migration de geo: reenvia sem as colunas (ver COLUNAS_CLIENTE_GEO).
       clientesSemColunasGeo = true;
@@ -1558,7 +1582,7 @@ async function localUpsertCliente(c: Cliente): Promise<void> {
   // local. Endereço diferente = o ponto local é de outro lugar e cai.
   let geo = geoParaColunas(c);
   const local = await db.getFirstAsync<any>(
-    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao FROM clientes WHERE id = ?', [c.id],
+    'SELECT cep, endereco, cidade, estado, lat, lon, ibge, geo_precisao, email FROM clientes WHERE id = ?', [c.id],
   );
   if (local) {
     const geoLocal = geoParaColunas(lerGeoDaLinha(local));
@@ -1570,16 +1594,18 @@ async function localUpsertCliente(c: Cliente): Promise<void> {
       geo = { ...geo, ibge: geoLocal.ibge };
     }
   }
+  // E-MAIL: nuvem sem a coluna é "não sei", não "apagou" — mantém o e-mail do aparelho.
+  const email = c.email ?? (clientesSemColunaEmail ? local?.email : undefined);
   // excluido_em espelhado: sem isso o pull zera o soft-delete local (ressuscita o item).
   await db.runAsync(
     `INSERT OR REPLACE INTO clientes
        (id, nome, telefone, cpf, cnpj, endereco, complemento, estado, cidade, cep, criado_em, excluido_em, atualizado_em,
-        lat, lon, ibge, geo_precisao)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        lat, lon, ibge, geo_precisao, email)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [c.id, c.nome, c.telefone ?? null, c.cpf ?? null, c.cnpj ?? null,
      c.endereco ?? null, c.complemento ?? null, c.estado ?? null,
      c.cidade ?? null, c.cep ?? null, c.criadoEm, c.excluidoEm ?? null,
-     c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao],
+     c.atualizadoEm ?? c.criadoEm, geo.lat, geo.lon, geo.ibge, geo.geo_precisao, email?.trim() || null],
   );
 }
 
@@ -2705,7 +2731,7 @@ async function pushTable<T>(
 function rowToClienteLocal(r: any): Cliente {
   return {
     id: r.id, nome: r.nome, telefone: r.telefone ?? '',
-    cpf: r.cpf ?? undefined, cnpj: r.cnpj ?? undefined,
+    cpf: r.cpf ?? undefined, cnpj: r.cnpj ?? undefined, email: r.email ?? undefined,
     endereco: r.endereco ?? undefined, complemento: r.complemento ?? undefined,
     estado: r.estado ?? undefined, cidade: r.cidade ?? undefined,
     cep: r.cep ?? undefined, criadoEm: r.criado_em,

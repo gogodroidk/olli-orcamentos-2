@@ -60,7 +60,15 @@ type Origem = { tipo: 'carregando' } | { tipo: 'erro'; mensagem: string } | { ti
  * (carregando | erro | valor) e o que está guardado na nuvem (carregando | erro |
  * desligado | valor). "Não consegui ver" nunca vira "ainda não guardada".
  */
+/**
+ * Aberta a todos os planos (CPO, A7): só PREPARA os dados para o emissor do governo (AVISO_NAO_EMITE), igual ao painel.
+ * Sem gate de `nota_fiscal`; esse recurso segue "em breve" só para a emissão automática.
+ */
 export default function PrepararNotaScreen() {
+  return <PrepararNotaConteudo />;
+}
+
+function PrepararNotaConteudo() {
   const nav = useNavigation<Nav>();
   const { reciboId } = useRoute<Rota>().params;
   const cores = useCores();

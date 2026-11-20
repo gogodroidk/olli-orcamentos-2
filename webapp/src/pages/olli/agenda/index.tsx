@@ -54,8 +54,10 @@ import {
 	RotateCw,
 	Trash2,
 	Undo2,
+	Lock,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import Icon from "@/components/icon/icon";
 import { useMediaQuery } from "@/hooks";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
@@ -63,6 +65,7 @@ import { Campo } from "@/olli/components/campos";
 import { useOlliList } from "@/olli/data";
 import { agoraIso, localParaIso } from "@/olli/datas";
 import { useExcluir, useSalvar } from "@/olli/mutacoes";
+import { AvisoMudancaGratis, FaixaRecursoPro, usePortaoPro } from "@/olli/recursoPlano";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -196,6 +199,15 @@ export default function AgendaPage() {
 	const [erroMenu, setErroMenu] = useState<string | null>(null);
 
 	const salvar = useSalvar("agendamentos");
+	// D-2267: criar/editar/remarcar na agenda é do Pro; os compromissos continuam visíveis para todos.
+	const portao = usePortaoPro("agenda");
+	const navigate = useNavigate();
+	const agendaLiberada = portao.uso.estado === "liberado" || portao.uso.estado === "em_breve";
+	const agendaLiberadaRef = useRef(agendaLiberada);
+	agendaLiberadaRef.current = agendaLiberada;
+	const exigirAgendaRef = useRef(portao.exigir);
+	exigirAgendaRef.current = portao.exigir;
+	const abrirForm = () => portao.exigir(() => setFormAberto(true));
 	const excluir = useExcluir("agendamentos");
 
 	/* ───────────  Trocar de visão quando o dispositivo muda de faixa  ───────── */
@@ -263,6 +275,11 @@ export default function AgendaPage() {
 	 */
 	const mover = useCallback(
 		async (ag: Agendamento, novoInicio: Date, novoFim: Date | null, semHora: boolean, reverter?: () => void) => {
+			if (!agendaLiberadaRef.current) {
+				reverter?.();
+				exigirAgendaRef.current(() => {});
+				return;
+			}
 			const atualizado: Agendamento = { ...ag, inicio: novoInicio.toISOString(), atualizadoEm: agoraIso() };
 			if (novoFim && !semHora) atualizado.fim = novoFim.toISOString();
 			else delete atualizado.fim; // ausência, não `null` (regra 4)
@@ -317,7 +334,7 @@ export default function AgendaPage() {
 
 		setEditando(null);
 		setInicioSugerido(d);
-		setFormAberto(true);
+		abrirForm();
 	};
 
 	/** Clique no evento = editar. Exceto no "⋮", que abre o menu. */
@@ -329,7 +346,7 @@ export default function AgendaPage() {
 		const ag = arg.event.extendedProps.ag as Agendamento;
 		setInicioSugerido(null);
 		setEditando(baseDe(ag)); // repetição abre a série
-		setFormAberto(true);
+		abrirForm();
 	};
 
 	const aoArrastar = (arg: EventDropArg) => {
@@ -373,6 +390,7 @@ export default function AgendaPage() {
 
 	/* ────────────────────  Ações rápidas do menu do evento  ─────────── */
 	const alternarConclusao = async (ag: Agendamento) => {
+		if (!agendaLiberada) return portao.exigir(() => {});
 		const concluido = ag.status === "concluido";
 		try {
 			await salvar.mutateAsync({
@@ -478,15 +496,19 @@ export default function AgendaPage() {
 						onClick={() => {
 							setEditando(null);
 							setInicioSugerido(null);
-							setFormAberto(true);
+							abrirForm();
 						}}
 						className="gap-2"
 					>
-						<CalendarPlus className="size-4" aria-hidden="true" />
+						{portao.travado ? <Lock className="size-4" aria-label="Disponível no Pro" /> : <CalendarPlus className="size-4" aria-hidden="true" />}
 						Novo agendamento
 					</Button>
 				</div>
 			</div>
+
+			<AvisoMudancaGratis />
+			<FaixaRecursoPro recurso="agenda" uso={portao.uso} aoAssinar={() => navigate("/planos")} />
+			{portao.dialogo}
 
 			{/* ───── Barra de controle (nossa, não a do FullCalendar) ───── */}
 			<div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -705,7 +727,7 @@ export default function AgendaPage() {
 					setMenuDe(null);
 					setEditando(baseDe(ag));
 					setInicioSugerido(null);
-					setFormAberto(true);
+					abrirForm();
 				}}
 				aoReagendar={(ag) => {
 					setMenuDe(null);

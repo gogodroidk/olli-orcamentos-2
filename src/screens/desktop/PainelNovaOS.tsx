@@ -10,6 +10,8 @@ import { PressableWebState } from '../../components/web/pressableWebState';
 // Mesmas funções de serviço da OrdemServicoScreen mobile (NovaOS) — nenhuma
 // regra de negócio (numeração, dedupe orçamento→OS) é reimplementada aqui.
 import { criarOSDeOrcamento, criarOSManual, getOrdens } from '../../services/ordemServico';
+import { CartaoRecursoPlano } from '../../components/RecursoPlano';
+import { useCadeado } from '../../hooks/useCadeado';
 import { getOrcamentos } from '../../database/database';
 import { STATUS_LABELS } from '../../types';
 import type { Orcamento, OrdemServico } from '../../types';
@@ -37,12 +39,15 @@ export function PainelNovaOS({ visivel, aoFechar, aoCriada }: Props) {
   const styles = useEstilos(criarEstilos);
   const [modo, setModo] = useState<'orcamento' | 'manual'>('orcamento');
   const [criando, setCriando] = useState(false);
+  // D-2267: criar OS é do Pro (com carência do Grátis): o painel mostra o cartão do plano no lugar do formulário.
+  const cadeadoOS = useCadeado('ordem_servico');
 
   useEffect(() => {
     if (visivel) setModo('orcamento');
   }, [visivel]);
 
   async function criarDeOrcamento(orcamentoId: string) {
+    if (cadeadoOS.trancado) return;
     setCriando(true);
     try {
       const os = await criarOSDeOrcamento(orcamentoId);
@@ -55,6 +60,7 @@ export function PainelNovaOS({ visivel, aoFechar, aoCriada }: Props) {
   }
 
   async function criarManual(parcial: Partial<OrdemServico>, limpar: () => void) {
+    if (cadeadoOS.trancado) return;
     setCriando(true);
     try {
       const os = await criarOSManual(parcial);
@@ -85,6 +91,12 @@ export function PainelNovaOS({ visivel, aoFechar, aoCriada }: Props) {
             </Pressable>
           </View>
 
+          {cadeadoOS.trancado ? (
+            <View style={{ padding: Spacing.base }}>
+              <CartaoRecursoPlano recurso="ordem_servico" />
+            </View>
+          ) : null}
+          {cadeadoOS.trancado ? null : (<>
           <View style={styles.abas}>
             <Aba label="De um orçamento" ativo={modo === 'orcamento'} onPress={() => setModo('orcamento')} />
             <Aba label="Manual" ativo={modo === 'manual'} onPress={() => setModo('manual')} />
@@ -95,6 +107,7 @@ export function PainelNovaOS({ visivel, aoFechar, aoCriada }: Props) {
           ) : (
             <NovaOSManual criando={criando} onCriar={criarManual} />
           )}
+          </>)}
         </View>
       </View>
     </Modal>

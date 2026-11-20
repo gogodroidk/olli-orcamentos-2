@@ -275,7 +275,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   dataLinha: { flexDirection: 'row', gap: 8, marginTop: 5 },
   dataLabel: {
     width: 74,
-    fontSize: 10.5,
+    fontSize: 13,
     fontWeight: '800',
     color: c.onSurfaceMuted,
     textTransform: 'uppercase',

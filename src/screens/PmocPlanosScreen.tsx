@@ -524,7 +524,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.full,
     paddingHorizontal: 9, paddingVertical: 4,
   },
-  metaChipText: { fontSize: 11, color: c.onSurfaceVariant, fontWeight: '600' },
+  metaChipText: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600' },
   cardProxima: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     borderTopWidth: 1, borderTopColor: c.outline, paddingTop: 8,
@@ -532,7 +532,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardProximaText: { fontSize: 13, color: c.accentLight, fontWeight: '600', flex: 1 },
 
   statusBadge: { borderRadius: BorderRadius.full, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4 },
-  statusBadgeText: { fontSize: 11, fontWeight: '800' },
+  statusBadgeText: { fontSize: 13, fontWeight: '800' },
 
   // Modal novo plano — scrim padrão de modal, sempre escuro.
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },

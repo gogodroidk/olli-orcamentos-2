@@ -5,6 +5,7 @@ import {
   TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, RefreshControl, Animated,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { rotuloDisponibilidade } from '../services/cadeadoRecurso';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,6 +15,8 @@ import { EmptyState } from '../components/EmptyState';
 import { GradientHeader } from '../components/GradientHeader';
 import { OlliButton } from '../components/OlliButton';
 import { OlliInput } from '../components/OlliInput';
+import { BotaoContatoAgenda } from '../components/BotaoContatoAgenda';
+import { isValidEmail } from '../utils/contatoAgenda';
 import { AnimatedEntrance } from '../components/AnimatedEntrance';
 import { DicaContextual } from '../components/DicaContextual';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
@@ -38,6 +41,8 @@ import { encontrarClientesDuplicados } from '../utils/clientesDuplicados';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { goBackOrHome } from '../navigation/safeBack';
 import { usePermissao } from '../hooks/usePermissao';
+import { useRecursoPlano } from '../components/RecursoPlano';
+import { NOME_PLANO } from '../services/planosBase';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -186,6 +191,10 @@ const LinhaCliente = React.memo(LinhaClienteBase);
 
 export default function ClientesScreen() {
   const nav = useNavigation<Nav>();
+  // D-2267: importar em lote é do Pro (com carência do Grátis). Trancado, o atalho APARECE com cadeado
+  // e a tela Importar mostra o cartão "Disponível no Pro"; os 3 estados vivem em `useRecursoPlano`.
+  const { estado: estadoLote, planoMinimo: planoLote } = useRecursoPlano('importar_lote');
+  const loteTrancado = estadoLote === 'bloqueado';
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
   const insets = useSafeAreaInsets();
@@ -196,7 +205,7 @@ export default function ClientesScreen() {
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Partial<Cliente> | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string }>({});
+  const [errors, setErrors] = useState<{ cpf?: string; cnpj?: string; telefone?: string; email?: string }>({});
   const [salvando, setSalvando] = useState(false);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -314,7 +323,7 @@ export default function ClientesScreen() {
       return;
     }
 
-    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string } = {};
+    const nextErrors: { cpf?: string; cnpj?: string; telefone?: string; email?: string } = {};
     const cpfDigits = (editing.cpf ?? '').replace(/\D/g, '');
     const cnpjDigits = (editing.cnpj ?? '').replace(/\D/g, '');
     const telDigits = (editing.telefone ?? '').replace(/\D/g, '');
@@ -327,7 +336,10 @@ export default function ClientesScreen() {
     if (telDigits.length > 0 && telDigits.length < 10) {
       nextErrors.telefone = 'Telefone incompleto (informe DDD + número)';
     }
-    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone) {
+    if ((editing.email ?? '').trim() && !isValidEmail(editing.email)) {
+      nextErrors.email = 'E-mail inválido (ex: nome@email.com)';
+    }
+    if (nextErrors.cpf || nextErrors.cnpj || nextErrors.telefone || nextErrors.email) {
       setErrors(nextErrors);
       vibrar('erro');
       return;
@@ -339,6 +351,7 @@ export default function ClientesScreen() {
       nome: editing.nome!,
       telefone: editing.telefone ?? '',
       cpf: editing.cpf, cnpj: editing.cnpj,
+      email: editing.email?.trim() || undefined,
       endereco: editing.endereco, complemento: editing.complemento,
       cidade: editing.cidade, estado: editing.estado, cep: editing.cep,
       criadoEm: editing.criadoEm ?? nowISO(),
@@ -534,6 +547,23 @@ export default function ClientesScreen() {
           icon="gesture-tap"
           texto="Cadastre seus clientes aqui. Toque em um cliente para ver o histórico, criar orçamento, agendar visita ou chamar no WhatsApp na hora."
         />
+        {Platform.OS !== 'web' && (
+          // D-2245: cliente sem digitar — lê nome e telefone dos contatos do celular
+          // (permissão pedida só ao tocar, lá na tela Importar) e mostra uma lista para marcar.
+          <TouchableOpacity
+            style={styles.mapaAtalho}
+            onPress={() => nav.navigate('Importar', { origem: 'contatos' })}
+            accessibilityRole="button"
+            accessibilityLabel={loteTrancado ? `Importar clientes dos contatos do celular. ${rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoLote])}` : 'Importar clientes dos contatos do celular'}
+          >
+            <MaterialCommunityIcons name="card-account-phone-outline" size={20} color={cores.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.mapaAtalhoTitulo}>Importar dos contatos</Text>
+              <Text style={styles.mapaAtalhoSub}>{loteTrancado ? rotuloDisponibilidade(Platform.OS, NOME_PLANO[planoLote]) : 'Escolha na sua agenda quem é cliente. Sem digitar.'}</Text>
+            </View>
+            <MaterialCommunityIcons name={loteTrancado ? 'lock-outline' : 'chevron-right'} size={20} color={cores.onSurfaceVariant} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.mapaAtalho}
           onPress={() => nav.navigate('Prospeccao')}
@@ -641,8 +671,10 @@ export default function ClientesScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView contentContainerStyle={{ padding: Spacing.base }} keyboardShouldPersistTaps="handled">
+              {isNew ? <BotaoContatoAgenda onEscolher={c => { setEditing(p => p ? { ...p, nome: c.nome, telefone: c.telefone || p.telefone, email: c.email || p.email } : p); setErrors({}); }} /> : null}
               <OlliInput label="Nome completo" required autoFocus={isNew} value={editing.nome ?? ''} onChangeText={v => setEditing(p => p ? { ...p, nome: v } : p)} placeholder="Ex: João da Silva" leftIcon="account" />
               <OlliInput label="Telefone / WhatsApp" mask="phone" value={editing.telefone ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, telefone: v } : p); setErrors(e => e.telefone ? { ...e, telefone: undefined } : e); }} placeholder="(11) 99999-9999" leftIcon="phone" error={errors.telefone} />
+              <OlliInput label="E-mail (opcional)" value={editing.email ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, email: v } : p); setErrors(e => e.email ? { ...e, email: undefined } : e); }} placeholder="cliente@email.com" leftIcon="email-outline" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} error={errors.email} />
               <AvisoClienteDuplicado duplicados={duplicados} erro={carregandoErro} onAbrirExistente={abrirClienteExistente} />
               <OlliInput label="CPF" mask="cpf" value={editing.cpf ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cpf: v } : p); setErrors(e => e.cpf ? { ...e, cpf: undefined } : e); }} placeholder="000.000.000-00" leftIcon="card-account-details" error={errors.cpf} />
               <OlliInput label="CNPJ" mask="cnpj" value={editing.cnpj ?? ''} onChangeText={v => { setEditing(p => p ? { ...p, cnpj: v } : p); setErrors(e => e.cnpj ? { ...e, cnpj: undefined } : e); }} placeholder="00.000.000/0001-00" leftIcon="domain" error={errors.cnpj} />
@@ -683,7 +715,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   mapaAtalho: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: c.surface, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: c.outline,
-    padding: 12, marginTop: 10,
+    padding: 12, marginTop: 10, minHeight: 56,
   },
   mapaAtalhoTitulo: { color: c.onSurface, fontWeight: '800', fontSize: 14 },
   mapaAtalhoSub: { color: c.onSurfaceVariant, fontSize: 12, marginTop: 2 },
@@ -699,7 +731,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Pill escura FIXA (rgba(10,22,38,0.92)) nos dois modos: o primeiro plano tem que
   // ficar CLARO nos dois. `accentLight` escurece no claro (#197884 → 3.28:1, reprova
   // texto); `accent` fica #34C6D9 nos dois modos (8.27:1). No escuro os dois são iguais.
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.28:1 (8.27:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.28:1 (8.27:1)
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surfaceVariant, borderRadius: BorderRadius.lg, paddingHorizontal: 14, paddingVertical: 11, gap: 8, marginTop: 14, borderWidth: 1, borderColor: c.outline },
   searchInput: { flex: 1, fontSize: 15, color: c.onSurface },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.lg, padding: Spacing.base, ...sombrasDe(c).sm },
@@ -728,7 +760,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   name: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: c.onSurface },
   // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   radarBadge: { backgroundColor: 'rgba(247,178,59,0.14)', borderWidth: 1, borderColor: 'rgba(247,178,59,0.34)', borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 2 },
-  radarBadgeText: { fontSize: 10, fontWeight: '800', color: c.warning },
+  radarBadgeText: { fontSize: 13, fontWeight: '800', color: c.warning },
   info: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2 },
   infoMuted: { fontSize: 12, color: c.onSurfaceMuted, marginTop: 1 },
   cardActions: { flexDirection: 'row', gap: 16 },

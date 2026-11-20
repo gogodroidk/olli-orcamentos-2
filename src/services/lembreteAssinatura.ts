@@ -15,8 +15,8 @@
  * disso só espanta. Quanto mais perto do vencimento, mais forte o aviso e menos
  * tempo ele fica dispensado; no vencimento, não some.
  *
- * Desde 01/10/2026 o Grátis é ILIMITADO (ver `limitesComerciais.ts`): os avisos
- * "faltam N orçamentos" e "você usou os 5" deixaram de existir. O que o Pro vende
+ * O limite do Grátis (5 envios/mês desde 07/11/2026) é avisado em outro lugar
+ * (ver `limitesComerciais.ts` e `planosBase.ts`), não neste lembrete. O que o Pro vende
  * agora vem da tabela única `planosBase.ts` (`frasePro`), nunca escrito aqui.
  */
 import { frasePro } from './planosBase.ts';

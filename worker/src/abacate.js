@@ -59,6 +59,7 @@ import { concederPlanoPeriodo, PLANO_PIX } from './mercadopago.js';
 import { checarLimite, deixaPassar, rateOkSensivel } from './rateLimit.js';
 import { getAssinatura } from './stripe.js';
 import { marcarEvento, reivindicarEvento } from './webhookEvents.js';
+import { reservarCupom, anexarCupom, liberarCupom, confirmarCupom, valorComDesconto, textoDesconto } from './cupom.js';
 import { handlePixAutomatico, pixAutomaticoLigado, processarEventoAssinatura } from './abacatePixAutomatico.js';
 
 /** Origem desta cobrança em `webhook_events` (texto livre; não exige migration). */
@@ -149,6 +150,14 @@ function centavos(plano) {
   return Math.round(plano.valor * 100);
 }
 
+/** Cupom gravado na cobrança (metadata criada por NÓS no servidor): { codigo, pct } ou null. pct limitado a 1..50. */
+function cupomDaCobranca(cobranca) {
+  const md = cobranca && cobranca.metadata;
+  const pct = md && Number(md.cupomPct);
+  if (!md || !md.cupom || !Number.isInteger(pct) || pct < 1 || pct > 50) return null;
+  return { codigo: String(md.cupom), pct };
+}
+
 /**
  * Descrição que a AbacatePay aceita. Ela recusa a cobrança inteira (400
  * "Disallowed character in description") por caractere fora do básico — o "·" do
@@ -200,16 +209,41 @@ const INICIO_MAX_MS = 400 * 864e5;
  * Falha ao ler a assinatura → começa agora (o cliente perde no máximo os dias que
  * faltavam; nunca ganha meses de graça).
  */
-async function inicioDoPeriodo(env, userId, planoAlvo) {
+export async function inicioDoPeriodo(env, userId, planoAlvo) {
   const agora = Date.now();
   const atual = await getAssinatura(env, userId);
-  if (!atual || atual.error) return new Date(agora).toISOString();
-  const fim = atual.current_period_end ? Date.parse(atual.current_period_end) : NaN;
-  const ativo = atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status);
+  if (atual && atual.error) return new Date(agora).toISOString();
+  const fim = atual && atual.current_period_end ? Date.parse(atual.current_period_end) : NaN;
+  const ativo = !!atual && atual.status && !['canceled', 'unpaid', 'incomplete_expired'].includes(atual.status);
   if (ativo && atual.plano === planoAlvo && Number.isFinite(fim) && fim > agora) {
     return new Date(fim).toISOString();
   }
+  // Regra da CPO (19/11): quem paga o Pro durante o TESTE do Pro não perde o resto do teste — o pago começa no fim dele.
+  if (planoAlvo === 'pro') {
+    const testeAte = await testeAteDaConta(env, userId);
+    if (testeAte && testeAte > agora && testeAte - agora <= INICIO_MAX_MS) return new Date(testeAte).toISOString();
+  }
   return new Date(agora).toISOString();
+}
+
+/**
+ * Fim do teste do Pro ATIVO da conta (ms) ou null. Falha de leitura = null (o pago começa agora: o cliente perde no
+ * máximo os dias de teste, nunca ganha meses). Teste é por tenant; o dono é `owner_user_id`.
+ */
+export async function testeAteDaConta(env, userId, agora = Date.now()) {
+  if (!env?.SUPABASE_URL || !env?.SUPABASE_SERVICE_ROLE_KEY) return null;
+  try {
+    const u = encodeURIComponent(userId);
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/trials_comerciais?owner_user_id=eq.${u}&estado=eq.active&select=termina_em&order=termina_em.desc&limit=1`, {
+      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+    });
+    if (!r.ok) return null;
+    const l = await r.json();
+    const fim = Array.isArray(l) && l[0] ? Date.parse(l[0].termina_em) : NaN;
+    return Number.isFinite(fim) && fim > agora ? fim : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Validade do QR Pix do plano: 24 h (testado na AbacatePay em 22/10). */
@@ -292,7 +326,10 @@ export async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   if (cobranca.devMode === true && modoAbacate(env) !== 'teste') return { estado: 'invalida', motivo: 'dev_mode' };
 
   const plano = PLANO_PIX[vinculo.planoKey];
-  if (Number(cobranca.amount) !== centavos(plano)) {
+  // Com cupom, o valor esperado é o de tabela com o desconto gravado na cobrança (nenhum preço novo).
+  const cupomPago = cupomDaCobranca(cobranca);
+  const esperado = cupomPago ? centavos({ valor: valorComDesconto(plano.valor, cupomPago.pct) }) : centavos(plano);
+  if (Number(cobranca.amount) !== esperado) {
     console.error('[olli-abacate] valor da cobrança difere do catálogo — não libera', vinculo.planoKey);
     return { estado: 'invalida', motivo: 'valor_divergente' };
   }
@@ -342,6 +379,8 @@ export async function liberarSePaga(env, idCobranca, userIdEsperado = null) {
   }
   const registrado = await marcarEvento(env, { ...consumo, status: 'processado' });
   if (!registrado) console.error('[olli-abacate] plano liberado, mas o consumo não gravou — aguardando reenvio');
+  // Cupom de influenciador: pagamento confirmado = a reserva vira uso (idempotente; falha não desfaz a venda).
+  if (cupomPago) await confirmarCupom(env, vinculo.userId, idCobranca, centavos(plano) - Number(cobranca.amount));
   return { estado: 'liberado', registrado };
 }
 
@@ -366,7 +405,7 @@ const ORIGENS_COBRANCA = new Set(['link']);
  * sem origem, o corpo enviado é idêntico ao de antes.
  * Devolve `{ ok:true, data, inicio, gravou }` ou `{ ok:false }`.
  */
-export async function criarCobrancaPlano(env, { userId, plano, origem = null }) {
+export async function criarCobrancaPlano(env, { userId, plano, origem = null, valor = null, cupom = null }) {
   const org = ORIGENS_COBRANCA.has(origem) ? origem : null;
   const externalId = `olli:pl:${userId}:${crypto.randomUUID()}:${plano.id}`;
   const inicio = await inicioDoPeriodo(env, userId, plano.plano);
@@ -375,11 +414,12 @@ export async function criarCobrancaPlano(env, { userId, plano, origem = null }) 
     body: JSON.stringify({
       method: 'PIX',
       data: {
-        amount: centavos(plano),
+        // Com cupom, o valor é o de tabela × (100 − %) calculado pelo servidor (nenhum preço novo).
+        amount: centavos({ valor: valor == null ? plano.valor : valor }),
         expiresIn: PIX_EXPIRA_S,
         description: descricaoAbacate(plano.nome),
         externalId,
-        metadata: { externalId, inicio, ...(org ? { origem: org } : {}) },
+        metadata: { externalId, inicio, ...(org ? { origem: org } : {}), ...(cupom ? { cupom: cupom.codigo, cupomPct: cupom.pct } : {}) },
       },
     }),
   });
@@ -428,12 +468,29 @@ async function criarPixPlano(request, env) {
   const plano = PLANO_PIX[body && body.plano];
   if (!plano) return json({ ok: false, erro: 'plano_invalido' }, 400);
 
-  const criada = await criarCobrancaPlano(env, { userId: user.id, plano });
-  if (!criada.ok) return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  // Cupom de influenciador (opcional; desligado por flag): só 1ª cobrança, % fixo na constante, valor de
+  // tabela × (100 − %). O desconto vai ESCRITO na resposta (o app mostra antes de pagar). Recusa nunca
+  // cai em "cobra cheio".
+  let valor = plano.valor;
+  let desconto = null;
+  const codigoCupom = body && typeof body.cupom === 'string' && body.cupom.trim() ? body.cupom : null;
+  if (codigoCupom) {
+    const r = await reservarCupom(env, { userId: user.id, codigo: codigoCupom, plano: plano.id, canal: 'pix' });
+    if (!r.ok) return json({ ok: false, erro: 'cupom_recusado', status: r.status, texto: r.texto }, r.status === 'indisponivel' ? 503 : 409);
+    // UMA reserva aberta por conta: pedido repetido devolve o MESMO Pix, nunca cria outro com desconto.
+    if (r.reaproveitar) return json({ ok: true, ...r.cobranca });
+    valor = valorComDesconto(plano.valor, r.pct);
+    desconto = { codigo: r.codigo, pct: r.pct, de: plano.valor, por: valor, texto: textoDesconto({ pct: r.pct, de: plano.valor, por: valor }) };
+  }
+
+  const criada = await criarCobrancaPlano(env, { userId: user.id, plano, valor, cupom: desconto });
+  if (!criada.ok) {
+    if (desconto) await liberarCupom(env, user.id); // a cobrança não saiu: solta a reserva para tentar de novo
+    return json({ ok: false, erro: 'falha_criar_pix' }, 502);
+  }
   const { data, inicio } = criada;
 
-  return json({
-    ok: true,
+  const resposta = {
     id: data.id,
     brCode: data.brCode,
     brCodeBase64: data.brCodeBase64 || '', // já vem como data:image/png;base64,…
@@ -441,7 +498,11 @@ async function criarPixPlano(request, env) {
     expiresAt: data.expiresAt || null,
     plano: { id: plano.id, nome: plano.nome, meses: plano.meses, valor: plano.valor },
     inicio,
-  });
+    ...(desconto ? { desconto } : {}),
+  };
+  // Guarda o Pix na reserva: o pedido repetido com o cupom devolve ESTE Pix (idempotente).
+  if (desconto) await anexarCupom(env, user.id, resposta, data.expiresAt || null);
+  return json({ ok: true, ...resposta });
 }
 
 // ─── GET /abacate/status?id= ─────────────────────────────────

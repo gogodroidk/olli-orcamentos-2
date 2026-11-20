@@ -60,7 +60,7 @@ import { limparRastreioUso } from './rastreioRetencao.js';
 import { limparWhatsappAntigo } from './whatsappRetencao.js';
 import { handleAdmin } from './admin.js';
 import { handleStripe } from './stripe.js';
-import { handleMercadoPago } from './mercadopago.js';
+import { handleMercadoPago, PLANO_PIX } from './mercadopago.js';
 import { handleAbacate } from './abacate.js';
 import { handleLinkPagarPro, LINK_PRO_PREFIXO } from './linkPagarPro.js';
 import { CRON_PLAY, handlePlay, tarefaPlayDoCron } from './play.js';
@@ -74,6 +74,8 @@ import { handleEquipe } from './equipe.js';
 import { handleConta } from './conta.js';
 import { handlePedidoDiagnostico } from './pedidoDiagnostico.js';
 import { limparPedidosDiagnostico } from './servicosRetencao.js';
+import { handleIndicacao } from './indicacao.js';
+import { handleCupom } from './cupom.js';
 import { receberPedidoEtiqueta, renderEtiqueta, renderEtiquetaSvg } from './pmoc.js';
 import { renderConfirmacao, responderConfirmacao } from './confirmacaoVisita.js';
 import { cabeNoTeto, checarLimite, deixaPassar } from './rateLimit.js';
@@ -114,7 +116,7 @@ import { prepararPreviaAutopilot, textoDaFalhaAutopilot, IA_AUTOPILOT_MAX_BYTES 
 import { prepararRascunhoPrecificacao, precificacaoIaLigada, textoDaFalhaPrecificacaoIa } from './precificacaoIa.js';
 import { parseJsonBody, parseJsonLoose, cortar, tresEstados, empresaAtiva, metodosDaRota } from './util.js';
 import { withSecurityHeaders } from './securityHeaders.js';
-import { versaoMinimaAndroid } from './versaoMinima.js';
+import { chaveUiV2Nav, versaoMinimaAndroid } from './versaoMinima.js';
 import {
   rotuloVertical,
   vozSystem,
@@ -1061,6 +1063,16 @@ const handler = {
       return handleConta(request, env, url);
     }
 
+    // ── INDICAÇÃO (colega indica colega; JWT por rota, ver indicacao.js) ──
+    if (url.pathname.startsWith('/indicacao/')) {
+      return handleIndicacao(request, env, url);
+    }
+
+    // ── CUPOM DE INFLUENCIADOR (consulta sem gravar; JWT; desligado por flag, ver cupom.js) ──
+    if (url.pathname.startsWith('/cupom/')) {
+      return handleCupom(request, env, url, PLANO_PIX);
+    }
+
     // ── LINK PÚBLICO DO CLIENTE (sem login, antes do gate da IA) ──
     if (url.pathname.startsWith('/o/')) {
       // Sinal do termômetro (beacon da própria página): POST /o/<token>/sinal.
@@ -1271,7 +1283,7 @@ const handler = {
     // VERSÃO MÍNIMA DO APP ANDROID (D-1326): o app pede a atualização abaixo deste build. Pública, sem dado de
     // conta; 0 (padrão, var ausente) = desligada. Cache curto para a troca valer em minutos.
     if (request.method === 'GET' && url.pathname === '/app/versao-minima') {
-      return json({ ok: true, android: versaoMinimaAndroid(env) }, 200, { 'Cache-Control': 'public, max-age=300' });
+      return json({ ok: true, android: versaoMinimaAndroid(env), ui_v2_nav: chaveUiV2Nav(env) }, 200, { 'Cache-Control': 'public, max-age=300' });
     }
     if (request.method === 'GET' && url.pathname === '/') {
       const saude = saudeIA(env);

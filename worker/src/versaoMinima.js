@@ -15,3 +15,13 @@ export function versaoMinimaAndroid(env) {
   if (minima === 0 || playAtual === 0 || minima > playAtual) return 0;
   return minima;
 }
+
+/**
+ * Chave remota da navegação v1.3 do app (CQ-APP-13-B): `APP_UI_V2_NAV=0` desliga
+ * em todos os apps no próximo boot, sem versão nova. Ausente/qualquer outro
+ * valor = true (o build decide). O servidor nunca LIGA o que o build não ligou.
+ */
+export function chaveUiV2Nav(env) {
+  const bruto = typeof env?.APP_UI_V2_NAV === 'string' ? env.APP_UI_V2_NAV.trim() : '';
+  return bruto !== '0';
+}

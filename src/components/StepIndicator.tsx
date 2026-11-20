@@ -68,7 +68,7 @@ const criarEstilos = (c: Cores) =>
     // do antigo `primaryDark` fixo.
     numActive: { color: textoSobre(c.accentLight) },
     // Idem: cor do rótulo (inativo) aplicada inline — ver corLabel no componente.
-    label: { alignSelf: 'stretch', fontSize: 10, textAlign: 'center', fontWeight: '700' },
+    label: { alignSelf: 'stretch', fontSize: 13, textAlign: 'center', fontWeight: '700' },
     labelActive: { color: '#fff' },
     line: { flex: 0.55, height: 2, backgroundColor: 'rgba(255,255,255,0.24)', marginTop: 16, marginHorizontal: 1, borderRadius: 1 },
     lineDone: { backgroundColor: c.success },

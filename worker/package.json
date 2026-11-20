@@ -25,6 +25,10 @@
     "test:email-regua-reengajamento": "node scripts/teste-email-regua-reengajamento.js",
     "test:email-descadastro": "node scripts/teste-email-descadastro.js",
     "test:funil-receita": "node scripts/teste-funil-receita.js",
+    "test:indicacao": "node scripts/teste-indicacao.js",
+    "test:cupom": "node scripts/teste-cupom.js",
+    "test:admin-cupom": "node scripts/teste-admin-cupom.js",
+    "test:cupom-procedimento": "node scripts/teste-cupom-procedimento.js",
     "test:play-verificacao": "node scripts/teste-play-verificacao.js",
     "test:play-batimento": "node scripts/teste-play-batimento.js",
     "test:alarme-pix": "node scripts/teste-alarme-pix.js",
@@ -42,7 +46,7 @@
     "test:ai-workersai": "node scripts/teste-ai-workersai.js",
     "test:ical-feed": "node scripts/teste-ical-feed.js",
     "test:instagram-isca": "node scripts/teste-instagram-isca.js",
-    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-regua-reengajamento && npm run test:pix-vence && npm run test:checagem-nao-aberto && npm run test:email-descadastro && npm run test:oferta-pro && npm run test:admin-emails && npm run test:funil-receita && npm run test:play-verificacao && npm run test:play-batimento && npm run test:alarme-pix && npm run test:faturas-android && npm run test:resumo-dinheiro-policy && npm run test:resumo-dinheiro-template && npm run test:resumo-dinheiro-job && npm run test:link-pix && npm run test:abacate-webhook && npm run test:abacate-recorrente && npm run test:abacate-plano-pix && npm run test:link-pagar-pro && npm run test:contratos-job && npm run test:auth-email-hook && npm run test:clima && npm run test:alertas && npm run test:ai-contexto-diagnostico && npm run test:versao-minima && npm run test:ai-workersai && npm run test:ical-feed && npm run test:instagram-isca",
+    "test": "npm run test:ai && npm run test:audio && npm run test:body && npm run test:stripe-webhook-gate && npm run test:stripe-portal && npm run test:email && npm run test:resend-webhook && npm run test:ia-actions && npm run test:ia-importacao && npm run test:ia-autopilot && npm run test:welcome-outbox-consumer && npm run test:email-lembretes-policy && npm run test:email-lembretes-template && npm run test:email-lembretes-job && npm run test:email-regua-reengajamento && npm run test:pix-vence && npm run test:checagem-nao-aberto && npm run test:email-descadastro && npm run test:oferta-pro && npm run test:admin-emails && npm run test:admin-funil-uso && npm run test:funil-receita && npm run test:play-verificacao && npm run test:play-batimento && npm run test:alarme-pix && npm run test:faturas-android && npm run test:resumo-dinheiro-policy && npm run test:resumo-dinheiro-template && npm run test:resumo-dinheiro-job && npm run test:link-pix && npm run test:abacate-webhook && npm run test:abacate-recorrente && npm run test:abacate-plano-pix && npm run test:link-pagar-pro && npm run test:contratos-job && npm run test:auth-email-hook && npm run test:clima && npm run test:alertas && npm run test:ai-contexto-diagnostico && npm run test:versao-minima && npm run test:ai-workersai && npm run test:ical-feed && npm run test:instagram-isca && npm run test:indicacao && npm run test:cupom && npm run test:admin-cupom && npm run test:cupom-procedimento",
     "test:contratos-job": "node scripts/teste-contratos-job.js",
     "deploy": "node ../scripts/janela-release.mjs --alvo producao && npm run types:check && wrangler deploy",
     "test:clima": "node scripts/teste-clima.js",
@@ -50,6 +54,7 @@
     "test:pix-vence": "node scripts/teste-pix-vence.js",
     "test:oferta-pro": "node scripts/teste-oferta-pro.js",
     "test:admin-emails": "node scripts/teste-admin-emails.js",
+    "test:admin-funil-uso": "node scripts/teste-admin-funil-uso.js",
     "test:checagem-nao-aberto": "node scripts/teste-checagem-nao-aberto.js"
   },
   "dependencies": {

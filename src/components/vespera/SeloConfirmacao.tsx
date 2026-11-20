@@ -59,5 +59,5 @@ const criarEstilos = (_c: Cores) => StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 3,
   },
-  txt: { fontSize: 11.5, fontWeight: '800' },
+  txt: { fontSize: 13, fontWeight: '800' },
 });

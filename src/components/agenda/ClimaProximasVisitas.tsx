@@ -94,10 +94,10 @@ const criarEstilos = (c: Cores) =>
     linhaSeparada: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.outline },
     horaCol: { width: 48 },
     hora: { color: c.onSurface, fontSize: 14, fontWeight: '800' },
-    amanha: { color: c.onSurfaceMuted, fontSize: 11, fontWeight: '700', marginTop: 1 },
+    amanha: { color: c.onSurfaceMuted, fontSize: 13, fontWeight: '700', marginTop: 1 },
     corpo: { flex: 1, minWidth: 0 },
     quem: { color: c.onSurfaceVariant, fontSize: 12.5, fontWeight: '600' },
     chip: { marginTop: Spacing.xs + 2 },
     nota: { color: c.onSurfaceVariant, fontSize: 12, lineHeight: 16, marginTop: Spacing.sm },
-    credito: { color: c.onSurfaceMuted, fontSize: 11, marginTop: Spacing.xs },
+    credito: { color: c.onSurfaceMuted, fontSize: 13, marginTop: Spacing.xs },
   });

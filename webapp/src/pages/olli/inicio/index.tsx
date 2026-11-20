@@ -95,6 +95,9 @@ export default function Inicio() {
 	const recebido = useMemo(() => (recQ.data ? calcularRecebidoNoMes(recQ.data) : null), [recQ.data]);
 	const taxa = useMemo(() => (orcQ.data ? calcularTaxaAprovacao(orcQ.data, 30) : null), [orcQ.data]);
 
+	const contaNova =
+		orcQ.isSuccess && recQ.isSuccess && (orcQ.data?.length ?? 0) === 0 && (recQ.data?.length ?? 0) === 0;
+
 	const recarregarTudo = () => {
 		orcQ.refetch();
 		recQ.refetch();
@@ -144,150 +147,163 @@ export default function Inicio() {
 			<AtivacaoCard orcamentos={orcQ} recibos={recQ} empresa={empresaQ} />
 
 			{/*
-			 * O PALCO. O radar de dinheiro parado vem ANTES dos KPIs de propósito: é a
-			 * única coisa desta tela que pede uma ação hoje. Os quatro números abaixo
-			 * explicam o mês; este diz o que fazer agora, e traz o botão junto.
-			 * Some da hierarquia (vira faixa curta) quando não há nada parado.
+			 * D-2151 #8: conta NOVA (zero orçamentos e zero recibos, CONFIRMADO pelas leituras) não vê
+			 * oito cartões de "R$ 0,00 / nada aqui" que empurravam o 1º passo (acima) para longe e davam
+			 * 3.500 px de rolagem no celular. Carregando ou com erro, tudo aparece com seu próprio estado.
 			 */}
-			<RadarDinheiroCard
-				radar={radarDinheiro}
-				isLoading={orcQ.isLoading || recQ.isLoading || osQ.isLoading}
-				isError={orcQ.isError || recQ.isError || osQ.isError}
-				onRetry={recarregarTudo}
-				empresa={empresa}
-			/>
+			{!contaNova && (
+				<>
+					{/*
+					 * O PALCO. O radar de dinheiro parado vem ANTES dos KPIs de propósito: é a
+					 * única coisa desta tela que pede uma ação hoje. Os quatro números abaixo
+					 * explicam o mês; este diz o que fazer agora, e traz o botão junto.
+					 * Some da hierarquia (vira faixa curta) quando não há nada parado.
+					 */}
+					<RadarDinheiroCard
+						radar={radarDinheiro}
+						isLoading={orcQ.isLoading || recQ.isLoading || osQ.isLoading}
+						isError={orcQ.isError || recQ.isError || osQ.isError}
+						onRetry={recarregarTudo}
+						empresa={empresa}
+					/>
 
-			{/*
-			 * Os 4 números que decidem o mês. Cada um leva à lista já filtrada.
-			 *
-			 * Breakpoint em `lg` (1024px), não só em `xl` (1280px): sem o `lg:grid-cols-4`,
-			 * a grade ficava PRESA em 2 colunas por toda a faixa 640–1279px — no mínimo do
-			 * layout desktop (~1024px) sobrava tela de sobra e os 4 cartões viravam 2
-			 * blocos esticados e desproporcionais, em vez de ocupar a largura em 4. Mesmo
-			 * ajuste já feito no app-desktop (`KpiGrid`, Onda 11 — 2/4 colunas em 1024/1280px).
-			 */}
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-				<KpiDinheiroCard
-					label="Em jogo"
-					valor={emJogo ? formatBRL(emJogo.total) : "—"}
-					detalhe={
-						emJogo
-							? emJogo.itens > 0
-								? `${plural(emJogo.itens, "proposta")} na mão do cliente`
-								: "Nenhuma proposta em aberto"
-							: "—"
-					}
-					aviso={avisoSemValor(emJogo?.semValor)}
-					to={`/orcamentos?status=${paramStatus(STATUS_EM_JOGO)}`}
-					Icon={Send}
-					color="#0B6FCE"
-					isLoading={orcQ.isLoading}
-					isError={orcQ.isError}
-					onRetry={() => orcQ.refetch()}
-				/>
+					{/*
+					 * Os 4 números que decidem o mês. Cada um leva à lista já filtrada.
+					 *
+					 * Breakpoint em `lg` (1024px), não só em `xl` (1280px): sem o `lg:grid-cols-4`,
+					 * a grade ficava PRESA em 2 colunas por toda a faixa 640–1279px — no mínimo do
+					 * layout desktop (~1024px) sobrava tela de sobra e os 4 cartões viravam 2
+					 * blocos esticados e desproporcionais, em vez de ocupar a largura em 4. Mesmo
+					 * ajuste já feito no app-desktop (`KpiGrid`, Onda 11 — 2/4 colunas em 1024/1280px).
+					 */}
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+						<KpiDinheiroCard
+							label="Em jogo"
+							valor={emJogo ? formatBRL(emJogo.total) : "—"}
+							detalhe={
+								emJogo
+									? emJogo.itens > 0
+										? `${plural(emJogo.itens, "proposta")} na mão do cliente`
+										: "Nenhuma proposta em aberto"
+									: "—"
+							}
+							aviso={avisoSemValor(emJogo?.semValor)}
+							to={`/orcamentos?status=${paramStatus(STATUS_EM_JOGO)}`}
+							Icon={Send}
+							color="#0B6FCE"
+							isLoading={orcQ.isLoading}
+							isError={orcQ.isError}
+							onRetry={() => orcQ.refetch()}
+						/>
 
-				<KpiDinheiroCard
-					label="A receber"
-					valor={aReceber ? formatBRL(aReceber.total) : "—"}
-					detalhe={
-						aReceber
-							? aReceber.itens > 0
-								? `${plural(aReceber.itens, "orçamento ganho", "orçamentos ganhos")} · já entrou ${formatBRL(aReceber.jaRecebido)}`
-								: "Tudo que foi aprovado já foi pago"
-							: "—"
-					}
-					aviso={avisoSemValor(aReceber?.semValor)}
-					to={`/orcamentos?status=${paramStatus(STATUS_A_RECEBER)}`}
-					Icon={Wallet}
-					color="#F59E0B"
-					isLoading={orcQ.isLoading || recQ.isLoading || osQ.isLoading}
-					isError={orcQ.isError || recQ.isError || osQ.isError}
-					onRetry={recarregarTudo}
-				/>
+						<KpiDinheiroCard
+							label="A receber"
+							valor={aReceber ? formatBRL(aReceber.total) : "—"}
+							detalhe={
+								aReceber
+									? aReceber.itens > 0
+										? `${plural(aReceber.itens, "orçamento ganho", "orçamentos ganhos")} · já entrou ${formatBRL(aReceber.jaRecebido)}`
+										: "Tudo que foi aprovado já foi pago"
+									: "—"
+							}
+							aviso={avisoSemValor(aReceber?.semValor)}
+							to={`/orcamentos?status=${paramStatus(STATUS_A_RECEBER)}`}
+							Icon={Wallet}
+							color="#F59E0B"
+							isLoading={orcQ.isLoading || recQ.isLoading || osQ.isLoading}
+							isError={orcQ.isError || recQ.isError || osQ.isError}
+							onRetry={recarregarTudo}
+						/>
 
-				<KpiDinheiroCard
-					label="Recebido no mês"
-					valor={recebido ? formatBRL(recebido.total) : "—"}
-					detalhe={
-						recebido
-							? `${plural(recebido.itens, "recibo")} em ${mesPorExtenso()}`
-							: `Recebimentos de ${mesPorExtenso()}`
-					}
-					aviso={avisoRecebido(recebido?.semData, recebido?.semValor)}
-					to="/recibos"
-					Icon={Banknote}
-					color="#2BE39A"
-					isLoading={recQ.isLoading}
-					isError={recQ.isError}
-					onRetry={() => recQ.refetch()}
-					// "Dinheiro entrou": sobe do que o dono viu da última vez. A chave leva o
-					// mês — na virada, "Recebido no mês" recomeça e não conta como queda.
-					contador={{ valor: recebido?.total ?? null, chave: `recebido-mes:${chaveDoMes()}`, formatar: formatBRL }}
-				/>
+						<KpiDinheiroCard
+							label="Recebido no mês"
+							valor={recebido ? formatBRL(recebido.total) : "—"}
+							detalhe={
+								recebido
+									? `${plural(recebido.itens, "recibo")} em ${mesPorExtenso()}`
+									: `Recebimentos de ${mesPorExtenso()}`
+							}
+							aviso={avisoRecebido(recebido?.semData, recebido?.semValor)}
+							to="/recibos"
+							Icon={Banknote}
+							color="#2BE39A"
+							isLoading={recQ.isLoading}
+							isError={recQ.isError}
+							onRetry={() => recQ.refetch()}
+							// "Dinheiro entrou": sobe do que o dono viu da última vez. A chave leva o
+							// mês — na virada, "Recebido no mês" recomeça e não conta como queda.
+							contador={{ valor: recebido?.total ?? null, chave: `recebido-mes:${chaveDoMes()}`, formatar: formatBRL }}
+						/>
 
-				<KpiDinheiroCard
-					label="Taxa de aprovação"
-					valor={formatPct(taxa?.taxa ?? null)}
-					detalhe={
-						taxa
-							? taxa.propostas > 0
-								? `${taxa.aprovados} de ${plural(taxa.propostas, "proposta")} nos últimos 30 dias`
-								: "Nenhuma proposta enviada nos últimos 30 dias"
-							: "Últimos 30 dias"
-					}
-					to={`/orcamentos?status=${paramStatus(STATUS_A_RECEBER)}`}
-					Icon={Percent}
-					color="#8B5CF6"
-					isLoading={orcQ.isLoading}
-					isError={orcQ.isError}
-					onRetry={() => orcQ.refetch()}
-				/>
-			</div>
+						<KpiDinheiroCard
+							label="Taxa de aprovação"
+							valor={formatPct(taxa?.taxa ?? null)}
+							detalhe={
+								taxa
+									? taxa.propostas > 0
+										? `${taxa.aprovados} de ${plural(taxa.propostas, "proposta")} nos últimos 30 dias`
+										: "Nenhuma proposta enviada nos últimos 30 dias"
+									: "Últimos 30 dias"
+							}
+							to={`/orcamentos?status=${paramStatus(STATUS_A_RECEBER)}`}
+							Icon={Percent}
+							color="#8B5CF6"
+							isLoading={orcQ.isLoading}
+							isError={orcQ.isError}
+							onRetry={() => orcQ.refetch()}
+						/>
+					</div>
+				</>
+			)}
 
 			{/* O dia de hoje, antes de qualquer gráfico. */}
 			<FaixaHoje />
 
-			{/* AÇÃO (cobrar) à esquerda; leitura (funil) à direita. */}
-			<div className="grid gap-5 lg:grid-cols-5">
-				<div className="lg:col-span-3">
-					<ParadosCard
+			{!contaNova && (
+				<>
+					{/* AÇÃO (cobrar) à esquerda; leitura (funil) à direita. */}
+					<div className="grid gap-5 lg:grid-cols-5">
+						<div className="lg:col-span-3">
+							<ParadosCard
+								rows={orcQ.data}
+								isLoading={orcQ.isLoading}
+								isError={orcQ.isError}
+								onRetry={() => orcQ.refetch()}
+								empresa={nomeEmpresa}
+							/>
+						</div>
+						<div className="lg:col-span-2">
+							<StatusDonutCard
+								rows={orcQ.data}
+								isLoading={orcQ.isLoading}
+								isError={orcQ.isError}
+								onRetry={() => orcQ.refetch()}
+							/>
+						</div>
+					</div>
+
+					{/*
+					 * O terceiro radar do celular que faltava aqui: quem já foi cliente e sumiu.
+					 * Fica abaixo do dinheiro porque é receita de amanhã, não de hoje — mas na
+					 * mesma tela, com a mesma ação de um toque.
+					 */}
+					<ClientesEsfriandoCard
+						orcamentos={orcQ.data}
+						recibos={recQ.data}
+						orcRecCarregando={orcQ.isLoading || recQ.isLoading}
+						orcRecErro={orcQ.isError || recQ.isError}
+						onRetry={recarregarTudo}
+						empresa={empresa}
+					/>
+
+					<RecentOrcamentosCard
 						rows={orcQ.data}
 						isLoading={orcQ.isLoading}
 						isError={orcQ.isError}
 						onRetry={() => orcQ.refetch()}
-						empresa={nomeEmpresa}
 					/>
-				</div>
-				<div className="lg:col-span-2">
-					<StatusDonutCard
-						rows={orcQ.data}
-						isLoading={orcQ.isLoading}
-						isError={orcQ.isError}
-						onRetry={() => orcQ.refetch()}
-					/>
-				</div>
-			</div>
-
-			{/*
-			 * O terceiro radar do celular que faltava aqui: quem já foi cliente e sumiu.
-			 * Fica abaixo do dinheiro porque é receita de amanhã, não de hoje — mas na
-			 * mesma tela, com a mesma ação de um toque.
-			 */}
-			<ClientesEsfriandoCard
-				orcamentos={orcQ.data}
-				recibos={recQ.data}
-				orcRecCarregando={orcQ.isLoading || recQ.isLoading}
-				orcRecErro={orcQ.isError || recQ.isError}
-				onRetry={recarregarTudo}
-				empresa={empresa}
-			/>
-
-			<RecentOrcamentosCard
-				rows={orcQ.data}
-				isLoading={orcQ.isLoading}
-				isError={orcQ.isError}
-				onRetry={() => orcQ.refetch()}
-			/>
+				</>
+			)}
 		</div>
 	);
 }

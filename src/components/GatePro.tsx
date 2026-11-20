@@ -10,6 +10,7 @@ import type { Recurso, PlanoId } from '../services/planos';
 import { NOME_PLANO, ROTULO_RECURSO, beneficioRecurso } from '../services/planosBase';
 import { track, Eventos } from '../services/analytics';
 import { CartaoRecursoPlano } from './RecursoPlano';
+import { podeVerPlanosPara, rotuloDisponibilidade } from '../services/cadeadoRecurso';
 
 /**
  * <GatePro> — muro de conversão do freemium (Onda 1).
@@ -20,8 +21,8 @@ import { CartaoRecursoPlano } from './RecursoPlano';
  * breve" nem um bloco vazio: o preview é o que dá vontade de assinar.
  *
  * Regra de ouro: só se usa em recursos Pro/Empresa. NUNCA envolver o fluxo de
- * criar orçamento/recibo/cliente/agenda — esses são livres no Grátis (que desde
- * 01/10/2026 tem orçamentos ILIMITADOS).
+ * criar orçamento/recibo/cliente/agenda — esses são livres no Grátis (o envio tem
+ * limite de 5 por mês desde 07/11/2026, cobrado no servidor).
  *
  * TRÊS ESTADOS (regra da casa): com o plano CONFIRMADO sem o recurso, o muro
  * "Disponível no Pro"; com a leitura do plano FALHANDO, o cartão "não consegui
@@ -59,8 +60,8 @@ const COPY_RECURSO: Record<Recurso, string> = Object.fromEntries(
 ) as Record<Recurso, string>;
 
 const ROTULO_PLANO: Record<'pro' | 'empresa', string> = {
-  pro: `DISPONÍVEL NO ${NOME_PLANO.pro.toUpperCase()}`,
-  empresa: `DISPONÍVEL NO ${NOME_PLANO.empresa.toUpperCase()}`,
+  pro: rotuloDisponibilidade(Platform.OS, NOME_PLANO.pro).toUpperCase(),
+  empresa: rotuloDisponibilidade(Platform.OS, NOME_PLANO.empresa).toUpperCase(),
 };
 
 // Borrão real só na web (react-native-web repassa `filter`). No nativo, o mesmo
@@ -176,6 +177,8 @@ function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) 
             {beneficio}
           </Text>
 
+          {/* iPhone: sem botão "Ver planos" (nada a vender nem a apontar; CPO 19/11). */}
+          {podeVerPlanosPara(Platform.OS) ? (
           <OlliPressable onPress={irParaPlanos} haptic="light" style={styles.cta}>
             {/* Gradiente fixo (ciano→azul de marca) — o CTA de conversão mantém
                 sempre a mesma cor de assinatura, independente da marca escolhida
@@ -190,6 +193,7 @@ function Muro({ recurso, plano, beneficio, children, contabilizar }: MuroProps) 
               <Text style={styles.ctaTxt}>Ver planos</Text>
             </LinearGradient>
           </OlliPressable>
+          ) : null}
         </View>
       </View>
     </View>

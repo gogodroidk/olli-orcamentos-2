@@ -95,6 +95,31 @@ export function limparBreadcrumbSentry<T extends Record<string, unknown>>(breadc
   return limpo;
 }
 
+const CONTEXTOS_PERMITIDOS: Record<string, readonly string[]> = {
+  trace: ['trace_id', 'span_id', 'parent_span_id', 'op', 'status', 'origin', 'type'],
+  os: ['name', 'version', 'build', 'kernel_version', 'type'],
+  device: ['family', 'model', 'brand', 'manufacturer', 'arch', 'simulator', 'type'],
+  app: ['app_version', 'app_build', 'app_identifier', 'type'],
+  runtime: ['name', 'version', 'type'],
+};
+
+function montarContextosSeguros(valor: unknown): Record<string, unknown> | undefined {
+  if (!valor || typeof valor !== 'object' || Array.isArray(valor)) return undefined;
+  const saida: Record<string, unknown> = {};
+  for (const [nome, campos] of Object.entries(CONTEXTOS_PERMITIDOS)) {
+    const ctx = (valor as Record<string, unknown>)[nome];
+    if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) continue;
+    const limpo: Record<string, unknown> = {};
+    for (const campo of campos) {
+      const item = (ctx as Record<string, unknown>)[campo];
+      if (typeof item === 'string') limpo[campo] = redigirTextoSentry(item).slice(0, 128);
+      else if (typeof item === 'boolean' || (typeof item === 'number' && Number.isFinite(item))) limpo[campo] = item;
+    }
+    if (Object.keys(limpo).length) saida[nome] = limpo;
+  }
+  return Object.keys(saida).length ? saida : undefined;
+}
+
 export function limparEventoSentry<T extends Record<string, unknown>>(evento: T): T {
   const limpo = sanitizar(evento) as T;
   const obj = limpo as Record<string, unknown>;
@@ -103,7 +128,13 @@ export function limparEventoSentry<T extends Record<string, unknown>>(evento: T)
   // blobs arbitrários, estado da tela ou identidade.
   delete obj.user;
   delete obj.extra;
-  delete obj.contexts;
+  // `contexts` sai inteiro, MENOS uma allowlist técnica. Sem `contexts.trace`
+  // (trace_id/span_id/op) o Sentry rejeita TODA transação como
+  // `invalid_transaction` — foi o que zerou o olli-app de jul a nov/2026
+  // (CQ-APP-13-B). `os`/`device`/`app` levam só modelo/versão, nunca identidade.
+  const contextos = montarContextosSeguros(evento.contexts);
+  if (contextos) obj.contexts = contextos;
+  else delete obj.contexts;
 
   const request = evento.request;
   if (request && typeof request === 'object' && !Array.isArray(request)) {

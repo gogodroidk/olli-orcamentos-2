@@ -88,7 +88,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   rowInfo: { fontSize: 12, color: c.onSurfaceVariant, marginTop: 1 },
   rowBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: c.warning },
   rowBtnText: { fontSize: 12, fontWeight: '800', color: c.warning },
-  rodape: { fontSize: 11, color: c.onSurfaceVariant, lineHeight: 15 },
+  rodape: { fontSize: 13, color: c.onSurfaceVariant, lineHeight: 17 },
   erroRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.base },
-  erroText: { flex: 1, fontSize: 11, color: c.onSurfaceVariant, lineHeight: 15 },
+  erroText: { flex: 1, fontSize: 13, color: c.onSurfaceVariant, lineHeight: 17 },
 });

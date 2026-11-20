@@ -30,6 +30,7 @@ import { OlliLogo } from './src/components/OlliLogo';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { DialogoDesktopHost } from './src/components/DialogoDesktopHost';
 import { ConfirmSheetHost, ToastHost } from './src/components/feedback';
+import { FeedbackCadeadoHost } from './src/components/FeedbackCadeadoHost';
 import { AvisoRelogioErrado } from './src/components/AvisoRelogioErrado';
 import { AtualizacaoObrigatoria, useVersaoMinima } from './src/components/AtualizacaoObrigatoria';
 import { curvas } from './src/components/motion/curvas';
@@ -55,6 +56,8 @@ import type { RootStackParamList } from './src/navigation/AppNavigator';
 import * as Sentry from '@sentry/react-native';
 import { limparBreadcrumbSentry, limparEventoSentry } from './src/services/sentryScrub';
 import { capturarExcecao, conectarSentry } from './src/services/sentryCaptura';
+import { atualizarChaveRemotaUi, carregarChaveRemotaUi } from './src/services/chaveRemotaUi';
+import { DIAGNOSTICO_URL, SENTRY_AMBIENTE_FORCADO } from './src/config';
 
 /**
  * Sentry — crash reporting. Roda no import, ANTES de qualquer render, para pegar
@@ -89,7 +92,7 @@ const navegacaoSentry = Sentry.reactNavigationIntegration({
 
 Sentry.init({
   dsn: 'https://5c5495085721aace9d32dbd79121c084@o4511745793327104.ingest.us.sentry.io/4511745839661061',
-  environment: __DEV__ ? 'development' : 'production',
+  environment: SENTRY_AMBIENTE_FORCADO || (__DEV__ ? 'development' : 'production'),
   // LGPD: nada de IP/dado pessoal. Mesma regra do errorReport.
   sendDefaultPii: false,
   beforeSend: (event) => limparEventoSentry(event as unknown as Record<string, unknown>) as unknown as typeof event,
@@ -102,6 +105,10 @@ Sentry.init({
   enableNativeFramesTracking: true,
   enableStallTracking: true,
   enableAppStartTracking: true,
+  // Release Health (sessões sem travamento, meta >= 99,9%). Padrão do SDK já é
+  // true; explícito para ninguém desligar sem ver. A sessão é envelope próprio
+  // (não passa pelo beforeSend), então o redator não a derruba.
+  enableAutoSessionTracking: true,
   // Array = SOMA aos integrations padrão do SDK (não substitui).
   integrations: [navegacaoSentry],
 });
@@ -401,6 +408,10 @@ function AppConteudo() {
     // indeterminada, mostra retry e NÃO exibe o formulário nem grava empresa.
     (async () => {
       let haviaSessao = false;
+      // Chave remota da v1.3: lê o último valor ANTES de montar a navegação e
+      // pergunta ao servidor (em segundo plano) para o próximo boot.
+      await carregarChaveRemotaUi();
+      void atualizarChaveRemotaUi(DIAGNOSTICO_URL);
       try {
         const session = await sessaoAtiva();
         haviaSessao = !!session;
@@ -681,6 +692,8 @@ function AppConteudo() {
               acima; o toast fica por cima de tudo que não é Modal. */}
           <ToastHost />
           <ConfirmSheetHost />
+          {/* D-2267: popup "o que faltou para assinar?" depois de fechar um cadeado do Pro (1 por semana, nunca criando/enviando/pagando). */}
+          <FeedbackCadeadoHost />
         </PaperProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -372,7 +372,7 @@ export default function DiagnosticoScreen() {
             autoCorrect={false}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Limpar a busca" onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <MaterialCommunityIcons name="close-circle" size={18} color={cores.onSurfaceMuted} />
             </TouchableOpacity>
           )}
@@ -595,7 +595,7 @@ export default function DiagnosticoScreen() {
                 <Text style={styles.modalCode}>{selected.codigo || '—'}</Text>
                 <Text style={styles.modalBrand}>{[selected.marca, selected.familia].filter(Boolean).join(' · ')}</Text>
               </View>
-              <TouchableOpacity onPress={() => setSelected(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar" onPress={() => setSelected(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
               </TouchableOpacity>
             </View>
@@ -836,7 +836,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
   ouro: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: 'rgba(247,178,59,0.10)', borderBottomWidth: 1, borderBottomColor: 'rgba(247,178,59,0.22)', paddingHorizontal: Spacing.base, paddingVertical: 10 },
-  ouroText: { flex: 1, fontSize: 11.5, lineHeight: 16, color: c.onSurfaceVariant },
+  ouroText: { flex: 1, fontSize: 13, lineHeight: 17, color: c.onSurfaceVariant },
   ouroBold: { fontWeight: '800', color: c.onSurface },
   ouroLink: { fontWeight: '800', color: c.accentLight },
 
@@ -853,7 +853,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sevDot: { width: 7, height: 7, borderRadius: 4 },
   sevLabel: { fontSize: 13, fontWeight: '700' },
   sevCount: { minWidth: 20, paddingHorizontal: 5, paddingVertical: 1, borderRadius: BorderRadius.full, alignItems: 'center', justifyContent: 'center' },
-  sevCountText: { fontSize: 11, fontWeight: '800' },
+  sevCountText: { fontSize: 13, fontWeight: '800' },
   sevClear: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6 },
   sevClearText: { fontSize: 12.5, fontWeight: '700', color: c.onSurfaceVariant },
 
@@ -861,11 +861,11 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // Azul fixo (base da marca padrão, não a cor de marca escolhida): decorativo, sem chave semântica exata.
   codeBox: { minWidth: 58, maxWidth: 96, paddingHorizontal: 10, paddingVertical: 10, borderRadius: BorderRadius.md, backgroundColor: 'rgba(11,111,206,0.18)', alignItems: 'center', justifyContent: 'center' },
   codeText: { fontSize: 16, fontWeight: '800', color: c.accentLight, letterSpacing: 0.5 },
-  cardMarca: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  cardMarca: { fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
   cardFalha: { fontSize: 14.5, fontWeight: '700', color: c.onSurface, marginTop: 2 },
   badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  badgeText: { fontSize: 11, fontWeight: '800' },
+  badgeText: { fontSize: 13, fontWeight: '800' },
   acaoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
   acaoText: { flex: 1, fontSize: 12, color: c.accentLight, fontWeight: '600' },
 
@@ -898,7 +898,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
 
   metaRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
   meta: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: c.surface, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.outline, padding: 12 },
-  metaLabel: { fontSize: 10.5, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
+  metaLabel: { fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.4 },
   metaValue: { fontSize: 13.5, fontWeight: '700', color: c.onSurface, marginTop: 1 },
 
   // Amarelo/warning fixo do handoff cockpit; próximo de `warningLight` mas alfa/hex não batem (ver rule 7).
@@ -926,7 +926,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   sugPreco: { alignItems: 'flex-end', minWidth: 78 },
   sugPrecoValor: { fontSize: 14, fontWeight: '800', color: c.onSurface },
   sugSemPreco: { fontSize: 12.5, fontWeight: '800', color: c.warning },
-  sugPrecoOrigem: { fontSize: 10.5, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 },
+  sugPrecoOrigem: { fontSize: 13, fontWeight: '700', color: c.onSurfaceMuted, textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 },
   sugRodape: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.outline },
   sugRodapeTxt: { flex: 1, fontSize: 12, lineHeight: 17, color: c.onSurfaceVariant },
   sugTotal: { fontSize: 17, fontWeight: '800', color: c.onSurface },

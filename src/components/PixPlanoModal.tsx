@@ -119,7 +119,8 @@ export function PixPlanoModal({ cobranca, aoFechar, aoPago, aoGerarNovo }: PixPl
           ) : (
             <ScrollView contentContainerStyle={styles.corpo} showsVerticalScrollIndicator={false}>
               <View style={styles.qrWrap}>{qr(cobranca) ?? <Text style={styles.instr}>Use o código copia-e-cola abaixo.</Text>}</View>
-              <Text style={styles.valor}>{formatCurrency(cobranca.plano.valor)}</Text>
+              <Text style={styles.valor}>{formatCurrency(cobranca.desconto ? cobranca.desconto.por : cobranca.plano.valor)}</Text>
+              {cobranca.desconto ? <Text style={styles.desconto}>{cobranca.desconto.texto}</Text> : null}
               <Text style={styles.periodo}>Libera {periodoTexto} de plano</Text>
               {validadeTexto ? <Text style={styles.validade}>{validadeTexto}</Text> : null}
               <Text style={styles.instr}>Aponte a câmera do banco no QR, ou copie o código:</Text>
@@ -175,11 +176,12 @@ const criarEstilos = (c: Cores) =>
     qrWrap: { backgroundColor: '#FFFFFF', borderRadius: BorderRadius.md, padding: 12 },
     qrImg: { width: 208, height: 208 },
     valor: { fontSize: 26, fontFamily: Fonts.serifBold, color: c.accentLight, marginTop: Spacing.xs },
+    desconto: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.success, textAlign: 'center', lineHeight: 18 },
     periodo: { fontSize: 14, fontFamily: Fonts.semiBold, color: c.onSurface },
     validade: { fontSize: 13, fontFamily: Fonts.semiBold, color: c.warning },
     instr: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant, textAlign: 'center' },
     codeBox: { alignSelf: 'stretch', backgroundColor: c.background, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: c.strokeGlow, padding: Spacing.md },
-    code: { fontSize: 11, fontFamily: 'monospace', color: c.onSurface, lineHeight: 16 },
+    code: { fontSize: 13, fontFamily: 'monospace', color: c.onSurface, lineHeight: 17 },
     cta: { alignSelf: 'stretch', marginTop: Spacing.xs },
     aguardando: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
     aguardandoTxt: { fontSize: 13, fontFamily: Fonts.regular, color: c.onSurfaceVariant },

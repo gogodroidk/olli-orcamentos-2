@@ -40,6 +40,8 @@ import {
 } from '../services/precosPlanos';
 import { aplicarSeo } from '../utils/seoWeb';
 import { PixPlanoModal } from '../components/PixPlanoModal';
+import { CupomCampo } from '../components/CupomCampo';
+import { CUPOM_PERMITIDO_NA_PLATAFORMA } from '../services/cupom';
 import { track, Eventos } from '../services/analytics';
 import { CreditoTrocaAtalho } from '../components/CreditoTrocaAtalho';
 import { PlanosAudioIaCard } from '../components/PlanosAudioIaCard';
@@ -62,6 +64,7 @@ import {
 import { idProdutoPlay, liberacaoPlayConfirmada, ofertaPara, produtoPlay, type OfertaPlay, type PlanoPlay } from '../services/playBillingRegras';
 import { getAssinaturaNaPlay, type AssinaturaNaPlay } from '../services/assinatura';
 import { BUILD_PLAY_SEM_COMPRA_EXTERNA, COMPRA_NO_APP } from '../config/loja';
+import { rotuloDisponibilidade } from '../services/cadeadoRecurso';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -174,8 +177,8 @@ const APRESENTACAO: Record<PlanoId, { preco: FontePreco | null; icon: string; ct
 };
 
 // Lista base dos planos. Nome, tagline e benefícios vêm de `planosBase.ts` (a tabela
-// ÚNICA que o painel, a landing e os e-mails também leem — Grátis ilimitado desde
-// 01/10/2026). Preço NUNCA é literal aqui: vem de precosPlanos (a fonte conferida
+// ÚNICA que o painel, a landing e os e-mails também leem — Grátis com 5 envios/mês
+// desde 07/11/2026). Preço NUNCA é literal aqui: vem de precosPlanos (a fonte conferida
 // contra a Stripe). `atual` é decidido em runtime (plano lido de getPlanoAtual()).
 const PLANOS_BASE: Omit<Plano, 'atual'>[] = TABELA_PLANOS.map((p) => ({
   id: p.id,
@@ -323,6 +326,8 @@ export default function PlanosScreen() {
   }, []);
 
   const [periodo, setPeriodo] = useState<Periodo>('mensal');
+  // Cupom de influenciador já conferido pelo servidor (null = sem cupom). Reservado ao gerar o Pix/checkout.
+  const [cupom, setCupom] = useState<string | null>(null);
   const [planoAtualId, setPlanoAtualId] = useState<PlanoId>('gratis');
   const [origemPlano, setOrigemPlano] = useState<'gratis' | 'pagamento' | 'admin' | 'trial' | undefined>('gratis');
   const [oferta, setOferta] = useState<EstadoOfertaComercial | null>(null);
@@ -516,10 +521,18 @@ export default function PlanosScreen() {
       const r = await fetch(`${PAGAMENTOS_URL}/stripe/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body ?? {}),
+        body: JSON.stringify(cupom ? { ...(body ?? {}), cupom } : body ?? {}),
       });
       status = r.status;
       if (!r.ok) {
+        // Cupom recusado pelo servidor: diz o motivo em palavras e NÃO abre checkout (nunca cobra cheio escondido).
+        if (cupom && r.status === 409) {
+          const e: any = await r.json().catch(() => null);
+          if (e?.erro === 'cupom_recusado' && typeof e.texto === 'string') {
+            Alert.alert('Cupom não aplicado', e.texto);
+            return;
+          }
+        }
         Alert.alert('Ops', mensagemErroPagamento(status, false));
         return;
       }
@@ -639,7 +652,7 @@ export default function PlanosScreen() {
     vibrar('selecao');
     setPixEmAndamento(p.id);
     try {
-      const c = await criarPixPlano(chave);
+      const c = await criarPixPlano(chave, cupom, (texto) => Alert.alert('Cupom não aplicado', texto));
       if (!c) {
         Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
         return;
@@ -653,7 +666,7 @@ export default function PlanosScreen() {
 
   // Pix Automático: só o Pro mensal. A confirmação mostra preço, que renova sozinho e como cancelar ANTES de abrir o banco.
   async function pagarComPixAutomatico(p: Plano) {
-    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixAutoLigado || p.id !== 'pro' || periodo !== 'mensal') return;
+    if (!COMPRA_NO_APP || BUILD_PLAY_SEM_COMPRA_EXTERNA || !pixAutoLigado || cupom || p.id !== 'pro' || periodo !== 'mensal') return;
     if (!acoesPlanoDisponiveis) {
       Alert.alert('Confirme seu plano', 'Não conseguimos confirmar sua assinatura agora. Toque em “Tentar de novo” antes de iniciar outra contratação.');
       return;
@@ -736,7 +749,7 @@ export default function PlanosScreen() {
     setPixPendente(null);
     void esquecerPixPendente();
     if (!atual) return;
-    const c = await criarPixPlano(atual.plano.id);
+    const c = await criarPixPlano(atual.plano.id, atual.desconto?.codigo ?? null, (texto) => Alert.alert('Cupom não aplicado', texto));
     if (!c) {
       Alert.alert('Não deu para gerar o Pix', 'Verifique sua conexão e tente de novo.');
       return;
@@ -941,6 +954,11 @@ export default function PlanosScreen() {
     </View>
   );
 
+  // Campo de cupom: só com compra no app fora da Play, e o próprio componente some com o recurso desligado.
+  const campoCupom = CUPOM_PERMITIDO_NA_PLATAFORMA ? (
+    <CupomCampo plano={chavePixPlano('pro', periodo)} aoMudar={setCupom} />
+  ) : null;
+
   /** "Restaurar compras da Google Play" — com ou sem a venda ligada no servidor. */
   const botaoRestaurarPlay = (
     <TouchableOpacity
@@ -981,7 +999,7 @@ export default function PlanosScreen() {
           <View style={styles.cobrancaAviso}>
             <MaterialCommunityIcons name="alert-circle-outline" size={20} color={cores.warning} />
             <Text style={styles.cobrancaAvisoTexto}>Não deu para confirmar seu plano agora. O estado exibido pode estar desatualizado e nenhuma nova contratação será iniciada até você tentar de novo.</Text>
-            <TouchableOpacity onPress={carregarPlano} activeOpacity={0.8} style={styles.avisoAcaoHit}>
+            <TouchableOpacity accessibilityRole="button" onPress={carregarPlano} activeOpacity={0.8} style={styles.avisoAcaoHit}>
               <Text style={styles.cobrancaAvisoAcao}>Tentar de novo</Text>
             </TouchableOpacity>
           </View>
@@ -1087,6 +1105,7 @@ export default function PlanosScreen() {
                 <Text style={styles.introTitle}>Trocar de plano pela Google Play</Text>
                 <Text style={styles.introSub}>{TEXTO_TROCA_PLAY}</Text>
                 {abasPeriodo}
+                {campoCupom}
                 <View style={ehDesktop ? styles.cardsRow : undefined}>
                   {planos.filter((p) => p.id === 'pro' || p.id === 'empresa').map((p) => (
                     <View key={p.id} style={ehDesktop ? styles.cardCell : undefined}>
@@ -1136,7 +1155,7 @@ export default function PlanosScreen() {
                   ? `O Grátis tem ${FRASE_GRATIS}. Veja abaixo o que cada plano libera.`
                 : Platform.OS === 'android'
                   ? `O Grátis tem ${FRASE_GRATIS}. A assinatura pelo app está indisponível no momento; aqui você confere o que cada plano libera.`
-                  : `O Grátis tem ${FRASE_GRATIS}. A assinatura dos planos Pro e Empresa ainda não está disponível no iPhone.`}
+                  : `O Grátis tem ${FRASE_GRATIS}. Veja abaixo o que cada plano libera.`}
             </Text>
           </View>
         </AnimatedEntrance>
@@ -1149,6 +1168,7 @@ export default function PlanosScreen() {
         BUILD_PLAY_SEM_COMPRA_EXTERNA && molduraPlay !== true ? null : (
         <AnimatedEntrance index={1}>
           {abasPeriodo}
+          {campoCupom}
         </AnimatedEntrance>
         )
         )}
@@ -1170,7 +1190,7 @@ export default function PlanosScreen() {
                 pixLigado={pixLigado}
                 carregandoPix={pixEmAndamento === p.id}
                 onPagarPix={() => { void pagarComPix(p); }}
-                pixAutoLigado={pixAutoLigado && !pixAutoEstado?.ativa && !pixAutoAguardando}
+                pixAutoLigado={pixAutoLigado && !cupom && !pixAutoEstado?.ativa && !pixAutoAguardando}
                 carregandoPixAuto={pixAutoEmAndamento}
                 onPagarPixAuto={() => { void pagarComPixAutomatico(p); }}
                 vendaPlay={vendaPlayDoCard(p)}
@@ -1222,7 +1242,7 @@ export default function PlanosScreen() {
 
         {/* COMPARATIVO — sempre visível (info, não venda): deixa óbvio o que cada
             plano dá e destaca o que o usuário JÁ tem. Sem CTA aqui. */}
-        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={!BUILD_PLAY_SEM_COMPRA_EXTERNA} />
+        <ComparativoTabela planoAtualId={planoAtualId} ehDesktop={ehDesktop} precosDaFonte={COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA} />
         {/* D1438-G20: protótipo de áudio. Sem a flag, o card não monta e o microfone não abre. */}
         {planosAudioIaLigada((process.env as { EXPO_PUBLIC_PLANOS_AUDIO_IA?: string }).EXPO_PUBLIC_PLANOS_AUDIO_IA) ? <PlanosAudioIaCard /> : null}
       </ScrollView>
@@ -1287,7 +1307,8 @@ function PlanoCard({
   const precoLoja = vendaPlay?.oferta?.precoTexto ?? null;
   // Android sem venda pela Play (servidor desligado): NENHUM preço — o da web
   // seria um convite a pagar por fora (Payments policy). Só nome e recursos.
-  const semPrecoNoAndroid = BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlay;
+  // iPhone (CPO 19/11, Guideline 3.1.1(a)): também NENHUM preço — o app só informa o que o plano libera.
+  const semPrecoNoAndroid = !COMPRA_NO_APP || (BUILD_PLAY_SEM_COMPRA_EXTERNA && !vendaPlay);
   const exibido = !preco
     ? { valor: 'Grátis', sufixo: '', nota: null }
     : semPrecoNoAndroid
@@ -1397,7 +1418,7 @@ function PlanoCard({
         // abaixo, também fica escondido no iOS: sem o botão de compra acima,
         // ele viraria o próprio caminho de venda por fora do app.
         <View style={styles.ctaIndisponivel}>
-          <Text style={styles.ctaIndisponivelText}>Assinatura ainda não disponível no iPhone</Text>
+          <Text style={styles.ctaIndisponivelText}>{rotuloDisponibilidade(Platform.OS, plano.nome)}</Text>
         </View>
       ) : BUILD_PLAY_SEM_COMPRA_EXTERNA ? (
         vendaPlay ? (
@@ -1408,7 +1429,7 @@ function PlanoCard({
           </View>
         )
       ) : plano.destaque ? (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
+        <TouchableOpacity accessibilityRole="button" onPress={onPress} activeOpacity={0.88} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
           <LinearGradient colors={gradientes.primaryDiagonal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.ctaGrad, sombrasDe(cores).glowCyan, !acoesDisponiveis && styles.ctaDisabled]}>
             {carregandoAcao ? (
               <ActivityIndicator size="small" color={gradientes.sobreBrand} />
@@ -1421,7 +1442,7 @@ function PlanoCard({
           </LinearGradient>
         </TouchableOpacity>
       ) : (
-        <TouchableOpacity style={[styles.ctaOutline, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.ctaOutline, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPress} activeOpacity={0.85} disabled={carregandoAcao || carregandoPlano || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || carregandoPlano || !acoesDisponiveis }}>
           {carregandoAcao ? (
             <ActivityIndicator size="small" color={cores.primaryLight} />
           ) : (
@@ -1473,7 +1494,7 @@ function PlanoCard({
           CTA principal e é claramente secundário — a verdade sobre o custo já
           está na linha acima, então aqui é só o caminho, não a promessa. */}
       {COMPRA_NO_APP && !BUILD_PLAY_SEM_COMPRA_EXTERNA && !plano.atual && plano.id === 'pro' && linha12x ? (
-        <TouchableOpacity style={[styles.ctaSecundario, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || !acoesDisponiveis }}>
+        <TouchableOpacity accessibilityRole="button" style={[styles.ctaSecundario, !acoesDisponiveis && styles.ctaDisabled]} onPress={onPagar12x} activeOpacity={0.8} disabled={carregandoAcao || !acoesDisponiveis} accessibilityState={{ disabled: carregandoAcao || !acoesDisponiveis }}>
           <MaterialCommunityIcons name="credit-card-outline" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Pagar em 12x no cartão</Text>
         </TouchableOpacity>
@@ -1484,7 +1505,7 @@ function PlanoCard({
           viraria o caminho de venda por fora do app, o link-out que a
           guideline proíbe. */}
       {COMPRA_NO_APP && !plano.atual && plano.id === 'empresa' && !BUILD_PLAY_SEM_COMPRA_EXTERNA && (
-        <TouchableOpacity style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
+        <TouchableOpacity accessibilityRole="button" style={styles.ctaSecundario} onPress={onFalarSuporte} activeOpacity={0.8}>
           <MaterialCommunityIcons name="whatsapp" size={16} color={cores.onSurfaceVariant} />
           <Text style={styles.ctaSecundarioText}>Falar com a gente</Text>
         </TouchableOpacity>
@@ -1745,7 +1766,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // calculado), correto pra qualquer cor de marca escolhida pelo usuário.
   toggleTextActive: { color: c.onPrimary },
   toggleBadge: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 7, paddingVertical: 2 },
-  toggleBadgeText: { fontSize: 10, fontWeight: '800', color: c.success },
+  toggleBadgeText: { fontSize: 13, fontWeight: '800', color: c.success },
 
   cardFrame: { borderRadius: BorderRadius.xl + 2, padding: 2, marginBottom: Spacing.base },
   cardPlain: { borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: c.outline, marginBottom: Spacing.base, backgroundColor: c.surface, ...sombrasDe(c).sm },
@@ -1762,9 +1783,9 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   cardName: { fontSize: 20, fontWeight: '800', color: c.onSurface },
   popular: { backgroundColor: c.accentLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
   // Era '#0A1626' fixo — vira o ink de contraste calculado sobre accentLight.
-  popularText: { fontSize: 9.5, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0.6 },
+  popularText: { fontSize: 13, fontWeight: '800', color: textoSobre(c.accentLight), letterSpacing: 0.6 },
   atualPill: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 9, paddingVertical: 3 },
-  atualPillText: { fontSize: 10, fontWeight: '800', color: c.success },
+  atualPillText: { fontSize: 13, fontWeight: '800', color: c.success },
   cardTagline: { fontSize: 12.5, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
 
   priceRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: Spacing.base, marginBottom: 4 },
@@ -1773,7 +1794,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   priceDestaque: { color: c.accentLight },
   pricePeriod: { fontSize: 13.5, color: c.onSurfaceVariant, fontWeight: '600', marginLeft: 6, marginBottom: 6 },
   priceSaveBadge: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 8, paddingVertical: 3, marginLeft: 8, marginBottom: 7 },
-  priceSaveBadgeText: { fontSize: 10.5, fontWeight: '800', color: c.success },
+  priceSaveBadgeText: { fontSize: 13, fontWeight: '800', color: c.success },
   // Linha do anual (informação): equivalente /mês, total do ano e −20%.
   notaAnual: { fontSize: 12.5, color: c.onSurfaceVariant, fontWeight: '600', marginTop: 2, lineHeight: 17 },
 
@@ -1819,7 +1840,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   compHeadCell: { width: 84, alignItems: 'center', justifyContent: 'flex-start', paddingVertical: Spacing.sm, paddingHorizontal: 4, gap: 3 },
   compHeadNome: { fontSize: 13, fontWeight: '800', color: c.onSurface },
   compHeadNomeAtual: { color: c.success },
-  compHeadPreco: { fontSize: 10.5, color: c.onSurfaceVariant, fontWeight: '600', textAlign: 'center' },
+  compHeadPreco: { fontSize: 13, color: c.onSurfaceVariant, fontWeight: '600', textAlign: 'center' },
   compAtualPill: { backgroundColor: c.successLight, borderRadius: BorderRadius.full, paddingHorizontal: 7, paddingVertical: 1 },
   compAtualPillText: { fontSize: 8.5, fontWeight: '800', color: c.success, letterSpacing: 0.3 },
   compRow: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
@@ -1829,7 +1850,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   compCell: { width: 84, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 4 },
   // Realce leve da coluna do plano atual — a barra de fundo que "puxa o olho".
   compColAtual: { backgroundColor: comAlfa(c.success, 0.08) },
-  compValor: { fontSize: 11.5, fontWeight: '700', color: c.onSurfaceVariant, textAlign: 'center' },
+  compValor: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant, textAlign: 'center' },
   compValorAtual: { color: c.success },
   compAnualNota: { fontSize: 12, color: c.onSurfaceVariant, textAlign: 'center', marginTop: Spacing.md, lineHeight: 17, paddingHorizontal: 8 },
 });

@@ -16,8 +16,9 @@
  */
 import type { OrdemServico, StatusOS } from "@dominio";
 import { STATUS_OS_LABELS } from "@dominio";
-import { AlertTriangle, Camera, ClipboardList, Inbox, MoreHorizontal, Plus, RotateCw, Search } from "lucide-react";
+import { AlertTriangle, Camera, ClipboardList, Inbox, Lock, MoreHorizontal, Plus, RotateCw, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import BotaoMover from "@/olli/components/BotaoMover";
 import ConfirmarExclusao from "@/olli/components/ConfirmarExclusao";
@@ -26,6 +27,7 @@ import { TableOverflowHint } from "@/olli/components/TableOverflowHint";
 import { useOlliList } from "@/olli/data";
 import { agoraIso } from "@/olli/datas";
 import { useExcluir, useSalvar } from "@/olli/mutacoes";
+import { AvisoMudancaGratis, FaixaRecursoPro, usePortaoPro } from "@/olli/recursoPlano";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -128,6 +130,9 @@ function Fotos({ qtd }: { qtd: number }) {
 }
 
 export default function OrdensServicoPage() {
+	// D-2267: criar/editar/mover OS é do Pro; a lista continua visível para todos.
+	const portao = usePortaoPro("ordem_servico");
+	const navigate = useNavigate();
 	const { data, isLoading, isError, error, refetch } = useOlliList<LinhaOs>("ordens_servico", {
 		orderBy: "criado_em",
 	});
@@ -156,16 +161,24 @@ export default function OrdensServicoPage() {
 	}, [ordens, busca, filtroStatus]);
 
 	function abrirNova() {
-		setEmEdicao(null);
-		setFormAberto(true);
+		portao.exigir(() => {
+			setEmEdicao(null);
+			setFormAberto(true);
+		});
 	}
 
 	function abrirEdicao(os: OrdemServico) {
-		setEmEdicao(os);
-		setFormAberto(true);
+		portao.exigir(() => {
+			setEmEdicao(os);
+			setFormAberto(true);
+		});
 	}
 
 	async function moverStatus(os: OrdemServico, status: StatusOS) {
+		if (portao.uso.estado !== "liberado" && portao.uso.estado !== "em_breve") {
+			portao.exigir(() => {});
+			return;
+		}
 		if (os.status === status || emVoo.current.has(os.id)) return;
 		emVoo.current.add(os.id);
 		setMovendo(new Set(emVoo.current));
@@ -225,10 +238,13 @@ export default function OrdensServicoPage() {
 					</p>
 				</div>
 				<Button onClick={abrirNova} className="shrink-0 gap-2">
-					<Plus className="size-4" />
+					{portao.travado ? <Lock className="size-4" aria-label="Disponível no Pro" /> : <Plus className="size-4" />}
 					Nova ordem
 				</Button>
 			</div>
+			<AvisoMudancaGratis />
+			<FaixaRecursoPro recurso="ordem_servico" uso={portao.uso} aoAssinar={() => navigate("/planos")} />
+			{portao.dialogo}
 
 			<div className="mb-4 flex flex-col gap-2.5 sm:flex-row">
 				<div className="relative flex-1">

@@ -49,9 +49,9 @@ export interface LegalDoc {
 
 export const PRIVACIDADE: LegalDoc = {
   titulo: 'Política de Privacidade',
-  atualizadoEm: '2 de novembro de 2026',
+  atualizadoEm: '19 de novembro de 2026',
   aviso:
-    'Documento atualizado em 2 de novembro de 2026. Dúvidas sobre seus dados ou ' +
+    'Documento atualizado em 19 de novembro de 2026. Dúvidas sobre seus dados ou ' +
     'pedidos relacionados à LGPD podem ser enviados para contato@olliorcamentos.online.',
   intro: [
     'O OLLI é um aplicativo de gestão para prestadores de serviço — orçamentos, ' +
@@ -115,12 +115,12 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Telefone (WhatsApp) informado no cadastro',
-          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito por uma pessoa da nossa equipe; depois, um assistente de IA pode ajudar a responder. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: registramos o número numa lista de "não contatar" e paramos de enviar mensagens a ele, salvo resposta a um contato que você mesmo iniciar.',
+          finalidade: 'Falar com você pelo WhatsApp do OLLI, (11) 94172-7487, para ajudar a começar a usar o app (por exemplo, fazer o primeiro orçamento), tirar dúvidas e dar suporte. O primeiro contato é feito pela equipe da OLLI, com ajuda de um assistente de IA; se você perguntar, dizemos sempre. Não fazemos envio em massa e não repassamos o número. Para não receber mais mensagens, responda SAIR na conversa ou peça pelo e-mail contato@olliorcamentos.online: registramos o número numa lista de "não contatar" e paramos de enviar mensagens a ele, salvo resposta a um contato que você mesmo iniciar.',
           base: 'Legítimo interesse em ajudar quem criou a conta a usar o serviço (art. 7º, IX), com direito de oposição a qualquer momento.',
         },
         {
           dado: 'Mensagens que você envia ao WhatsApp do OLLI (telefone, nome do perfil e texto)',
-          finalidade: 'Atender o seu pedido quando você nos escreve pelo WhatsApp do OLLI, (11) 94172-7487, mesmo que você ainda não tenha conta, e registrar o que foi combinado. Guardamos o seu telefone, o nome do seu perfil do WhatsApp e o texto da mensagem; não baixamos fotos, áudios nem arquivos. As mensagens podem ser respondidas por um assistente virtual (inteligência artificial) do OLLI, com uma pessoa da nossa equipe acompanhando; se você perguntar, dizemos sempre se é uma IA. Para não receber mais mensagens, responda SAIR; guardamos só o número, numa lista de quem não quer ser contatado, para não escrever de novo.',
+          finalidade: 'Atender o seu pedido quando você nos escreve pelo WhatsApp do OLLI, (11) 94172-7487, mesmo que você ainda não tenha conta, e registrar o que foi combinado. Guardamos o seu telefone, o nome do seu perfil do WhatsApp e o texto da mensagem; não baixamos fotos, áudios nem arquivos. As mensagens podem ser respondidas por um assistente virtual (inteligência artificial) do OLLI, com a equipe da OLLI acompanhando; se você perguntar, dizemos sempre se é uma IA. Para não receber mais mensagens, responda SAIR; guardamos só o número, numa lista de quem não quer ser contatado, para não escrever de novo.',
           base: 'Legítimo interesse em atender quem nos procura (art. 7º, IX) e, se você quiser contratar, procedimentos preliminares relacionados a contrato (art. 7º, V). Você pode se opor a qualquer momento.',
         },
         {
@@ -185,7 +185,7 @@ export const PRIVACIDADE: LegalDoc = {
         },
         {
           dado: 'Uso do app (telas visitadas e ações dentro do app)',
-          finalidade: "Entender passo a passo como o OLLI é usado: quais telas e botões você usa, em que ponto as pessoas travam e quais erros acontecem, para corrigir problemas e decidir o que melhorar. Registramos o tipo da ação e a hora (por exemplo, 'abriu a tela de orçamento', 'tocou em Enviar'), ligados a um código da sua conta, e não ao seu nome. Não registramos o que você digita, nem senhas, nem o conteúdo dos seus orçamentos, nem nome, telefone, endereço ou localização dos seus clientes, e não gravamos a tela. Os eventos ficam no seu aparelho e são enviados aos nossos servidores. Guardamos o registro detalhado por até 90 dias; depois, só um resumo diário por tela por até 12 meses, e depois só números gerais.",
+          finalidade: "Entender passo a passo como o OLLI é usado: quais telas e botões você usa, em que ponto as pessoas travam e quais erros acontecem, para corrigir problemas e decidir o que melhorar. Registramos o tipo da ação e a hora (por exemplo, 'abriu a tela de orçamento', 'tocou em Enviar', e os passos até assinar: criar e enviar o 1º orçamento, abrir Planos, gerar e pagar o Pix), ligados a um código da sua conta, e não ao seu nome. A equipe vê esses registros só somados, em contagens de quantas contas chegaram a cada passo. Não registramos o que você digita, nem senhas, nem o conteúdo dos seus orçamentos, nem nome, telefone, endereço ou localização dos seus clientes, e não gravamos a tela. Os eventos ficam no seu aparelho e são enviados aos nossos servidores. Guardamos o registro por até 90 dias e depois o apagamos; o que fica são só números gerais, sem ligação com nenhuma conta.",
           base: "Legítimo interesse (art. 7º, IX) em melhorar o produto, usando o mínimo de dados necessário. Você pode desativar em Conta > Privacidade > 'Ajudar a melhorar o OLLI', e vale a partir desse momento, em todos os seus aparelhos; ao desativar, apagamos o que já foi registrado de você.",
         },
         {

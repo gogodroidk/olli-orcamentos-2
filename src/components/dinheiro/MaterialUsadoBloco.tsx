@@ -299,7 +299,7 @@ const criarEstilos = (c: Cores) =>
     vazio: { fontSize: 13, lineHeight: 18, color: c.onSurfaceVariant },
     item: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: 4 },
     itemTexto: { fontSize: 13.5, color: c.onSurface },
-    itemCusto: { fontSize: 11.5, color: c.onSurfaceMuted, marginTop: 1 },
+    itemCusto: { fontSize: 13, color: c.onSurfaceMuted, marginTop: 1 },
     form: { gap: Spacing.sm },
     input: {
       minHeight: 44,

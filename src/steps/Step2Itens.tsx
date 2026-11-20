@@ -1,3 +1,4 @@
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, TextInput, ScrollView, StyleSheet,
@@ -57,6 +58,8 @@ export default function Step2Itens({
 }: Props) {
   const cores = useCores();
   const styles = useEstilos(criarEstilos);
+  // Modal no Android edge-to-edge desenha sob a barra do sistema: o rodapé soma a área segura.
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<Tab>('servico');
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogResults, setCatalogResults] = useState<(ServicoItem | ProdutoItem)[]>([]);
@@ -339,11 +342,11 @@ export default function Step2Itens({
                 </View>
                 <View style={styles.itemBottom}>
                   <View style={styles.qtyRow}>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade - 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Diminuir quantidade" style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade - 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <MaterialCommunityIcons name="minus" size={16} color={cores.primary} />
                     </TouchableOpacity>
                     <Text style={styles.qtyValue}>{formatQty(item.quantidade)}</Text>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade + 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Aumentar quantidade" style={styles.qtyBtn} onPress={() => updateQty(item.id, item.quantidade + 1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <MaterialCommunityIcons name="plus" size={16} color={cores.primary} />
                     </TouchableOpacity>
                   </View>
@@ -351,10 +354,10 @@ export default function Step2Itens({
                 </View>
               </View>
               <View style={styles.itemActions}>
-                <TouchableOpacity onPress={() => { setIsNewItem(false); setQtyText(null); setEditingItem(item); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Editar" onPress={() => { setIsNewItem(false); setQtyText(null); setEditingItem(item); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="pencil-outline" size={20} color={cores.onSurfaceVariant} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Excluir" onPress={() => removeItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <MaterialCommunityIcons name="trash-can-outline" size={20} color={cores.danger} />
                 </TouchableOpacity>
               </View>
@@ -531,7 +534,7 @@ export default function Step2Itens({
               )
             }
           />
-          <View style={styles.modalFooter}>
+          <View style={[styles.modalFooter, { paddingBottom: Math.max(28, insets.bottom + Spacing.base) }]}>
             <OlliButton
               label={adicionadosNaSessao > 0
                 ? `Pronto · ${adicionadosNaSessao} ${adicionadosNaSessao === 1 ? 'adicionado' : 'adicionados'}`
@@ -553,7 +556,7 @@ export default function Step2Itens({
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{isNewItem ? 'Novo item' : 'Editar item'}</Text>
-              <TouchableOpacity onPress={() => setEditingItem(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fechar" onPress={() => setEditingItem(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <MaterialCommunityIcons name="close" size={26} color={cores.onSurface} />
               </TouchableOpacity>
             </View>
@@ -594,7 +597,7 @@ export default function Step2Itens({
                 ))}
               </View>
             </ScrollView>
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: Math.max(28, insets.bottom + Spacing.base) }]}>
               <Text style={styles.editSubtotal}>Subtotal: {formatCurrency((editingItem.preco || 0) * (editingItem.quantidade || 1))}</Text>
               <OlliButton label="Confirmar item" variant="gradient" size="lg" fullWidth onPress={saveEditingItem} disabled={!editingItem.nome.trim()} icon={<MaterialCommunityIcons name="check" size={20} color="#fff" />} />
             </View>
@@ -629,7 +632,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   tabLabelActive: { color: c.primary },
   tabBadge: { minWidth: 20, height: 20, borderRadius: 10, backgroundColor: c.outline, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 },
   tabBadgeActive: { backgroundColor: c.primary },
-  tabBadgeText: { fontSize: 11, fontWeight: '700', color: c.onSurfaceVariant },
+  tabBadgeText: { fontSize: 13, fontWeight: '700', color: c.onSurfaceVariant },
 
   emptyBox: { alignItems: 'center', paddingVertical: 24 },
   emptyText: { fontSize: 14, color: c.onSurfaceMuted, marginTop: 8 },
@@ -645,7 +648,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   itemPrice: { fontSize: 12, color: c.primary, marginTop: 4, fontWeight: '600' },
   itemPriceZero: { color: c.warning },
   zeroBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: BorderRadius.full, backgroundColor: c.warningLight, borderWidth: 1, borderColor: c.warning },
-  zeroBadgeText: { fontSize: 10, fontWeight: '700', color: c.warning },
+  zeroBadgeText: { fontSize: 13, fontWeight: '700', color: c.warning },
   itemBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   qtyBtn: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: c.primary, justifyContent: 'center', alignItems: 'center' },
@@ -679,7 +682,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   // deriva de onPrimary (branco OU tinta escura, conforme o contraste exigir)
   // via comAlfa, em vez de assumir que o texto sobre a marca é sempre branco.
   grandTotalLabel: { fontSize: 13, color: comAlfa(c.onPrimary, 0.82), fontWeight: '600' },
-  grandTotalDiscount: { fontSize: 11, color: comAlfa(c.onPrimary, 0.75), marginTop: 2 },
+  grandTotalDiscount: { fontSize: 13, color: comAlfa(c.onPrimary, 0.75), marginTop: 2 },
   grandTotalValue: { ...Typography.displaySerif, color: c.onPrimary },
 
   modal: { flex: 1, backgroundColor: c.background },
@@ -716,7 +719,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
   },
   repetirTitulo: { fontSize: 14.5, fontWeight: '800', color: c.onSurface },
   repetirTexto: { fontSize: 13, color: c.onSurface, marginTop: 2, fontWeight: '600' },
-  repetirNota: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 16 },
+  repetirNota: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 4, lineHeight: 17 },
   repetirBotao: { marginTop: 8, marginBottom: Spacing.base, alignSelf: 'flex-start' },
 
   sugestoesBloco: { marginBottom: Spacing.base, gap: 8 },

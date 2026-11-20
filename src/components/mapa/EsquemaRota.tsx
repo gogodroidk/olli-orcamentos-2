@@ -94,7 +94,7 @@ const criarEstilos = (c: Cores) =>
       position: 'absolute',
       left: 8,
       bottom: 6,
-      fontSize: 10.5,
+      fontSize: 13,
       fontWeight: '600',
       color: c.onSurfaceMuted,
     },

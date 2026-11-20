@@ -363,7 +363,7 @@ function traduzirErroConvite(erro: unknown, status: number): string {
       // Não dizemos "seu plano venceu": o worker recusa tanto quem nunca assinou
       // quanto quem deixou vencer, e afirmar o motivo errado é pior que não afirmar.
       // Dizemos o que é verdade nos dois casos, e para onde ir.
-      return 'Convidar técnicos faz parte do plano Empresa, e a assinatura não está ativa agora. Veja o seu plano em Conta › "Ver os planos". Quem já está na sua equipe continua com acesso normal.';
+      return 'Convidar técnicos faz parte do plano Empresa, e a assinatura não está ativa agora. Veja o seu plano em Conta. Quem já está na sua equipe continua com acesso normal.';
     default:
       return status >= 500
         ? 'O serviço de convites está indisponível agora. Tente de novo em instantes.'

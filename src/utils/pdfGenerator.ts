@@ -590,7 +590,7 @@ export function gerarHtmlOrcamento(
   // orçamento; removerMarca só afeta a linha da marca OLLI.
   const rodapeContato = contatoEmpresa || empresa.nome;
 
-  // Selo "Feito com OLLI" (Grátis ilimitado): discreto, clicável e com UTM. Sai
+  // Selo "Feito com OLLI" (Grátis): discreto, clicável e com UTM. Sai
   // só quando removerMarca é falsy (Pro/Empresa removem). Marcação fixa/controlada.
   const brandOlliHtml = removerMarca ? '' : `<div class="brand-olli">${seloOlliHtml('pdf_orcamento')}</div>`;
 

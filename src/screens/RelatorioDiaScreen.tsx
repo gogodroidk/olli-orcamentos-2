@@ -462,7 +462,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     borderRadius: BorderRadius.full, paddingHorizontal: 12, paddingVertical: 6,
     ...sombrasDe(c).sm,
   },
-  syncPillText: { fontSize: 11.5, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.51:1, reprova texto 4.5 (accent = 8.85:1)
+  syncPillText: { fontSize: 13, fontWeight: '700', color: c.accent }, // contraste-ok: pill opaca escura fixa rgba(10,22,38,0.92) — accentLight cairia a 3.51:1, reprova texto 4.5 (accent = 8.85:1)
   scroll: { padding: Spacing.base, paddingBottom: Spacing.xxxl, gap: 12 },
 
   vazioWrap: { minHeight: 280, justifyContent: 'center' },

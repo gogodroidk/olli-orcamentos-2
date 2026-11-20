@@ -135,7 +135,7 @@ const criarEstilos = (c: Cores) =>
     mapa: { height: ALTURA_MINI_MAPA },
     rodape: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, minHeight: 56 },
     resumo: { fontSize: 14, fontWeight: '800', color: c.onSurface },
-    nota: { fontSize: 11.5, color: c.onSurfaceVariant, marginTop: 2, fontWeight: '600' },
+    nota: { fontSize: 13, color: c.onSurfaceVariant, marginTop: 2, fontWeight: '600' },
     verMapa: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
     link: { fontSize: 13, fontWeight: '800', color: c.accentLight },
     semLocal: {

@@ -18,6 +18,8 @@ export interface Atalho {
   descricao: string;
   cor: string;
   onPress: () => void;
+  /** D-2267: recurso do Pro fora do plano — cadeado no ícone; o toque leva ao destino, que mostra "Disponível no Pro". */
+  trancado?: boolean;
 }
 
 export function AtalhosRua({ atalhos }: { atalhos: Atalho[] }) {
@@ -34,6 +36,11 @@ export function AtalhosRua({ atalhos }: { atalhos: Atalho[] }) {
         >
           <View style={[styles.icone, { backgroundColor: comAlfa(a.cor, 0.14), borderColor: comAlfa(a.cor, 0.3) }]}>
             <MaterialCommunityIcons name={a.icone} size={24} color={a.cor} />
+            {a.trancado ? (
+              <View style={styles.cadeado} accessible={false}>
+                <MaterialCommunityIcons name="lock" size={12} color={a.cor} />
+              </View>
+            ) : null}
           </View>
           <Text style={styles.rotulo} numberOfLines={1}>{a.rotulo}</Text>
         </PressableAnimado>
@@ -49,6 +56,7 @@ const criarEstilos = (c: Cores) => StyleSheet.create({
     paddingVertical: Spacing.md, borderRadius: BorderRadius.lg,
     backgroundColor: c.surfaceGlass, borderWidth: 1, borderColor: c.outlineDark,
   },
+  cadeado: { position: 'absolute', top: -5, right: -5, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: c.surface, borderWidth: 1, borderColor: c.outlineDark },
   icone: { width: 48, height: 48, borderRadius: BorderRadius.chip, justifyContent: 'center', alignItems: 'center', borderWidth: 1 },
   rotulo: { fontSize: 12.5, fontWeight: '700', color: c.onSurface, marginTop: 8 },
 });

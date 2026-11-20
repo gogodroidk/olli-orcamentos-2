@@ -63,7 +63,7 @@ import {
 	precoNoPeriodo,
 	reais,
 } from "./precos";
-import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, temAcessoRecurso } from "./recursos";
+import { IA_USOS_GRATIS_MES, LINHAS_RECURSOS, PLANOS_COMPARADOS, planoIncluiRecurso } from "./recursos";
 import type { PlanoId, ResumoAssinatura } from "./tipos";
 import { BotaoPortalStripe, obterStatusPortalStripe } from "./portal";
 import { urlGerenciarNaPlay } from "@play-billing-regras";
@@ -580,7 +580,7 @@ function CardStatus({
 			<Faixa
 				tom="success"
 				titulo="Seu teste Pro está ativo"
-				texto={`${quando ? `Você tem os recursos Pro até ${quando}. ` : ""}Sem cartão e sem cobrança automática; ao terminar, seus dados permanecem salvos.`}
+				texto={`${quando ? `Você tem os recursos Pro até ${quando}. Se assinar agora por Pix ou cartão, mensal ou anual, não perde nenhum dia: o Pro pago começa em ${quando}, quando o teste acaba (o Pix Automático e o cartão em 12x começam no dia do pagamento). ` : ""}Sem cartão e sem cobrança automática; ao terminar, seus dados permanecem salvos.`}
 			/>
 		);
 	}
@@ -869,10 +869,11 @@ function CardPlano({
 		: { valor: reais(0), sufixo: "", nota: null };
 
 	// Pix avulso: paga o período uma vez, sem renovar. Ao lado do Pix Automático, o rótulo diz isso.
+	// D-2151 #13: "secondary" (cinza sobre cinza) parecia desabilitado — contorno na cor da marca.
 	const botaoPix = (
 		<Button
-			variant="secondary"
-			className="mt-2 min-h-[44px] w-full"
+			variant="outline"
+			className="mt-2 min-h-[44px] w-full border-primary text-primary hover:bg-primary/5 hover:text-primary"
 			onClick={aoPagarComPix}
 			disabled={carregando}
 			data-opcao-pagamento="pix-avulso"
@@ -1053,7 +1054,7 @@ function Celula({ plano, recurso, emBreve }: { plano: PlanoId; recurso: (typeof 
 			</>
 		);
 	}
-	if (!temAcessoRecurso(plano, recurso)) return <NaoIncluido />;
+	if (!planoIncluiRecurso(plano, recurso)) return <NaoIncluido />;
 	// Libera no mapa, mas o produto ainda marca "(em breve)" — não vender como pronto.
 	if (emBreve) return <span className="text-xs font-medium text-text-secondary">Em breve</span>;
 	return <Incluido />;
@@ -1070,7 +1071,9 @@ function TabelaComparativo() {
 
 	return (
 		<Card className="min-w-0 max-w-full gap-0 overflow-hidden p-0">
-			<div className="w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain">
+			{/* D-2151 #1: `relative` prende aqui os filhos absolutos da tabela (ex.: a legenda `sr-only`); sem ele
+			    eles escapavam da rolagem e a página toda vazava de lado no celular (551px numa tela de 390). */}
+			<div className="relative w-0 min-w-full max-w-full overflow-x-auto overscroll-x-contain">
 				<table className="w-[560px] max-w-none border-collapse">
 					<caption className="sr-only">Comparativo de recursos incluídos em cada plano</caption>
 					<thead>

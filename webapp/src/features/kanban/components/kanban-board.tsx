@@ -28,6 +28,7 @@ import type { Empresa, Orcamento } from "@dominio";
 import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, RotateCw, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useMinhaEmpresa } from "@/olli/data";
+import { usePortaoPro } from "@/olli/recursoPlano";
 import FormOrcamento, { criarRevisaoComoRascunho } from "@/pages/olli/orcamentos/FormOrcamento";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
@@ -107,6 +108,8 @@ const INSTRUCOES_LEITOR_DE_TELA: ScreenReaderInstructions = {
 
 export default function KanbanBoard() {
 	const { colunas, total, isLoading, isError, error, refetch, mover, finalizar, emVoo, erro, limparErro } = useQuadro();
+	// D-2267: "Finalizar serviço" cria/conclui uma ORDEM DE SERVIÇO — é do Pro (o quadro de orçamentos segue livre).
+	const portaoOs = usePortaoPro("ordem_servico");
 	/** Card esperando a confirmação de "Finalizar serviço" (soltar em Finalizados ou menu). */
 	const [aFinalizar, setAFinalizar] = useState<Cartao | null>(null);
 	const { data: empresaLinha } = useMinhaEmpresa();
@@ -349,7 +352,7 @@ export default function KanbanBoard() {
 							onClick={() => {
 								const alvo = aFinalizar;
 								setAFinalizar(null);
-								if (alvo) void finalizar(alvo);
+								if (alvo) portaoOs.exigir(() => void finalizar(alvo));
 							}}
 						>
 							Finalizar serviço
@@ -357,6 +360,7 @@ export default function KanbanBoard() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			{portaoOs.dialogo}
 
 			{editor && (
 				<FormOrcamento
