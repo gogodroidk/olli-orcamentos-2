@@ -1,20 +1,18 @@
 ---
 /**
- * Foto de prestador, sempre com o aviso de ilustração. Largura/altura declaradas (896×1200) e `aspect-ratio`
+ * Foto de prestador (ilustração do uso do app; nunca depoimento, nome ou equipe). Largura/altura declaradas (896×1200) e `aspect-ratio`
  * reservam o espaço: nenhum salto de layout. `lazy` + `async`: a foto nunca disputa o LCP (que é o título).
  * Sem canvas, sem script, sem movimento.
  */
-import { AVISO_ILUSTRATIVA, FOTOS, type ChaveFoto } from "../data/fotos";
+import { FOTOS, type ChaveFoto } from "../data/fotos";
 
 interface Props {
 	chave: ChaveFoto;
 	/** Tamanhos para o srcset: o que a imagem ocupa na tela. */
 	sizes: string;
-	/** Mostra o aviso embaixo da foto (a faixa da home mostra um aviso só para o conjunto). */
-	aviso?: boolean;
 	class?: string;
 }
-const { chave, sizes, aviso = true, class: classe = "" } = Astro.props;
+const { chave, sizes, class: classe = "" } = Astro.props;
 const f = FOTOS[chave];
 ---
 
@@ -30,5 +28,4 @@ const f = FOTOS[chave];
 		decoding="async"
 		class="aspect-[896/1200] w-full rounded-cartao border border-line bg-paper object-cover shadow-e1"
 	/>
-	{aviso && <figcaption class="mt-2 text-xs leading-snug text-muted">{AVISO_ILUSTRATIVA}</figcaption>}
 </figure>
