@@ -3,6 +3,7 @@ import { Banknote, Percent, Send, Wallet } from "lucide-react";
 import { useMemo } from "react";
 import { useMinhaEmpresa, useOlliList } from "@/olli/data";
 import { LembreteAssinaturaFaixa } from "@/pages/olli/planos/LembreteAssinaturaFaixa";
+import { ResumoTesteProCard, useResumoTestePro } from "@/pages/olli/planos/ResumoTesteProCard";
 import { AprovadoPeloClienteCard } from "./AprovadoPeloClienteCard";
 import { AtivacaoCard } from "./AtivacaoCard";
 import { ClientesEsfriandoCard } from "./ClientesEsfriandoCard";
@@ -49,6 +50,8 @@ function chaveDoMes(ref: Date = new Date()): string {
  * falso faz o dono achar que não tem nada a receber e parar de cobrar).
  */
 export default function Inicio() {
+	// Véspera/fim do teste do Pro: o que o Pro fez pela conta, com números reais.
+	const resumoTeste = useResumoTestePro();
 	const orcQ = useOlliList<OrcamentoRow>("orcamentos", { orderBy: "criado_em", ascending: false });
 	const recQ = useOlliList<ReciboRow>("recibos", { orderBy: "criado_em", ascending: false });
 	const osQ = useOlliList<{ orcamento_id: string | null; status: string }>("ordens_servico", {
@@ -124,7 +127,11 @@ export default function Inicio() {
 			 * Pro acabando, Pix vencendo). Acima de tudo porque, quando é crítico, é o que
 			 * trava o trabalho do dia. Sem dado confirmado não aparece nada.
 			 */}
-			<LembreteAssinaturaFaixa />
+			<LembreteAssinaturaFaixa
+				// Com o resumo do teste na tela, a faixa genérica do teste/assinar não repete o convite.
+				ocultar={(l) => !!resumoTeste && (l.tipo === "trial_acabando" || l.tipo === "assinar")}
+			/>
+			<ResumoTesteProCard resumo={resumoTeste} />
 
 			{/*
 			 * O cliente aprovou pelo link enquanto o dono estava fora: a notícia boa vem
