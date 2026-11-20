@@ -14,7 +14,7 @@ Para o **chefe de tecnologia** (instalar) e o **revisor** (conferir). Código: b
 - **Parar:** "para de me mandar", "sair", "não quero mais", "me tira da lista", "descadastrar"... → para na hora, **sem chamar a API**, etiquetas `parar-contato` + `claude-humano`, nota, contato gravado em `parar.json` (nada mais é processado dele).
 - **Caixa 5 (pessoal) e 2 (GR Tech):** recusadas no webhook, no serviço e em todos os comandos do CLI (nem lê mensagens). Só as caixas 3 e 4 (`caixas_permitidas`).
 - **Contato frio:** o serviço só reage a mensagem de cliente que chega; o CLI `responder` recusa conversa em que o cliente ainda não escreveu. Logo o número de atendimento do app nunca inicia contato.
-- **Preço só da tabela** (`precos.json`, com vigência por data: R$ 997 do Site vale até 19/11, R$ 1.397 de 20/11 em diante; Pro R$ 39, Empresa R$ 99). Qualquer R$ fora da tabela barra a resposta. Conversa com etiqueta `preco-combinado` não recebe sugestão de preço.
+- **Preço só da tabela** (`precos.json`, com vigência por data: R$ 997 do Site vale até 19/11 20h29; R$ 1.397 a partir das 20h30 (janela do Salomão); Pro R$ 39, Empresa R$ 99). Qualquer R$ fora da tabela barra a resposta. Conversa com etiqueta `preco-combinado` não recebe sugestão de preço.
 - **Prazo, resultado, nº de clientes, %:** barrados se não vierem da tabela.
 - **Teto diário** (`teto_diario_reais`, padrão **R$ 10**): ao bater, **não chama a API**, põe etiqueta `claude-teto` e volta ao sombra. Gasto por conversa em `gasto.jsonl` (`node cwc.mjs gasto`).
 - Resposta torta, recusa do modelo ou erro de API: nota "fica com humano" + `claude-humano`.

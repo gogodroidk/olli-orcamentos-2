@@ -22,13 +22,18 @@ export function carregarVariaveis(nomes, arq = process.env.CREDENCIAIS_ENV || '/
 }
 
 export const hojeSP = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d); // AAAA-MM-DD
+/** AAAA-MM-DDTHH:MM em São Paulo: a tabela de preços vira na janela das 20h30 de 19/11, não à meia-noite. */
+export const agoraSP = (d = new Date()) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+};
 
 // ---------- caixas ----------
 export const caixaProibida = (id, cfg = CFG) => cfg.caixas_proibidas.includes(Number(id));
 export const caixaPermitida = (id, cfg = CFG) => !caixaProibida(id, cfg) && cfg.caixas_permitidas.includes(Number(id));
 
 // ---------- preços (única fonte) ----------
-export function itensVigentes(data = hojeSP(), tabela = JSON.parse(readFileSync(`${DIR}precos.json`, 'utf8'))) {
+export function itensVigentes(data = agoraSP(), tabela = JSON.parse(readFileSync(`${DIR}precos.json`, 'utf8'))) {
   return tabela.itens.filter((i) => (!i.de || data >= i.de) && (!i.ate || data <= i.ate));
 }
 export function textoTabela(data, tabela) {
@@ -53,7 +58,7 @@ const DADOS_SENS = [/(manda|envia|passa|informe?|me\s+diz)\s+(o\s+|a\s+)?(seu|su
 const INTERNO = [/\bSalom[aã]o\b/i, /\bMaestro\b/i, /\bMaestri\b/i, /\bClaude\b/i, /\bAnthropic\b/i, /\bterminal\b/i, /\bprompt\b/i];
 
 /** Motivos para BARRAR um texto que sairia ao cliente. Vazio = pode. `data` escolhe a tabela de preços. */
-export function motivosDeBarrar(texto, { data = hojeSP(), tabela } = {}) {
+export function motivosDeBarrar(texto, { data = agoraSP(), tabela } = {}) {
   const t = String(texto ?? '').trim();
   const m = [];
   if (!t) return ['texto vazio'];

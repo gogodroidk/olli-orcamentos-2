@@ -52,10 +52,11 @@ test('prazo e resultado inventados são barrados', () => {
   assert.ok(nucleo.motivosDeBarrar('Sou o assistente virtual da OLLI.').length === 0);
 });
 
-test('tabela do dia: R$ 997 vale até 19/11, R$ 1.397 a partir de 20/11', () => {
-  assert.deepEqual(nucleo.motivosDeBarrar('O Site Pronto sai R$ 997.', { data: '2026-11-19' }), []);
-  assert.match(nucleo.motivosDeBarrar('O Site Pronto sai R$ 997.', { data: '2026-11-20' })[0], /fora da tabela/);
-  assert.deepEqual(nucleo.motivosDeBarrar('O Site Pronto sai R$ 1.397.', { data: '2026-11-20' }), []);
+test('tabela do dia: R$ 997 vale até 19/11 20h29, R$ 1.397 a partir das 20h30', () => {
+  assert.deepEqual(nucleo.motivosDeBarrar('O Site Pronto sai R$ 997.', { data: '2026-11-19T20:29' }), []);
+  assert.match(nucleo.motivosDeBarrar('O Site Pronto sai R$ 997.', { data: '2026-11-19T20:30' })[0], /fora da tabela/);
+  assert.match(nucleo.motivosDeBarrar('O Site Pronto sai R$ 997.', { data: '2026-11-20T09:00' })[0], /fora da tabela/);
+  assert.deepEqual(nucleo.motivosDeBarrar('O Site Pronto sai R$ 1.397.', { data: '2026-11-19T20:30' }), []);
 });
 
 test('PARAR: para na hora, não chama a API, marca e não responde mais', async () => {

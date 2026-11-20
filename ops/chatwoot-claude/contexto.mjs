@@ -1,6 +1,6 @@
 // Monta o que o Claude recebe: regras fixas, tabela de preços do dia, respostas aprovadas, ficha, histórico.
 import { readFileSync } from 'node:fs';
-import { CFG, DIR, textoTabela, hojeSP } from './nucleo.mjs';
+import { CFG, DIR, textoTabela, agoraSP } from './nucleo.mjs';
 
 const lerAprovadas = () => {
   const j = JSON.parse(readFileSync(process.env.CWC_RESPOSTAS || `${DIR}dados/respostas-aprovadas.json`, 'utf8'));
@@ -21,7 +21,7 @@ REGRAS INEGOCIÁVEIS:
 FORMATO DA SUA SAÍDA: só um JSON, nada mais: {"tipo": "saudacao|preco|como-funciona|suporte-app|outro", "resposta": "texto ao cliente", "humano": false, "motivo": ""}.
 Quando "humano" for true, "resposta" pode ser uma sugestão curta ou vazia.`;
 
-export function montarSistema({ ficha = '', data = hojeSP() } = {}) {
+export function montarSistema({ ficha = '', data = agoraSP() } = {}) {
   return [
     REGRAS_FIXAS,
     `GUIA DE CONVERSA (7 regras e exemplos):\n${lerGuia()}`,
