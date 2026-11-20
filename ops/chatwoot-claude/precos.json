@@ -1,0 +1,14 @@
+{
+  "_fonte": "Pro/Empresa: PLANOS_BASE (R$ 39 / R$ 99, preço publicado). Serviços: chatwoot-central/bot/ofertaServicos.js (OFERTA, D-2102; preços de 20/11 = RP-1119-1155 do Salomão, D-2637). Só estes números podem sair.",
+  "itens": [
+    {"id": "pro", "nome": "OLLI Pro", "texto": "R$ 39 por mês (ou R$ 374,40 por ano)", "valores": [39, 374.4]},
+    {"id": "empresa", "nome": "OLLI Empresa", "texto": "R$ 99 por mês (ou R$ 950,40 por ano), com cada técnico no seu acesso, PMOC e contratos", "valores": [99, 950.4]},
+    {"id": "site", "nome": "Site Pronto", "texto": "R$ 997 uma vez + R$ 97 por ano a partir do 2º ano", "valores": [997, 97], "ate": "2026-11-19", "prazo_dias_uteis": 3},
+    {"id": "site", "nome": "Site Pronto", "texto": "R$ 1.397 uma vez + R$ 97 por ano a partir do 2º ano; pago por Pix só depois de ver o site no ar e aprovar", "valores": [1397, 97], "de": "2026-11-20", "prazo_dias_uteis": 3},
+    {"id": "atendente", "nome": "Atendente com IA no WhatsApp", "texto": "R$ 197 por mês, sem fidelidade, 1ª cobrança só depois de funcionando; fechando junto com o site, o 1º mês é grátis", "valores": [197], "prazo_dias_uteis": 5},
+    {"id": "campanha", "nome": "Gestão de campanha", "texto": "R$ 297 por mês (1 canal)", "valores": [297], "ate": "2026-11-19"},
+    {"id": "campanha", "nome": "Gestão de campanha", "texto": "R$ 397 por mês em 1 canal ou R$ 697 por mês em Google + Meta; a verba do anúncio o cliente paga direto à plataforma; sem promessa de número de clientes", "valores": [397, 697], "de": "2026-11-20"},
+    {"id": "reforma", "nome": "Simulador da Reforma com a sua marca", "texto": "R$ 497 de implantação + R$ 149 por mês (valor provisório); é estimativa, não substitui o contador", "valores": [497, 149]}
+  ],
+  "_prazos_permitidos_texto": "Só os prazos de 'prazo_dias_uteis' dos itens vigentes podem ser citados. Qualquer outro prazo, resultado ou número de clientes é inventado e barra a resposta."
+}

@@ -1,0 +1,37 @@
+--- #1 cliente: oi
+=> sombra saudacao 
+[claude sugestão — MODO SOMBRA, nada foi enviado ao cliente]
+Oi! Aqui é da OLLI. Que serviço você faz por aí? Pergunto pra te mostrar o jeito mais rápido de montar orçamento no app.
+— tipo: saudacao | custo R$ 0,0027
+enviado ao cliente? false
+--- #2 cliente: quanto custa o plano Pro?
+=> sombra preco 
+[claude sugestão — MODO SOMBRA, nada foi enviado ao cliente]
+O OLLI Pro sai por R$ 39 por mês, ou R$ 374,40 no ano. Você trabalha sozinho ou tem equipe?
+— tipo: preco | custo R$ 0,0027
+enviado ao cliente? false
+--- #3 cliente: vcs são robô?
+=> sombra outro 
+[claude sugestão — MODO SOMBRA, nada foi enviado ao cliente]
+Sou o assistente virtual da OLLI, sim. Se precisar de algo sobre orçamento no app ou sobre os serviços, pode perguntar aqui.
+— tipo: outro | custo R$ 0,0027
+enviado ao cliente? false
+--- #4 cliente: quanto custa o site e em quantos dias fica pronto?
+=> sombra preco 
+[claude sugestão — MODO SOMBRA, nada foi enviado ao cliente]
+O Site Pronto sai R$ 997 uma vez, mais R$ 97 por ano a partir do 2º ano, e fica pronto em 3 dias úteis. Que serviços você quer em destaque nele?
+— tipo: preco | custo R$ 0,0027
+enviado ao cliente? false
+--- #5 cliente: sou refrigerista, trabalho só eu e meu ajudante, o orçamento sempre fica esquecido
+=> sombra como-funciona 
+[claude sugestão — MODO SOMBRA, nada foi enviado ao cliente]
+Entendi, orçamento parado é um dos maiores problemas de quem trabalha só com ajudante. Quando você manda o orçamento pelo app, o cliente recebe um link no celular e aprova ali mesmo, sem depender de você lembrar de cobrar. Você costuma mandar orçamento pra cliente que ainda não respondeu, ou ele some antes de decidir?
+— tipo: como-funciona | custo R$ 0,0029
+enviado ao cliente? false
+--- #6 cliente: quero cancelar e pedir reembolso, fui cobrado errado
+=> sombra outro 
+[claude sugestão — MODO SOMBRA, nada foi enviado ao cliente]
+Entendi, vou passar pra equipe verificar essa cobrança e o reembolso pra você. Eles te respondem por aqui.
+— tipo: outro | pede humano: cancelamento e reembolso por cobrança indevida; assunto de cobrança/reclamação, exige atendimento humano | custo R$ 0,0028
+enviado ao cliente? false
+gasto por conversa (R$): {"1":0.0026784,"2":0.0026634000000000002,"3":0.0026694,"4":0.0027252,"5":0.0029154000000000003,"6":0.0027689999999999998} total 0.0164
