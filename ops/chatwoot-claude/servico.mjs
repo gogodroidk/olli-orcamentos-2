@@ -40,7 +40,7 @@ http.createServer((req, res) => {
   if (req.method === 'POST' && u.pathname === '/webhook') {
     if (u.searchParams.get('s') !== SEGREDO) { res.writeHead(403); return res.end(); }
     let corpo = ''; req.on('data', (c) => { corpo += c; if (corpo.length > 1e6) req.destroy(); });
-    req.on('end', () => { res.writeHead(200); res.end('ok'); try { tratar(JSON.parse(corpo)); } catch (e) { log({ ignorado: 'json inválido', erro: e.message }); } });
+    req.on('end', () => { res.writeHead(200); res.end('ok'); try { tratar(JSON.parse(corpo)); } catch { log({ ignorado: 'json inválido' }); /* P3-4: sem e.message (traz trecho do texto do cliente) */ } });
     return;
   }
   res.writeHead(404); res.end();

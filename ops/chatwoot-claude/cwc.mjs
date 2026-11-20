@@ -21,7 +21,10 @@ const hora = (t) => new Date(t * 1000).toLocaleString('pt-BR', { timeZone: 'Amer
 
 async function pegar(idArg) {
   const id = Number(idArg); if (!id) sair('falta o número da conversa');
-  try { return await cw.conversa(id); } catch (e) { sair(e.message); }
+  let c;
+  try { c = await cw.conversa(id); } catch (e) { sair(e.message); }
+  if (!caixaPermitida(c.inbox_id)) sair(`conversa #${id} é da caixa ${c.inbox_id}: fora da lista (${CFG.caixas_permitidas.join(',')})`); // P2-3
+  return c;
 }
 
 if (cmd === 'sem-resposta') {

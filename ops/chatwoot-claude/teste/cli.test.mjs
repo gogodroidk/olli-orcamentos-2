@@ -42,3 +42,11 @@ test('responder: passa pelas travas, simula, envia e nunca inicia contato frio',
   estado.conversas[10] = conv(10, 4, 'oi', { labels: ['parar-contato'] });
   assert.match((await cwc('responder', '10', 'Oi!')).err, /parar-contato/);
 });
+
+test('P2-3: comandos recusam caixa fora da lista (ex.: 1), não só as proibidas', async () => {
+  estado.conversas[11] = conv(11, 1, 'oi de outra caixa');
+  for (const cmd of [['ler', '11'], ['nota', '11', 'x'], ['etiquetar', '11', 'a'], ['responder', '11', 'Oi!']]) {
+    const r = await cwc(...cmd); assert.notEqual(r.cod, 0, cmd[0]); assert.match(r.err, /fora da lista/);
+  }
+  assert.ok(!estado.log.some((x) => x.includes('/conversations/11/messages')), 'não leu nem escreveu na caixa 1');
+});

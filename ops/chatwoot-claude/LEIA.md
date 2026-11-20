@@ -21,7 +21,7 @@ Para o **chefe de tecnologia** (instalar) e o **revisor** (conferir). Código: b
 
 ## Conferir (revisor, 1 minuto, sem rede e sem gasto)
 ```
-cd ops/chatwoot-claude && node --test teste/*.test.mjs        # 15 testes, Chatwoot e Claude falsos
+cd ops/chatwoot-claude && node --test teste/*.test.mjs        # 24 testes, Chatwoot e Claude falsos (inclui as travas do LIVRE: teto com reserva antes de pagar, parar.json atômico)
 ```
 Teste vivo (opcional, gasta ~R$ 0,02, usa a chave da reserva e Chatwoot FALSO): `node teste/vivo.mjs`. Resultado já gravado em `teste/resultado-vivo.txt`.
 
@@ -55,3 +55,10 @@ Sem botão/atalho: não é página, é webhook e linha de comando; ninguém digi
 
 ## Arquivos
 `servico.mjs` (webhook) · `processar.mjs` (fluxo de uma mensagem) · `decidir.mjs` (quem processa) · `nucleo.mjs` (travas, preços, teto, parar) · `contexto.mjs` (prompt) · `claude.mjs` · `chatwoot.mjs` · `cwc.mjs` · `config.json` · `precos.json` · `dados/` (guia e respostas aprovadas, cópias) · `teste/` · `chatwoot-claude.service` · `instalar.sh`. Dados vivos (gasto, parar, vistos): `chatwoot-central/data/chatwoot-claude/`.
+
+## Notas da revisão do LIVRE (20/11)
+- **Teto:** antes de cada chamada paga o serviço grava uma reserva do custo máximo (entrada estimada para cima + `max_tokens_saida`); depois grava o ajuste para o real. Se não conseguir gravar, não chama. Mensagens simultâneas não passam juntas.
+- **Parar:** `parar.json` só vira lista vazia se não existir; torto ou ilegível, o serviço para antes de pagar e não regrava por cima. Gravação atômica (tmp + rename). Etiqueta `parar-contato` posta à mão também barra. Parar entendido pelo modelo também grava.
+- **CLI (`cwc`) só em papel Claude:** `ler` e `sem-resposta` mostram nome e texto do cliente no terminal; isso entra no histórico do agente.
+- **Segredo na query do webhook:** fica visível a admin do Chatwoot e pode aparecer em log dele. Aceito porque o endereço é 172.20.0.1 (só a máquina).
+- **Dólar fixo em 6,0** (`config.json`): se o dólar passar disso, o teto em reais conta a menos. Revisar se o dólar subir.

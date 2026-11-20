@@ -1,6 +1,6 @@
 // Núcleo puro (sem rede) do Chatwoot+Claude: configuração, preços, travas de texto, parar, tipo de pergunta, teto diário.
 // Credenciais SÓ por variável de ambiente; nada aqui imprime token ou chave.
-import { readFileSync, appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, appendFileSync, existsSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
@@ -124,6 +124,24 @@ export function gastoPorConversa(arq = arqGasto()) {
   return o;
 }
 export const tetoAtingido = (cfg = CFG, arq = arqGasto(), dia = hojeSP()) => gastoDoDia(dia, arq) >= cfg.teto_diario_reais;
+/**
+ * Reserva o custo MÁXIMO de uma chamada ANTES de chamar (P1-1 do LIVRE): conferir o teto e gravar a reserva
+ * acontecem na mesma volta síncrona (sem await), então mensagens simultâneas não passam juntas pelo teto.
+ * Falha fechada: se ler ou gravar der erro, devolve ok:false e quem chamou NÃO paga.
+ * @returns {{ok:true, reserva:number} | {ok:false, motivo:'teto'|'falha-gravar', erro?:string}}
+ */
+export function reservarGasto({ conversa, caixa, entradaEstimada }, cfg = CFG, arq = arqGasto(), dia = hojeSP()) {
+  const reserva = custoReais({ input_tokens: entradaEstimada, output_tokens: cfg.max_tokens_saida }, cfg);
+  let gasto;
+  try { gasto = gastoDoDia(dia, arq); } catch (e) { return { ok: false, motivo: 'falha-gravar', erro: `ler gasto: ${e.code || e.message}` }; }
+  if (gasto + reserva > cfg.teto_diario_reais) return { ok: false, motivo: 'teto' };
+  try { registrarGasto({ ts: new Date().toISOString(), dia, conversa, caixa, reais: reserva, reserva: true }, arq); }
+  catch (e) { return { ok: false, motivo: 'falha-gravar', erro: `gravar reserva: ${e.code || e.message}` }; }
+  return { ok: true, reserva };
+}
+/** Entrada estimada para cima (~2 caracteres por token; português real fica perto de 3–4). */
+export const estimarEntrada = (sistema, mensagens) => Math.ceil(JSON.stringify({ sistema, mensagens }).length / 2);
+
 export function custoReais(uso, cfg = CFG) {
   const usd = ((uso.input_tokens || 0) * cfg.tarifa_usd_por_milhao.entrada + (uso.output_tokens || 0) * cfg.tarifa_usd_por_milhao.saida) / 1e6;
   return usd * cfg.dolar_em_reais;
@@ -131,11 +149,19 @@ export function custoReais(uso, cfg = CFG) {
 
 // ---------- parar: lista persistente ----------
 export const arqParar = () => `${DADOS}/parar.json`;
+/** Só "arquivo não existe" vira lista vazia. Arquivo torto ou ilegível LANÇA (P1-2 do LIVRE): quem chamou para antes de pagar. */
 export function lerParar(arq = arqParar()) {
-  try { return new Set(JSON.parse(readFileSync(arq, 'utf8'))); } catch { return new Set(); }
+  let txt;
+  try { txt = readFileSync(arq, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return new Set(); throw e; }
+  const lista = JSON.parse(txt);
+  if (!Array.isArray(lista)) throw new Error('parar.json não é lista');
+  return new Set(lista.map(String));
 }
+/** Grava atômico (tmp + rename): um corte no meio nunca deixa o arquivo torto. Se a lista atual estiver torta, lança e NÃO regrava por cima. */
 export function gravarParar(chave, arq = arqParar()) {
   const s = lerParar(arq); s.add(String(chave));
   mkdirSync(dirname(arq), { recursive: true });
-  writeFileSync(arq, JSON.stringify([...s]));
+  const tmp = `${arq}.tmp`;
+  writeFileSync(tmp, JSON.stringify([...s]));
+  renameSync(tmp, arq);
 }
