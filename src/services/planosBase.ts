@@ -282,7 +282,7 @@ export const RECURSOS_GRATIS: readonly string[] = [
   // D-2267 (corte da CPO, 18/11): REGISTRAR o pagamento recebido é básico; EMITIR o recibo (PDF/link) é do Pro.
   'Registro dos pagamentos recebidos',
   'Catálogo de serviços e produtos',
-  'Diagnóstico por código de erro (offline)',
+  'Diagnóstico por código de erro',
   'Link do orçamento para o cliente aprovar',
   `IA de diagnóstico e voz: ${IA_USOS_GRATIS_MES} usos por mês`,
 ];

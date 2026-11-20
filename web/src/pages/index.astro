@@ -17,7 +17,7 @@ import {
 // Preço só da FONTE (Stripe live). Nenhum literal de R$ nesta página.
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS, recursosQueSairamDoGratis } from "../data/recursos";
+import { FRASE_GRATIS, IA_USOS_GRATIS_MES, LIMITE_ENVIOS_GRATIS_MES, recursosQueSairamDoGratis } from "../data/recursos";
 import { AVISO_ILUSTRATIVA, FOTOS, ORDEM_HOME } from "../data/fotos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
@@ -35,24 +35,28 @@ const recursos = [
 	{
 		icon: "file-text",
 		titulo: "Orçamento profissional em minutos",
+		plano: `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês`,
 		texto:
 			"Itens, quantidades, fotos, desconto e sua marca num PDF pronto, com link para o cliente aprovar.",
 	},
 	{
 		icon: "clipboard-list",
 		titulo: "Ordem de serviço",
+		plano: "Plano Pro",
 		texto:
 			"Vire o orçamento em ordem de serviço com checklist por ofício e assinatura do cliente na tela.",
 	},
 	{
 		icon: "brain",
 		titulo: "IA que entende o defeito",
+		plano: `Grátis: ${IA_USOS_GRATIS_MES} usos por mês`,
 		texto:
 			"Diagnóstico de climatização por sintoma ou código de erro.",
 	},
 	{
 		icon: "calendar-check",
 		titulo: "PMOC (Lei 13.589)",
+		plano: "Plano Empresa",
 		texto:
 			"Planos de manutenção, lembretes e o histórico de cada máquina. A ART continua sendo do responsável técnico.",
 	},
@@ -70,6 +74,7 @@ const recursos = [
 	{
 		icon: "calendar",
 		titulo: "Agenda e equipe",
+		plano: "Agenda: Pro · Equipe: Empresa",
 		// "e a equipe no mapa" saiu daqui: a captura de localização em background só
 		// liga na Onda 8 (ver o cabeçalho de src/screens/EquipeAoVivoScreen.tsx) e hoje
 		// só funciona na web. A MESMA página admitia "(em breve)" 80 linhas abaixo, na
@@ -81,6 +86,7 @@ const recursos = [
 	{
 		icon: "receipt",
 		titulo: "Recibo e PDF bonito",
+		plano: "Recibo em PDF: Pro",
 		texto:
 			"Recibo e documentos com a sua marca — do orçamento ao comprovante, sem planilha.",
 	},
@@ -262,7 +268,7 @@ const schemaFaq = {
         </div>
         <div id="android-em-teste" class="order-3 mt-5 max-w-xl rounded-campo border border-line bg-card p-4 shadow-e1 lg:order-none">
           <p class="text-sm leading-relaxed text-slate">
-            <strong class="text-ink">Aplicativo Android em teste fechado.</strong>
+            <strong class="text-ink">Aplicativo Android em teste fechado.</strong>{" "}
             A instalação pela Google Play está restrita a testadores selecionados. Se a sua conta ainda não foi incluída, use a OLLI pelo navegador. Não há aplicativo para iPhone/iOS nesta versão.
           </p>
           <div class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -511,6 +517,7 @@ const schemaFaq = {
               <Icone nome={r.icon} class="h-5 w-5" />
             </div>
             <h3 class="mt-4 text-base font-bold text-ink">{r.titulo}</h3>
+            {r.plano && <p class="mt-1.5 inline-block rounded-full bg-tint px-2.5 py-0.5 text-xs font-semibold text-brand-fg">{r.plano}</p>}
             <p class="mt-1.5 text-sm leading-relaxed text-slate">{r.texto}</p>
           </div>
         ))}

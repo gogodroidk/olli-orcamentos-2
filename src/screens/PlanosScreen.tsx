@@ -207,7 +207,7 @@ const LINHAS_BASE: LinhaComparativo[] = [
   { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: CELULA_ORCAMENTOS_GRATIS, pro: 'Ilimitados', empresa: 'Ilimitados' },
   { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
   { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
-  { rotulo: 'Diagnóstico por código de erro (offline)', gratis: true, pro: true, empresa: true },
+  { rotulo: 'Diagnóstico por código de erro', gratis: true, pro: true, empresa: true },
   { rotulo: 'Link do orçamento para o cliente', gratis: true, pro: true, empresa: true },
 ];
 
