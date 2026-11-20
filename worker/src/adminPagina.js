@@ -321,6 +321,7 @@ const BODY = String.raw`
    <section class="view hidden" id="v-organizacoes" data-view="organizacoes"></section>
    <section class="view hidden" id="v-funil" data-view="funil"></section>
    <section class="view hidden" id="v-uso" data-view="uso"></section>
+   <section class="view hidden" id="v-lojas" data-view="lojas"></section>
    <section class="view hidden" id="v-emails" data-view="emails"></section>
    <section class="view hidden" id="v-troca" data-view="troca"></section>
    <section class="view hidden" id="v-suporte" data-view="suporte"></section>
@@ -619,6 +620,7 @@ const NAV=[
  {id:'organizacoes',rot:'Organizações',ico:'users',sub:'Marque uma organização inteira como interna (equipe, teste) — com prévia, confirmação e desfazer. Internas ficam fora de todos os números.',cap:'admin'},
  {id:'funil',rot:'Funil',ico:'funnel',sub:'Do cadastro ao pagamento, por semana de cadastro.',cap:'admin'},
  {id:'uso',rot:'Funil de uso',ico:'funnel',sub:'Até onde as pessoas chegam dentro do app, passo a passo. Só contagens: nenhum nome, e-mail ou conta aparece aqui.',cap:'admin'},
+ {id:'lojas',rot:'Lojas',ico:'users',sub:'Cadastros que chegaram pelo link ou QR de cada loja parceira. Só contagens: nenhum nome, e-mail ou conta aparece aqui.',cap:'admin'},
  {id:'emails',rot:'E-mails',ico:'mail',sub:'Saúde dos e-mails automáticos e oferta do Pro para quem já usa o OLLI.',cap:'admin'},
  {id:'troca',rot:'Crédito de troca',ico:'gift',sub:'Quem veio de outro app e pediu meses de Pro grátis.',cap:'financeiro'},
  {id:'suporte',rot:'Suporte',ico:'chat',sub:'Mensagens, sugestões, denúncias e erros enviados pelo app.',cap:'suporte'},
@@ -645,7 +647,7 @@ function irPara(id){
  renderView();
  window.scrollTo(0,0);
 }
-function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,uso:carregarUso,emails:carregarEmails,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
+function renderView(){({geral:renderGeral,usuarios:renderUsuarios,organizacoes:carregarOrgs,funil:carregarFunil,uso:carregarUso,lojas:carregarLojas,emails:carregarEmails,troca:renderTroca,suporte:renderSuporte,auditoria:carregarAuditoria,admins:carregarAdmins,seguranca:renderSeguranca})[VIEW]();}
 /* ── e-mails: saúde e oferta do Pro (D-1859) ── */
 let EMAILS=null,EMAILS_ERRO='',OFERTA=null,OFERTA_ERRO='',OFERTA_CORTADO=false,OFERTA_SEL=new Set();
 const MOTIVO_OFERTA={sairia:['Pode receber','ok'],enfileirado:['Enfileirado','ok'],conta_indisponivel:['E-mail indisponível','dng'],suprimido:['Descadastrou','warn'],excluido:['Conta interna',''],membro_equipe:['Membro de equipe',''],ja_assinou:['Já assinou','warn'],nao_e_gratis:['Pro ou teste ativo','info'],oferta_recente:['Oferta há menos de 30 dias',''],recebeu_email_24h:['E-mail nas últimas 24 h',''],duplicado:['Já enfileirado hoje',''],teto_diario:['Teto do dia','warn'],erro_rpc:['Erro ao enfileirar','dng'],sem_uso:['Sem uso','']};
@@ -1245,6 +1247,23 @@ async function carregarUso(){
    el('p',{},'Do Pix gerado ao pagamento: ',el('b',{},fmtMin(t.minDoPixAoPagamento))))));
   box.append(el('div',{className:'nota'},'Contas com algum passo: '+f.pessoas+'. Contas internas fora: '+f.internasFora+'. Os registros são apagados depois de 90 dias.'+(f.cortado?' Atenção: passou do teto de leitura; os números estão cortados.':'')));
  }catch(e){if(e.status===401)return;limpar(box).append(el('div',{className:'card'},estado('erro','Funil de uso indisponível.',(ERRO_USO[e.codigo]||mensagemErro(e))+' Nenhum número foi zerado.')));}
+}
+
+/* ── LOJAS (Balcão OLLI, D-2711): cadastros por código de loja, só contagens ── */
+const ERRO_LOJAS={usuarios_ilegiveis:'Não consegui ler as contas agora.',contas_internas_ilegiveis:'Não consegui ler a lista de contas internas, então não dá para separar clientes de equipe.'};
+async function carregarLojas(){
+ const box=limpar($('v-lojas'));box.append(el('div',{className:'card'},carregando(4)));
+ try{
+  const f=await api('lojas');limpar(box);
+  box.append(el('p',{className:'mut',style:'margin-bottom:16px'},'Conta quem criou a conta pelo link da loja (utm_source=loja). Vale o primeiro contato da pessoa com a OLLI; se o primeiro não foi de loja, vale o último. Quem cadastra dentro do app instalado não leva a loja.'));
+  const tb=el('table'),body=el('tbody');
+  tb.append(el('thead',{},el('tr',{},el('th',{},'Loja'),el('th',{},'Código'),el('th',{},'Cadastros'),el('th',{},'Últimos 7 dias'),el('th',{},'Já orçaram'))));
+  f.lojas.forEach(x=>body.append(el('tr',{},el('td',{},x.nome+(x.teste?' (teste)':'')),el('td',{className:'mut'},x.codigo),el('td',{},el('b',{},String(x.cadastros))),el('td',{},String(x.cadastros7)),el('td',{},x.orcaram===null?'—':String(x.orcaram)))));
+  tb.append(body);box.append(el('div',{className:'card tblWrap'},tb));
+  if(f.orcamentosEstado!=='ok')box.append(el('div',{className:'card atencao'},estado('erro','Não consegui ler os orçamentos agora.','A coluna "Já orçaram" está com — em vez de zero.')));
+  if(f.desconhecidos.length)box.append(el('div',{className:'card'},el('div',{className:'pad'},el('h3',{style:'font-size:16px;margin-bottom:8px'},'Códigos que não estão na lista'),el('p',{className:'mut'},'Chegaram com utm_source=loja, mas o código não é de nenhuma loja da lista: costuma ser erro de digitação no cartaz ou no link.'),...f.desconhecidos.map(d=>el('p',{},d.codigo+': ',el('b',{},String(d.cadastros)))))));
+  box.append(el('div',{className:'nota'},'Contas internas com código de loja (fora dos números): '+f.internasFora+'.'));
+ }catch(e){if(e.status===401)return;limpar(box).append(el('div',{className:'card'},estado('erro','Lojas indisponível.',(ERRO_LOJAS[e.codigo]||mensagemErro(e))+' Nenhum número foi zerado.')));}
 }
 
 /* ── CRÉDITO DE TROCA ── */
