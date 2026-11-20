@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#07111F">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Salomão">
-  <title>Ligar pro Salomão</title>
+  <meta name="apple-mobile-web-app-title" content="OLLI">
+  <title>Ligar para a OLLI</title>
   <link rel="manifest" href="/ligar/manifest.webmanifest">
   <link rel="icon" href="/ligar/icone.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/ligar/icone-192.png">
@@ -17,11 +17,11 @@
   <main class="tela">
     <header class="topo">
       <span class="marca">OLLI</span>
-      <span class="sub">Salomão · Maestro da equipe</span>
+      <span class="sub">Assistente da OLLI</span>
     </header>
 
     <section class="centro" aria-live="polite">
-      <div class="anel" id="anel" data-estado="parado" aria-hidden="true"><div class="miolo">S</div></div>
+      <div class="anel" id="anel" data-estado="parado" aria-hidden="true"><div class="miolo">O</div></div>
       <p class="status" id="status">Pronto para ligar</p>
       <p class="tempo" id="tempo" hidden>00:00</p>
     </section>
@@ -29,7 +29,7 @@
     <section class="legenda" id="legenda" aria-label="O que está sendo falado"></section>
 
     <section class="cartao" id="cartao" hidden aria-live="assertive" aria-labelledby="cartao-titulo">
-      <p class="cartao-titulo" id="cartao-titulo">Recado para o Salomão: ainda NÃO enviado</p>
+      <p class="cartao-titulo" id="cartao-titulo">Confirmar recado</p>
       <p class="cartao-texto" id="pedido-texto"></p>
       <div class="cartao-acoes">
         <button id="confirmar" class="botao confirmar" type="button">Confirmar envio</button>
@@ -39,10 +39,10 @@
     </section>
 
     <footer class="acoes">
-      <button id="ligar" class="botao ligar" type="button">Ligar pro Salomão</button>
+      <button id="ligar" class="botao ligar" type="button">Ligar para a OLLI</button>
       <button id="desligar" class="botao desligar" type="button" hidden>Desligar</button>
       <button id="mudo" class="botao mudo" type="button" hidden aria-pressed="false">Microfone ligado</button>
-      <p class="nota">Voz de inteligência artificial (Google Gemini). Só lê o estado da empresa e leva recados ao Salomão.</p>
+      <p class="nota">Assistente de IA com voz do Google Gemini. Fale só de assuntos internos. Evite dizer nome, telefone ou valor de cliente.</p>
     </footer>
   </main>
   <script type="module" src="/ligar/app.js"></script>

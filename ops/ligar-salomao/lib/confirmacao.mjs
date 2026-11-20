@@ -4,7 +4,7 @@
 // texto enviado não ficava preso ao que foi lido para ele confirmar. Agora:
 //  1) Cada ligação tem um id gerado no servidor, ligado à identidade de quem abriu a ligação (Access: e-mail e sub).
 //     Toda chamada das ferramentas precisa do id da ligação E da mesma identidade.
-//  2) A ferramenta da voz (mandar_ao_salomao) só PREPARA o pedido. O servidor guarda o texto exato e gera um token
+//  2) A ferramenta da voz (mandar_recado) só PREPARA o pedido. O servidor guarda o texto exato e gera um token
 //     aleatório de uso único (3 min). O token vai só para o código da página, nunca para o modelo.
 //  3) Só /api/confirmar envia, e só com token + ligação + identidade certos. Quem chama o confirmar é a página, a
 //     partir de um ato do Igor (toque no botão "Confirmar envio" ou um "sim" falado depois de a voz ler o pedido).
@@ -13,19 +13,21 @@
 //     recusa preparar um pedido que copie esse conteúdo ou que atribua uma ordem ao Igor em 3ª pessoa
 //     ("o Igor mandou pagar X").
 import { randomUUID, randomBytes, createHash, timingSafeEqual } from "node:crypto";
+import { mascarar } from "./acesso.mjs";
+import { leuDestino, resolverLider, textoConfirmacao } from "./lideres.mjs";
 
 export const VIDA_LIGACAO = 2 * 3600e3; // teto de uma ligação (o token do Google vale 30 min; a retomada reaproveita a ligação)
 export const VIDA_PEDIDO = 3 * 60e3;
-const MAX_PEDIDOS_ABERTOS = 2;
 const MAX_ERROS_TOKEN = 3;
 
 const ligacoes = new Map(); // id -> { dono, criada, encerrada, dados: Set<string> (n-gramas do conteúdo não confiável) }
-const pedidos = new Map(); // id -> { ligacao, dono, texto, hash, criado, estado, erros }
+const pedidos = new Map(); // id -> { ligacao, dono, destino, texto, hash, criado, estado, erros }
 
 /** Identidade estável da requisição (posta por acesso.mjs → guarda). */
 export const donoDe = (identidade) => String(identidade?.chave || "");
 
-const hashToken = (t) => createHash("sha256").update(`olli-ligar-token|${t}`).digest();
+const hashToken = (token, p) => createHash("sha256")
+  .update(JSON.stringify([p.ligacao, p.dono, p.destino, p.texto, token])).digest();
 
 export function abrirLigacao(identidade, agora = Date.now()) {
   const dono = donoDe(identidade);
@@ -68,7 +70,7 @@ function ngramas(ps, n = N) {
 export function registrarDado(id, identidade, texto) {
   const l = ligacaoValida(id, identidade);
   if (!l) return false;
-  l.ultimoEstado = Date.now();
+  l.versaoEstado = (l.versaoEstado || 0) + 1;
   for (const linha of String(texto || "").split("\n")) {
     const ps = palavras(linha);
     // 4-gramas (pedidos normais) e 3-gramas (pedido curto de 3 palavras)
@@ -103,19 +105,28 @@ export function cobre(pergunta, texto) {
 }
 
 /** Cria o pedido pendente. Devolve { ok, pedido, token, texto } ou { ok:false, motivo }. */
-export function prepararPedido(id, identidade, texto, agora = Date.now()) {
+export function prepararPedido(id, identidade, destino, texto, agora = Date.now()) {
   const l = ligacaoValida(id, identidade, agora);
   if (!l) return { ok: false, motivo: "ligação inválida" };
+  const lider = resolverLider(destino);
+  if (!lider) return { ok: false, motivo: "escolha um dos oito líderes da OLLI" };
   const t = String(texto || "").trim();
   if (t.length < 3) return { ok: false, motivo: "pedido vazio" };
   const suspeito = origemSuspeita(t, l);
   if (suspeito) return { ok: false, motivo: suspeito, suspeito: true };
+  if (mascarar(t) !== t || /(?:R\$|\b(?:BRL|USD|reais)\s*)\s*\d|\b\d[\d.,]*\s+reais\b/i.test(t)) {
+    return { ok: false, motivo: "use apenas texto operacional, sem dados pessoais ou valores" };
+  }
   limparVelhos(agora);
-  const abertos = [...pedidos.values()].filter((p) => p.ligacao === id && p.estado === "aguardando");
-  if (abertos.length >= MAX_PEDIDOS_ABERTOS) return { ok: false, motivo: "já há pedidos esperando confirmação" };
+  // Uma nova leitura substitui o recado anterior desta ligação, mesmo se o navegador ainda exibir o cartão antigo.
+  for (const p of pedidos.values()) {
+    if (p.ligacao === id && p.estado === "aguardando") p.estado = "cancelado";
+  }
   const pedido = randomUUID(), token = randomBytes(32).toString("base64url");
-  pedidos.set(pedido, { ligacao: id, dono: l.dono, texto: t, hash: hashToken(token), criado: agora, estado: "aguardando", erros: 0 });
-  return { ok: true, pedido, token, texto: t };
+  const p = { ligacao: id, dono: l.dono, destino: lider.terminal, texto: t, versaoEstado: l.versaoEstado, criado: agora, estado: "aguardando", erros: 0 };
+  p.hash = hashToken(token, p);
+  pedidos.set(pedido, p);
+  return { ok: true, pedido, token, destino: p.destino, para: lider.fala, texto: t, leitura: textoConfirmacao(lider, t) };
 }
 
 /**
@@ -123,28 +134,34 @@ export function prepararPedido(id, identidade, texto, agora = Date.now()) {
  * via "botao": o toque do Igor é o ato humano. via "voz": além do token, a fala tem de ser confirmação depois de a voz
  * ler o pedido (`confirmouFn(fala, pergunta)`) e a pergunta tem de cobrir o texto guardado.
  */
-export function confirmarPedido({ ligacao, pedido, token, identidade, via, fala = "", pergunta = "", confirmouFn }, agora = Date.now()) {
+export function confirmarPedido({ ligacao, pedido, token, destino, identidade, via, fala = "", pergunta = "", confirmouFn }, agora = Date.now()) {
   const l = ligacaoValida(ligacao, identidade, agora);
   if (!l) return { ok: false, motivo: "ligação inválida" };
   const p = pedidos.get(String(pedido || ""));
   if (!p || p.ligacao !== ligacao || p.dono !== l.dono) return { ok: false, motivo: "pedido não existe nesta ligação" };
   if (p.estado !== "aguardando") return { ok: false, motivo: p.estado === "usado" ? "pedido já confirmado (token de uso único)" : `pedido ${p.estado}` };
   if (agora - p.criado > VIDA_PEDIDO) { p.estado = "expirado"; return { ok: false, motivo: "pedido expirado" }; }
-  const dado = hashToken(String(token || ""));
+  const dado = hashToken(String(token || ""), p);
   if (!token || !timingSafeEqual(dado, p.hash)) {
     p.erros += 1;
     if (p.erros >= MAX_ERROS_TOKEN) p.estado = "cancelado";
     return { ok: false, motivo: "token de confirmação inválido" };
   }
+  if (destino !== p.destino) {
+    p.estado = "cancelado";
+    return { ok: false, motivo: "o destino do recado mudou; prepare um novo pedido" };
+  }
+  const lider = resolverLider(p.destino);
   if (via !== "botao" && via !== "voz") return { ok: false, motivo: "confirmação sem ato do Igor" };
   if (via === "voz") {
     if (typeof confirmouFn !== "function" || !confirmouFn(fala, pergunta)) return { ok: false, motivo: "a fala não é uma confirmação depois de 'confirma?'" };
+    if (!leuDestino(pergunta, lider)) return { ok: false, motivo: "a voz leu outro destinatário; escute o recado novamente" };
     if (!cobre(pergunta, p.texto)) return { ok: false, motivo: "o que a voz leu não bate com o pedido guardado" };
     // conferido pelo SERVIDOR (não vem do navegador): se a voz leu o estado depois do pedido, o "sim" falado não vale
-    if ((l.ultimoEstado || 0) >= p.criado) return { ok: false, motivo: "o estado da empresa foi lido depois do pedido; confirme no botão da tela" };
+    if (l.versaoEstado !== p.versaoEstado) return { ok: false, motivo: "o estado da empresa foi lido depois do pedido; confirme no botão da tela" };
   }
   p.estado = "usado";
-  return { ok: true, texto: p.texto };
+  return { ok: true, destino: p.destino, para: lider.fala, texto: p.texto, leitura: textoConfirmacao(lider, p.texto) };
 }
 
 export function cancelarPedido(ligacao, pedido, identidade) {

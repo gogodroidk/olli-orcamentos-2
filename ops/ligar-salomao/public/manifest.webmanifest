@@ -1,7 +1,7 @@
 {
-  "name": "Ligar pro Salomão",
-  "short_name": "Salomão",
-  "description": "Chamada de voz ao vivo com o Salomão, o Maestro da equipe OLLI.",
+  "name": "Ligar para a OLLI",
+  "short_name": "OLLI",
+  "description": "Ligação ao vivo com a assistente da OLLI para falar com os líderes.",
   "start_url": "/ligar/",
   "scope": "/ligar/",
   "display": "standalone",

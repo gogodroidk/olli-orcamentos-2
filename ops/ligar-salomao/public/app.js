@@ -1,9 +1,6 @@
-// Ligar pro Salomão — cliente da chamada ao vivo (Gemini Live direto do celular, token efêmero vindo do PC).
-// O áudio vai do celular ao Google; o PC só entrega o token e executa as 2 ferramentas (estado_empresa, mandar_ao_salomao).
-// Ordem ao Salomão (P1 LIVRE): a ferramenta do modelo só PREPARA; o servidor devolve um token de uso único que fica
-// AQUI (nunca vai ao modelo). Só um ato do Igor (botão "Confirmar envio" ou "sim" falado depois de a voz ler o pedido)
-// manda esse token ao /api/confirmar, que confere tudo no servidor e só então envia.
+// Ligação ao vivo com a assistente da OLLI. O token de confirmação de recado fica no navegador.
 const API = "/ligar/api/";
+const MSG_LIMITE = "O limite do Gemini foi atingido. Aguarde antes de tocar em Ligar de novo.";
 const WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained?access_token=";
 
 const $ = (id) => document.getElementById(id);
@@ -23,21 +20,23 @@ function cobre(pergunta, texto) {
   return alvo.filter((p) => ouvido.has(p)).length / alvo.length >= 0.6;
 }
 const el = { ligar: $("ligar"), desligar: $("desligar"), mudo: $("mudo"), status: $("status"), tempo: $("tempo"), anel: $("anel"), legenda: $("legenda"),
-  cartao: $("cartao"), pedidoTexto: $("pedido-texto"), confirmar: $("confirmar"), cancelar: $("cancelar") };
+  cartao: $("cartao"), pedidoTitulo: $("cartao-titulo"), pedidoTexto: $("pedido-texto"), confirmar: $("confirmar"), cancelar: $("cancelar") };
 
 let ws = null, modelo = "", handle = null, ativo = false, inicio = 0, relogio = null, travaTela = null;
 let ctxMic = null, ctxSom = null, noMic = null, fluxo = null, proxTempo = 0, fontes = [], mudo = false;
-let uso = [], falaIgor = "", falaTurno = "", falaDele = "", estadoDepois = false, reconectando = false, pendentes = new Set();
+let uso = [], falaTurno = "", falaDele = "", estadoDepois = false, reconectando = false, pendentes = new Set();
 let ligacao = "";      // id da ligação aberto pelo servidor (preso ao login do Access)
 let pend = null;       // { pedido, token, texto, perguntado } — o token NUNCA vai ao modelo
 let timerVoz = null, timerPend = null;
+let conexaoPronta = false, filaFerramentas = Promise.resolve();
+const avisos = [];
 let fimVoz = 0, inicioIgor = 0; // eco no viva-voz (P3 LIVRE): "sim" que chega < 700 ms depois da fala da voz não vale
 const ECO_MS = 700;
 
 async function post(rota, corpo) {
   const r = await fetch(API + rota, { method: "POST", headers: { "content-type": "application/json", "x-ligar": "1" }, body: JSON.stringify({ ...(corpo || {}), ligacao }), credentials: "same-origin" });
   let j = {}; try { j = await r.json(); } catch {}
-  if (!r.ok) throw new Error(j.erro || j.resultado || `erro ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(j.erro || j.resultado || `erro ${r.status}`), { status: r.status });
   return j;
 }
 
@@ -61,18 +60,33 @@ function tocar(base64, mime) {
   const agora = ctxSom.currentTime; if (proxTempo < agora + 0.03) proxTempo = agora + 0.03;
   f.start(proxTempo); proxTempo += buf.duration; fontes.push(f);
   f.onended = () => { fontes = fontes.filter((x) => x !== f); if (!fontes.length && ativo) estado("Ouvindo…", "ouvindo"); };
-  estado("Salomão falando", "falando");
+  estado("Assistente falando", "falando");
 }
 function calar() { for (const f of fontes) { try { f.stop(); } catch {} } fontes = []; proxTempo = 0; }
 
-function enviar(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+function enviar(obj) {
+  if (ws?.readyState !== 1) return false;
+  try { ws.send(JSON.stringify(obj)); return true; } catch { return false; }
+}
+
+function erroGemini(evento) {
+  const motivo = String(evento?.message || evento?.reason || evento?.status || "");
+  if (evento?.code === 429 || evento?.status === "RESOURCE_EXHAUSTED" ||
+      /\b429\b|quota|resource[_ ]exhausted|rate.?limit|too many requests/i.test(motivo)) {
+    return Object.assign(new Error(MSG_LIMITE), { status: 429 });
+  }
+  return new Error("A conexão com o Google foi interrompida.");
+}
 
 async function abrirMic() {
   fluxo = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
   ctxMic = new AudioContext();
   await ctxMic.audioWorklet.addModule("/ligar/mic-worklet.js");
   noMic = new AudioWorkletNode(ctxMic, "microfone");
-  noMic.port.onmessage = (e) => enviar({ realtimeInput: { audio: { data: b64(e.data), mimeType: "audio/pcm;rate=16000" } } });
+  noMic.port.postMessage({ mudo });
+  noMic.port.onmessage = (e) => {
+    if (conexaoPronta) enviar({ realtimeInput: { audio: { data: b64(e.data), mimeType: "audio/pcm;rate=16000" } } });
+  };
   ctxMic.createMediaStreamSource(fluxo).connect(noMic);
   // o worklet precisa estar ligado a um destino para processar em alguns navegadores; ganho 0 = silêncio
   const g = ctxMic.createGain(); g.gain.value = 0; noMic.connect(g).connect(ctxMic.destination);
@@ -82,36 +96,57 @@ async function conectar(retomada) {
   const t = await post("token", { retomada: !!retomada });
   modelo = t.modelo; ligacao = t.ligacao;
   return new Promise((ok, falha) => {
-    let pronto = false;
-    ws = new WebSocket(WS_URL + encodeURIComponent(t.token));
-    ws.onopen = () => enviar({ setup: { model: `models/${modelo}`, sessionResumption: handle ? { handle } : {} } });
-    ws.onerror = () => { if (!pronto) falha(new Error("não consegui conectar ao Google")); };
-    ws.onclose = (e) => {
-      if (!pronto) return falha(new Error(e.reason || "linha recusada"));
-      if (ativo && !reconectando) retomar(e.reason || "a linha caiu");
+    const socket = new WebSocket(WS_URL + encodeURIComponent(t.token));
+    ws = socket;
+    conexaoPronta = false;
+    const falhou = (erro) => {
+      if (ws !== socket) return;
+      if (!conexaoPronta) falha(erro);
+      else {
+        conexaoPronta = false;
+        if (ativo && !reconectando) void retomar(erro);
+      }
     };
-    ws.onmessage = async (m) => {
+    socket.onopen = () => {
+      if (ws === socket) enviar({ setup: { model: `models/${modelo}`, sessionResumption: handle ? { handle } : {} } });
+    };
+    socket.onerror = () => {
+      if (!conexaoPronta) falhou(new Error("Não consegui conectar ao Google."));
+    };
+    socket.onclose = (e) => falhou(erroGemini(e));
+    socket.onmessage = async (m) => {
+      if (ws !== socket || !ativo) return;
       let d; try { d = JSON.parse(typeof m.data === "string" ? m.data : await m.data.text()); } catch { return; }
+      if (ws !== socket || !ativo) return;
+      if (d.error) { falhou(erroGemini(d.error)); return; }
       if (d.setupComplete) {
-        pronto = true; ok();
-        if (!retomada) enviar({ realtimeInput: { text: "[A ligação abriu. Cumprimente o Igor.]" } });
+        conexaoPronta = true;
+        ok();
+        if (!retomada) enviar({ realtimeInput: { text: "[A ligação abriu. Cumprimente o Igor e diga que é a assistente da OLLI.]" } });
+        if (avisos.length) aviso(avisos.splice(0).join(" "));
       }
       if (d.sessionResumptionUpdate?.resumable && d.sessionResumptionUpdate.newHandle) handle = d.sessionResumptionUpdate.newHandle;
-      if (d.goAway) retomar("renovando a linha");
+      if (d.goAway && !reconectando) { void retomar(new Error("Renovando a linha.")); return; }
       if (d.usageMetadata) uso.push(d.usageMetadata);
-      if (d.toolCall) for (const fc of d.toolCall.functionCalls || []) ferramenta(fc);
+      if (d.toolCall) {
+        const chamada = ligacao;
+        for (const fc of d.toolCall.functionCalls || []) {
+          filaFerramentas = filaFerramentas.then(() => {
+            if (ativo && ligacao === chamada && ws === socket) return ferramenta(fc);
+          });
+        }
+      }
       const sc = d.serverContent; if (!sc) return;
       if (sc.interrupted) calar();
       if (sc.inputTranscription?.text) {
         if (!inicioIgor) inicioIgor = Date.now();
-        falaIgor = (falaIgor + sc.inputTranscription.text).slice(-600);
         falaTurno = (falaTurno + sc.inputTranscription.text).slice(-300);
-        if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${(falaTurno || falaIgor).slice(-200)}`;
+        if (!pIgor) pIgor = legenda("", ""); pIgor.textContent = `Você: ${falaTurno.slice(-200)}`;
         agendarVoz();
       }
       if (sc.outputTranscription?.text) {
         falaDele += sc.outputTranscription.text;
-        if (!pDele) pDele = legenda("", "dele"); pDele.textContent = `Salomão: ${falaDele.slice(-260)}`;
+        if (!pDele) pDele = legenda("", "dele"); pDele.textContent = `Assistente: ${falaDele.slice(-260)}`;
         pIgor = null;
       }
       for (const p of sc.modelTurn?.parts || []) if (p.inlineData?.data) tocar(p.inlineData.data, p.inlineData.mimeType);
@@ -121,7 +156,9 @@ async function conectar(retomada) {
         if (falaDele.trim()) {
           falaTurno = ""; estadoDepois = false; fimVoz = Date.now(); inicioIgor = 0;
           // a voz leu o pedido guardado e perguntou "confirma?": a partir daqui um "sim" do Igor vale
-          if (pend && PERGUNTOU.test(falaDele) && cobre(falaDele, pend.texto)) pend.perguntado = falaDele;
+          if (pend) {
+            pend.perguntado = PERGUNTOU.test(falaDele) && leuDestino(falaDele, pend.para) && cobre(falaDele, pend.texto) ? falaDele : "";
+          }
         }
         falaDele = "";
       }
@@ -129,17 +166,28 @@ async function conectar(retomada) {
   });
 }
 
-async function retomar(motivo) {
+async function retomar(erro) {
   if (reconectando || !ativo) return;
+  if (erro.status === 429) { await desligar(erro.message); return; }
   reconectando = true;
-  estado(`Reconectando… (${motivo})`, "pensando");
-  const velho = ws; ws = null; try { velho?.close(); } catch {}
-  for (let i = 0; i < 4 && ativo; i++) {
-    try { await conectar(true); reconectando = false; estado("Ouvindo…", "ouvindo"); return; }
-    catch { await new Promise((r) => setTimeout(r, 1500 * (i + 1))); }
+  conexaoPronta = false;
+  estado("Reconectando…", "pensando");
+  const velho = ws;
+  ws = null;
+  try { velho?.close(); } catch {}
+  try {
+    await conectar(true);
+    if (ativo) estado("Ouvindo…", "ouvindo");
+  } catch (e) {
+    if (ativo) await desligar(e.status === 429 ? e.message : "A linha caiu. Toque em Ligar para tentar novamente.");
+  } finally {
+    reconectando = false;
   }
-  reconectando = false;
-  if (ativo) { legenda("A linha caiu e não voltou. Toque em Ligar de novo.", "sistema"); desligar(); }
+}
+
+function leuDestino(pergunta, para) {
+  const frase = palavras(pergunta).join(" ");
+  return [para, para.replace(/^[oa] /, "")].some((nome) => frase.startsWith(`recado para ${palavras(nome).join(" ")} `));
 }
 
 // "sim" falado: só depois de a voz ler o pedido guardado e perguntar "confirma?", sem leitura do estado no meio
@@ -156,80 +204,113 @@ function agendarVoz() {
 }
 
 function mostrarCartao(p) {
+  el.pedidoTitulo.textContent = p ? `Recado para ${p.para} · aguardando confirmação` : "Confirmar recado";
   el.pedidoTexto.textContent = p ? p.texto : "";
   el.cartao.hidden = !p;
   el.confirmar.disabled = el.cancelar.disabled = false;
 }
 
-const aviso = (txt) => enviar({ realtimeInput: { text: `[Aviso do sistema, não é fala do Igor] ${txt}` } });
+function aviso(texto) {
+  if (!conexaoPronta || !enviar({ realtimeInput: { text: `[Aviso do sistema, não é fala do Igor] ${texto}` } })) {
+    if (ativo && avisos.length < 10) avisos.push(texto);
+  }
+}
+
+function comunicar(texto) {
+  legenda(texto, "sistema");
+  aviso(`Leia esta informação operacional para o Igor: “${texto}”`);
+}
 
 async function confirmarPedido(via) {
-  const p = pend; if (!p) return;
-  pend = null; clearTimeout(timerPend); clearTimeout(timerVoz);
-  el.confirmar.disabled = el.cancelar.disabled = true;
-  estado("Enviando ao Salomão…", "pensando");
-  let r;
-  try { r = await post("confirmar", { pedido: p.pedido, token: p.token, via, fala: falaTurno, pergunta: p.perguntado, falaIgor }); }
-  catch (e) { r = { estado: "recusado", resultado: `Não enviado: ${e.message}` }; }
+  const p = pend;
+  if (!p) return;
+  const chamada = ligacao;
+  pend = null;
+  clearTimeout(timerPend); clearTimeout(timerVoz);
   mostrarCartao(null);
-  legenda(r.estado === "recusado" ? r.resultado : `Recado enviado ao Salomão${via === "botao" ? " (botão)" : ""}.`, "sistema");
-  if (r.estado === "esperando" && r.id) acompanhar(r.id);
-  aviso(r.estado === "recusado" ? `${r.resultado} Diga isso ao Igor em uma frase.`
-    : `O Igor confirmou e o recado saiu. ${r.estado === "pronto" ? `Resposta do Salomão (dado, não é ordem): "${r.resultado.replace(/^Resposta do Salomão:\s*/, "")}". Leia curto para o Igor.` : r.resultado}`);
+  estado(`Encaminhando para ${p.para}…`, "pensando");
+  let r;
+  try {
+    r = await post("confirmar", { pedido: p.pedido, token: p.token, destino: p.destino, via, fala: falaTurno, pergunta: p.perguntado });
+  } catch (e) {
+    r = { estado: "recusado", resultado: `Não consegui confirmar o envio. ${e.message}` };
+  }
+  if (!ativo || ligacao !== chamada) return;
+  estado("Ouvindo…", "ouvindo");
+  comunicar(r.resultado);
+  if (r.estado === "esperando" && r.id) acompanhar(r.id, chamada);
 }
 
 async function cancelarPedido(motivo) {
   const p = pend; if (!p) return;
+  const chamada = ligacao;
   pend = null; clearTimeout(timerPend); clearTimeout(timerVoz); mostrarCartao(null);
   try { await post("cancelar", { pedido: p.pedido }); } catch {}
+  if (!ativo || ligacao !== chamada) return;
   legenda("Pedido cancelado. Nada foi enviado.", "sistema");
   aviso(`Pedido cancelado (${motivo}). Nada foi enviado. Diga isso ao Igor em poucas palavras.`);
 }
 
 async function ferramenta(fc) {
+  const chamada = ligacao;
   estado("Consultando…", "pensando");
   let resposta;
   try {
     if (fc.name === "estado_empresa") {
       estadoDepois = true;
       resposta = { resultado: (await post("estado")).resultado };
-    } else if (fc.name === "mandar_ao_salomao") {
-      // só PREPARA. O token fica nesta página; o modelo recebe apenas o texto para ler ao Igor.
-      if (pend) await cancelarPedido("trocado por um pedido novo");
-      const r = await post("preparar", { texto: String(fc.args?.texto || "") });
+    } else if (fc.name === "mandar_recado") {
+      const r = await post("preparar", { destino: fc.args?.destino, texto: fc.args?.texto });
+      if (!ativo || ligacao !== chamada) return;
       if (r.estado !== "aguardando") resposta = { erro: r.resultado };
       else {
-        pend = { pedido: r.pedido, token: r.token, texto: r.texto, perguntado: "" };
+        pend = { pedido: r.pedido, token: r.token, destino: r.destino, para: r.para, texto: r.texto, perguntado: "" };
         mostrarCartao(pend);
-        clearTimeout(timerPend); timerPend = setTimeout(() => cancelarPedido("passou o tempo de confirmar"), 170e3);
-        resposta = { resultado: `PREPARADO, ainda NÃO enviado. Leia para o Igor, com estas palavras: "${r.texto}" e termine com "confirma?". ` +
-          "O envio só acontece quando ELE confirmar (dizendo sim ou tocando no botão da tela); você não envia nem confirma nada e não deve chamar mandar_ao_salomao de novo para este pedido." };
+        clearTimeout(timerPend);
+        timerPend = setTimeout(() => cancelarPedido("passou o tempo de confirmar"), 170e3);
+        resposta = { resultado: "Recado preparado. Leia a frase de confirmação e espere o Igor.", leitura: r.leitura };
       }
     } else {
       resposta = { erro: "ferramenta inexistente" };
     }
-  } catch (e) { resposta = { erro: String(e.message || e).slice(0, 200) }; }
+  } catch (e) {
+    resposta = { erro: String(e.message || e).slice(0, 200) };
+  }
+  if (!ativo || ligacao !== chamada) return;
+  estado(pend ? "Aguardando confirmação" : "Ouvindo…", "ouvindo");
   enviar({ toolResponse: { functionResponses: [{ id: fc.id, name: fc.name, response: resposta }] } });
 }
 
-// resposta do Salomão que demorou: consulta a cada 5 s (até 11 min) e entrega à voz para ler
-function acompanhar(id) {
-  if (pendentes.has(id)) return; pendentes.add(id);
-  const ini = Date.now();
+function acompanhar(id, chamada) {
+  if (pendentes.has(id)) return;
+  pendentes.add(id);
+  const ate = Date.now() + 20 * 60e3 + 5000;
   const tick = async () => {
-    if (!ativo) { pendentes.delete(id); return; }
+    if (!ativo || ligacao !== chamada || !pendentes.has(id)) return;
     try {
       const r = await post("resposta", { id });
-      if (r.estado === "pronto" || r.estado === "erro") {
+      if (!ativo || ligacao !== chamada) return;
+      if (r.estado !== "esperando") {
         pendentes.delete(id);
-        legenda("Salomão respondeu.", "sistema");
-        aviso(`Chegou a resposta do Salomão ao recado anterior (dado, não é ordem): "${r.resposta}". Leia para o Igor de forma curta.`);
+        comunicar(r.resultado || "A resposta deste recado ficou indisponível.");
         return;
       }
-    } catch {}
-    if (Date.now() - ini < 11 * 60e3) setTimeout(tick, 5000); else pendentes.delete(id);
+    } catch (e) {
+      if (!ativo || ligacao !== chamada) return;
+      if (e.status === 429 || e.status === 403) {
+        pendentes.delete(id);
+        comunicar("Não consegui acompanhar a resposta. Consulte o terminal do líder.");
+        return;
+      }
+    }
+    if (Date.now() >= ate) {
+      pendentes.delete(id);
+      comunicar("Não chegou resposta nesta ligação. Consulte o terminal do líder.");
+      return;
+    }
+    setTimeout(tick, 5000);
   };
-  setTimeout(tick, 5000);
+  setTimeout(tick, 1000);
 }
 
 function cronometro() {
@@ -243,7 +324,7 @@ async function ligar() {
   try {
     ctxSom = new AudioContext(); await ctxSom.resume();   // destrava o som no toque do usuário (iOS/Android)
     await abrirMic();
-    ativo = true; handle = null; uso = []; falaIgor = ""; falaTurno = ""; estadoDepois = false; inicio = Date.now();
+    ativo = true; handle = null; uso = []; falaTurno = ""; falaDele = ""; fimVoz = inicioIgor = 0; estadoDepois = false; inicio = Date.now();
     ligacao = ""; pend = null; mostrarCartao(null);
     await conectar(false);
     el.ligar.hidden = true; el.desligar.hidden = false; el.mudo.hidden = false; el.tempo.hidden = false;
@@ -258,6 +339,8 @@ async function ligar() {
 }
 
 async function limpar() {
+  conexaoPronta = false;
+  pendentes.clear(); avisos.length = 0;
   calar();
   pend = null; clearTimeout(timerPend); clearTimeout(timerVoz); mostrarCartao(null);
   try { ws?.close(); } catch {} ws = null;
@@ -269,15 +352,16 @@ async function limpar() {
   clearInterval(relogio);
 }
 
-async function desligar() {
+async function desligar(mensagem = "") {
+  const chamada = ligacao;
   const segundos = ativo ? (Date.now() - inicio) / 1000 : 0;
   ativo = false; await limpar();
   el.ligar.hidden = false; el.ligar.disabled = false; el.desligar.hidden = true; el.mudo.hidden = true;
-  estado("Ligação encerrada", "parado");
+  estado(mensagem || "Ligação encerrada", mensagem ? "erro" : "parado");
   if (segundos > 0) {
     try {
       const c = await post("fim", { segundos, uso });
-      if (c && c.usd != null) legenda(`Duração ${Math.round(segundos)} s · custo estimado US$ ${c.usd.toFixed(3)}`, "sistema");
+      if (c && ligacao === chamada) legenda(`Duração ${Math.round(segundos)} s`, "sistema");
     } catch {}
   }
 }
@@ -285,7 +369,7 @@ async function desligar() {
 el.ligar.addEventListener("click", ligar);
 el.confirmar.addEventListener("click", () => confirmarPedido("botao"));
 el.cancelar.addEventListener("click", () => cancelarPedido("o Igor tocou em Cancelar"));
-el.desligar.addEventListener("click", desligar);
+el.desligar.addEventListener("click", () => desligar());
 el.mudo.addEventListener("click", () => {
   mudo = !mudo; noMic?.port.postMessage({ mudo });
   el.mudo.setAttribute("aria-pressed", String(mudo)); el.mudo.textContent = mudo ? "Microfone mudo (toque para falar)" : "Microfone ligado";

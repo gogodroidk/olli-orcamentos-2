@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// "Ligar pro Salomão" — servidor local (127.0.0.1) da página de chamada por voz ao vivo (CQ-LIGAR-SALOMAO, 18/11/2026).
+// "Ligar para a OLLI" — servidor local (127.0.0.1) da página de chamada por voz ao vivo (CQ-LIGAR-SALOMAO, 18/11/2026).
 // Rotas (todas sob /ligar/):
 //   GET  /ligar/                 página (PWA)
 //   POST /ligar/api/token        abre (ou retoma) a LIGAÇÃO no servidor + token efêmero do Gemini Live (config travada)
 //   POST /ligar/api/estado       ferramenta estado_empresa (só leitura; o conteúdo vai cercado como dado não confiável)
-//   POST /ligar/api/preparar     ferramenta mandar_ao_salomao: só PREPARA o pedido (texto guardado + token de uso único)
+//   POST /ligar/api/preparar     ferramenta mandar_recado: só PREPARA o pedido (texto guardado + token de uso único)
 //   POST /ligar/api/confirmar    ato do Igor (botão ou "sim" falado): confere o token no servidor e só então envia
 //   POST /ligar/api/cancelar     o Igor desistiu do pedido
 //   POST /ligar/api/resposta     consulta a resposta pendente de um recado
@@ -17,9 +17,9 @@ import { readFileSync, existsSync, appendFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, normalize } from "node:path";
 import { guarda, postSeguro, log, DIR_DADOS, mascarar } from "./lib/acesso.mjs";
-import { estadoEmpresa, mandarAoSalomao, consultarPedido, limparTexto, confirmou } from "./lib/ferramentas.mjs";
+import { estadoEmpresa, mandarRecado, consultarPedido, limparTexto, confirmou } from "./lib/ferramentas.mjs";
 import { abrirLigacao, ligacaoValida, encerrarLigacao, registrarDado, prepararPedido, confirmarPedido, cancelarPedido } from "./lib/confirmacao.mjs";
-import { criarToken, MODELO, VOZ } from "./lib/voz.mjs";
+import { criarToken, LimiteGeminiError, MODELO, VOZ } from "./lib/voz.mjs";
 import { custoDaLigacao } from "./lib/custo.mjs";
 
 const PORTA = Number(process.env.LIGAR_PORTA || 8796);
@@ -86,13 +86,22 @@ export const servidor = createServer(async (req, res) => {
       // retomada só da ligação desta mesma identidade; ligação nova = id novo do servidor
       let ligacao = b.retomada ? String(b.ligacao || "") : "";
       if (ligacao && !ligacaoValida(ligacao, quem)) return json(res, 403, { erro: "ligação inválida; toque em Ligar de novo" });
-      if (!ligacao) ligacao = abrirLigacao(quem);
+      const nova = !ligacao;
+      if (nova) ligacao = abrirLigacao(quem);
       if (!ligacao) return json(res, 403, { erro: "sem identidade" });
       try {
         const t = await _deps.criarToken({ minutos: 30 });
         log("token", { modelo: t.modelo, retomada: !!b.retomada, via: quem?.via });
         return json(res, 200, { token: t.token, modelo: t.modelo, expira: t.expira, ligacao });
-      } catch (e) { log("token_falhou", { erro: mascarar(e.message).slice(0, 200) }); return json(res, 502, { erro: "não consegui abrir a linha com o Google agora" }); }
+      } catch (e) {
+        if (nova) encerrarLigacao(ligacao, quem);
+        if (e instanceof LimiteGeminiError) {
+          log("limite_gemini", { etapa: "token", retomada: !!b.retomada });
+          return json(res, 429, { erro: e.message });
+        }
+        log("token_falhou", { erro: mascarar(e.message).slice(0, 200) });
+        return json(res, 502, { erro: "não consegui abrir a linha com o Google agora" });
+      }
     }
     const ligacao = String(b.ligacao || "");
     if (!ligacaoValida(ligacao, quem)) { log("ligacao_invalida", { rota }); return json(res, 403, { erro: "ligação inválida" }); }
@@ -106,29 +115,26 @@ export const servidor = createServer(async (req, res) => {
     }
     if (rota === "api/preparar") {
       if (!dentroDoLimite("preparar", 10, 10 * 60e3)) return json(res, 429, { estado: "recusado", resultado: "Muitos pedidos seguidos; nada foi preparado." });
-      const r = prepararPedido(ligacao, quem, limparTexto(b.texto, 800));
+      const texto = typeof b.texto === "string" ? limparTexto(b.texto, 800) : "";
+      const r = prepararPedido(ligacao, quem, b.destino, texto);
       if (!r.ok) {
-        log(r.suspeito ? "pedido_suspeito" : "pedido_recusado", { motivo: r.motivo, texto: mascarar(limparTexto(b.texto, 200)) });
+        log(r.suspeito ? "pedido_suspeito" : "pedido_recusado", { motivo: r.motivo });
         return json(res, 200, { estado: "recusado", resultado: `Não preparado: ${r.motivo}. Nada foi enviado.` });
       }
-      log("pedido_preparado", { pedido: r.pedido, texto: mascarar(r.texto).slice(0, 200) });
-      return json(res, 200, { estado: "aguardando", pedido: r.pedido, token: r.token, texto: r.texto });
+      log("pedido_preparado", { pedido: r.pedido, destino: r.destino });
+      return json(res, 200, { estado: "aguardando", pedido: r.pedido, token: r.token, destino: r.destino, para: r.para, texto: r.texto, leitura: r.leitura });
     }
     if (rota === "api/confirmar") {
       if (!dentroDoLimite("confirmar", 10, 10 * 60e3)) return json(res, 429, { estado: "recusado", resultado: "Muitas confirmações seguidas; nada foi enviado." });
       const c = confirmarPedido({
-        ligacao, pedido: b.pedido, token: b.token, identidade: quem, via: b.via,
+        ligacao, pedido: b.pedido, token: b.token, destino: b.destino, identidade: quem, via: b.via,
         fala: limparTexto(b.fala, 300), pergunta: limparTexto(b.pergunta, 600), confirmouFn: confirmou,
       });
       if (!c.ok) {
         log("confirmacao_recusada", { motivo: c.motivo, via: String(b.via || "").slice(0, 10) });
         return json(res, 200, { estado: "recusado", resultado: `Não enviado: ${c.motivo}.` });
       }
-      const r = await mandarAoSalomao(c.texto, limparTexto(b.falaIgor, 600), { pergunta: limparTexto(b.pergunta, 400), via: b.via, dono: ligacao });
-      const resultado = r.estado === "pronto" ? `Resposta do Salomão: ${r.resposta}`
-        : r.estado === "esperando" ? "Recado entregue ao Salomão. A resposta dele ainda não chegou; aviso quando chegar."
-        : r.resposta;
-      return json(res, 200, { id: r.id || null, codigo: r.codigo || null, estado: r.estado, resultado });
+      return json(res, 200, mandarRecado(c.destino, c.texto, { via: b.via, dono: ligacao }));
     }
     if (rota === "api/cancelar") {
       const ok = cancelarPedido(ligacao, b.pedido, quem);
@@ -157,5 +163,5 @@ export const servidor = createServer(async (req, res) => {
 });
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === normalize(process.argv[1])) {
-  servidor.listen(PORTA, "127.0.0.1", () => console.log(`Ligar pro Salomão: http://127.0.0.1:${PORTA}${BASE}/  (modelo ${MODELO}, voz ${VOZ})`));
+  servidor.listen(PORTA, "127.0.0.1", () => console.log(`Ligar para a OLLI: http://127.0.0.1:${PORTA}${BASE}/  (modelo ${MODELO}, voz ${VOZ})`));
 }
