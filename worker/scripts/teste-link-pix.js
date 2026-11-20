@@ -541,4 +541,29 @@ await caso('a página pede o user_id do dono (sem ele não há como ler o plano)
   assert.ok(get && /select=[^&]*user_id/.test(get.url));
 });
 
+// ── Defeitos de tela achados na ronda de 20/11 (print em 390 px) ──────────────────────────────
+await caso('Pix copia e cola: a caixa tem linhas para o código inteiro (a última linha, com o CRC, não fica cortada)', async () => {
+  const { html } = await pagina(linhaBase());
+  const codigo = codigoDaPagina(html);
+  const rows = Number(/<textarea id="pixCodigo"[^>]*rows="(\d+)"/.exec(html)?.[1]);
+  assert.ok(codigo && rows >= Math.ceil(codigo.length / 32), `rows=${rows} para ${codigo?.length} caracteres`);
+  assert.ok(rows >= 4, 'nunca menos de 4 linhas');
+});
+
+await caso('link pendente: "Aprovar orçamento" vem ANTES do "Como funciona" e a frase repetida saiu', async () => {
+  const { html } = await pagina(linhaBase({ status: 'enviado' }));
+  const iBotao = html.indexOf('id="btnAprovar"');
+  const iComo = html.indexOf('<div class="cf-t">Como funciona</div>');
+  assert.ok(iBotao > 0 && iComo > 0, 'os dois existem');
+  assert.ok(iBotao < iComo, 'o botão de aprovar vem primeiro (fica na primeira tela do celular)');
+  assert.doesNotMatch(html, /sem cadastro e sem burocracia/);
+  assert.equal((html.match(/sem cadastro/g) || []).length, 1, '"sem cadastro" dito uma vez só');
+});
+
+await caso('texto pequeno legível: nenhum cinza claro (#9AA3B2 / #8A93A2) em texto da página', async () => {
+  const { html } = await pagina(linhaBase({ status: 'enviado' }));
+  assert.doesNotMatch(html, /color:#9AA3B2|color:#8A93A2/i);
+  assert.doesNotMatch(html, /\.cond-l\{font-size:9\.5px/);
+});
+
 console.log(`\nteste-link-pix: ${ok} casos OK`);
