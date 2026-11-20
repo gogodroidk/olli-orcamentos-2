@@ -21,6 +21,23 @@ export function lerIntencaoPlano(search: string): IntencaoPlano | null {
 	};
 }
 
+/** Parâmetro que pede para abrir o Pix do plano da intenção (`?plano=pro&pagar=pix`). */
+export const PARAM_PAGAR = "pagar";
+
+/**
+ * O `pagar=pix` só abre o Pix quando é seguro: Pix confirmado ligado, quem paga é o dono
+ * da conta e ela está no Grátis ou no teste do Pro (pagar no teste é permitido). Plano
+ * pago, leitura com erro ou membro da equipe: nada abre sozinho.
+ */
+export function podeAbrirPixDaIntencao(e: {
+	pixLigado: boolean;
+	membroNaoDono: boolean;
+	resumo: { planoEfetivo: string; origem?: string | null } | null;
+}): boolean {
+	if (!e.pixLigado || e.membroNaoDono || !e.resumo) return false;
+	return e.resumo.planoEfetivo === "gratis" || e.resumo.origem === "trial";
+}
+
 export function destinoDepoisDoLogin(intencao: IntencaoPlano | null): string | null {
 	if (!intencao) return null;
 	return `/planos?plano=${intencao.plano}&periodo=${intencao.periodo}&origem=landing`;
