@@ -11,6 +11,7 @@
  *   POST /admin/api/user/delete?id=<uid> → excluir (conta + dados via cascade)
  *   POST /admin/api/me/password          → trocar a própria senha (do admin)
  *   GET  /admin/api/funil?semanas=12     → funil de receita por coorte semanal (sem PII)
+ *   GET  /admin/api/lojas                → cadastros por loja parceira (utm_source=loja; sem PII)
  *   POST /admin/api/funil/exclusao?id=   → tirar/devolver uma conta interna do funil
  *   GET  /admin/api/creditos-troca       → pedidos de crédito de troca (ver creditoTroca.js)
  *   GET  /admin/api/creditos-troca/comprovante?id= → URL assinada do print do pedido
@@ -58,6 +59,7 @@ import {
 } from './adminDataPolicy.js';
 import { montarFunil, semanasFunil } from './funilReceita.js';
 import { FUNIL_USO_MAX_LINHAS, resumirFunilUso } from './funilUso.js';
+import { contarPorLoja } from './lojasParceiras.js';
 import { CREDITO_TROCA_MESES_MAX, decidirPedidoTroca, listarPedidosTroca, urlComprovante } from './creditoTroca.js';
 import { saldoCreditos } from './creditos.js';
 import { PLANO_PIX } from './mercadopago.js';
@@ -439,6 +441,23 @@ async function metrics(env) {
     taxaAtivacao: orcamentosOk ? (users.length ? Math.round((ativados / users.length) * 100) : 0) : null,
     receita,
   });
+}
+
+async function lojasParceiras(env) {
+  // Aba "Lojas" (Balcão OLLI, D-2711): cadastros por código de loja, só contagens, contas internas fora. Leitura que
+  // falha vira erro explícito ou coluna `null`; "não consegui ler" nunca aparece como "0 cadastros".
+  const [todosUsuarios, orcs, exclusoes, admins] = await Promise.all([
+    listAuthUsers(env),
+    lerEstado(env, 'orcamentos?select=user_id'),
+    lerEstado(env, 'funil_exclusoes?select=user_id,email'),
+    lerEstado(env, 'admin_memberships?select=user_id'),
+  ]);
+  if (!todosUsuarios.length) return json({ ok: false, erro: 'usuarios_ilegiveis' }, 503);
+  if (!exclusoes.ok || !admins.ok) return json({ ok: false, erro: 'contas_internas_ilegiveis' }, 503);
+  const contexto = contextoContasInternas({ emailsDono: emailsForaDoFunil(env), exclusoes: exclusoes.dados, admins: admins.dados });
+  const { idsInternas } = particionarContas(todosUsuarios, contexto, true);
+  const idsComOrcamento = orcs.ok ? new Set(orcs.dados.map((o) => o.user_id).filter(Boolean)) : null;
+  return json({ ok: true, ...contarPorLoja({ usuarios: todosUsuarios, idsInternas, idsComOrcamento }) });
 }
 
 async function funilUso(env) {
@@ -1224,6 +1243,9 @@ export async function handleAdmin(request, env, url) {
     if (m === 'GET' && p === '/admin/api/metrics') {
       if ((gate = exigir(user, 'admin', { aal2: true }))) return gate;
       return metrics(env);
+    }
+    if (m === 'GET' && p === '/admin/api/lojas') {
+      return exigir(user, 'admin', { aal2: true }) || lojasParceiras(env);
     }
     if (m === 'GET' && p === '/admin/api/funil-uso') {
       return exigir(user, 'admin', { aal2: true }) || funilUso(env);
