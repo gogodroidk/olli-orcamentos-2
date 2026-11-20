@@ -36,6 +36,18 @@ export async function novaPagina(browser, { viewport = CELULAR, escala = 2 } = {
     isMobile: viewport.width < 900,
   });
 
+  // TELAS_TEMA=claro|escuro grava a preferência de tema do app (`olli.tema.v1`,
+  // AsyncStorage → localStorage na web) ANTES de qualquer script da página. Sem
+  // isto o app abre no padrão dele (hoje ESCURO, `PADRAO_MODO` em TemaProvider) e
+  // uma tela recapturada sai em tema diferente das outras da mesma página.
+  // Opt-in de propósito: não muda o que `loja.mjs` e `capturar-telas.mjs` fazem.
+  const tema = process.env.TELAS_TEMA;
+  if (tema === 'claro' || tema === 'escuro') {
+    await context.addInitScript((modo) => {
+      try { localStorage.setItem('olli.tema.v1', JSON.stringify({ modo })); } catch { /* sem storage: fica o padrão */ }
+    }, tema);
+  }
+
   // Relógio congelado ANTES de qualquer script da página rodar: o que a UI
   // imprime ("Sexta, 18 de julho", "há 2 dias", saudação por hora do dia) tem
   // de ser idêntico em toda rodada.
