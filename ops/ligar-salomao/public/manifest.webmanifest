@@ -1,0 +1,17 @@
+{
+  "name": "Ligar pro Salomão",
+  "short_name": "Salomão",
+  "description": "Chamada de voz ao vivo com o Salomão, o Maestro da equipe OLLI.",
+  "start_url": "/ligar/",
+  "scope": "/ligar/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07111F",
+  "theme_color": "#07111F",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/ligar/icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/ligar/icone-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/ligar/icone-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
