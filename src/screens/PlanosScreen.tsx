@@ -205,8 +205,10 @@ interface LinhaComparativo {
 /** Recursos base (não gateados): livres em todos os planos — a alma do Grátis. */
 const LINHAS_BASE: LinhaComparativo[] = [
   { rotulo: 'Orçamentos: PDF, link e WhatsApp', gratis: CELULA_ORCAMENTOS_GRATIS, pro: 'Ilimitados', empresa: 'Ilimitados' },
-  { rotulo: 'Rascunhos, recibos, clientes e histórico', gratis: true, pro: true, empresa: true },
-  { rotulo: 'Catálogo, clientes e agenda', gratis: true, pro: true, empresa: true },
+  // Recibos e agenda NÃO ficam aqui: saíram do Grátis (D-2267) e aparecem nas linhas geradas dos
+  // recursos com cadeado, com ✗ no Grátis. Dizer ✓ nas duas tabelas contradizia a própria tela.
+  { rotulo: 'Rascunhos, clientes e histórico', gratis: true, pro: true, empresa: true },
+  { rotulo: 'Catálogo de produtos e serviços', gratis: true, pro: true, empresa: true },
   { rotulo: 'Diagnóstico por código de erro', gratis: true, pro: true, empresa: true },
   { rotulo: 'Link do orçamento para o cliente', gratis: true, pro: true, empresa: true },
 ];
