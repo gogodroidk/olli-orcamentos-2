@@ -37,5 +37,10 @@ const foraDaCheck = [...permitidos].filter((e) => !naCheck.has(e));
 assert.deepEqual(foraDaCheck, [], `eventos da função (${ultima}) barrados pela CHECK de ${ultimaCheck}`);
 const planos = readFileSync(new URL('webapp/src/pages/olli/planos/index.tsx', raiz), 'utf8');
 assert.match(planos, /registrarEtapaAtivacao\("planos_visto"\)/, 'tela de Planos registra a visita');
-assert.equal((planos.match(/registrarEtapaAtivacao\("plano_pagar_clicado"\)/g) || []).length, 3, 'cartão, Pix e Pix Automático registram o clique');
+// Cartão, Pix, Pix Automático, o `pagar=pix` (aviso de limite) e o resumo do teste registram o clique.
+assert.equal((planos.match(/registrarEtapaAtivacao\("plano_pagar_clicado"\)/g) || []).length, 5, 'todo caminho que abre cobrança registra o clique');
+for (const e of ['limite_aviso_visto', 'limite_aviso_pagar_clicado']) {
+  assert.ok(permitidos.has(e), `${e} na allowlist da função`);
+  assert.ok(naCheck.has(e), `${e} na CHECK da tabela`);
+}
 console.log(`teste-funil-allowlist: OK (${eventosPainel.length} eventos, allowlist de ${ultima})`);
