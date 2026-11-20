@@ -42,7 +42,9 @@ export default function ConfiguracoesPage() {
 	const temStripe = statusStripe.data?.gerenciavel === true;
 	const faturas = useQuery({ queryKey: ["olli", "stripe", "faturas"], queryFn: listarFaturasStripe, enabled: temStripe, staleTime: 60_000, retry: 1 });
 	const metodo = useQuery({ queryKey: ["olli", "stripe", "metodo"], queryFn: obterMetodoStripe, enabled: temStripe, staleTime: 60_000, retry: 1 });
-	const [conta, setConta] = useState({ nome: "", email: "", senha: "" });
+	const [conta, setConta] = useState({ nome: "", email: "", senha: "", senhaAtual: "" });
+	/** A conta tem senha (identidade de e-mail)? Conta só-Google cria a 1ª senha sem "senha atual". */
+	const [temSenha, setTemSenha] = useState(false);
 	const [salvandoConta, setSalvandoConta] = useState(false);
 	const [fotoUrl, setFotoUrl] = useState("");
 	const [arquivoFoto, setArquivoFoto] = useState<File | null>(null);
@@ -58,7 +60,9 @@ export default function ConfiguracoesPage() {
 				nome: String(user.user_metadata?.full_name ?? user.user_metadata?.name ?? ""),
 				email: user.email ?? "",
 				senha: "",
+				senhaAtual: "",
 			});
+			setTemSenha((user.identities ?? []).some((i) => i.provider === "email"));
 			setFotoUrl(String(user.user_metadata?.avatar_url ?? ""));
 		});
 	}, []);
@@ -76,10 +80,28 @@ export default function ConfiguracoesPage() {
 				},
 			};
 			if (conta.email.trim()) atualizacao.email = conta.email.trim();
-			if (conta.senha.trim()) atualizacao.password = conta.senha;
+			if (conta.senha.trim()) {
+				// D-1438 (segurança): trocar a senha EXIGE a senha atual de quem já tem uma. Quem confere é o
+				// SERVIDOR (Auth com "require current password" ligado; GoTrue user.go): conferência só na tela
+				// se burla pelo console com a sessão aberta (LIVRE #261 P1). Nada de signInWithPassword aqui: ele
+				// troca a sessão e derruba o nível do MFA (P2). Conta só-Google cria a 1ª senha.
+				if (temSenha) {
+					if (!conta.senhaAtual) throw new Error("Para trocar a senha, digite a sua senha atual.");
+					atualizacao.current_password = conta.senhaAtual;
+				}
+				atualizacao.password = conta.senha;
+			}
 			const { error } = await supabase.auth.updateUser(atualizacao);
-			if (error) throw error;
-			setConta((atual) => ({ ...atual, senha: "" }));
+			if (error) {
+				// O GoTrue nomeia a constante ErrorCodeCurrentPasswordMismatch, mas a string
+				// enviada é current_password_invalid (v2.189 e master). current_password_mismatch não existe.
+				if (error.code === "current_password_invalid" || error.code === "current_password_mismatch" || error.code === "current_password_required") {
+					throw new Error("A senha atual não confere. Nada foi alterado.");
+				}
+				throw error;
+			}
+			if (atualizacao.password) setTemSenha(true);
+			setConta((atual) => ({ ...atual, senha: "", senhaAtual: "" }));
 			toast.success(conta.email.trim() ? "Dados da conta atualizados. Confira seu e-mail se houver confirmação pendente." : "Dados da conta atualizados.");
 		} catch (erro) {
 			toast.error(erro instanceof Error ? erro.message : "Não consegui atualizar a conta.");
@@ -141,7 +163,7 @@ export default function ConfiguracoesPage() {
 	}
 
 	return (
-		<div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6">
 			<header>
 				<div className="flex items-center gap-2.5"><span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Settings2 className="size-5" /></span><h1 className="text-2xl font-bold text-text-primary">Configurações</h1></div>
 				<p className="mt-1 text-sm text-text-secondary">Empresa, dados, aparência, privacidade e cobrança em um só lugar.</p>
@@ -207,6 +229,7 @@ export default function ConfiguracoesPage() {
 					<label className="text-sm font-medium text-text-primary">Nome de exibição<input className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" value={conta.nome} onChange={(e) => setConta((atual) => ({ ...atual, nome: e.target.value }))} autoComplete="name" /></label>
 					<label className="text-sm font-medium text-text-primary">E-mail<input className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" type="email" value={conta.email} onChange={(e) => setConta((atual) => ({ ...atual, email: e.target.value }))} autoComplete="email" /></label>
 					<label className="text-sm font-medium text-text-primary sm:col-span-2">Nova senha (opcional)<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senha} onChange={(e) => setConta((atual) => ({ ...atual, senha: e.target.value }))} autoComplete="new-password" minLength={8} placeholder="Deixe em branco para manter" /></span></label>
+					{temSenha && conta.senha.trim() !== "" && <label className="text-sm font-medium text-text-primary sm:col-span-2">Senha atual<span className="relative mt-1.5 block"><KeyRound className="pointer-events-none absolute left-3 top-2.5 size-4 text-text-disabled" /><input className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" type="password" value={conta.senhaAtual} onChange={(e) => setConta((atual) => ({ ...atual, senhaAtual: e.target.value }))} autoComplete="current-password" required aria-describedby="ajuda-senha-atual" /></span><span id="ajuda-senha-atual" className="mt-1 block text-xs font-normal text-text-secondary">Para sua segurança, a troca de senha pede a senha que você usa hoje.</span></label>}
 					<div className="sm:col-span-2 flex flex-wrap items-center gap-3"><Button type="submit" disabled={salvandoConta}>{salvandoConta ? "Salvando…" : "Salvar dados da conta"}</Button><span className="text-xs text-text-secondary">Alterar e-mail pode exigir confirmação no endereço novo.</span></div>
 				</form>
 				{arquivoFoto && (

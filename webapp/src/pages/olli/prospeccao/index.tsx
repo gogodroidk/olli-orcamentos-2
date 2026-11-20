@@ -181,7 +181,7 @@ export default function ProspeccaoPage() {
 			: TEXTO_SEM_ORIGEM;
 
 	return (
-		<div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6">
 			<header className="flex items-start gap-4">
 				<div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground">
 					<MapPinned className="size-6" aria-hidden="true" />

@@ -475,7 +475,7 @@ export default function AgendaPage() {
 	const membros = equipe.data ?? [];
 
 	return (
-		<div className="mx-auto w-full max-w-7xl p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] p-4 md:p-6">
 			{/* ───── Cabeçalho ───── */}
 			<div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 				<div>

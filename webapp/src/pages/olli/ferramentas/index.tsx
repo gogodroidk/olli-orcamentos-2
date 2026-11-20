@@ -48,7 +48,7 @@ export default function FerramentasPage() {
 	const corAberto = calcAberto ? categoriaDe(calcAberto.verticais).cor : "#0B6FCE";
 
 	return (
-		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
+		<div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6">
 			{/* Cabeçalho */}
 			<div className="flex items-center gap-4">
 				<div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary to-[#3FD8EA] text-primary-foreground shadow-md shadow-primary/25">

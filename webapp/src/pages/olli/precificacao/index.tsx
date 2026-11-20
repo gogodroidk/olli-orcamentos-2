@@ -114,7 +114,7 @@ export default function PrecificacaoPage() {
 	}
 
 	return (
-		<div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6" data-ai-readable="true" data-ai-surface="central-precificacao">
+		<div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6" data-ai-readable="true" data-ai-surface="central-precificacao">
 			<header>
 				<div className="flex items-center gap-2.5"><span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary"><Calculator className="size-5" /></span><div><h1 className="text-2xl font-bold tracking-tight text-text-primary">Central de Precificação</h1><p className="mt-1 text-sm text-text-secondary">Forme preço de serviço, peça ou produto sem esquecer custo, taxa, risco e lucro.</p></div></div>
 			</header>

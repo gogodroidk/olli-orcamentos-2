@@ -66,7 +66,7 @@ export default function AjudaPage() {
 	}, [artigos]);
 
 	return (
-		<div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6" data-ai-readable="true" data-ai-surface="olli-help-center">
+		<div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6" data-ai-readable="true" data-ai-surface="olli-help-center">
 			<header className="rounded-2xl border border-primary/20 bg-primary/5 p-5 md:p-7">
 				<div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
 					<div>
