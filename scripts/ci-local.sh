@@ -202,6 +202,9 @@ job_dependencias() {
 
 job_app_gate() {
   instalar_raiz_uma_vez || return 1
+  # Espelha o passo do ci.yml. Sem --with-deps aqui: a máquina local já tem as libs do
+  # sistema, e o --with-deps pediria sudo. Com o navegador já baixado, é instantâneo.
+  passo "Chromium do Playwright (teste do ErrorBoundary)" . npx playwright install chromium || return 1
   passo "Preflight completo" . npm run preflight
 }
 
