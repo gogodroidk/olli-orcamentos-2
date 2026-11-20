@@ -35,6 +35,11 @@ const pkg = json('package.json');
 const pedida: string = pkg.dependencies?.['expo-sqlite'] ?? '';
 ok(`package.json fixa o expo-sqlite numa versão exata (está "${pedida}")`, /^\d+\.\d+\.\d+$/.test(pedida));
 
+ok(
+  'expo.install.exclude tem o expo-sqlite (o expo-doctor não reprova o pin nem o `expo install --fix` sobe a versão)',
+  Array.isArray(pkg.expo?.install?.exclude) && pkg.expo.install.exclude.includes('expo-sqlite'),
+);
+
 const lock = json('package-lock.json');
 const noLock: string = lock.packages?.['node_modules/expo-sqlite']?.version ?? '';
 ok(`package-lock concorda (${noLock})`, noLock === pedida);
