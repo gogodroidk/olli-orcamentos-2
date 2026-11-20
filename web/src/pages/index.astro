@@ -17,7 +17,7 @@ import {
 // Preço só da FONTE (Stripe live). Nenhum literal de R$ nesta página.
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "../data/planos";
 import { PIX_PLANO_LIGADO } from "../data/pix";
-import { FRASE_GRATIS, recursosQueSairamDoGratis } from "../data/recursos";
+import { FRASE_GRATIS, IA_USOS_GRATIS_MES, LIMITE_ENVIOS_GRATIS_MES, recursosQueSairamDoGratis } from "../data/recursos";
 import { AVISO_ILUSTRATIVA, FOTOS, ORDEM_HOME } from "../data/fotos";
 
 // O app (painel) mora em outro projeto/subdomínio — os CTAs apontam pra lá.
@@ -35,7 +35,7 @@ const recursos = [
 	{
 		icon: "file-text",
 		titulo: "Orçamento profissional em minutos",
-		plano: "Grátis: até 5 envios por mês",
+		plano: `Grátis: até ${LIMITE_ENVIOS_GRATIS_MES} envios por mês`,
 		texto:
 			"Itens, quantidades, fotos, desconto e sua marca num PDF pronto, com link para o cliente aprovar.",
 	},
@@ -49,7 +49,7 @@ const recursos = [
 	{
 		icon: "brain",
 		titulo: "IA que entende o defeito",
-		plano: "Grátis: 3 usos por mês",
+		plano: `Grátis: ${IA_USOS_GRATIS_MES} usos por mês`,
 		texto:
 			"Diagnóstico de climatização por sintoma ou código de erro.",
 	},

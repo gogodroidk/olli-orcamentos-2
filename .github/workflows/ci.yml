@@ -71,6 +71,14 @@ jobs:
       - name: Instalar dependências (npm ci — package-lock.json na raiz)
         run: npm ci
 
+      # O teste-error-boundary-tela roda o ErrorBoundary real num Chromium headless do
+      # Playwright. O runner não traz esse navegador: sem este passo o app-gate fica
+      # vermelho em todo PR (desde o #415). Instala a revisão que casa com o playwright
+      # do package-lock. O teste NÃO se pula sozinho sem navegador: teste que some calado
+      # é como defeito passa (decisão do TECH — CTO, 20/11/2026).
+      - name: Chromium do Playwright (teste do ErrorBoundary)
+        run: npx playwright install --with-deps chromium
+
       # Não separar typecheck/teste aqui: o preflight roda `npm test` e também
       # fecha lint (catraca), contraste, Doctor, config de release e o
       # meta-teste que garante que todo teste novo está ligado ao gate. Assim
