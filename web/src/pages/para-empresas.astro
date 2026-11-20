@@ -1,0 +1,53 @@
+---
+/**
+ * Página gerada do port da v10 (D-2876) e DEPOIS editada à mão: o que depende de plano, preço, limite ou data vem
+ * de data/site.ts e da fonte (planosBase/entitlements), nunca de literal. Editar aqui é o caminho; regerar apaga.
+ */
+import FaqSite from "../components/site/FaqSite.astro";
+import PlanosSite from "../components/site/PlanosSite.astro";
+import LayoutSite from "../layouts/LayoutSite.astro";
+import { schemaFaq } from "../data/faq-site";
+import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
+import { EMPRESA } from "../data/empresa";
+---
+
+<LayoutSite titulo="OLLI para empresas e equipes de campo" descricao="Técnicos com permissões, agenda, PMOC e contratos de manutenção no OLLI. Conheça o plano Empresa para equipes em campo." schemas={[]}>
+<section class="page-hero"><div class="w">
+<p class="crumbs"><a href="/">Início</a> · Para empresas</p>
+<h1>A equipe em campo. <em>A gestão no computador.</em></h1>
+<p class="lead">No plano Empresa, cada técnico entra com o próprio acesso. A agenda organiza as visitas, e PMOC e contratos de manutenção ficam no mesmo sistema dos orçamentos.</p>
+<div class="cta"><a class="bt p" href={`https://wa.me/${EMPRESA.whatsapp}`} target="_blank" rel="noopener">Falar com a gente →</a><a class="bt s" href="/planos/">Comparar planos</a></div>
+</div></section>
+<section aria-labelledby="agenda-equipe"><div class="w">
+<p class="section-kicker">A semana da operação</p>
+<h2 id="agenda-equipe">Veja os atendimentos de cada técnico.</h2>
+<p class="sub">No computador, a agenda reúne a semana da equipe em uma tela ampla para quem organiza o trabalho.</p>
+<div class="management-screen"><article class="device-showcase gl">
+<figure class="computer-screen-only"><img src="/site/app/telas/agenda-computador.webp" srcset="/site/app/telas/agenda-computador.webp 1x, /site/app/telas/agenda-computador-2x.webp 2x" alt="Tela real do OLLI: agenda semanal da equipe no painel do computador" width="1440" height="900" loading="lazy" decoding="async"><figcaption>Dados de exemplo</figcaption></figure>
+</article></div>
+</div></section>
+<section aria-labelledby="recursos-equipe"><div class="w">
+<p class="section-kicker">Além da agenda</p>
+<h2 id="recursos-equipe">Acesso, manutenção e histórico sob controle.</h2>
+<p class="sub">Recursos para empresas que precisam dividir o trabalho sem perder o registro do que foi combinado com o cliente.</p>
+<div class="resource-grid">
+<article class="resource-card gl"><h3>Permissão por papel</h3><p>Convide técnicos e defina o que cada papel pode acessar, em vez de compartilhar uma única senha com todos.</p></article>
+<article class="resource-card gl"><h3>Contratos recorrentes</h3><p>Reúna os contratos de manutenção recorrente no mesmo lugar, junto da rotina de orçamentos e atendimentos.</p></article>
+<article class="resource-card gl"><h3>PMOC por equipamento</h3><p>Organize o Plano de Manutenção, Operação e Controle de cada equipamento, com a última e a próxima manutenção.</p></article>
+<article class="resource-card gl"><h3>Etiqueta com QR code</h3><p>No equipamento, o cliente lê o código, consulta as manutenções e pede um novo orçamento quando precisar.</p></article>
+</div>
+</div></section>
+<section aria-labelledby="ferramentas-equipe"><div class="w">
+<p class="section-kicker">Também no escritório</p>
+<h2 id="ferramentas-equipe">As ferramentas do OLLI em tela ampla.</h2>
+<p class="sub">Pelo navegador, quem organiza a operação usa as ferramentas do OLLI com a mesma conta da empresa.</p>
+<div class="management-screen"><article class="device-showcase gl">
+<figure class="computer-screen-only"><img src="/site/app/telas/ferramentas-computador.webp" srcset="/site/app/telas/ferramentas-computador.webp 1x, /site/app/telas/ferramentas-computador-2x.webp 2x" alt="Tela real do OLLI: ferramentas de ofício no painel do computador" width="1440" height="900" loading="lazy" decoding="async"><figcaption>Dados de exemplo</figcaption></figure>
+</article></div>
+</div></section>
+<section><div class="w"><div class="fin gl">
+<h2>Um plano para a operação da equipe.</h2>
+<p class="sub">Empresa por {PRECO.empresaMes}/mês ou {PRECO.empresaAno}/ano. No anual, a cobrança é feita uma vez por ano e equivale a {PRECO.empresaAnoPorMes} por mês.</p>
+<div class="cta"><a class="bt p" href={`https://wa.me/${EMPRESA.whatsapp}`} target="_blank" rel="noopener">Falar com a gente →</a><a class="bt s" href="/planos/">Ver preços e benefícios</a></div>
+</div></div></section>
+</LayoutSite>

@@ -26,7 +26,17 @@ import { iniciarGoogleTag } from "../lib/googleTag";
 import { iniciarPixel, pageView, rastrear } from "../lib/metaPixel";
 
 /** Pixel + Google tag. Cada um só carrega se houver consentimento ("sim"). */
+/**
+ * Pixel e Google Tag só nos nossos domínios. A prévia da v10 (workers.dev) e o localhost capturam utm/fbclid (para dar
+ * para testar a atribuição), mas NÃO mandam evento ao Meta/Google: tráfego de teste não entra nas campanhas.
+ */
+function hostOficial(): boolean {
+	const h = window.location.hostname.toLowerCase();
+	return h === "olliorcamentos.online" || h.endsWith(".olliorcamentos.online");
+}
+
 function iniciarTerceiros(): void {
+	if (!hostOficial()) return;
 	if (iniciarPixel()) pageView();
 	iniciarGoogleTag(true);
 }

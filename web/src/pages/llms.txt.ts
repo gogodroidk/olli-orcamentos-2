@@ -16,7 +16,7 @@
  * atualiza este arquivo sozinho, e remover quebra o build.
  *
  * O QUE NÃO ENTRA: nada que o produto não entregue hoje. Offline só como o que é —
- * do app Android em teste fechado, nunca do navegador —, sem integração de WhatsApp
+ * do app Android, nunca do navegador —, sem integração de WhatsApp
  * (não existe), sem nota de avaliação (não há avaliação real) e sem Pix quando o
  * worker não confirmou no build que ele está ligado (`data/pix.ts`). Uma IA que cita fantasia queima a marca com
  * mais alcance que uma landing que mente, porque a citação parece isenta.
@@ -137,6 +137,15 @@ O plano anual sai mais barato que o mensal. O Grátis é ${GRATIS_CONDICAO}; dep
 ${pagamento}
 Comparativo completo dos planos: ${ORIGEM}/planos/
 
+## Páginas do site
+
+- [Recursos](${ORIGEM}/como-funciona/): orçamento, atendimento, clientes, agenda e equipe, com o que é de cada plano.
+- [Para técnicos](${ORIGEM}/para/): o fluxo do prestador autônomo, da proposta ao recibo.
+- [Para empresas](${ORIGEM}/para-empresas/): técnicos com permissões, PMOC e contratos de manutenção (plano Empresa).
+- [Planos e preços](${ORIGEM}/planos/): Grátis, Pro e Empresa, mensal e anual.
+- [Dúvidas](${ORIGEM}/duvidas/): respostas curtas sobre limites, pagamento, Android, iPhone e conta.
+- [Central de ajuda](${ORIGEM}/ajuda/): guias passo a passo.
+
 ## Páginas por ofício
 
 ${oficios}
@@ -162,8 +171,8 @@ Texto completo dos guias, em um arquivo só: ${ORIGEM}/llms-full.txt
   o áudio do cliente é o prestador; a OLLI entra na hora de montar o orçamento.
 - Não emite nota fiscal. No recibo, Preparar nota fiscal só separa os dados para copiar no Emissor Nacional. Sem o número da NFS-e, a nota não foi emitida.
 - Não emite ART nem substitui o responsável técnico. No PMOC, a OLLI organiza equipamentos, planos, ordens e histórico; a assinatura continua sendo da pessoa habilitada.
-- O aplicativo Android está em teste fechado na Google Play, restrito a testadores
-  selecionados, e não há app para iPhone. Hoje o produto se usa pelo navegador, em
+- O aplicativo Android é público na Google Play (instalação aberta). Não há app para iPhone: no iPhone e no
+  computador o produto se usa pelo navegador, em
   ${ORIGEM.replace("olliorcamentos.online", "app.olliorcamentos.online")}, que exige internet. O uso sem
   internet (dados no aparelho, sincronizados quando a rede volta) é só do app Android.
 - Não possui avaliações públicas: o produto é novo e não tem base de avaliação.

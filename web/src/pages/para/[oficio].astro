@@ -18,13 +18,11 @@
  * marido de aluguel) NÃO viram página: página de SEO para um ofício sem ferramenta
  * seria exatamente a promessa vazia que a regra da casa proíbe.
  */
-import Layout from "../../layouts/Layout.astro";
-import Footer from "../../components/Footer.astro";
-import Header from "../../components/Header.astro";
-import Icone from "../../components/Icone.astro";
-import ExemploOrcamento from "../../components/ExemploOrcamento.astro";
-import FotoPrestador from "../../components/FotoPrestador.astro";
-import { FOTO_POR_ALIAS, FOTO_POR_OFICIO } from "../../data/fotos";
+import FaqSite from "../../components/site/FaqSite.astro";
+import LayoutSite from "../../layouts/LayoutSite.astro";
+import { AVISO_ILUSTRATIVA, FOTOS, FOTO_POR_ALIAS, FOTO_POR_OFICIO } from "../../data/fotos";
+import { SEGMENTOS_SITE } from "../../data/segmentos-site";
+import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PROFISSAO_NOVA, ROTA, SEGMENTOS_NOVOS, SERVICOS_FORA_DO_MENU, SERVICOS_MENU, URL_CADASTRO } from "../../data/site";
 import { calculosDoOficio } from "../../../../src/services/calculosOficio";
 import { VERTICAIS, VERTICAL_GERAL } from "../../../../src/services/verticais";
 import {
@@ -90,19 +88,24 @@ export function getStaticPaths() {
 	return [
 		...[...VERTICAIS, VERTICAL_GERAL].map((v) => ({
 			params: { oficio: SLUG_POR_OFICIO[v.id] },
-			props: { id: v.id, alias: null },
+			props: { id: v.id, alias: null, segmento: null },
 		})),
 		// Variantes de anúncio por palavra (D-1013): mesma vertical, canonical na página de SEO, fora do sitemap.
 		...ALIASES_PARA.map((a) => ({
 			params: { oficio: a.slug },
-			props: { id: a.id, alias: a },
+			props: { id: a.id, alias: a, segmento: null },
+		})),
+		// Segmentos que só existem na v10 (D-2876): o texto vem de data/segmentos-site.ts; o ofício-base é o "geral".
+		...SEGMENTOS_NOVOS.map((slug) => ({
+			params: { oficio: slug },
+			props: { id: "geral" as const, alias: null, segmento: slug },
 		})),
 	];
 }
 
-const { id, alias } = Astro.props;
+const { id, alias, segmento } = Astro.props;
 const oficio = id === "geral" ? OFICIO_GERAL : OFICIOS.find((o) => o.id === id)!;
-const profissao = alias?.profissao ?? PROFISSAO_POR_OFICIO[id];
+const profissao = (segmento && PROFISSAO_NOVA[segmento]) || alias?.profissao || PROFISSAO_POR_OFICIO[id];
 const dor = DOR_POR_OFICIO[id];
 const calculos = calculosDoOficio(id);
 // Foto só onde combina com o ofício da página (ver data/fotos.ts); página sem foto fica como está.
@@ -122,18 +125,20 @@ const leiaTambem = [
 ].slice(0, 3);
 
 const titulo = `App de orçamento e ordem de serviço para ${profissao} — OLLI`;
-const slug = SLUG_POR_OFICIO[id];
-const canonicalPath = alias ? `/para/${slug}/` : undefined;
-const ogImagem = OG_PROPRIO_POR_SLUG.has(slug) ? `/og/${slug}.png` : undefined;
+const slug = segmento ?? SLUG_POR_OFICIO[id];
+// marido-de-aluguel deixa de ser alias na v10: página própria, canonical próprio, no sitemap.
+const chaveSite = segmento ?? (alias && SEGMENTOS_SITE[alias.slug] && alias.slug === "marido-de-aluguel" ? alias.slug : slug);
+const seg = SEGMENTOS_SITE[chaveSite] ?? null;
+const nomeMenu = [...SERVICOS_MENU, ...SERVICOS_FORA_DO_MENU].find((m) => m.slug === chaveSite)?.nome ?? oficio.label;
+const canonicalPath = alias && alias.slug !== "marido-de-aluguel" ? `/para/${slug}/` : undefined;
+const ogImagem = !segmento && OG_PROPRIO_POR_SLUG.has(slug) ? `/og/${slug}.png` : undefined;
 /**
  * A meta description do ofício "qualquer serviço" dizia "com 0 calculadora de campo"
  * — o Google mostrava isso no resultado. Sem calculadora, a frase fala do ciclo, que
  * é o que a página entrega; com calculadora, o número continua vindo da fonte.
  */
-const descricao =
-	calculos.length > 0
-		? `${dor} Grátis para começar a orçar no celular ou no computador (ordem de serviço e recibo no Pro), com ${calculos.length} calculadora${calculos.length > 1 ? "s" : ""} de campo para ${profissao}.`
-		: `${dor} Grátis para começar a orçar no celular ou no computador; ordem de serviço e recibo no Pro.`;
+// Meta description ≤160 caracteres (o Google corta ali; auditoria 20/11 item a5): o ofício, o link de aprovação e o Grátis.
+const descricao = `Orçamento para ${profissao} no celular, com link para o cliente aprovar. Grátis, sem cartão.`;
 
 /**
  * BreadcrumbList — o brief pede nas subpáginas. Ajuda o Google a entender a
@@ -233,241 +238,156 @@ const schemaFaq = {
 };
 ---
 
-<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]} ogImagem={ogImagem} canonicalPath={canonicalPath}>
-	<Header>
-		<a
-			href={APP_CADASTRO_URL}
-			class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
-			>Começar grátis</a
-		>
-	</Header>
-
-	<main id="conteudo">
-		{/* ══════════ HERO DO OFÍCIO ══════════ */}
-		<section class={`mx-auto px-6 pb-16 pt-14 ${fotoChave ? "max-w-6xl" : "max-w-4xl"}`}>
-		<div class={fotoChave ? "grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-14" : ""}>
-		<div class="flex flex-col">
-			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
-				<span aria-hidden="true" class="mx-1.5">/</span>
-				<span class="text-slate">{oficio.label}</span>
-			</nav>
-
-			<span class="eyebrow mt-6 block"><Icone nome={ICONE_POR_OFICIO[oficio.id]} class="h-3.5 w-3.5" />{oficio.label}</span>
-			<h1 class="mt-4 text-balance text-[clamp(2rem,4.6vw,3.25rem)] font-extrabold leading-[1.08] tracking-tight text-ink">
-				App de orçamento e ordem de serviço para <span class="brand-text">{profissao}</span>.
-			</h1>
-			{/* Resposta curta: 1º parágrafo após o H1, texto puro, citável por IA (teste de 48 h do OPS, 27/10). */}
-			<p id="resposta-curta" class="order-2 mt-5 max-w-2xl rounded-cartao border border-line bg-white px-5 py-4 text-base leading-relaxed text-ink lg:order-none">
-				<strong class="font-bold">Resposta curta:</strong> {respostaCurta}
-			</p>
-			<p class="order-2 mt-5 max-w-2xl text-lg leading-relaxed text-slate lg:order-none">{dor}</p>
-
-			{/* No celular o aviso de cookies cobre o fim da primeira tela. O botão sobe para logo abaixo do título; no desktop a ordem do código volta. A resposta curta continua sendo o primeiro parágrafo no HTML. */}
-			<div class="order-1 mt-8 flex flex-col gap-3 sm:flex-row lg:order-none">
-				<a
-					href={APP_CADASTRO_URL}
-					class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
-					>Criar meu primeiro orçamento — grátis</a
-				>
-				<a
-					href="/planos/"
-					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
-					>Ver os planos</a
-				>
+<LayoutSite titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaFaq]} ogImagem={ogImagem} canonicalPath={canonicalPath}>
+	<section class="page-hero">
+		<div class={`w ${fotoChave ? "hero-seg" : ""}`}>
+			<div>
+				<p class="crumbs"><a href={ROTA.inicio}>Início</a> · <a href={ROTA.tecnicos}>Para técnicos</a> · {nomeMenu}</p>
+				{seg ? (
+					<h1>{seg.h1a} <em>{seg.h1b}</em></h1>
+				) : (
+					<h1>Orçamento de {profissao} <em>com a sua marca.</em></h1>
+				)}
+				<p class="lead">{seg ? seg.lead : dor}</p>
+				<div class="cta">
+					<a class="bt p" href={URL_CADASTRO}>Começar grátis →</a>
+					<a class="bt s" href={ROTA.planos}>Ver planos</a>
+				</div>
 			</div>
-			<div class="order-3 mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted lg:order-none">
-				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem cartão pra testar</span>
-				{/*
-					ERA "Funciona sem internet" — e era falso DUAS vezes nesta página.
-					O offline mora no app Expo, e (a) o CTA daqui leva ao painel WEB, que
-					é online-first por decisão do rebuild (o SQLite foi dropado), e (b) o
-					app não está publicado: todo o checklist de docs/LOJAS.md está
-					desmarcado e a conta Apple ainda está em análise. Prometer offline
-					numa página de anúncio é prometer o que o visitante não tem como obter.
-					"Sem instalar nada" é verdade, é benefício real do painel web, e é o
-					que ele recebe ao clicar. Quando o APK estiver na loja, o selo offline
-					volta — junto com o botão de baixar que o LANDING_BRIEF pede.
-				*/}
-				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Sem instalar nada</span>
-				<span class="inline-flex items-center gap-1.5"><span class="text-check">✓</span> Grátis sem prazo</span>
+			{fotoChave && (
+				<figure class="seg-foto">
+					<img
+						src={`/fotos/tecnico-${fotoChave}-896.webp`}
+						srcset={`/fotos/tecnico-${fotoChave}-448.webp 448w, /fotos/tecnico-${fotoChave}-896.webp 896w`}
+						sizes="(min-width: 900px) 280px, 70vw"
+						width="896"
+						height="1200"
+						alt={FOTOS[fotoChave].alt}
+						loading="eager"
+						decoding="async"
+					/>
+					<figcaption>{AVISO_ILUSTRATIVA}</figcaption>
+				</figure>
+			)}
+		</div>
+	</section>
+
+	<section aria-labelledby="resposta-curta">
+		<div class="w">
+			<div class="resposta-curta gl">
+				<p class="section-kicker" id="resposta-curta">Em poucas palavras</p>
+				<p>{respostaCurta}</p>
 			</div>
 		</div>
-		{fotoChave && (
-			<FotoPrestador chave={fotoChave} sizes="(min-width:1024px) 320px, 80vw" class="mx-auto w-full max-w-[320px] lg:mx-0 lg:mt-6" />
-		)}
-		</div>
-		</section>
+	</section>
 
-		{/* ══════════ EXEMPLO REAL (do calcular() da própria ferramenta) ══════════ */}
-		<ExemploOrcamento calculos={calculos} profissao={profissao} cadastroUrl={APP_CADASTRO_URL} />
-
-		{/* ══════════ AS FERRAMENTAS REAIS DO OFÍCIO ══════════
-		     Conteúdo 100% derivado de calculosOficio.ts: nome, descrição e a NORMA em
-		     que cada conta se apoia. É o que diferencia esta página de uma landing
-		     genérica — e é impossível ela mentir, porque é o próprio app falando. */}
-		{/* `faixa-recuo` (global.css) e não `border-y border-line bg-paper`: mesma
-		    costura em degradê da home. As 6 páginas de ofício são landing também, e
-		    uma delas com emenda dura no meio de um site que derrete as outras
-		    denuncia que foram feitas em momentos diferentes.
-
-		    O comentário fica AQUI FORA e não dentro do `&&` logo abaixo: aquela
-		    expressão tem que devolver UM elemento, e um comentário JSX conta como
-		    filho — foi assim que esta linha quebrou o build na primeira tentativa. */}
-		{calculos.length > 0 && (
-			<section class="faixa-recuo">
-				<div class="mx-auto max-w-4xl px-6 py-20">
-					<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
-						{calculos.length} ferramenta{calculos.length > 1 ? "s" : ""} de {profissao}, dentro do orçamento.
-					</h2>
-					<p class="mt-4 max-w-2xl text-slate">
-						Cada conta usa a norma ou a fórmula daquele ofício, e o resultado vira item do orçamento com um toque —
-						sem sair da OLLI e sem calculadora de terceiro.
-					</p>
-
-					<ul class="mt-10 grid gap-4 sm:grid-cols-2">
-						{calculos.map((c) => (
-							<li class="rounded-cartao border border-line bg-white p-6">
-								<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
-									<Icone nome={ICONE_POR_MDI[c.icon] ?? ""} class="h-5 w-5" />
+	{seg && (
+		<section aria-labelledby="servicos-segmento">
+			<div class="w">
+				<div class="seg-grid">
+					<div>
+						<p class="section-kicker">{seg.kicker}</p>
+						<h2 id="servicos-segmento">{seg.listaTitulo}</h2>
+						<ul class="checklist">{seg.itens.map((i) => <li>{i}</li>)}</ul>
+					</div>
+					{seg.tela && (
+						<figure class="seg-tela">
+							<div class="phone-mini">
+								<div class="device device-iphone-14-pro">
+									<div class="device-frame">
+										<img class="device-screen" src={`/site/app/telas/${seg.tela.arquivo}.webp`} srcset={`/site/app/telas/${seg.tela.arquivo}.webp 1x, /site/app/telas/${seg.tela.arquivo}@2x.webp 2x`} alt={seg.tela.alt} width="390" height="844" loading="lazy" decoding="async" />
+									</div>
+									<div class="device-header"></div><div class="device-sensors"></div><div class="device-btns"></div><div class="device-power"></div>
 								</div>
-								<h3 class="mt-2.5 font-bold text-ink">{c.nome}</h3>
-								<p class="mt-1.5 text-sm leading-relaxed text-slate">{c.descricao}</p>
-								<p class="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{c.base}</p>
-							</li>
-						))}
-					</ul>
+							</div>
+							<figcaption>Dados de exemplo</figcaption>
+						</figure>
+					)}
 				</div>
-			</section>
-		)}
+			</div>
+		</section>
+	)}
 
-		{/* ══════════ DOCUMENTOS PRONTOS (só os disponíveis) ══════════ */}
-		{oficio.documentos.length > 0 && (
-			<section class="mx-auto max-w-4xl px-6 py-20">
-				<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
-					Os documentos de {profissao} que a OLLI monta.
-				</h2>
-				<p class="mt-4 max-w-2xl text-slate">
-					A lista é esta. Licença e a assinatura do responsável técnico continuam com você.
-				</p>
-				<ul class="mt-8 flex flex-wrap gap-3">
-					{oficio.documentos.map((d) => (
-						<li class="rounded-full border border-line bg-white px-4 py-2 text-sm font-medium text-slate">
-							<span class="text-check">✓</span> {d}
-						</li>
-					))}
+	{oficio.documentos.length > 0 && (
+		<section aria-labelledby="documentos-oficio">
+			<div class="w">
+				<p class="section-kicker">Documentos</p>
+				<h2 id="documentos-oficio">Os documentos de {profissao} que a OLLI monta.</h2>
+				<p class="sub">A lista é esta. Licença e a assinatura do responsável técnico continuam com você.</p>
+				<ul class="checklist">{oficio.documentos.map((d) => <li>{d}</li>)}</ul>
+			</div>
+		</section>
+	)}
+
+	{calculos.length > 0 && (
+		<section aria-labelledby="calculadoras-oficio">
+			<div class="w">
+				<p class="section-kicker">Ferramentas do ofício</p>
+				<h2 id="calculadoras-oficio">Contas de {profissao}, direto no orçamento.</h2>
+				<ul class="checklist">
+					{calculos.map((c) => <li><strong>{c.nome}.</strong> {c.descricao}</li>)}
 				</ul>
-			</section>
-		)}
+			</div>
+		</section>
+	)}
 
-		{/* ══════════ O CICLO (vale pra todo ofício) ══════════ */}
-		<section class="border-t border-line bg-paper">
-			<div class="mx-auto max-w-4xl px-6 py-20">
-				<h2 class="text-[clamp(1.7rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-ink">
-					Do pedido do cliente ao recibo.
-				</h2>
-				<ol class="mt-8 grid gap-4 sm:grid-cols-3">
-					<li class="rounded-cartao border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand-fg tnum">01</div>
-						<h3 class="mt-2 font-bold text-ink">Orçamento</h3>
-						<p class="mt-1.5 text-sm text-slate">Monte o serviço com itens e preço: a OLLI gera o PDF e o link pro cliente aprovar.</p>
-					</li>
-					<li class="rounded-cartao border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand-fg tnum">02</div>
-						<h3 class="mt-2 font-bold text-ink">Ordem de serviço</h3>
-						<p class="mt-1.5 text-sm text-slate">Aprovou, virou ordem de serviço: checklist, fotos e assinatura do cliente na tela.</p>
-					</li>
-					<li class="rounded-cartao border border-line bg-white p-6">
-						<div class="text-sm font-extrabold text-brand-fg tnum">03</div>
-						<h3 class="mt-2 font-bold text-ink">Recibo</h3>
-						<p class="mt-1.5 text-sm text-slate">Recebeu, emite o recibo. O histórico do cliente fica guardado pra próxima.</p>
-					</li>
-				</ol>
-
-				<div class="mt-12 rounded-cartao border border-line bg-white p-8 text-center">
-					<p class="text-lg font-semibold text-ink">Comece de graça, {GRATIS_CONDICAO}.</p>
-					<p class="mx-auto mt-2 max-w-lg text-sm text-slate">
-						O plano grátis não tem prazo e não pede cartão. O que ele inclui hoje está na <a href="/planos/" class="underline">página de planos</a>.
-					</p>
-					<a
-						href={APP_CADASTRO_URL}
-						class="mt-6 inline-block rounded-acao bg-brand px-7 py-3.5 text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
-						>Criar meu primeiro orçamento</a
-					>
+	{seg && (
+		<section aria-labelledby="ajuda-segmento">
+			<div class="w">
+				<p class="section-kicker">{seg.ajudaKicker}</p>
+				<h2 id="ajuda-segmento">{seg.ajudaTitulo}</h2>
+				<div class="bento">
+					{seg.cards.map((c) => {
+						const texto = c.p.replace("@PIX@", FRASE_PIX_LINK).trim();
+						return <div class="gl"><h3>{c.h}</h3><p>{texto}</p></div>;
+					})}
 				</div>
 			</div>
 		</section>
+	)}
 
-		{/* ══════════ FAQ DO OFÍCIO (ST-07/AEO-1) — mesmo <details> do index ══════════ */}
-		<section class="mx-auto max-w-3xl px-6 py-20">
-			<h2 class="text-[clamp(1.7rem,3.5vw,2.4rem)] font-extrabold tracking-tight text-ink">
-				Perguntas de quem é {profissao}
-			</h2>
-			{/* Mesma caixa-que-agrupa do FAQ da home, mesmo `overflow-hidden` pelo
-			    mesmo motivo (raio aninhado com <details> sem padding lateral). */}
-			<div class="mt-8 divide-y divide-line overflow-hidden rounded-caixa border border-line bg-white">
-				{faqs.map((f) => (
-					<details class="group">
-						<summary class="flex cursor-pointer list-none items-center justify-between px-6 py-5 text-base font-semibold text-ink">
-							{f.q}
-							<span class="text-brand-fg transition group-open:rotate-45" aria-hidden="true">+</span>
-						</summary>
-						<p class="px-6 pb-5 text-slate">{f.a}</p>
-					</details>
-				))}
-			</div>
+	<section aria-labelledby="faq-oficio">
+		<div class="w">
+			<p class="section-kicker">Antes de começar</p>
+			<h2 id="faq-oficio">Perguntas de quem trabalha com {profissao}.</h2>
+			<FaqSite itens={faqs.map((f, i) => ({ id: `f${i}`, q: f.q, a: f.a }))} abrirPrimeiro />
+		</div>
+	</section>
 
-			{/* BC-04: as /para/* não tinham CTA de WhatsApp — canal nº1 do público. Link
-			     puro (sem script), mensagem pré-preenchida por ofício, preserva CSP e LCP. */}
-			<p class="mt-8 text-center text-sm text-muted">
-				Prefere tirar a dúvida por mensagem?
-				<a
-					href={`${WHATSAPP_URL}?text=${waMsg}`}
-					target="_blank"
-					rel="noopener"
-					class="inline-flex min-h-11 items-center font-semibold text-brand-fg underline decoration-brand/30 underline-offset-2 hover:decoration-brand"
-					>Chama no WhatsApp</a
-				>.
-			</p>
-		</section>
-
-		{/* ══════════ LEIA TAMBÉM (ponte página → artigo do blog) ══════════ */}
-		{leiaTambem.length > 0 && (
-			<section class="mx-auto max-w-4xl px-6 pb-4 pt-16" aria-labelledby="leia-tambem">
-				<h2 id="leia-tambem" class="text-sm font-semibold uppercase tracking-wide text-muted">Leia também</h2>
-				<ul class="mt-4 grid gap-3 sm:grid-cols-2">
+	{leiaTambem.length > 0 && (
+		<section aria-labelledby="leia-tambem">
+			<div class="w">
+				<h2 id="leia-tambem">Leia também</h2>
+				<div class="bento">
 					{leiaTambem.map((p) => (
-						<li>
-							<a
-								href={`/blog/${p.id}/`}
-								class="block min-h-11 rounded-xl border border-line bg-white p-4 transition hover:border-brand"
-							>
-								<span class="block font-semibold text-slate">{p.data.titulo}</span>
-								<span class="mt-1 block text-sm text-muted">{p.data.descricao}</span>
-							</a>
-						</li>
+						<div class="gl"><h3><a href={`/blog/${p.id}/`}>{p.data.titulo}</a></h3><p>{p.data.descricao}</p></div>
 					))}
-				</ul>
-			</section>
-		)}
-
-		{/* ══════════ OUTROS OFÍCIOS (links internos = o hub-and-spoke) ══════════ */}
-		<section class="mx-auto max-w-4xl px-6 py-16">
-			<h2 class="text-sm font-semibold uppercase tracking-wide text-muted">A OLLI também serve</h2>
-			<ul class="mt-4 flex flex-wrap gap-2">
-				{[...OFICIOS, OFICIO_GERAL].filter((o) => o.id !== id).map((o) => (
-					<li>
-						<a
-							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-							class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm font-medium text-slate transition hover:border-brand hover:text-brand-fg"
-						>
-							<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-4 w-4" />{o.label}
-						</a>
-					</li>
-				))}
-			</ul>
+				</div>
+			</div>
 		</section>
-	</main>
+	)}
 
-	<Footer variante="minimal" />
-</Layout>
+	<section class="segment-directory" aria-labelledby="outros-segmentos">
+		<div class="w">
+			<h2 id="outros-segmentos">O OLLI para outros serviços</h2>
+			<div class="segment-links">
+				{[...SERVICOS_MENU, ...SERVICOS_FORA_DO_MENU].map((m) => (
+					<a href={`/para/${m.slug}/`} aria-current={m.slug === chaveSite ? "page" : undefined}>{m.nome}</a>
+				))}
+			</div>
+		</div>
+	</section>
+
+	<section>
+		<div class="w">
+			<div class="fin gl">
+				<h2>{seg ? seg.final : `Seu próximo orçamento de ${profissao} sai com a sua marca.`}</h2>
+				<p class="sub">O plano Grátis permite {GRATIS_ORC}, {GRATIS_SEM}.</p>
+				<div class="cta">
+					<a class="bt p" href={URL_CADASTRO}>Começar grátis →</a>
+					<a class="bt s" href={ROTA.recursos}>Conhecer os recursos</a>
+				</div>
+			</div>
+		</div>
+	</section>
+</LayoutSite>

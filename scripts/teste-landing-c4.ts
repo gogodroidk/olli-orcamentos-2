@@ -10,7 +10,11 @@ const llms = ler('../web/src/pages/llms.txt.ts');
 const config = ler('../web/astro.config.mjs');
 const robots = ler('../web/public/robots.txt');
 
-assert.match(home, /para\/\$\{SLUG_POR_OFICIO\[OFICIO_GERAL\.id\]\}\//, 'home precisa levar o serviço genérico a uma página própria');
+// D-2876 (v10): o serviço genérico ("Outro prestador de serviço") é listado no hub /para/ e no menu de serviços, vindos de data/site.ts.
+const dadosSite = ler('../web/src/data/site.ts');
+const hubPara = ler('../web/src/pages/para/index.astro');
+assert.match(dadosSite, /slug: "prestador-de-servico"/, 'o serviço genérico precisa ter página própria na lista de serviços');
+assert.match(hubPara, /SERVICOS_FORA_DO_MENU/, 'o hub /para/ precisa listar o serviço genérico');
 assert.match(vertical, /\[\.\.\.VERTICAIS, VERTICAL_GERAL\]/, 'a rota dinâmica precisa incluir qualquer serviço');
 assert.match(vertical, /id === "geral" \? OFICIO_GERAL/, 'a página genérica precisa usar conteúdo seguro e não um undefined');
 assert.match(llms, /OFICIO_GERAL/, 'agentes precisam descobrir a página para qualquer serviço');
@@ -23,11 +27,15 @@ assert.match(comparador, /IA ajuda a montar o orçamento por voz/, 'comparador d
 assert.doesNotMatch(comparador, /PMOC pronto pra fiscalização|IA que diagnostica o defeito|Equipe no mapa em tempo real/, 'comparador não pode prometer PMOC, diagnóstico ou mapa em tempo real');
 assert.match(config, /\['\/admin\/', '\/404\/', '\/excluir-conta\/'(, '\/servicos\/')?\]/, 'rotas utilitárias não devem entrar no sitemap');
 assert.match(robots, /Disallow: \/admin\//, 'robots deve evitar rastreio da área administrativa');
-assert.match(home, /https:\/\/play\.google\.com\/apps\/testing\/online\.olliorcamentos\.app/, 'CTA Android deve usar o link oficial de adesão exibido pelo Play Console');
-assert.match(home, /target="_blank"[\s\S]*?rel="noopener noreferrer"/, 'link externo da Play deve abrir com isolamento da aba');
-assert.match(home, /Aplicativo Android em teste fechado/, 'landing deve informar que o Android ainda está em teste fechado');
-assert.match(home, /instalação pela Google Play está restrita a testadores selecionados/, 'landing não pode anunciar instalação pública');
-assert.match(home, /Não há aplicativo para iPhone\/iOS nesta versão/, 'landing deve deixar claro que iOS está fora desta versão');
-assert.match(home, /Usar pelo navegador/, 'landing deve manter uma alternativa imediata para quem não está no teste');
+// D-2876 (v10): o app Android é PÚBLICO na Google Play (CTO, 20/11): a landing usa o link público da loja.
+assert.match(dadosSite, /URL_PLAY = "https:\/\/play\.google\.com\/store\/apps\/details\?id=online\.olliorcamentos\.app"/, 'CTA Android usa o link público da Play');
+assert.match(home, /target="_blank"[\s\S]*?rel="noopener"/, 'link externo da Play abre com isolamento da aba');
+const faqSite = ler('../web/src/data/faq-site.ts');
+assert.match(faqSite, /No iPhone e no computador, você usa pelo navegador/, 'landing deixa claro que no iPhone se usa o navegador');
+// D-2876 (LIVRE/CTO, 20/11): prazo de App Store é promessa sem controle (conta da Apple em análise) — não aparece em texto nem em selo.
+const rodapeSite = ler('../web/src/components/site/SiteFooter.astro');
+for (const [nome, fonte] of [['home', home], ['faq', faqSite], ['rodapé', rodapeSite]] as const) {
+  assert.doesNotMatch(fonte, /App Store chega|App Store: em breve|em breve na App Store|app-store\.svg/i, `${nome}: não promete App Store`);
+}
 
 console.log('OK — landing multi-vertical, rota genérica e descoberta por agentes validadas.');

@@ -1,0 +1,80 @@
+---
+/**
+ * PlanosSite — os 3 cartões de plano no visual da v10, com o alternador mensal/anual do site.js da v10.
+ *
+ * TUDO DERIVADO DA FONTE (mesma regra de PlanosPrecos.astro, que segue servindo as páginas antigas):
+ *  - preços: data/planos.ts (espelho da Stripe live), via PRECO de data/site.ts;
+ *  - bullets: planosBase (a tabela única do app, do painel e dos e-mails). A v10 trazia os bullets escritos à mão,
+ *    de antes do corte de 18/11 (recibo, agenda e OS saíram do Grátis); aqui sai o que a fonte diz hoje;
+ *  - "Em breve" nunca vira ✓; o 12× sai com a verdade (não é desconto); Pix só se o build confirmou que está ligado.
+ *
+ * Renderize UMA vez por página (o alternador age em todos os `.tg` e `[data-m]` da página).
+ */
+import { PRECO_PRO } from "../../data/planos";
+import { reais } from "../../data/planos";
+import { GRATIS_ORC, PIX, PRECO, SELO, TRIAL_DIAS, URL_CADASTRO, urlAssinar } from "../../data/site";
+import { planoBase } from "../../data/recursos";
+import { EMPRESA } from "../../data/empresa";
+
+const WHATSAPP = `https://wa.me/${EMPRESA.whatsapp}`;
+const bullets = (id: "gratis" | "pro" | "empresa") => planoBase(id).bullets.map((b) => ({ texto: b.texto, emBreve: b.emBreve }));
+
+// O selo do Grátis vem como último bullet da fonte; a v10 o mostra em nota própria, então sai da lista.
+const ehNotaDoSelo = (t: string) => t.includes(SELO);
+const bulletsGratis = bullets("gratis").filter((b) => !ehNotaDoSelo(b.texto));
+const notaSelo = bullets("gratis").find((b) => ehNotaDoSelo(b.texto))?.texto ?? "";
+
+const doze =
+	PRECO_PRO.parceladoCentavos !== null && PRECO_PRO.parcelaCentavos !== null
+		? {
+				parcela: reais(PRECO_PRO.parcelaCentavos),
+				total: reais(PRECO_PRO.parceladoCentavos),
+				aMais: reais(PRECO_PRO.parceladoCentavos - PRECO_PRO.anualCentavos),
+				aVista: PRECO.proAno,
+			}
+		: null;
+---
+
+<div class="tg gl" role="group" aria-label="Período de cobrança">
+	<button type="button" aria-pressed="true" data-p="m">Mensal</button>
+	<button type="button" aria-pressed="false" data-p="a">Anual · −{PRECO.desconto}</button>
+</div>
+<div class="pl">
+	<div class="pc">
+		<h3>Grátis</h3>
+		<p>Para começar a enviar orçamento com a sua marca.</p>
+		<div class="pr">{reais(0)}</div>
+		<div class="nt">Sem cartão e sem prazo</div>
+		<ul>
+			{bulletsGratis.map((b) => <li>{b.texto}</li>)}
+		</ul>
+		{notaSelo && <small class="pc-obs">{notaSelo}</small>}
+		<a class="bt s" data-plan="gratis" href={URL_CADASTRO}>Começar grátis</a>
+	</div>
+	<div class="pc f">
+		<span class="badge">Recomendado</span>
+		<h3>Pro</h3>
+		<p>Para quem vive de campo e já não cabe no Grátis.</p>
+		<div class="pr" data-m={PRECO.proMes} data-a={PRECO.proAno}>{PRECO.proMes}<small data-m="/mês" data-a="/ano">/mês</small></div>
+		<div class="nt" data-m="Cobrado todo mês" data-a={`Cobrado anualmente. Equivale a ${PRECO.proAnoPorMes} por mês; economia de ${PRECO.proEconomia} no ano.`}>Cobrado todo mês</div>
+		<ul>
+			{bullets("pro").map((b) => <li>{b.texto}{b.emBreve && <> <span class="em-breve">Em breve</span></>}</li>)}
+		</ul>
+		{doze && <small class="pc-obs">Prefere no cartão? Dá para parcelar o ano em 12× de {doze.parcela}. Isso soma {doze.total}, {doze.aMais} a mais que o anual à vista ({doze.aVista}): o 12× é fôlego de caixa, não desconto.</small>}
+		<a class="bt p" data-plan="pro" href={urlAssinar("pro")}>Assinar o Pro</a>
+	</div>
+	<div class="pc">
+		<h3>Empresa</h3>
+		<p>Para equipes que atendem em campo todos os dias.</p>
+		<div class="pr" data-m={PRECO.empresaMes} data-a={PRECO.empresaAno}>{PRECO.empresaMes}<small data-m="/mês" data-a="/ano">/mês</small></div>
+		<div class="nt" data-m="Cobrado todo mês" data-a={`Cobrado anualmente. Equivale a ${PRECO.empresaAnoPorMes} por mês; economia de ${PRECO.empresaEconomia} no ano.`}>Cobrado todo mês</div>
+		<ul>
+			{bullets("empresa").map((b) => <li>{b.texto}{b.emBreve && <> <span class="em-breve">Em breve</span></>}</li>)}
+		</ul>
+		<a class="bt s" data-plan="empresa" href={WHATSAPP} target="_blank" rel="noopener">Falar com a gente</a>
+	</div>
+</div>
+<noscript>
+	<p class="mini">Os botões acima levam à assinatura mensal. Para contratar por ano: <a href={urlAssinar("pro", "anual")}>Pro por {PRECO.proAno}/ano</a>. Cobrança anual.</p>
+</noscript>
+<p class="mini plano-rodape">Grátis sem prazo: {GRATIS_ORC}. Depois do primeiro envio, você pode ativar {TRIAL_DIAS} dias de Pro, sem cartão e sem cobrança automática.{PIX && " Pro e Empresa também podem ser pagos no Pix, pelo mesmo preço, por 1 mês ou 1 ano, sem renovação automática."}</p>

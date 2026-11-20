@@ -115,6 +115,11 @@ if (linhaCsp.length > LIMITE_LINHA_CLOUDFLARE) {
 	);
 }
 
+// PRÉVIA (OLLI_PREVIA=1, D-2876): o endereço de prévia nunca pode entrar no Google. Cabeçalho noindex em TODA rota e
+// robots.txt fechado. O build de produção (sem a variável) não muda em nada.
+const PREVIA = process.env.OLLI_PREVIA === "1";
+const linhaPrevia = PREVIA ? "  X-Robots-Tag: noindex, nofollow, noarchive\n" : "";
+
 const conteudo = `# GERADO POR scripts/gerar-headers.mjs no build — NÃO EDITAR À MÃO.
 /*
   Strict-Transport-Security: max-age=31536000
@@ -122,7 +127,7 @@ const conteudo = `# GERADO POR scripts/gerar-headers.mjs no build — NÃO EDITA
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=()
   X-Frame-Options: DENY
-  Content-Security-Policy: ${csp}
+${linhaPrevia}  Content-Security-Policy: ${csp}
 
 # Assets com hash no nome são imutáveis — pode cachear pra sempre.
 /_astro/*
@@ -160,3 +165,8 @@ const conteudo = `# GERADO POR scripts/gerar-headers.mjs no build — NÃO EDITA
 
 writeFileSync(join(DIST, "_headers"), conteudo, "utf8");
 console.log(`_headers gerado — ${hashes.size} script(s) inline autorizado(s) por hash.`);
+
+if (PREVIA) {
+	writeFileSync(join(DIST, "robots.txt"), "User-agent: *\nDisallow: /\n", "utf8");
+	console.log("PRÉVIA: robots.txt fechado e X-Robots-Tag noindex em todas as rotas.");
+}

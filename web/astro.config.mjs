@@ -51,13 +51,17 @@ const LASTMOD = lastmodPorRota();
  * molde (`pages/para/[oficio].astro`).
  */
 const LASTMOD_PAGINAS = new Map([
-  ['/', '2026-10-01'],
-  ['/planos/', '2026-10-01'],
+  ['/', '2026-11-20'],
+  ['/planos/', '2026-11-20'],
+  ['/como-funciona/', '2026-11-20'],
+  ['/para-empresas/', '2026-11-20'],
+  ['/duvidas/', '2026-11-20'],
+  ['/para/', '2026-11-20'],
   ['/ajuda/', '2026-10-02'],
   ['/legal/privacidade/', '2026-09-29'],
   ['/legal/termos/', '2026-09-29'],
 ]);
-const LASTMOD_PARA = '2026-10-01';
+const LASTMOD_PARA = '2026-11-20';
 
 /**
  * VARIANTES DE ANÚNCIO: /eletricista/ e /refrigeracao/ são as páginas de destino dos anúncios (mesmo ofício de
@@ -66,7 +70,7 @@ const LASTMOD_PARA = '2026-10-01';
  */
 const VARIANTES_DE_ANUNCIO = ['/eletricista/', '/refrigeracao/'];
 /** Aliases por palavra de /para/ (D-1013): página no ar, canonical na de SEO, fora do sitemap. Slugs de `ALIASES_PARA` em `src/data/oficios.ts`. */
-const ALIASES_PARA_FORA = ['/para/ar-condicionado/', '/para/refrigeracao/', '/para/hidraulica/', '/para/marido-de-aluguel/', '/para/manutencao/'];
+const ALIASES_PARA_FORA = ['/para/ar-condicionado/', '/para/refrigeracao/', '/para/hidraulica/', '/para/manutencao/'];
 
 // Site de marketing da OLLI — separado do app (react-native-web). Aqui mora o
 // design extraordinário: SSG p/ SEO + Lighthouse alto, ilhas React só onde há
@@ -115,6 +119,8 @@ export default defineConfig({
         // /servicos/ é noindex enquanto PAGINA_PUBLICADA=false (data/servicos.ts).
         // Ao publicar de verdade, tire '/servicos/' desta lista no mesmo PR.
         if (['/admin/', '/404/', '/excluir-conta/', '/servicos/'].includes(caminho)) return false;
+        // /loja/<codigo>/ (Balcão OLLI): página de parceria com noindex, não é conteúdo de busca.
+        if (caminho.startsWith('/loja/')) return false;
         if (VARIANTES_DE_ANUNCIO.includes(caminho)) return false;
         if (ALIASES_PARA_FORA.includes(caminho)) return false;
         if (!caminho.startsWith('/blog/')) return true;

@@ -1,0 +1,79 @@
+---
+/**
+ * /loja/<codigo>/ — página de entrega do QR/cartaz de uma loja parceira (Balcão OLLI, D-2711).
+ *
+ * Só as lojas de `data/lojas.ts` ganham página (lista fechada); código fora dela dá 404 e aparece na hora do teste do
+ * cartaz. O botão leva ao cadastro do painel MANTENDO utm_source=loja&utm_medium=balcao&utm_campaign=<codigo>.
+ *
+ * Texto: nada de preço, nada de benefício e nada de grupo. O "30 dias de Pro, presente da OLLI" e a caixa de
+ * consentimento do grupo só entram junto com o que os sustenta (regra do benefício e cadastro com consentimento):
+ * página não promete o que ainda não existe (CDC). Sem link de convite de grupo em página pública.
+ * `noindex`: página de parceria não é conteúdo de busca, fica fora do sitemap e não carrega o script de campanha;
+ * a origem vai no href do botão, não depende dele.
+ */
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import Layout from "../../layouts/Layout.astro";
+import { LOJAS, urlCadastroDaLoja } from "../../data/lojas";
+
+export function getStaticPaths() {
+	return LOJAS.map((loja) => ({ params: { codigo: loja.codigo }, props: { loja } }));
+}
+
+const { loja } = Astro.props;
+const cadastro = urlCadastroDaLoja(loja.codigo);
+---
+
+<Layout
+	titulo="Crie sua conta na OLLI — orçamento no celular"
+	descricao="Orçamento, ordem de serviço e recibo no celular. Grátis para começar, sem cartão."
+	noindex
+>
+	<Header>
+		<a href="/legal/privacidade/" class="text-sm font-medium text-slate transition hover:text-ink">Política de Privacidade</a>
+	</Header>
+
+	<main class="mx-auto max-w-3xl px-6 py-14 sm:py-20">
+		{
+			loja.teste && (
+				<p class="mb-6 rounded-cartao border border-line bg-tint p-4 text-sm font-semibold text-ink" role="note">
+					Página de teste. Não é uma loja parceira.
+				</p>
+			)
+		}
+		<span class="eyebrow">{loja.teste ? "OLLI Orçamentos" : "Indicação de loja"}</span>
+		<h1 class="mt-4 text-[clamp(2rem,4vw,2.8rem)] font-extrabold tracking-tight text-ink">
+			{loja.teste ? "Orçamento no celular, sem planilha." : `A ${loja.nome} indica a OLLI Orçamentos.`}
+		</h1>
+		<p class="mt-4 text-lg leading-relaxed text-slate">
+			{
+				loja.teste
+					? "Monte o orçamento no celular, com serviço e material em linhas separadas, e leve do orçamento à ordem de serviço e ao recibo."
+					: "A OLLI é para quem faz orçamento de serviço: você monta o orçamento no celular, com serviço e material em linhas separadas, e leva do orçamento à ordem de serviço e ao recibo."
+			}
+		</p>
+		{
+			!loja.ativa && (
+				<p class="mt-4 rounded-cartao border border-line bg-white p-4 text-slate" role="note">
+					Esta parceria terminou. Você ainda pode criar a sua conta normalmente.
+				</p>
+			)
+		}
+		<p class="mt-4 leading-relaxed text-slate">Grátis para começar, sem cartão.</p>
+
+		<a
+			href={cadastro}
+			data-loja={loja.codigo}
+			class="mt-8 inline-flex min-h-12 w-full items-center justify-center rounded-acao bg-brand px-6 py-3 text-base font-bold text-white transition hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand sm:w-auto"
+		>
+			Criar minha conta
+		</a>
+
+		<p class="mt-10 text-sm leading-relaxed text-muted">
+			A loja recebe só contagens de cadastros, sem o seu nome nem o seu número. Saiba mais na{" "}
+			<a class="font-semibold text-brand-fg underline" href="/legal/privacidade/">Política de Privacidade</a>.
+		</p>
+	</main>
+
+	<Footer variante="minimal" class="max-w-3xl" />
+</Layout>

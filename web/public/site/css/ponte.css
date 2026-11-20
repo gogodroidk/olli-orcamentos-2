@@ -1,0 +1,35 @@
+/* Ajustes da v10 ao entrar na landing (D-2876). Só o que a v10 não resolvia sozinha. */
+
+/* A faixa de consentimento (criada por scripts/marketing.ts) fica por cima da barra de cadastro fixa. */
+@media (max-width: 768px) { .stk { bottom: calc(12px + env(safe-area-inset-bottom) + var(--olli-consent, 0px)); } }
+
+/* Alvo de toque mínimo de 44 px nos links do menu e de navegação (a v10 media 32x15 no "Início"). */
+.nav > a, .nav-drop > a, .drawer a, .crumbs a, footer a { min-height: 44px; display: inline-flex; align-items: center; }
+footer .grid a { display: flex; }
+
+/* "Em breve" nos cartões de plano (a fonte marca o que o produto ainda não entrega). */
+.em-breve { display: inline-block; margin-left: .25rem; padding: .05rem .5rem; border: 1px solid var(--line); border-radius: 999px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
+.plano-rodape { text-align: center; margin-top: 1.25rem; }
+
+/* Páginas de serviço (/para/<serviço>/): foto do prestador ao lado do texto e a "resposta curta". */
+.hero-seg { display: grid; gap: 2rem; align-items: center; }
+.seg-foto { margin: 0; max-width: 280px; }
+.seg-foto img { width: 100%; height: auto; aspect-ratio: 896 / 1200; object-fit: cover; border-radius: 20px; }
+.seg-foto figcaption { margin-top: .5rem; font-size: .75rem; line-height: 1.35; opacity: .75; }
+@media (min-width: 900px) { .hero-seg { grid-template-columns: minmax(0, 1fr) 280px; gap: 3rem; } }
+.resposta-curta { padding: 1.25rem 1.5rem; }
+.resposta-curta p { margin: 0; }
+.resposta-curta .section-kicker { margin-bottom: .5rem; }
+
+/* Régua de toque: 44 px nos botões e links soltos (a v10 media 36–40 px). Texto corrido não entra. */
+.top .bt, .nav-cta .bt { min-height: 44px; }
+.nav-drop > button { min-width: 44px; min-height: 44px; }
+.segment-links a { min-height: 44px; display: inline-flex; align-items: center; }
+.crumbs a { min-width: 44px; justify-content: center; }
+
+/* Celular: título, texto e botão ANTES da foto. Com a foto primeiro, o botão "Começar grátis" ficava atrás do aviso de
+   cookies (ou abaixo da dobra) na primeira visita — medido em 360x740, 390x844 e 412x915. Em tela larga a foto segue ao lado. */
+@media (max-width: 699px) { .hero .hg > .hero-vis { order: 2 !important; margin-top: 8px; } }
+
+/* Foto do topo é pessoa gerada por IA: marca visível "Ilustração" (régua D-2874). O rodapé também diz. */
+.selo-ilustracao { position: absolute; left: 14px; bottom: 10px; z-index: 6; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.3; letter-spacing: .01em; background: color-mix(in srgb, var(--bg) 82%, transparent); color: var(--ink, currentColor); box-shadow: 0 0 0 1px var(--line); backdrop-filter: blur(6px); pointer-events: none; }

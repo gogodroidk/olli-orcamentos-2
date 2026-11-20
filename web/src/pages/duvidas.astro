@@ -1,0 +1,26 @@
+---
+/**
+ * Página gerada do port da v10 (D-2876) e DEPOIS editada à mão: o que depende de plano, preço, limite ou data vem
+ * de data/site.ts e da fonte (planosBase/entitlements), nunca de literal. Editar aqui é o caminho; regerar apaga.
+ */
+import FaqSite from "../components/site/FaqSite.astro";
+import PlanosSite from "../components/site/PlanosSite.astro";
+import LayoutSite from "../layouts/LayoutSite.astro";
+import { FAQ_DUVIDAS, schemaFaq } from "../data/faq-site";
+import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
+---
+
+<LayoutSite titulo="Dúvidas sobre planos e uso do app — OLLI Orçamentos" descricao="Tire suas dúvidas sobre o plano Grátis, aprovação pelo link, Android, iPhone e a sua conta no OLLI Orçamentos." schemas={[schemaFaq(FAQ_DUVIDAS)]}>
+<section class="page-hero"><div class="w">
+<p class="crumbs"><a href="/">Início</a> · Dúvidas</p>
+<h1>Antes de enviar <em>seu primeiro orçamento.</em></h1>
+<p class="lead">Entenda os limites do Grátis, como o cliente aprova e onde você pode usar o OLLI.</p>
+<FaqSite itens={FAQ_DUVIDAS} abrirPrimeiro />
+<p class="faq-contact">Faltou alguma resposta? <a href="https://wa.me/5511941727487" rel="noopener">Fale com o OLLI no WhatsApp</a> ou escreva para <a href="mailto:contato@olliorcamentos.online">contato@olliorcamentos.online</a>.</p>
+</div></section>
+<section><div class="w"><div class="fin gl">
+<h2>Comece com {GRATIS_ORC}.</h2>
+<p class="sub">Crie sua conta no plano Grátis, sem cartão e sem prazo.</p>
+<div class="cta"><a class="bt p" href="https://app.olliorcamentos.online/auth/login?modo=cadastro">Começar grátis →</a><a class="bt s" href="/planos/">Comparar planos</a></div>
+</div></div></section>
+</LayoutSite>

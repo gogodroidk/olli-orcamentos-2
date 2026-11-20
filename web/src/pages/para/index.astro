@@ -1,123 +1,57 @@
 ---
 /**
- * /para/ — o hub das profissões. Existia /para/<ofício>/ para cada um dos 10,
- * mas nada ligava as dez entre si: o rastreador (e a IA que monta resposta de
- * "app de orçamento para <profissão>") não tinha uma página que dissesse, num
- * lugar só, para quem a OLLI serve e o que cada ofício tem pronto.
- *
- * 100% derivado da fonte: a lista vem de `OFICIOS`/`OFICIO_GERAL`, as contagens de
- * `calculosDoOficio` (via `calculadoras`) e os documentos de `FERRAMENTAS` com
- * `disponivel: true`. Vertical nova entra aqui sozinha; promessa não entra.
+ * Página gerada do port da v10 (D-2876) e DEPOIS editada à mão: o que depende de plano, preço, limite ou data vem
+ * de data/site.ts e da fonte (planosBase/entitlements), nunca de literal. Editar aqui é o caminho; regerar apaga.
  */
-import Footer from "../../components/Footer.astro";
-import Header from "../../components/Header.astro";
-import Icone from "../../components/Icone.astro";
-import Layout from "../../layouts/Layout.astro";
-import {
-	DOR_POR_OFICIO,
-	ICONE_POR_OFICIO,
-	OFICIOS,
-	OFICIO_GERAL,
-	PROFISSAO_POR_OFICIO,
-	SLUG_POR_OFICIO,
-} from "../../data/oficios";
-
-const APP_CADASTRO_URL = "https://app.olliorcamentos.online/auth/login?modo=cadastro";
-const ORIGEM = Astro.site?.origin ?? "https://olliorcamentos.online";
-
-const todos = [...OFICIOS, OFICIO_GERAL];
-
-const titulo = "App de orçamento por profissão — OLLI";
-const descricao =
-	"Orçamento, ordem de serviço e recibo para climatização, elétrica, hidráulica, pintura, dedetização, caixa d'água, piscina, extintores e jardinagem. Veja o que a OLLI tem pronto para o seu ofício.";
-
-const schemaBreadcrumb = {
-	"@context": "https://schema.org",
-	"@type": "BreadcrumbList",
-	itemListElement: [
-		{ "@type": "ListItem", position: 1, name: "OLLI", item: `${ORIGEM}/` },
-		{ "@type": "ListItem", position: 2, name: "Por profissão", item: `${ORIGEM}/para/` },
-	],
-};
-
-/** A lista que a IA lê: cada profissão com a URL e a linha que a descreve. */
-const schemaLista = {
-	"@context": "https://schema.org",
-	"@type": "CollectionPage",
-	name: titulo,
-	description: descricao,
-	url: `${ORIGEM}/para/`,
-	mainEntity: {
-		"@type": "ItemList",
-		itemListElement: todos.map((o, i) => ({
-			"@type": "ListItem",
-			position: i + 1,
-			name: `OLLI para ${PROFISSAO_POR_OFICIO[o.id]}`,
-			url: `${ORIGEM}/para/${SLUG_POR_OFICIO[o.id]}/`,
-		})),
-	},
-};
+import FaqSite from "../../components/site/FaqSite.astro";
+import PlanosSite from "../../components/site/PlanosSite.astro";
+import LayoutSite from "../../layouts/LayoutSite.astro";
+import { schemaFaq } from "../../data/faq-site";
+import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA, SERVICOS_FORA_DO_MENU, SERVICOS_MENU } from "../../data/site";
 ---
 
-<Layout titulo={titulo} descricao={descricao} schemas={[schemaBreadcrumb, schemaLista]}>
-	<Header>
-		<a
-			href={APP_CADASTRO_URL}
-			class="inline-flex min-h-11 items-center rounded-campo bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
-			>Começar grátis</a
-		>
-	</Header>
+<LayoutSite titulo="Para técnicos e autônomos — OLLI Orçamentos" descricao="Monte orçamentos no celular, envie por PDF, link ou WhatsApp e acompanhe cada cliente. O cliente aprova pelo link." schemas={[]}>
+<section class="page-hero"><div class="w">
+<p class="crumbs"><a href="/">Início</a> · Para técnicos</p>
+<h1>Orçamento, agenda e OS <em>no celular.</em></h1>
+<p class="lead">Monte a proposta na frente do cliente, envie pelo WhatsApp e registre o atendimento na ordem de serviço. Clientes e orçamentos ficam na mesma conta; agenda, ordem de serviço e recibo são do Pro.</p>
+<div class="cta"><a class="bt p" href="https://app.olliorcamentos.online/auth/login?modo=cadastro">Começar grátis →</a><a class="bt s" href="/planos/">Ver planos</a></div>
+</div></section>
+<section aria-labelledby="proposta-rua"><div class="w">
+<p class="section-kicker">Da proposta ao recibo</p>
+<h2 id="proposta-rua">Menos retrabalho depois da visita.</h2>
+<p class="sub">Você registra cada etapa enquanto trabalha, sem copiar tudo para outro lugar no fim do dia.</p>
+<div class="resource-grid">
+<article class="resource-card gl"><h3>Monte com o seu catálogo</h3><p>Escolha serviços e produtos já cadastrados e ajuste quantidades e valores para cada orçamento.</p></article>
+<article class="resource-card gl"><h3>Envie pelo canal combinado</h3><p>Gere o documento com a sua marca e mande por PDF, link ou WhatsApp. Pelo link, o cliente aprova no celular.</p></article>
+<article class="resource-card gl"><h3>Registre o que foi executado</h3><p>No Pro, a ordem de serviço reúne checklist, fotos e a assinatura do cliente no mesmo atendimento.</p></article>
+<article class="resource-card gl"><h3>Receba e gere o recibo</h3><p>{FRASE_PIX_LINK} Com o pagamento feito, o Pro gera o recibo.</p></article>
+</div>
+</div></section>
+<section aria-labelledby="rotina-rua"><div class="w">
+<p class="section-kicker">Entre uma visita e outra</p>
+<h2 id="rotina-rua">Consulte o trabalho sem abrir uma planilha.</h2>
+<p class="sub">O histórico dos clientes e o apoio ao diagnóstico ficam no próprio app; a agenda é do Pro.</p>
+<div class="fluxo-telas telas-tres">
+<article class="fluxo-passo"><div class="phone-mini"><div class="device device-iphone-14-pro"><div class="device-frame"><img class="device-screen" src="/site/app/telas/agenda.webp" srcset="/site/app/telas/agenda.webp 393w, /site/app/telas/agenda@2x.webp 786w, /site/app/telas/agenda@3x.webp 1179w" sizes="(min-width: 768px) 172px, 141px" alt="Tela real do OLLI: agenda do dia, com os horários dos atendimentos" width="393" height="852" loading="lazy" decoding="async"></div><div class="device-header"></div><div class="device-sensors"></div><div class="device-btns"></div><div class="device-power"></div></div></div><h3>Agenda do dia</h3><p>No Pro, veja os atendimentos marcados e saiba qual é a próxima visita.</p></article>
+<article class="fluxo-passo"><div class="phone-mini"><div class="device device-iphone-14-pro"><div class="device-frame"><img class="device-screen" src="/site/app/telas/clientes.webp" srcset="/site/app/telas/clientes.webp 393w, /site/app/telas/clientes@2x.webp 786w, /site/app/telas/clientes@3x.webp 1179w" sizes="(min-width: 768px) 172px, 141px" alt="Tela real do OLLI: cadastro de clientes, com o histórico de atendimentos" width="393" height="852" loading="lazy" decoding="async"></div><div class="device-header"></div><div class="device-sensors"></div><div class="device-btns"></div><div class="device-power"></div></div></div><h3>Clientes e histórico</h3><p>Encontre os dados do cliente e consulte o que você já atendeu.</p></article>
+<article class="fluxo-passo"><div class="phone-mini"><div class="device device-iphone-14-pro"><div class="device-frame"><img class="device-screen" src="/site/app/telas/diagnostico-ia.webp" srcset="/site/app/telas/diagnostico-ia.webp 393w, /site/app/telas/diagnostico-ia@2x.webp 786w, /site/app/telas/diagnostico-ia@3x.webp 1179w" sizes="(min-width: 768px) 172px, 141px" alt="Tela real do OLLI: diagnóstico assistido pela Oli" width="393" height="852" loading="lazy" decoding="async"></div><div class="device-header"></div><div class="device-sensors"></div><div class="device-btns"></div><div class="device-power"></div></div></div><h3>Apoio ao diagnóstico</h3><p>Use a Oli, assistente de IA do app, como apoio ao diagnóstico, dentro do limite do seu plano.</p></article>
+</div>
+<p class="mini">Dados de exemplo.</p>
+<p class="fluxo-nota"><strong>Sem internet na visita?</strong> No app Android, a consulta de códigos de erro funciona offline. Para comparar os limites da Oli e os demais recursos, <a href="/planos/">veja os planos</a>.</p>
+</div></section>
+<section class="segment-directory" aria-labelledby="escolha-servico">
+<div class="w">
+<h2 id="escolha-servico">Escolha o seu tipo de serviço</h2>
+<div class="segment-links">
+{[...SERVICOS_MENU, ...SERVICOS_FORA_DO_MENU].map((m) => <a href={`/para/${m.slug}/`}>{m.nome}</a>)}
+</div>
+</div>
+</section>
 
-	<main id="conteudo">
-		<section class="mx-auto max-w-4xl px-6 pb-10 pt-14">
-			<nav aria-label="Você está aqui" class="text-sm text-muted">
-				<a href="/" class="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-brand-fg">Início</a>
-				<span aria-hidden="true" class="mx-1.5">/</span>
-				<span class="text-slate">Por profissão</span>
-			</nav>
-			<h1 class="mt-6 text-[clamp(2.1rem,5vw,3.4rem)] font-extrabold leading-[1.05] tracking-tight text-ink">
-				App de orçamento para a <span class="brand-text">sua profissão</span>.
-			</h1>
-			<p class="mt-6 max-w-2xl text-lg leading-relaxed text-slate">
-				A OLLI monta o orçamento, o cliente aprova por um link, e a ordem de serviço e o recibo saem do mesmo
-				documento. Em cada ofício, o que muda são as ferramentas que ficam dentro do orçamento. Escolha o seu e veja
-				o que já está pronto, sem promessa.
-			</p>
-		</section>
-
-		<section class="mx-auto max-w-4xl px-6 pb-20">
-			<ul class="grid gap-4 sm:grid-cols-2">
-				{todos.map((o) => (
-					<li>
-						<a
-							href={`/para/${SLUG_POR_OFICIO[o.id]}/`}
-							class="block h-full rounded-cartao border border-line bg-white p-6 transition hover:border-brand"
-						>
-							<div class="grid h-11 w-11 place-items-center rounded-acao bg-tint text-brand-fg">
-								<Icone nome={ICONE_POR_OFICIO[o.id]} class="h-5 w-5" />
-							</div>
-							<h2 class="mt-3 text-lg font-bold text-ink">OLLI para {PROFISSAO_POR_OFICIO[o.id]}</h2>
-							<p class="mt-1.5 text-sm leading-relaxed text-slate">{DOR_POR_OFICIO[o.id]}</p>
-							<p class="mt-3 border-t border-line pt-3 text-xs leading-relaxed text-muted">{o.tagline}</p>
-						</a>
-					</li>
-				))}
-			</ul>
-
-			<div class="mt-10 flex flex-col gap-3 sm:flex-row">
-				<a
-					href={APP_CADASTRO_URL}
-					class="rounded-acao bg-brand px-7 py-3.5 text-center text-base font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong"
-					>Criar meu primeiro orçamento — grátis</a
-				>
-				<a
-					href="/blog/"
-					class="rounded-acao border border-line bg-white px-7 py-3.5 text-center text-base font-semibold text-ink transition hover:border-brand hover:text-brand-fg"
-					>Guias do blog</a
-				>
-			</div>
-		</section>
-	</main>
-
-	<Footer variante="minimal" />
-</Layout>
+<section><div class="w"><div class="fin gl">
+<h2>Seu próximo orçamento começa com a sua marca.</h2>
+<p class="sub">O plano Grátis permite {GRATIS_ORC}, {GRATIS_SEM}.</p>
+<div class="cta"><a class="bt p" href="https://app.olliorcamentos.online/auth/login?modo=cadastro">Começar grátis →</a><a class="bt s" href="/como-funciona/">Conhecer os recursos</a></div>
+</div></div></section>
+</LayoutSite>
