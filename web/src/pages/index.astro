@@ -7,18 +7,35 @@ import FaqSite from "../components/site/FaqSite.astro";
 import PlanosSite from "../components/site/PlanosSite.astro";
 import LayoutSite from "../layouts/LayoutSite.astro";
 import { FAQ_HOME, schemaFaq } from "../data/faq-site";
-import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
+import { FRASE_PIX_LINK, FRASE_RECURSOS_PLANOS_PAGOS, GRATIS_ORC, NOME_APP, PRECO } from "../data/site";
 import { EMPRESA } from "../data/empresa";
-import { LINK_COM_PIX } from "../data/site";
-import { recursosQueSairamDoGratis } from "../data/recursos";
+
+const definicaoApp = `${NOME_APP} é um aplicativo para prestadores de serviço criarem e enviarem orçamentos para aprovação por link.`;
 ---
 
-<LayoutSite titulo="OLLI Orçamentos — orçamento, OS e recibo com a sua marca" preloadImagem={{ href: "/site/img/fotos/grok/tecnico-olli.webp", srcset: "/site/img/fotos/grok/tecnico-olli.webp 820w, /site/img/fotos/grok/tecnico-olli@2x.webp 1640w, /site/img/fotos/grok/tecnico-olli@3x.webp 2460w", sizes: "(max-width: 520px) calc(100vw - 68px), (max-width: 1024px) 480px, 520px" }} descricao={`Orçamento, OS e recibo com a sua marca no celular. O cliente aprova pelo link. Comece grátis, sem cartão.`} schemas={[schemaFaq(FAQ_HOME)]}>
+<LayoutSite
+  titulo={`Orçamento e ordem de serviço para prestadores | ${NOME_APP}`}
+  descricao="Orçamento, ordem de serviço e recibo com a sua marca no celular. O cliente aprova pelo link. Comece grátis, sem cartão."
+  descricaoApp={definicaoApp}
+  schemas={[schemaFaq(FAQ_HOME)]}
+  preloadImagem={{
+    href: "/site/img/fotos/grok/tecnico-olli.webp",
+    srcset: "/site/img/fotos/grok/tecnico-olli.webp 820w, /site/img/fotos/grok/tecnico-olli@2x.webp 1640w, /site/img/fotos/grok/tecnico-olli@3x.webp 2460w",
+    sizes: "(max-width: 520px) calc(100vw - 68px), (max-width: 1024px) 480px, 520px",
+  }}
+>
 <header class="hero"><div class="w hg">
 <div>
 <span class="chip gl"><i></i> App para prestadores de serviço</span>
-<h1 class="rot-h"><span class="sr">Orçamento profissional em poucos minutos.</span><span class="rot" aria-hidden="true"><span class="rf on">Orçamento profissional <em>em poucos minutos.</em></span><span class="rf">Sua marca <em>em cada orçamento enviado.</em></span><span class="rf">O cliente aprova <em>pelo link.</em></span><span class="rf">Orçamento, OS e recibo <em>no mesmo lugar.</em></span><span class="rf">Agenda e ordem de serviço <em>no celular.</em></span></span></h1>
-<p class="lead">Crie o orçamento no celular, envie pelo WhatsApp e o cliente aprova pelo link. No Pro, OS, agenda e recibo ficam na mesma conta.</p>
+<h1 class="hero-titulo">Orçamentos profissionais para prestadores de serviço</h1>
+<p class="lead">{definicaoApp}</p>
+<p class="rot" aria-hidden="true">
+  <span class="rf on">Orçamento profissional em poucos minutos.</span>
+  <span class="rf">Sua marca em cada orçamento enviado.</span>
+  <span class="rf">O cliente aprova pelo link.</span>
+  <span class="rf">Orçamento, ordem de serviço e recibo no mesmo lugar.</span>
+  <span class="rf">Agenda e ordem de serviço no celular.</span>
+</p>
 <div class="cta">
 <a class="bt p" href="https://app.olliorcamentos.online/auth/login?modo=cadastro">Começar grátis →</a>
 <a class="bt s" href="#como-funciona">Ver como funciona</a>
@@ -74,14 +91,14 @@ import { recursosQueSairamDoGratis } from "../data/recursos";
 
 <section id="planos-home" class="dark"><div class="w planos-w">
 <h2 class="rv">Comece grátis. Cresça quando fizer sentido.</h2>
-<p class="sub rv">Preços em reais. No plano anual você paga 20% a menos.</p>
+<p class="sub rv">Preços em reais. No plano anual você paga {PRECO.desconto} a menos.</p>
 <PlanosSite />
-<p class="mini plano-rodape">No Grátis, {recursosQueSairamDoGratis()} são do Pro.</p>
+<p class="mini plano-rodape">{FRASE_RECURSOS_PLANOS_PAGOS}</p>
 <p class="bloco-acao"><a class="bt s rv" href="/planos/">Comparar os planos →</a></p>
 </div></section>
 
 <section id="duvidas-home"><div class="w">
-<p class="section-kicker">Antes de começar</p><h2 class="rv">Dúvidas de quem quer sair do improviso.</h2>
+<p class="section-kicker">Antes de começar</p><h2 class="rv">Perguntas frequentes sobre planos e uso do OLLI</h2>
 <FaqSite itens={FAQ_HOME} abrirPrimeiro />
 <p class="faq-contact">Ainda ficou com dúvida? <a href={`https://wa.me/${EMPRESA.whatsapp}`} rel="noopener">Fale com o OLLI no WhatsApp →</a> ou veja <a href="/ajuda/">todas as respostas</a>.</p>
 </div></section>

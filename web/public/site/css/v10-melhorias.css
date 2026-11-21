@@ -65,7 +65,7 @@ html{scroll-padding-top:calc(var(--nav-h) + 8px)}
 @media(max-width:900px){html{scroll-padding-bottom:80px}}
 /* Segmentos com div.checklist > ul: a lista interna fica sem marcador e sem recuo padrão. */
 div.checklist>ul{list-style:none;padding:0;margin:24px 0 0;display:grid;gap:10px}
-/* Fase 3 — passada final: botão de pausar o título girando. Fica oculto e aparece só quando recebe foco pelo teclado. */
+/* Fase 3 — passada final: botão de pausar as frases de destaque do hero. Fica oculto e aparece só quando recebe foco pelo teclado. */
 .rot-pausa{position:absolute;width:1px;height:1px;padding:0;border:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .rot-pausa:focus-visible{width:auto;height:auto;min-height:44px;padding:0 18px;overflow:visible;clip-path:none;z-index:5;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:var(--sh);outline:2px solid var(--brand);outline-offset:2px}
 @media(max-width:520px){.seg-tela .phone-mini>.device-iphone-14-pro,.seg-tela .phone-mini>.device-iphone-14-pro:hover{transform:translateX(-50%) scale(.36)}}

@@ -263,9 +263,19 @@ figure>.dv-mac{width:92%;margin:0 auto}
 
 /* v5: hero estilo vitrine com pessoa recortada + notebook + celular */
 .sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.rot{display:grid}.rot .rf{grid-area:1/1;opacity:0;transform:translateY(.35em);filter:blur(6px);transition:opacity .6s var(--e),transform .6s var(--e),filter .6s var(--e)}
-.rot .rf.on{opacity:1;transform:none;filter:none}
-.rot .rf em{display:block}
+.hero .rot {
+  display: grid;
+  margin: 12px 0 0;
+  color: var(--brand-on-glass);
+  font-weight: 600;
+}
+.rot .rf {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: translateY(.35em);
+  transition: opacity .6s var(--e), transform .6s var(--e);
+}
+.rot .rf.on{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){.rot .rf{transition:none}}
 .gc{position:relative;width:100%;height:min(600px,70svh);isolation:isolate}
 .gc-glow{position:absolute;right:4%;top:6%;width:72%;aspect-ratio:1;border-radius:50%;background:radial-gradient(closest-side,#3fd8ea55,#0b6fce33 55%,transparent);z-index:-1}
@@ -326,7 +336,7 @@ figure>.dv-mac{width:92%;margin:0 auto}
 @media(min-width:1025px){.hero .hg{grid-template-columns:.92fr 1.08fr!important}.hv3{max-width:none;width:106%}}@media(min-width:700px) and (max-width:1024px){.hv3{width:108%;max-width:none}}
 @media(max-width:520px){.hero .cta .bt{justify-content:center;text-align:center}.hero .cta .bt.p{flex:1 1 100%}.hero .cta .bt.s{flex:1 1 0;padding-left:8px;padding-right:8px}}
 @media(min-width:1025px){.hero .cta{flex-wrap:nowrap}.hero .cta .bt{padding-left:18px;padding-right:18px}}
-@media(min-width:1025px){.hero .hg{grid-template-columns:1.05fr .95fr!important}.hero h1.rot-h{max-width:none;font-size:clamp(44px,4.4vw,64px)}.hv3{width:112%}}
+@media(min-width:1025px){.hero .hg{grid-template-columns:1.05fr .95fr!important}.hero h1.hero-titulo{max-width:none;font-size:clamp(44px,4.4vw,64px)}.hv3{width:112%}}
 /* Contraste AA (AgentVision): botão principal e destaque do título no tema claro */
 .p{background:linear-gradient(135deg,#055f8a,#0a4a96 70%)}
 :root:not([data-theme=dark]) h1 em{background-image:linear-gradient(120deg,#08668f,#0a4fa3,#4a2fc4,#08668f)}
@@ -436,7 +446,7 @@ html[data-av] .stk{display:none!important}
 .faq-contact a{color:var(--brand-on-glass);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 @media(max-width:560px){
  .hero{padding-bottom:26px}.hero .hg{gap:16px}.client-hero{height:340px;order:-1}.client-hero-person{left:10%;height:96%}.client-hero-mac{width:59%;right:0;bottom:12%}.client-hero-phone{width:19%;left:3%;bottom:10%}
- .hero h1.rot-h{font-size:36px;line-height:1.06;margin-top:8px}.hero .lead{font-size:16px}.hero .cta{margin-top:20px}.hero .cta .bt.s{flex:1 1 100%}
+ .hero h1.hero-titulo{font-size:36px;line-height:1.06;margin-top:8px}.hero .lead{font-size:16px}.hero .cta{margin-top:20px}.hero .cta .bt.s{flex:1 1 100%}
  .hero .lojas{margin-top:14px}.client-hero-note{font-size:9px}
  section{padding:64px 0}.prof{display:none}.product-showcase .vt-scene{min-height:270px}.product-showcase .vt-mac{width:90%}.product-showcase .vt-ph{width:29%;top:12%}
  .resource-card{padding:22px}.faq summary{font-size:16px}.fin{padding:40px 20px}

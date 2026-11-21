@@ -133,17 +133,35 @@
     marca();
   });
 })();
-;(() => { // título rotativo
-  const r = document.querySelector(".rot"); if (!r) return;
-  const fs = [...r.querySelectorAll(".rf")]; if (fs.length < 2) return;
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  // pausa: ponteiro em cima do título (mouse) ou toque no título (pausa e retoma)
-  let i = 0, parado = false; const h = r.closest("h1") || r;
-  h.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") parado = true; });
-  h.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") parado = false; });
-  h.addEventListener("click", () => { if (!matchMedia("(hover: hover)").matches) parado = !parado; });
-  let fixo = false; const bp = document.createElement("button"); bp.type = "button"; bp.className = "rot-pausa"; bp.textContent = "Pausar frases do título"; bp.addEventListener("click", () => { fixo = !fixo; bp.textContent = fixo ? "Retomar frases do título" : "Pausar frases do título"; }); h.insertAdjacentElement("afterend", bp);
-  setInterval(() => { if (document.hidden || parado || fixo) return; fs[i].classList.remove("on"); i = (i + 1) % fs.length; fs[i].classList.add("on"); }, 3600);
+;(() => { // frases de destaque do hero
+  const bloco = document.querySelector(".hero .rot");
+  if (!bloco || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const frases = [...bloco.querySelectorAll(".rf")];
+  if (frases.length < 2) return;
+
+  let atual = 0;
+  let parado = false;
+  bloco.addEventListener("pointerenter", e => { if (e.pointerType === "mouse") parado = true; });
+  bloco.addEventListener("pointerleave", e => { if (e.pointerType === "mouse") parado = false; });
+  bloco.addEventListener("click", () => { if (!matchMedia("(hover: hover)").matches) parado = !parado; });
+
+  let fixo = false;
+  const botao = document.createElement("button");
+  botao.type = "button";
+  botao.className = "rot-pausa";
+  botao.textContent = "Pausar frases de destaque";
+  botao.addEventListener("click", () => {
+    fixo = !fixo;
+    botao.textContent = fixo ? "Retomar frases de destaque" : "Pausar frases de destaque";
+  });
+  bloco.insertAdjacentElement("afterend", botao);
+
+  setInterval(() => {
+    if (document.hidden || parado || fixo) return;
+    frases[atual].classList.remove("on");
+    atual = (atual + 1) % frases.length;
+    frases[atual].classList.add("on");
+  }, 3600);
 })();
 
 ;(() => { // lupa do celular na mão: click/touch + Escape; hover/focus ficam no CSS

@@ -7,9 +7,7 @@ import FaqSite from "../components/site/FaqSite.astro";
 import PlanosSite from "../components/site/PlanosSite.astro";
 import LayoutSite from "../layouts/LayoutSite.astro";
 import { FAQ_PLANOS, schemaFaq } from "../data/faq-site";
-import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PRECO, ROTA } from "../data/site";
-import { LINK_COM_PIX } from "../data/site";
-import { recursosQueSairamDoGratis } from "../data/recursos";
+import { FRASE_RECURSOS_PLANOS_PAGOS, GRATIS_ORC, LINK_COM_PIX, PRECO } from "../data/site";
 ---
 
 <LayoutSite titulo="Planos e preços — OLLI Orçamentos" descricao={`Compare Grátis, Pro (${PRECO.proMes}/mês) e Empresa (${PRECO.empresaMes}/mês). Anual com ${PRECO.desconto} de desconto. Grátis sem cartão.`} schemas={[schemaFaq(FAQ_PLANOS)]}>
@@ -20,9 +18,9 @@ import { recursosQueSairamDoGratis } from "../data/recursos";
 </div></section>
 <section class="dark" aria-labelledby="comparar-planos"><div class="w">
 <h2 id="comparar-planos">Grátis, Pro ou Empresa.</h2>
-<p class="sub">Preços em reais. No plano anual você paga 20% a menos.</p>
+<p class="sub">Preços em reais. No plano anual você paga {PRECO.desconto} a menos.</p>
 <PlanosSite />
-<p class="mini plano-rodape">No Grátis, {recursosQueSairamDoGratis()} são do Pro.</p>
+<p class="mini plano-rodape">{FRASE_RECURSOS_PLANOS_PAGOS}</p>
 </div></section>
 <section aria-labelledby="duvidas-planos"><div class="w">
 <h2 id="duvidas-planos">Antes de escolher.</h2>
