@@ -5,8 +5,18 @@
  * Fora desta lista, de propósito: "O OLLI não oferece exportação de dados" (v10, duvidas) — não confere com nenhuma
  * fonte e é matéria de LGPD (portabilidade); volta só com parecer do LEGAL e confirmação do produto.
  */
-import { planoBase, IA_USOS_GRATIS_MES } from "./recursos";
-import { FRASE_PIX_LINK, GRATIS_ORC, GRATIS_SEM, PIX, PRECO, SELO, TRIAL_DIAS } from "./site";
+import { CORTE_GRATIS_DATA, LIMITE_ENVIOS_GRATIS_MES } from "../../../src/services/planosBase";
+import { IA_USOS_GRATIS_MES, NOTA_SELO_GRATIS, planoBase, ROTULO_RECURSO } from "./recursos";
+import {
+	FRASE_PIX_LINK,
+	GRATIS_ORC,
+	GRATIS_SEM,
+	LINK_COM_PIX,
+	PIX,
+	PLANOS_PAGOS_INCLUEM,
+	PRECO,
+	TRIAL_DIAS,
+} from "./site";
 
 export interface Faq {
 	id: string;
@@ -21,7 +31,9 @@ const bulletEmpresa = (trecho: string) => planoBase("empresa").bullets.find((b) 
 /** "vários técnicos e permissões por papel, PMOC e contratos de manutenção" — só o que a fonte diz que o Empresa tem. */
 const equipeEmpresa = [bulletEmpresa("técnicos"), bulletEmpresa("PMOC")].filter((x): x is string => !!x).map((t) => minuscula(semPonto(t)));
 const fraseEquipe = equipeEmpresa.length ? `Sim. O plano Empresa inclui ${equipeEmpresa.join("; ")}.` : "Sim, com o plano Empresa.";
-const fraseAprova = `Ele abre o link do orçamento e aprova ali.${FRASE_PIX_LINK ? ` ${FRASE_PIX_LINK}` : ""}`;
+const fraseLimite = CORTE_GRATIS_DATA === null
+	? `${GRATIS_ORC.charAt(0).toUpperCase()}${GRATIS_ORC.slice(1)}.`
+	: `Até ${LIMITE_ENVIOS_GRATIS_MES} orçamentos enviados por mês em contas novas do plano Grátis. Contas criadas antes do corte passam a seguir esse limite 30 dias após o início da transição.`;
 
 export const FAQ: Record<string, Faq> = {
 	cartao: {
@@ -31,8 +43,8 @@ export const FAQ: Record<string, Faq> = {
 	},
 	limite: {
 		id: "limite",
-		q: "O plano Grátis tem limite de orçamentos?",
-		a: `Sim: ${GRATIS_ORC}, em PDF, link ou WhatsApp, com o selo discreto “${SELO}”. Rascunhos, clientes e histórico não têm limite.`,
+		q: "Quantos orçamentos posso enviar por mês no plano Grátis?",
+		a: `${fraseLimite} Você pode enviar por PDF, link ou WhatsApp. Rascunhos, clientes e histórico não têm limite. ${NOTA_SELO_GRATIS}`,
 	},
 	plataformas: {
 		id: "plataformas",
@@ -41,8 +53,18 @@ export const FAQ: Record<string, Faq> = {
 	},
 	aprova: {
 		id: "aprova",
-		q: "Como o cliente aprova e paga?",
-		a: fraseAprova,
+		q: "Como meu cliente aprova o orçamento?",
+		a: "O cliente abre o link do orçamento e aprova ali.",
+	},
+	pagamentoLink: {
+		id: "pagamento-link",
+		q: "Meu cliente pode pagar pelo link do orçamento?",
+		a: FRASE_PIX_LINK,
+	},
+	ordemServico: {
+		id: "ordem-servico",
+		q: "Qual plano inclui ordem de serviço?",
+		a: `${PLANOS_PAGOS_INCLUEM} ${minuscula(ROTULO_RECURSO.ordem_servico.titulo)}.`,
 	},
 	equipe: {
 		id: "equipe",
@@ -91,9 +113,11 @@ export const FAQ: Record<string, Faq> = {
 	},
 };
 
-export const FAQ_HOME = ["cartao", "limite", "plataformas", "aprova", "equipe"].map((k) => FAQ[k]);
-export const FAQ_PLANOS = ["cartao", "anual", "teste", "aprova", "equipe", "pmoc"].map((k) => FAQ[k]);
-export const FAQ_DUVIDAS = ["cartao", "limite", "custo", "teste", "plataformas", "aprova", "ia", "offline", "nota", "equipe", "backup"].map((k) => FAQ[k]);
+const perguntasLink = LINK_COM_PIX ? ["aprova", "pagamentoLink"] : ["aprova"];
+
+export const FAQ_HOME = ["cartao", "limite", "plataformas", ...perguntasLink, "ordemServico", "equipe"].map((k) => FAQ[k]);
+export const FAQ_PLANOS = ["cartao", "anual", "teste", ...perguntasLink, "equipe", "pmoc"].map((k) => FAQ[k]);
+export const FAQ_DUVIDAS = ["cartao", "limite", "custo", "teste", "plataformas", ...perguntasLink, "ia", "offline", "nota", "equipe", "backup"].map((k) => FAQ[k]);
 
 /** FAQPage serializado do MESMO array que a página renderiza. */
 export function schemaFaq(itens: Faq[]) {

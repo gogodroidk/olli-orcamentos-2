@@ -89,7 +89,7 @@ figure>.css-laptop{width:740px;margin:0;position:relative;left:0}
  .hero .hg{display:flex!important;flex-direction:column;gap:0}
  .hero .hg>div:first-child{order:2;width:100%}
  .hero .client-hero{order:1!important}
- .hero h1.rot-h{margin-top:10px}
+ .hero h1.hero-titulo{margin-top:10px}
  .hero-macbook{transform:scale(.43);top:20px;left:0}
  .hero-iphone{transform:scale(.2);top:45px;right:0}
  .device-caption{bottom:0}

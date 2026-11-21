@@ -9,11 +9,14 @@
 	identidadePublicavel,
 } from "../data/empresa";
 import { PRECO_EMPRESA, PRECO_PRO } from "../data/planos";
-import { REDES_OFICIAIS } from "../data/site";
+import { NOME_PLANO } from "../data/recursos";
+import { NOME_APP, REDES_OFICIAIS, URL_APP, URL_PLAY } from "../data/site";
 
 interface Props {
 	titulo?: string;
 	descricao?: string;
+	/** Definição do aplicativo presente no texto desta página. */
+	descricaoApp?: string;
 	/**
 	 * JSON-LD EXTRA da página (FAQPage, BreadcrumbList…). O `Organization` e o
 	 * `SoftwareApplication` já saem em toda página de produto por padrão — a página
@@ -48,12 +51,13 @@ const {
 	titulo = "OLLI — do orçamento ao recibo, sem planilha",
 	descricao = "A plataforma de orçamentos para quem trabalha com serviços: orçamento, ordem de serviço e recibo no celular e no computador — com ferramentas por ofício e IA assistida. Grátis para começar.",
 	noindex = false,
+	descricaoApp,
 	ogImagem = "/og-image.png",
 	redirectUrl,
 	canonicalPath,
 	ofertaDoApp = true,
 	telefoneContato = EMPRESA.whatsapp,
-	nomeDoSite = "OLLI Orçamentos",
+	nomeDoSite = NOME_APP,
 } = Astro.props;
 const canonical = new URL(
 	canonicalPath ?? Astro.url.pathname,
@@ -124,22 +128,48 @@ const schemaOrganizacao = {
 	},
 };
 
+function ofertaMensal(nome: string, mensalCentavos: number) {
+	const preco = { price: String(mensalCentavos / 100), priceCurrency: "BRL" };
+	return {
+		"@type": "Offer",
+		name: `${nome} mensal`,
+		...preco,
+		priceSpecification: {
+			"@type": "UnitPriceSpecification",
+			...preco,
+			billingDuration: "P1M",
+		},
+	};
+}
+
+// Propriedades de SoftwareApplication compartilhadas pelas duas versões do app.
 const schemaApp = {
 	"@context": "https://schema.org",
-	"@type": "SoftwareApplication",
-	name: "OLLI",
+	name: NOME_APP,
+	description: descricaoApp,
 	applicationCategory: "BusinessApplication",
-	operatingSystem: "Android, Web",
 	inLanguage: "pt-BR",
-	url: ORIGEM,
-	// Preços DERIVADOS de data/planos.ts (Stripe live) — mensal em reais, sem
-	// literal. SEM aggregateRating — ver o comentário acima.
 	offers: [
-		{ "@type": "Offer", name: "Grátis", price: "0", priceCurrency: "BRL" },
-		{ "@type": "Offer", name: "Pro", price: String(PRECO_PRO.mensalCentavos / 100), priceCurrency: "BRL" },
-		{ "@type": "Offer", name: "Empresa", price: String(PRECO_EMPRESA.mensalCentavos / 100), priceCurrency: "BRL" },
+		{ "@type": "Offer", name: NOME_PLANO.gratis, price: "0", priceCurrency: "BRL" },
+		ofertaMensal(NOME_PLANO.pro, PRECO_PRO.mensalCentavos),
+		ofertaMensal(NOME_PLANO.empresa, PRECO_EMPRESA.mensalCentavos),
 	],
 };
+const schemasApp = [
+	{
+		...schemaApp,
+		"@type": "MobileApplication",
+		"@id": `${ORIGEM}#app-android`,
+		operatingSystem: "Android",
+		url: URL_PLAY,
+	},
+	{
+		...schemaApp,
+		"@type": "WebApplication",
+		"@id": `${ORIGEM}#app-web`,
+		url: URL_APP,
+	},
+];
 
 /**
  * WebSite — diz ao Google COMO CHAMAR o site no resultado de busca. Sem isto ele
@@ -159,7 +189,7 @@ const schemaWebSite = {
 	publisher: { "@id": `${ORIGEM}#organizacao` },
 };
 
-const jsonLd = [schemaOrganizacao, schemaWebSite, ...(ofertaDoApp ? [schemaApp] : []), ...schemas];
+const jsonLd = [schemaOrganizacao, schemaWebSite, ...(ofertaDoApp ? schemasApp : []), ...schemas];
 ---
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

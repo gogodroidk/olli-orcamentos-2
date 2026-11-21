@@ -11,8 +11,15 @@ import type { Recurso } from "../../../src/services/entitlements";
 import { TRIAL_PRO_DIAS } from "../../../src/services/entitlements";
 import { DESCONTO_ANUAL_ROTULO, PRECO_EMPRESA, PRECO_PRO, reais } from "./planos";
 import { PIX_PLANO_LIGADO } from "./pix";
-import { GRATIS_CONDICAO, FRASE_GRATIS_CURTA, recursosQueSairamDoGratis, TEXTO_SELO_OLLI } from "./recursos";
+import {
+	FRASE_GRATIS_CURTA,
+	GRATIS_CONDICAO,
+	NOME_PLANO,
+	recursosQueSairamDoGratis,
+	TEXTO_SELO_OLLI,
+} from "./recursos";
 
+export const NOME_APP = "OLLI Orçamentos";
 export const URL_APP = "https://app.olliorcamentos.online";
 export const URL_CADASTRO = `${URL_APP}/auth/login?modo=cadastro`;
 export const URL_ENTRAR = `${URL_APP}/auth/login`;
@@ -66,7 +73,8 @@ export const GRATIS_ORC = FRASE_GRATIS_CURTA;
 /** "sem cartão e sem prazo" */
 export const GRATIS_SEM = GRATIS_CONDICAO;
 export const SELO = TEXTO_SELO_OLLI;
-export const SAIRAM_DO_GRATIS = recursosQueSairamDoGratis();
+export const PLANOS_PAGOS_INCLUEM = `Os planos ${NOME_PLANO.pro} e ${NOME_PLANO.empresa} incluem`;
+export const FRASE_RECURSOS_PLANOS_PAGOS = `${PLANOS_PAGOS_INCLUEM} estes recursos — ${recursosQueSairamDoGratis()}.`;
 export const TRIAL_DIAS = TRIAL_PRO_DIAS;
 
 export const PRECO = {

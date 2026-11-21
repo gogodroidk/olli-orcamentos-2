@@ -72,9 +72,20 @@ ok('assinar leva a Planos (Pix Automático em 1º lá)', rp.includes('navigate("
 ok('indeterminado nunca libera nem rebaixa', /indeterminado[\s\S]{0,200}toast\.error/.test(rp));
 
 // 4. Coerência landing + FAQ
-const landing = [ler('web/src/pages/index.astro'), ler('web/src/pages/planos.astro'), ler('web/src/pages/para/[oficio].astro'), ler('src/content/ajuda/index.ts')].join('\n');
+const homeEPlanos = ['web/src/pages/index.astro', 'web/src/pages/planos.astro'].map(ler);
+const oficioEAjuda = ['web/src/pages/para/[oficio].astro', 'src/content/ajuda/index.ts'].map(ler);
+const faqSite = ler('web/src/data/faq-site.ts');
+const landing = [...homeEPlanos, ...oficioEAjuda, faqSite].join('\n');
 ok('landing/FAQ não prometem recibo/agenda/OS no Grátis', !/(rascunhos, (ordem de serviço, )?recibos|Grátis para começar: orçamento, ordem de serviço e recibo|Grátis da OLLI faz ordem de serviço|com orçamento, ordem de serviço, recibo, clientes|recibos, clientes, agenda e histórico)/.test(landing));
-ok('landing/FAQ usam a frase da fonte', (landing.match(/recursosQueSairamDoGratis\(\)/g) ?? []).length >= 4);
+const fraseSite = ler('web/src/data/site.ts').split('\n')
+  .find((linha) => linha.startsWith('export const FRASE_RECURSOS_PLANOS_PAGOS = '));
+ok('home e planos usam a lista derivada da fonte',
+  fraseSite?.includes('${recursosQueSairamDoGratis()}') === true
+  && homeEPlanos.every((pagina) => pagina.includes('{FRASE_RECURSOS_PLANOS_PAGOS}')));
+ok('ofício e ajuda usam a lista derivada da fonte',
+  oficioEAjuda.every((pagina) => pagina.includes('recursosQueSairamDoGratis()')));
+ok('FAQ de ordem de serviço usa o título da fonte e a inclusão nos planos',
+  faqSite.includes('ROTULO_RECURSO.ordem_servico.titulo') && faqSite.includes('${PLANOS_PAGOS_INCLUEM}'));
 
 console.log(falhas ? `\n${falhas} falha(s)` : '\nPASSOU');
 process.exit(falhas ? 1 : 0);
