@@ -9,7 +9,9 @@ O navegador abre a ligação em `/ligar/`. O servidor entrega um token efêmero 
 
 ## Confirmação e resposta
 
-A assistente lê “Recado para a Camila: … Confirma?”. O cartão mostra o mesmo destinatário e texto. Igor confirma por voz ou pelo botão **Confirmar envio**. O servidor vincula o token de três minutos à identidade do Access, à ligação, ao texto e ao destino. Um novo recado substitui o anterior. Alterar o destino invalida o token antigo. A leitura precisa repetir a frase completa. A espera de 700 ms começa ao terminar a reprodução. Se a leitura sair diferente, peça para repetir ou confirme pela tela.
+A assistente lê “Recado para a Camila: … Confirma?”. O cartão mostra o mesmo destinatário e texto. A confirmação é por voz ou pelo botão **Confirmar envio**. O servidor vincula o token de três minutos à identidade da sessão, à ligação, ao texto e ao destino. Um novo recado substitui o anterior. Alterar o destino invalida o token antigo. A leitura precisa repetir a frase completa. A espera de 700 ms começa ao terminar a reprodução. Se a leitura sair diferente, peça para repetir ou confirme pela tela.
+
+Quando o servidor valida a identidade do Igor no Access, o recado recebe o rótulo `via Access` e a confirmação atribuída ao Igor. Em loopback, o envio é informativo e recebe o rótulo `via local, não verificado`. Para executar um pedido recebido por essa via, o líder precisa confirmar com Igor pelo canal autorizado.
 
 O servidor entrega o recado confirmado com `hibernar.mjs ask`. Igor pode conversar enquanto espera. A resposta é lida pela linha `R-Lnnnnnnnn: ...` do retorno ou pelo arquivo da ligação `~/.olli-ligar/respostas/Lnnnnnnnn.txt`. A assistente anuncia o líder e pode ler frases operacionais da lista apresentada no próprio recado. Se chegar texto livre, ela informa que o líder respondeu e aponta para o terminal. Os detalhes ficam no canal em que o líder respondeu.
 

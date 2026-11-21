@@ -7,8 +7,9 @@
 //  2) A ferramenta da voz (mandar_recado) só PREPARA o pedido. O servidor guarda o texto exato e gera um token
 //     aleatório de uso único (3 min). O token vai só para o código da página, nunca para o modelo.
 //  3) Só /api/confirmar envia, e só com token + ligação + identidade certos. Quem chama o confirmar é a página, a
-//     partir de um ato do Igor (toque no botão "Confirmar envio" ou um "sim" falado depois de a voz ler o pedido).
+//     partir do botão "Confirmar envio" ou de um "sim" falado depois de a voz ler o pedido.
 //     O texto enviado é o que o servidor guardou, não o que alguém manda depois.
+//     O token vincula o recado à ligação. A identidade do Igor vem do Access.
 //  4) O conteúdo lido do grupo e das decisões entra como DADO: o servidor guarda o que foi lido em cada ligação e
 //     recusa preparar um pedido que copie esse conteúdo ou que atribua uma ordem ao Igor em 3ª pessoa
 //     ("o Igor mandou pagar X").
@@ -124,8 +125,8 @@ export function prepararPedido(id, identidade, destino, texto, agora = Date.now(
 
 /**
  * Confere e CONSOME o token. Só depois disto o recado pode sair.
- * via "botao": o toque do Igor é o ato humano. via "voz": além do token, a fala tem de ser confirmação depois de a voz
- * ler o pedido (`confirmouFn(fala, pergunta)`) e a pergunta tem de cobrir o texto guardado.
+ * A página confirma pelo botão ou pela voz. Na voz, a fala tem de confirmar depois da leitura
+ * (`confirmouFn(fala, pergunta)`) e a pergunta tem de cobrir o texto guardado.
  */
 export function confirmarPedido({ ligacao, pedido, token, destino, identidade, via, fala = "", pergunta = "", confirmouFn }, agora = Date.now()) {
   const l = ligacaoValida(ligacao, identidade, agora);
@@ -145,7 +146,7 @@ export function confirmarPedido({ ligacao, pedido, token, destino, identidade, v
     return { ok: false, motivo: "o destino do recado mudou; prepare um novo pedido" };
   }
   const lider = resolverLider(p.destino);
-  if (via !== "botao" && via !== "voz") return { ok: false, motivo: "confirmação sem ato do Igor" };
+  if (via !== "botao" && via !== "voz") return { ok: false, motivo: "use o botão ou confirme por voz" };
   if (via === "voz") {
     if (typeof confirmouFn !== "function" || !confirmouFn(fala, pergunta)) return { ok: false, motivo: "a fala não é uma confirmação depois de 'confirma?'" };
     if (!leuDestino(pergunta, lider)) return { ok: false, motivo: "a voz leu outro destinatário; escute o recado novamente" };

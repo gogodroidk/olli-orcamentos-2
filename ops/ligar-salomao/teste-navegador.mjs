@@ -18,7 +18,7 @@ Object.assign(process.env, {
 writeFileSync(join(tmp, "cfg.json"), JSON.stringify({ maestri: { terminal: "t", workspace: "w", socket: join(tmp, "cfg.json") } }));
 const CHAMADAS = join(tmp, "chamadas.jsonl");
 writeFileSync(process.env.LIGAR_HIBERNAR, `import { appendFileSync } from "node:fs";
-const recado = process.argv[4] || ""; const cod = (recado.match(/IGOR (L[0-9A-F]{8})/) || [])[1] || "?";
+const recado = process.argv[4] || ""; const cod = (recado.match(/(?:IGOR|LOCAL) (L[0-9A-F]{8})/) || [])[1] || "?";
 const destino = process.argv[3];
 appendFileSync(${JSON.stringify(CHAMADAS)}, JSON.stringify({ recado, destino }) + "\\n");
 const resposta = destino === "SALES — Diretor Comercial"
@@ -153,7 +153,7 @@ try {
   await vozDiz("Recado para a Camila: prioriza a campanha da GR Tech amanhã. Confirma?");
   await espera(800);
   await igorDiz("Sim, pode mandar.");
-  await pag.waitForFunction(() => window.__enviados.some((s) => s.includes("Recado confirmado para a Camila")), null, { timeout: 8000 });
+  await pag.waitForFunction(() => window.__enviados.some((s) => s.includes("Recado para a Camila via local, não verificado")), null, { timeout: 8000 });
   assert.equal(await pag.isVisible("#cartao"), false);
   assert.equal(await pag.textContent("#status"), "Ouvindo…");
   await emitir({ toolCall: { functionCalls: [{ id: "e3", name: "estado_empresa", args: {} }] } });
@@ -164,7 +164,8 @@ try {
   await pag.waitForFunction(() => window.__enviados.some((s) => s.includes("a Camila respondeu: A tarefa foi concluída.")), null, { timeout: 10000 });
   assert.equal(chamadas().length, 1);
   assert.equal(chamadas()[0].destino, "MKT — CMO");
-  assert.match(chamadas()[0].recado, /Recado para a Camila: prioriza a campanha da GR Tech amanhã\. Confirma\? \| Confirmado pelo Igor: disse sim/);
+  assert.match(chamadas()[0].recado, /via local, não verificado\] Recado para a Camila: prioriza a campanha da GR Tech amanhã\. Confirma\?/);
+  assert.doesNotMatch(chamadas()[0].recado, /Confirmado pelo Igor/);
   assert.ok(!/NO GRUPO|equipe\.mjs/.test(chamadas()[0].recado));
   ok("confirmação por voz envia uma vez ao terminal da Camila e a assistente avisa quando a resposta chega");
 
@@ -175,7 +176,8 @@ try {
   await pag.waitForFunction(() => window.__enviados.some((s) => s.includes("o Bruno respondeu. Leia os detalhes no terminal.")), null, { timeout: 10000 });
   assert.equal(chamadas().length, 2);
   assert.equal(chamadas()[1].destino, "SALES — Diretor Comercial");
-  assert.match(chamadas()[1].recado, /tocou em 'Confirmar envio'/);
+  assert.match(chamadas()[1].recado, /via local, não verificado/);
+  assert.doesNotMatch(chamadas()[1].recado, /Confirmado pelo Igor|conferido no servidor/);
   assert.doesNotMatch(await pag.evaluate(() => window.__enviados.join("\n")), /Joana Exemplo|98765|75,00/);
   ok("botão confirma envio ao Bruno; nome, telefone e valor fictícios ficam fora do Gemini");
 

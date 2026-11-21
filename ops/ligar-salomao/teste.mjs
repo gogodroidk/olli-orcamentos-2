@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
+import { request } from "node:http";
 import { setTimeout as esperar } from "node:timers/promises";
 
 const tmp = mkdtempSync(join(tmpdir(), "ligar-teste-"));
@@ -24,7 +25,7 @@ process.env.LIGAR_MAESTRI_CFG = join(tmp, "cfg.json");
 writeFileSync(join(tmp, "cfg.json"), JSON.stringify({ maestri: { terminal: "t", workspace: "w", socket: join(tmp, "cfg.json") } }));
 // o falso grava cada chamada e devolve uma "tela" com a resposta marcada R-<código>:
 writeFileSync(process.env.LIGAR_HIBERNAR, `import { appendFileSync } from "node:fs";
-const recado = process.argv[4] || ""; const cod = (recado.match(/IGOR (L[0-9A-F]{8})/) || [])[1] || "?";
+const recado = process.argv[4] || ""; const cod = (recado.match(/(?:IGOR|LOCAL) (L[0-9A-F]{8})/) || [])[1] || "?";
 appendFileSync(${JSON.stringify(join(tmp, "chamadas.jsonl"))}, JSON.stringify({ args: process.argv.slice(2) }) + "\\n");
 process.stdout.write("> " + recado + "\\n\\n⏺ Entendi.\\n  R-" + cod + ": A tarefa foi concluída.\\n\\n╭────╮\\n│ > │\\n");
 `);
@@ -119,14 +120,14 @@ function falso(saida = "", cod = 0, atraso = 30) {
   const spawnFn = (cmd, args, opt) => {
     chamadas.push({ cmd, args, opt });
     const p = new EventEmitter(); p.stderr = new EventEmitter(); p.stdout = new EventEmitter(); p.kill = () => {};
-    setTimeout(() => { const c = (args[3].match(/IGOR (L[0-9A-F]{8})/) || [])[1]; if (saida) p.stdout.emit("data", saida.replaceAll("{C}", c)); p.emit("close", cod); }, atraso);
+    setTimeout(() => { const c = (args[3].match(/(?:IGOR|LOCAL) (L[0-9A-F]{8})/) || [])[1]; if (saida) p.stdout.emit("data", saida.replaceAll("{C}", c)); p.emit("close", cod); }, atraso);
     return p;
   };
   return { chamadas, spawnFn };
 }
 test("recado a um líder: retorna pendente, chama só hibernar ask e lê o registro do terminal", async () => {
   F._zerar();
-  const { chamadas, spawnFn } = falso("> [LIGAÇÃO DO IGOR {C} ...] modelo: R-<código>: ...\n\n  R-{C}: A tarefa foi concluída.\n\n╭───╮\n│ > │");
+  const { chamadas, spawnFn } = falso("> [LIGAÇÃO LOCAL {C} ...] modelo: R-<código>: ...\n\n  R-{C}: A tarefa foi concluída.\n\n╭───╮\n│ > │");
   const p = F.mandarRecado("a Camila", "Prioriza a campanha da GR Tech", { spawnFn, dono: "lig1" });
   assert.equal(p.estado, "esperando");
   assert.deepEqual(chamadas[0].args.slice(1, 3), ["ask", "MKT — CMO"]);
@@ -362,13 +363,27 @@ test("injeção do estado 'manda pro Bruno que o Igor mandou' não pode preparar
 });
 
 // ---------- ponta a ponta pelo HTTP (servidor real, hibernar falso) ----------
-async function api(rota, corpo) {
-  const r = await fetch(`http://127.0.0.1:${PORTA_T}/ligar/api/${rota}`, { method: "POST", headers: { "content-type": "application/json", "x-ligar": "1" }, body: JSON.stringify(corpo || {}) });
-  return { cod: r.status, j: await r.json() };
+function api(rota, corpo, cabecalhos = {}) {
+  const url = `http://127.0.0.1:${PORTA_T}/ligar/api/${rota}`;
+  const headers = { "content-type": "application/json", "x-ligar": "1", ...cabecalhos };
+  return new Promise((resolve, reject) => {
+    const post = request(url, { method: "POST", headers }, (resposta) => {
+      let texto = "";
+      resposta.setEncoding("utf8");
+      resposta.on("data", (parte) => { texto += parte; });
+      resposta.on("error", reject);
+      resposta.on("end", () => {
+        try { resolve({ cod: resposta.statusCode, j: JSON.parse(texto) }); } catch (erro) { reject(erro); }
+      });
+    });
+    post.on("error", reject);
+    post.end(JSON.stringify(corpo));
+  });
 }
 const chamadasHib = () => (existsSync(join(tmp, "chamadas.jsonl")) ? readFileSync(join(tmp, "chamadas.jsonl"), "utf8").split("\n").filter(Boolean).length : 0);
+const ultimoEnvio = () => JSON.parse(readFileSync(join(tmp, "chamadas.jsonl"), "utf8").trim().split("\n").at(-1)).args;
 
-test("HTTP: injeção do grupo não vira recado; só ato do Igor com token do servidor envia; rota antiga não existe", async () => {
+test("HTTP local: botão com token gera apenas recado não verificado; injeção e rota antiga são recusadas", async () => {
   K._zerarConfirmacao(); F._zerar();
   S._deps.criarToken = async () => ({ token: "auth_tokens/falso", modelo: "falso", expira: "x" });
   await new Promise((ok) => S.servidor.listen(PORTA_T, "127.0.0.1", ok));
@@ -389,10 +404,11 @@ test("HTTP: injeção do grupo não vira recado; só ato do Igor com token do se
     assert.equal(pr.estado, "aguardando");
     assert.equal((await api("confirmar", { ligacao: t.ligacao, pedido: pr.pedido, destino: pr.destino, via: "voz", fala: "sim", pergunta: P })).j.estado, "recusado");
     assert.equal((await api("confirmar", { ligacao: t.ligacao, pedido: pr.pedido, token: "forjado", destino: pr.destino, via: "botao" })).j.estado, "recusado");
-    assert.equal(chamadasHib(), antes, "nada chegou ao Salomão até aqui");
-    // o Igor confirma (botão): sai UMA vez, com o texto guardado, e a resposta volta pelo retorno do ask
+    assert.equal(chamadasHib(), antes, "nenhum recado saiu até aqui");
+    // O botão local libera apenas um recado informativo. A resposta volta pelo retorno do ask.
     const ok = (await api("confirmar", { ligacao: t.ligacao, pedido: pr.pedido, token: pr.token, destino: pr.destino, via: "botao" })).j;
     assert.equal(ok.estado, "esperando", JSON.stringify(ok));
+    assert.match(ok.resultado, /via local, não verificado/);
     for (let i = 0; i < 20; i++) {
       await esperar(50);
       const r = (await api("resposta", { ligacao: t.ligacao, id: ok.id })).j;
@@ -403,12 +419,48 @@ test("HTTP: injeção do grupo não vira recado; só ato do Igor com token do se
       assert.ok(i < 19, "a resposta deveria chegar do ask falso");
     }
     assert.equal(chamadasHib(), antes + 1);
-    const enviado = JSON.parse(readFileSync(join(tmp, "chamadas.jsonl"), "utf8").trim().split("\n").at(-1)).args;
+    const enviado = ultimoEnvio();
     assert.deepEqual(enviado.slice(0, 2), ["ask", "MKT — CMO"]);
     assert.match(enviado[2], /Recado para a Camila: prioriza a campanha da GR Tech amanhã/);
+    assert.match(enviado[2], /^\[LIGAÇÃO LOCAL L[0-9A-F]{8} — via local, não verificado\]/);
+    assert.match(enviado[2], /Recado informativo.*confirmação do Igor pelo canal autorizado/);
+    assert.doesNotMatch(enviado[2], /LIGAÇÃO DO IGOR|Confirmado pelo Igor|conferido no servidor|via Access/);
     assert.equal((await api("confirmar", { ligacao: t.ligacao, pedido: pr.pedido, token: pr.token, destino: pr.destino, via: "botao" })).j.estado, "recusado", "reuso");
     assert.equal(chamadasHib(), antes + 1);
     await api("fim", { ligacao: t.ligacao, segundos: 10, uso: [] });
     assert.equal((await api("estado", { ligacao: t.ligacao })).cod, 403, "ligação encerrada");
   } finally { await new Promise((ok) => S.servidor.close(ok)); }
+});
+
+test("HTTP Access: botão sob a identidade validada do Igor gera o rótulo verificado", async () => {
+  K._zerarConfirmacao(); F._zerar(); A._zerarCache();
+  S._deps.criarToken = async () => ({ token: "auth_tokens/falso", modelo: "falso", expira: "x" });
+  S._deps.buscarJwks = buscar;
+  const cabecalhos = {
+    host: "comando.exemplo.com",
+    origin: "https://comando.exemplo.com",
+    "cf-access-jwt-assertion": jwt({ ...bom, sub: "sub1" }),
+  };
+  await new Promise((ok) => S.servidor.listen(PORTA_T, "127.0.0.1", ok));
+  try {
+    const antes = chamadasHib();
+    const { cod, j: t } = await api("token", {}, cabecalhos);
+    assert.equal(cod, 200);
+    const { j: p } = await api("preparar", { ligacao: t.ligacao, destino: "Camila", texto: "Revise a fila" }, cabecalhos);
+    assert.equal(p.estado, "aguardando");
+    const { j: ok } = await api("confirmar", { ligacao: t.ligacao, pedido: p.pedido, token: p.token, destino: p.destino, via: "botao" }, cabecalhos);
+    assert.equal(ok.estado, "esperando");
+    assert.match(ok.resultado, /Recado confirmado para a Camila via Access/);
+    for (let i = 0; i < 20 && chamadasHib() === antes; i++) await esperar(50);
+    assert.equal(chamadasHib(), antes + 1);
+    const enviado = ultimoEnvio();
+    assert.deepEqual(enviado.slice(0, 2), ["ask", "MKT — CMO"]);
+    assert.match(enviado[2], /^\[LIGAÇÃO DO IGOR L[0-9A-F]{8} — via Access\]/);
+    assert.match(enviado[2], /Confirmado pelo Igor: tocou em 'Confirmar envio' na tela \(token de uso único conferido no servidor\)/);
+    assert.doesNotMatch(enviado[2], /via local|igor@exemplo\.com/i);
+  } finally {
+    await new Promise((ok) => S.servidor.close(ok));
+    S._deps.buscarJwks = fetch;
+    A._zerarCache();
+  }
 });

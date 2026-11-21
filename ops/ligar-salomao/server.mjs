@@ -5,7 +5,7 @@
 //   POST /ligar/api/token        abre (ou retoma) a LIGAÇÃO no servidor + token efêmero do Gemini Live (config travada)
 //   POST /ligar/api/estado       ferramenta estado_empresa (só leitura; o conteúdo vai cercado como dado não confiável)
 //   POST /ligar/api/preparar     ferramenta mandar_recado: só PREPARA o pedido (texto guardado + token de uso único)
-//   POST /ligar/api/confirmar    ato do Igor (botão ou "sim" falado): confere o token no servidor e só então envia
+//   POST /ligar/api/confirmar    botão ou "sim" falado: confere o token e indica se o login veio do Access
 //   POST /ligar/api/cancelar     o Igor desistiu do pedido
 //   POST /ligar/api/resposta     consulta a resposta pendente de um recado
 //   POST /ligar/api/fim          duração e tokens da ligação (medição de custo) e encerra a ligação
@@ -23,7 +23,7 @@ import { criarToken, LimiteGeminiError, MODELO, VOZ } from "./lib/voz.mjs";
 import { custoDaLigacao } from "./lib/custo.mjs";
 
 const PORTA = Number(process.env.LIGAR_PORTA || 8796);
-export const _deps = { criarToken }; // os testes trocam por um falso (sem rede, sem chave)
+export const _deps = { criarToken, buscarJwks: fetch }; // os testes substituem as chamadas de rede
 const PUB = fileURLToPath(new URL("./public/", import.meta.url));
 const BASE = "/ligar";
 const TIPOS = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -62,7 +62,7 @@ const desligado = () => existsSync(join(DIR_DADOS, "desligado"));
 
 export const servidor = createServer(async (req, res) => {
   try {
-    if (!(await guarda(req, res, { porta: PORTA }))) return;
+    if (!(await guarda(req, res, { porta: PORTA, buscar: _deps.buscarJwks }))) return;
     const url = new URL(req.url, "http://127.0.0.1");
     const p = url.pathname;
     if (p === BASE) { res.writeHead(308, { location: `${BASE}/` }); return res.end(); }
@@ -134,7 +134,7 @@ export const servidor = createServer(async (req, res) => {
         log("confirmacao_recusada", { motivo: c.motivo, via: String(b.via || "").slice(0, 10) });
         return json(res, 200, { estado: "recusado", resultado: `Não enviado: ${c.motivo}.` });
       }
-      return json(res, 200, mandarRecado(c.destino, c.texto, { via: b.via, dono: ligacao }));
+      return json(res, 200, mandarRecado(c.destino, c.texto, { via: b.via, origem: quem.via, dono: ligacao }));
     }
     if (rota === "api/cancelar") {
       const ok = cancelarPedido(ligacao, b.pedido, quem);

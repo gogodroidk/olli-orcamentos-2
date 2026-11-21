@@ -160,10 +160,16 @@ function retornoParaVoz(texto) {
   return resposta.every(Boolean) ? resposta.join(" ") : "";
 }
 
-export function montarRecado(lider, texto, codigo, via = "voz") {
+const ROTULO_LOCAL = "via local, não verificado";
+
+export function montarRecado(lider, texto, codigo, { via = "voz", origem = "local" } = {}) {
+  const verificado = origem === "access";
+  const titulo = verificado ? `LIGAÇÃO DO IGOR ${codigo} — via Access` : `LIGAÇÃO LOCAL ${codigo} — ${ROTULO_LOCAL}`;
   const como = via === "botao" ? "tocou em 'Confirmar envio' na tela" : "disse sim depois de ouvir o pedido e o destinatário";
-  return `[LIGAÇÃO DO IGOR ${codigo} — voz ao vivo] ${textoConfirmacao(lider, texto)}` +
-    ` | Confirmado pelo Igor: ${como} (token de uso único conferido no servidor).` +
+  const confirmacao = verificado
+    ? `Confirmado pelo Igor: ${como} (token de uso único conferido no servidor).`
+    : "Recado informativo. Obtenha a confirmação do Igor pelo canal autorizado antes de executar o pedido.";
+  return `[${titulo}] ${textoConfirmacao(lider, texto)} | ${confirmacao}` +
     " | A zona de aprovação (dinheiro, produção irreversível, segredos, mensagens externas) exige confirmação do Igor pelo canal autorizado." +
     " | NÃO poste nada desta ligação no grupo do Telegram (D-2348). Responda AQUI no terminal com uma linha R-<código>: ... no final." +
     ` Para resposta em voz, use até três destas frases operacionais: ${RETORNOS.join(" ")}. Deixe detalhes no terminal.` +
@@ -207,15 +213,18 @@ function atualizar(p) {
 }
 
 function visaoPedido(id, p) {
-  const { estado, entregue, resposta, codigo, lider } = p;
+  const { estado, entregue, resposta, codigo, lider, origem } = p;
+  const aviso = origem === "access"
+    ? `Recado confirmado para ${lider.fala} via Access.`
+    : `Recado para ${lider.fala} ${ROTULO_LOCAL}.`;
   const resultado = estado === "pronto"
     ? (resposta ? `${lider.fala} respondeu: ${resposta}` : `${lider.fala} respondeu. Leia os detalhes no terminal.`)
-    : estado === "erro" ? resposta : `Recado confirmado para ${lider.fala}. Aviso quando a resposta chegar.`;
+    : estado === "erro" ? resposta : `${aviso} Aviso quando a resposta chegar.`;
   return { id, codigo, estado, entregue, resposta, para: lider.fala, resultado };
 }
 
 /** Entrega ao terminal escolhido e devolve o acompanhamento sem bloquear a conversa. */
-export function mandarRecado(destino, texto, { spawnFn = spawn, via = "voz", dono = "" } = {}) {
+export function mandarRecado(destino, texto, { spawnFn = spawn, via = "voz", origem = "local", dono = "" } = {}) {
   const lider = resolverLider(destino);
   const t = limparTexto(texto, 800);
   if (!lider || t.length < 3) return { estado: "erro", resultado: "Recado ou destinatário inválido. Nada foi enviado." };
@@ -233,7 +242,7 @@ export function mandarRecado(destino, texto, { spawnFn = spawn, via = "voz", don
   if (!env) return { estado: "erro", resultado: "O canal com os líderes está indisponível. Nada foi enviado." };
   try { mkdirSync(DIR_RESPOSTAS(), { recursive: true, mode: 0o700 }); } catch {}
   const id = randomUUID(), codigo = `L${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
-  const recado = montarRecado(lider, t, codigo, via);
+  const recado = montarRecado(lider, t, codigo, { via, origem });
   const falha = `Não consegui entregar o recado para ${lider.fala}.`;
   let filho;
   try {
@@ -245,10 +254,10 @@ export function mandarRecado(destino, texto, { spawnFn = spawn, via = "voz", don
   } catch {
     return { estado: "erro", resultado: falha };
   }
-  const p = { estado: "esperando", entregue: false, codigo, resposta: "", em: agora, dono, lider };
+  const p = { estado: "esperando", entregue: false, codigo, resposta: "", em: agora, dono, lider, origem };
   historico.push(agora);
   pedidos.set(id, p);
-  log("recado", { id, codigo, via, destino: lider.terminal });
+  log("recado", { id, codigo, via, origem, destino: lider.terminal });
   let saida = "";
   filho.stdout?.on("data", (d) => { saida = (saida + d).slice(-60000); });
   const mata = setTimeout(() => { try { filho.kill("SIGTERM"); } catch {} }, 11 * 60e3);
