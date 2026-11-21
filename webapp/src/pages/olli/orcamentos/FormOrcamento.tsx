@@ -31,6 +31,7 @@
  */
 import type { ItemOrcamento, Orcamento, ProdutoItem, ServicoItem } from "@dominio";
 import { propostaJaEnviada, STATUS_LABELS } from "@dominio";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Boxes, Check, Copy, Lightbulb, Loader2, Plus, RotateCw, ShieldCheck, Trash2, Wrench } from "lucide-react";
 import { AVISO_EXEMPLO } from "@ativacao";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -54,6 +55,7 @@ import { Separator } from "@/ui/separator";
 import { Textarea } from "@/ui/textarea";
 import { cn } from "@/utils";
 import { registrarEtapaAtivacao } from "@/store/userStore";
+import OpcoesOrcamento from "./OpcoesOrcamento";
 
 /* ═══════════════════════════════  A TRAVA  ═══════════════════════════════════ */
 
@@ -315,6 +317,7 @@ function Editor({
 	const [orc, setOrc] = useState<Orcamento>(() => comDefaults(inicial));
 	const [erro, setErro] = useState<string | null>(null);
 	const [enviando, setEnviando] = useState(false);
+	const nomeClienteRef = useRef<HTMLInputElement>(null);
 
 	// Número já COMPRADO num submit anterior que falhou depois de gerá-lo. Guardado
 	// aqui para o retry reaproveitá-lo — gerar outro deixaria um buraco na sequência
@@ -359,8 +362,24 @@ function Editor({
 
 	// Telemetria do funil: editor de orçamento NOVO aberto (não edição).
 	useEffect(() => {
-		if (aberto && ehNovo) void registrarEtapaAtivacao("orcamento_novo_aberto");
-	}, [aberto, ehNovo]);
+		if (!aberto || !ehNovo) return;
+		void registrarEtapaAtivacao("orcamento_novo_aberto");
+		if (exemplo) void registrarEtapaAtivacao("exemplo_editor_aberto");
+	}, [aberto, ehNovo, exemplo]);
+
+	// Consulta de existência no tenant (RLS). Um orçamento na lixeira também
+	// já foi salvo. Relê a cada abertura para não assumir zero de outro dispositivo.
+	const historico = useQuery({
+		queryKey: ["olli", "orcamentos", "historico-editor-exemplo"],
+		enabled: aberto && exemplo,
+		refetchOnMount: "always",
+		refetchOnWindowFocus: false,
+		queryFn: async () => {
+			const { data, error } = await supabase.from("orcamentos").select("id").limit(1);
+			if (error) throw error;
+			return data;
+		},
+	});
 
 	/* ───────────────────────────────  Catálogo  ───────────────────────────────── */
 
@@ -606,10 +625,202 @@ function Editor({
 
 	/* ────────────────────────────────  Render  ────────────────────────────────── */
 
+	const desconto = (
+		<Campo
+			rotulo="Desconto"
+			dica={
+				orc.descontoTipo === "percentual"
+					? `${t.desconto}% do subtotal = R$ ${formatarMoeda(t.descontoEmReais)}`
+					: "Valor em reais, abatido do subtotal."
+			}
+			erro={
+				orc.descontoTipo === "percentual" && orc.desconto > 100
+					? "O desconto não pode passar de 100%."
+					: undefined
+			}
+		>
+			<div className="flex gap-2">
+				{/* Trocar o tipo ZERA o campo (igual ao app): "10" em reais não vira
+				    10% por adivinhação — isso mudaria o preço do cliente sem ele pedir. */}
+				<fieldset className="flex shrink-0 rounded-lg border border-border p-0.5">
+					<legend className="sr-only">Tipo de desconto</legend>
+					{(["valor", "percentual"] as const).map((tipo) => (
+						<button
+							key={tipo}
+							type="button"
+							aria-pressed={orc.descontoTipo === tipo}
+							onClick={() => {
+								setDescontoTexto(null);
+								patch({ descontoTipo: tipo, desconto: 0 });
+							}}
+							className={cn(
+								"rounded-md px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+								orc.descontoTipo === tipo
+									? "bg-primary text-primary-foreground"
+									: "text-text-secondary hover:text-text-primary",
+							)}
+						>
+							{tipo === "valor" ? "R$" : "%"}
+						</button>
+					))}
+				</fieldset>
+
+				{orc.descontoTipo === "valor" ? (
+					<div className="flex-1">
+						<CampoMoeda valor={orc.desconto} aoMudar={(v) => patch({ desconto: v })} />
+					</div>
+				) : (
+					<div className="relative flex-1">
+						<Input
+							aria-label="Desconto em porcentagem"
+							inputMode="decimal"
+							className="pr-8 text-right tabular-nums"
+							placeholder="0"
+							value={descontoTexto ?? (orc.desconto ? qtdParaTexto(orc.desconto) : "")}
+							onChange={(e) => {
+								const texto = e.target.value;
+								setDescontoTexto(texto);
+								const n = textoParaNumero(texto);
+								// Rejeita negativo já na digitação: um % negativo AUMENTARIA o total
+								// sem linha de desconto visível no rodapé.
+								patch({ desconto: Number.isFinite(n) && texto.trim() && n >= 0 ? n : 0 });
+							}}
+							onBlur={() => setDescontoTexto(null)}
+						/>
+						<span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-text-secondary">
+							%
+						</span>
+					</div>
+				)}
+			</div>
+		</Campo>
+	);
+
+	const totais = (
+		<div className="rounded-xl border border-border bg-bg-neutral/40 p-4">
+			<dl className="space-y-1.5 text-sm">
+				<div className="flex items-center justify-between">
+					<dt className="text-text-secondary">Serviços</dt>
+					<dd className="tabular-nums text-text-primary">R$ {formatarMoeda(t.subtotalServicos)}</dd>
+				</div>
+				<div className="flex items-center justify-between">
+					<dt className="text-text-secondary">Produtos</dt>
+					<dd className="tabular-nums text-text-primary">R$ {formatarMoeda(t.subtotalProdutos)}</dd>
+				</div>
+				<div className="flex items-center justify-between border-t border-border pt-1.5">
+					<dt className="text-text-secondary">Subtotal</dt>
+					<dd className="font-medium tabular-nums text-text-primary">R$ {formatarMoeda(t.subtotal)}</dd>
+				</div>
+				{t.descontoEmReais > 0 && (
+					<div className="flex items-center justify-between">
+						<dt className="text-text-secondary">
+							Desconto{orc.descontoTipo === "percentual" ? ` (${t.desconto}%)` : ""}
+						</dt>
+						<dd className="tabular-nums text-error-dark dark:text-error">
+							− R$ {formatarMoeda(t.descontoEmReais)}
+						</dd>
+					</div>
+				)}
+				<div className="flex items-baseline justify-between border-t border-border pt-2.5">
+					<dt className="font-semibold text-text-primary">Total</dt>
+					<dd className="text-xl font-bold tabular-nums text-text-primary font-serif">
+						R$ {formatarMoeda(t.valorTotal)}
+					</dd>
+				</div>
+			</dl>
+		</div>
+	);
+
+	const condicoes = (
+		<section className="space-y-4">
+			<h3 className="text-sm font-semibold text-text-primary">Condições do documento</h3>
+
+			<div className="grid gap-4 md:grid-cols-2">
+				<Campo rotulo="Garantia" dica="Aparece no PDF, junto das condições.">
+					<Input
+						value={orc.garantia ?? ""}
+						placeholder="Ex.: 90 dias para o serviço executado"
+						// Campo opcional: vazio vira AUSÊNCIA da chave no blob (o app omite,
+						// nunca grava null). Ver regra das chaves opcionais.
+						onChange={(e) => patch({ garantia: e.target.value.trim() ? e.target.value : undefined })}
+					/>
+				</Campo>
+
+				<Campo rotulo="Validade do orçamento" dica="DD/MM/AAAA — depois desta data a proposta expira.">
+					<div className="space-y-2">
+						{/* Chips: 1 clique preenche "hoje + N dias" (`emDiasBr`, a mesma conta de
+						    `novoOrcamentoVazio`/`duplicarComoRascunho`) — o campo abaixo continua
+						    aberto para quem quiser uma data fora desses atalhos. */}
+						<div className="flex flex-wrap gap-1.5">
+							{CHIPS_VALIDADE.map((dias) => {
+								const data = emDiasBr(dias);
+								const ativo = orc.validadeOrcamento === data;
+								return (
+									<Button
+										key={dias}
+										type="button"
+										size="sm"
+										variant={ativo ? "default" : "outline"}
+										aria-pressed={ativo}
+										onClick={() => patch({ validadeOrcamento: data })}
+										className="h-7 rounded-full px-3 text-xs"
+									>
+										{ativo && <Check aria-hidden="true" className="mr-1 size-3" />}
+										{dias} dias
+									</Button>
+								);
+							})}
+						</div>
+						<Input
+							inputMode="numeric"
+							placeholder="22/07/2026"
+							className="tabular-nums"
+							value={orc.validadeOrcamento ?? ""}
+							onChange={(e) => {
+								const v = mascaraDataBr(e.target.value);
+								patch({ validadeOrcamento: v || undefined });
+							}}
+							aria-invalid={!!orc.validadeOrcamento && !brParaIso(orc.validadeOrcamento)}
+						/>
+					</div>
+				</Campo>
+			</div>
+
+			<Campo rotulo="Condições comerciais">
+				<Textarea
+					rows={2}
+					value={orc.condicoesPagamento ?? ""}
+					placeholder="Ex.: 50% na aprovação e restante na conclusão. O pagamento é combinado diretamente com a empresa."
+					onChange={(e) => patch({ condicoesPagamento: e.target.value.trim() ? e.target.value : undefined })}
+				/>
+			</Campo>
+
+			<Campo rotulo="Informações adicionais">
+				<Textarea
+					rows={2}
+					value={orc.informacoesAdicionais ?? ""}
+					placeholder="Observações que o cliente precisa ler."
+					onChange={(e) => patch({ informacoesAdicionais: e.target.value.trim() ? e.target.value : undefined })}
+				/>
+			</Campo>
+
+			<Campo rotulo="Laudo técnico" dica="O diagnóstico que justifica o serviço.">
+				<Textarea
+					rows={3}
+					value={orc.laudoTecnico ?? ""}
+					placeholder="Ex.: evaporadora com serpentina obstruída, dreno saturado…"
+					onChange={(e) => patch({ laudoTecnico: e.target.value.trim() ? e.target.value : undefined })}
+				/>
+			</Campo>
+		</section>
+	);
+
 	return (
 		<FormDialog
 			aberto={aberto}
 			aoFechar={aoFechar}
+			aoAdiar={exemplo ? () => void registrarEtapaAtivacao("exemplo_agora_nao") : undefined}
+			focoInicial={exemplo ? nomeClienteRef : undefined}
 			largo
 			titulo={ehNovo ? "Novo orçamento" : `Editar orçamento ${inicial.numero || ""}`.trim()}
 			descricao={
@@ -655,10 +866,12 @@ function Editor({
 					</Campo>
 					{!orc.clienteId && (
 						<Campo
-							rotulo="Ou só o nome do cliente"
+							rotulo={exemplo ? "Nome do seu cliente" : "Ou só o nome do cliente"}
 							dica="Para começar sem cadastrar. Para enviar pelo WhatsApp, escolha ou cadastre o cliente (precisa do número)."
 						>
 							<Input
+								ref={nomeClienteRef}
+								className={exemplo ? "min-h-[44px]" : undefined}
 								value={orc.clienteNome}
 								onChange={(ev) => patch({ clienteNome: ev.target.value })}
 								placeholder="Ex.: Maria Souza"
@@ -912,196 +1125,14 @@ function Editor({
 
 				<Separator />
 
-				{/* ─────────────  Desconto + Totais  ───────────── */}
-				<section className="grid gap-4 md:grid-cols-2">
-					<Campo
-						rotulo="Desconto"
-						dica={
-							orc.descontoTipo === "percentual"
-								? `${t.desconto}% do subtotal = R$ ${formatarMoeda(t.descontoEmReais)}`
-								: "Valor em reais, abatido do subtotal."
-						}
-						erro={
-							orc.descontoTipo === "percentual" && orc.desconto > 100
-								? "O desconto não pode passar de 100%."
-								: undefined
-						}
-					>
-						<div className="flex gap-2">
-							{/* Trocar o tipo ZERA o campo (igual ao app): "10" em reais não vira
-							    10% por adivinhação — isso mudaria o preço do cliente sem ele pedir. */}
-							<fieldset className="flex shrink-0 rounded-lg border border-border p-0.5">
-								<legend className="sr-only">Tipo de desconto</legend>
-								{(["valor", "percentual"] as const).map((tipo) => (
-									<button
-										key={tipo}
-										type="button"
-										aria-pressed={orc.descontoTipo === tipo}
-										onClick={() => {
-											setDescontoTexto(null);
-											patch({ descontoTipo: tipo, desconto: 0 });
-										}}
-										className={cn(
-											"rounded-md px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
-											orc.descontoTipo === tipo
-												? "bg-primary text-primary-foreground"
-												: "text-text-secondary hover:text-text-primary",
-										)}
-									>
-										{tipo === "valor" ? "R$" : "%"}
-									</button>
-								))}
-							</fieldset>
-
-							{orc.descontoTipo === "valor" ? (
-								<div className="flex-1">
-									<CampoMoeda valor={orc.desconto} aoMudar={(v) => patch({ desconto: v })} />
-								</div>
-							) : (
-								<div className="relative flex-1">
-									<Input
-										aria-label="Desconto em porcentagem"
-										inputMode="decimal"
-										className="pr-8 text-right tabular-nums"
-										placeholder="0"
-										value={descontoTexto ?? (orc.desconto ? qtdParaTexto(orc.desconto) : "")}
-										onChange={(e) => {
-											const texto = e.target.value;
-											setDescontoTexto(texto);
-											const n = textoParaNumero(texto);
-											// Rejeita negativo já na digitação: um % negativo AUMENTARIA o total
-											// sem linha de desconto visível no rodapé.
-											patch({ desconto: Number.isFinite(n) && texto.trim() && n >= 0 ? n : 0 });
-										}}
-										onBlur={() => setDescontoTexto(null)}
-									/>
-									<span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-text-secondary">
-										%
-									</span>
-								</div>
-							)}
-						</div>
-					</Campo>
-
-					{/* O painel de totais é o que o cliente vai ver no rodapé do PDF. */}
-					<div className="rounded-xl border border-border bg-bg-neutral/40 p-4">
-						<dl className="space-y-1.5 text-sm">
-							<div className="flex items-center justify-between">
-								<dt className="text-text-secondary">Serviços</dt>
-								<dd className="tabular-nums text-text-primary">R$ {formatarMoeda(t.subtotalServicos)}</dd>
-							</div>
-							<div className="flex items-center justify-between">
-								<dt className="text-text-secondary">Produtos</dt>
-								<dd className="tabular-nums text-text-primary">R$ {formatarMoeda(t.subtotalProdutos)}</dd>
-							</div>
-							<div className="flex items-center justify-between border-t border-border pt-1.5">
-								<dt className="text-text-secondary">Subtotal</dt>
-								<dd className="font-medium tabular-nums text-text-primary">R$ {formatarMoeda(t.subtotal)}</dd>
-							</div>
-							{t.descontoEmReais > 0 && (
-								<div className="flex items-center justify-between">
-									<dt className="text-text-secondary">
-										Desconto{orc.descontoTipo === "percentual" ? ` (${t.desconto}%)` : ""}
-									</dt>
-									<dd className="tabular-nums text-error-dark dark:text-error">
-										− R$ {formatarMoeda(t.descontoEmReais)}
-									</dd>
-								</div>
-							)}
-							<div className="flex items-baseline justify-between border-t border-border pt-2.5">
-								<dt className="font-semibold text-text-primary">Total</dt>
-								<dd className="text-xl font-bold tabular-nums text-text-primary font-serif">
-									R$ {formatarMoeda(t.valorTotal)}
-								</dd>
-							</div>
-						</dl>
-					</div>
-				</section>
-
-				<Separator />
-
-				{/* ─────────────  Rodapé do documento  ───────────── */}
-				<section className="space-y-4">
-					<h3 className="text-sm font-semibold text-text-primary">Condições do documento</h3>
-
-					<div className="grid gap-4 md:grid-cols-2">
-						<Campo rotulo="Garantia" dica="Aparece no PDF, junto das condições.">
-							<Input
-								value={orc.garantia ?? ""}
-								placeholder="Ex.: 90 dias para o serviço executado"
-								// Campo opcional: vazio vira AUSÊNCIA da chave no blob (o app omite,
-								// nunca grava null). Ver regra das chaves opcionais.
-								onChange={(e) => patch({ garantia: e.target.value.trim() ? e.target.value : undefined })}
-							/>
-						</Campo>
-
-						<Campo rotulo="Validade do orçamento" dica="DD/MM/AAAA — depois desta data a proposta expira.">
-							<div className="space-y-2">
-								{/* Chips: 1 clique preenche "hoje + N dias" (`emDiasBr`, a mesma conta de
-								    `novoOrcamentoVazio`/`duplicarComoRascunho`) — o campo abaixo continua
-								    aberto para quem quiser uma data fora desses atalhos. */}
-								<div className="flex flex-wrap gap-1.5">
-									{CHIPS_VALIDADE.map((dias) => {
-										const data = emDiasBr(dias);
-										const ativo = orc.validadeOrcamento === data;
-										return (
-											<Button
-												key={dias}
-												type="button"
-												size="sm"
-												variant={ativo ? "default" : "outline"}
-												aria-pressed={ativo}
-												onClick={() => patch({ validadeOrcamento: data })}
-												className="h-7 rounded-full px-3 text-xs"
-											>
-												{ativo && <Check aria-hidden="true" className="mr-1 size-3" />}
-												{dias} dias
-											</Button>
-										);
-									})}
-								</div>
-								<Input
-									inputMode="numeric"
-									placeholder="22/07/2026"
-									className="tabular-nums"
-									value={orc.validadeOrcamento ?? ""}
-									onChange={(e) => {
-										const v = mascaraDataBr(e.target.value);
-										patch({ validadeOrcamento: v || undefined });
-									}}
-									aria-invalid={!!orc.validadeOrcamento && !brParaIso(orc.validadeOrcamento)}
-								/>
-							</div>
-						</Campo>
-					</div>
-
-					<Campo rotulo="Condições comerciais">
-						<Textarea
-							rows={2}
-							value={orc.condicoesPagamento ?? ""}
-							placeholder="Ex.: 50% na aprovação e restante na conclusão. O pagamento é combinado diretamente com a empresa."
-							onChange={(e) => patch({ condicoesPagamento: e.target.value.trim() ? e.target.value : undefined })}
-						/>
-					</Campo>
-
-					<Campo rotulo="Informações adicionais">
-						<Textarea
-							rows={2}
-							value={orc.informacoesAdicionais ?? ""}
-							placeholder="Observações que o cliente precisa ler."
-							onChange={(e) => patch({ informacoesAdicionais: e.target.value.trim() ? e.target.value : undefined })}
-						/>
-					</Campo>
-
-					<Campo rotulo="Laudo técnico" dica="O diagnóstico que justifica o serviço.">
-						<Textarea
-							rows={3}
-							value={orc.laudoTecnico ?? ""}
-							placeholder="Ex.: evaporadora com serpentina obstruída, dreno saturado…"
-							onChange={(e) => patch({ laudoTecnico: e.target.value.trim() ? e.target.value : undefined })}
-						/>
-					</Campo>
-				</section>
+				<OpcoesOrcamento
+					exemplo={exemplo}
+					historico={historico}
+					desconto={desconto}
+					totais={totais}
+					condicoes={condicoes}
+					aoAbrirMaisOpcoes={() => void registrarEtapaAtivacao("exemplo_mais_opcoes_aberto")}
+				/>
 
 				{/* Rodapé informativo: o que este formulário NÃO mexeu continua no documento. */}
 				{!ehNovo && (

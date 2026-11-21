@@ -7,6 +7,7 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "tsc && vite build",
+		"test": "npm run test:importacao && node --test scripts/teste-editor-exemplo.mjs",
 		"test:importacao": "node src/olli/importacao/parser.test.ts",
 		"test:bundle": "node ../scripts/teste-orcamento-bundle-painel.ts --dist dist",
 		"preview": "vite preview"
