@@ -103,6 +103,9 @@ import { avisoTrialAutomatico } from '../services/ativacao';
 import { avisar } from './desktop/dialogo';
 import { recarregarPlanoGlobal } from '../hooks/usePlano';
 import type { CanalEnvioOrcamento, ReservaEnvioOrcamento } from '../services/limitesComerciais';
+import { avisoLimiteEnviosApp } from '../services/avisoLimiteEnviosApp';
+import { COMPRA_EXTERNA_HABILITADA } from '../config/loja';
+import { ESTADO_PLAY_BILLING } from '../services/playBilling';
 import { CartaoRecursoPlano, useRecursoPlano } from '../components/RecursoPlano';
 import { BotaoComoFunciona } from '../components/ajuda/ComoFunciona';
 import { DicaDoRoteiro } from '../components/ajuda/DicaDoRoteiro';
@@ -428,10 +431,14 @@ export default function VisualizarOrcamentoScreen() {
     // Só o ENVIO para; o orçamento fica salvo e editável. Sem a palavra "bloqueado".
     if (!reserva.permitido) {
       const teto = reserva.limiteEnvios ?? 5;
-      toast.info(
-        `Você usou os ${teto} envios do Grátis deste mês. Seu orçamento está salvo. Os envios voltam no próximo mês; para enviar mais agora, veja os planos na tela Conta.`,
-        { titulo: 'Limite do mês atingido' },
-      );
+      // Botão "Ver planos" só onde o app VENDE o Pro (web do app ou Play Billing ligado);
+      // no iOS e no Android da loja hoje não há compra, então o aviso só diz a verdade.
+      const aviso = avisoLimiteEnviosApp(teto, COMPRA_EXTERNA_HABILITADA || ESTADO_PLAY_BILLING === 'ligado');
+      toast.info(aviso.mensagem, {
+        titulo: aviso.titulo,
+        duracaoMs: 20000,
+        ...(aviso.rotuloBotao ? { acao: { rotulo: aviso.rotuloBotao, aoTocar: () => nav.navigate('Planos') } } : {}),
+      });
       return null;
     }
     return reserva;
