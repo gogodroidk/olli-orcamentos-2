@@ -213,7 +213,7 @@ job_painel() {
   instalar_npm web || return 1
   instalar_pnpm_webapp || return 1
   passo "Build" webapp corepack pnpm run build || return 1
-  passo "Testes do painel" webapp corepack pnpm run test:importacao || return 1
+  passo "Testes do painel" webapp corepack pnpm test || return 1
   passo "Orçamento de bundle do painel" webapp corepack pnpm run test:bundle
 }
 

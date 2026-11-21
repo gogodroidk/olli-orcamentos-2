@@ -131,7 +131,7 @@ jobs:
       # Testes puros do painel (sem DOM/rede). Até 29/09 este script só
       # declarava a função e saía com 0 — nunca tinha rodado de verdade.
       - name: Testes do painel
-        run: pnpm run test:importacao
+        run: pnpm test
 
       # Orçamento de bundle: mede o gzip do JS/CSS crítico e do JS total do build
       # acima e falha se passar do teto em webapp/orcamento-bundle.json.

@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/ui/dialog";
 import { ScrollArea } from "@/ui/scroll-area";
@@ -7,6 +7,9 @@ import { ScrollArea } from "@/ui/scroll-area";
 interface Props {
 	aberto: boolean;
 	aoFechar: () => void;
+	/** Ação opcional de adiar, executada depois da guarda de descarte. */
+	aoAdiar?: () => void;
+	focoInicial?: RefObject<HTMLInputElement | null>;
 	titulo: string;
 	descricao?: string;
 	/** Mensagem de erro da gravação. Fica VISÍVEL — não some num toast que o usuário perde. */
@@ -43,6 +46,8 @@ interface Props {
 export default function FormDialog({
 	aberto,
 	aoFechar,
+	aoAdiar,
+	focoInicial,
 	titulo,
 	descricao,
 	erro,
@@ -60,11 +65,12 @@ export default function FormDialog({
 	// síncrono (o retorno decide o onOpenChange na hora), zero componente novo.
 	// O fluxo de SALVAR não passa por aqui: no sucesso, o formulário chama
 	// `aoFechar()` direto — a guarda nunca atrapalha quem salvou.
-	const fecharComGuarda = () => {
+	const fecharComGuarda = (aposConfirmar?: () => void) => {
 		if (salvando) return;
 		if (confirmarSeSujo?.() && !window.confirm("Você tem alterações não salvas. Descartar mesmo assim?")) {
 			return;
 		}
+		aposConfirmar?.();
 		aoFechar();
 	};
 
@@ -86,7 +92,15 @@ export default function FormDialog({
 			 * `overflow-y-auto` é a rede: se mesmo assim não couber, o diálogo inteiro
 			 * rola e o título e o "Salvar" continuam alcançáveis.
 			 */}
-			<DialogContent className={`max-h-[calc(100dvh-1.5rem)] overflow-y-auto ${largo ? "max-w-3xl" : "max-w-lg"}`}>
+			<DialogContent
+				onOpenAutoFocus={(ev) => {
+					if (focoInicial?.current) {
+						ev.preventDefault();
+						focoInicial.current.focus();
+					}
+				}}
+				className={`max-h-[calc(100dvh-1.5rem)] overflow-y-auto ${largo ? "max-w-3xl" : "max-w-lg"}`}
+			>
 				<DialogHeader>
 					<DialogTitle>{titulo}</DialogTitle>
 					{descricao && <DialogDescription>{descricao}</DialogDescription>}
@@ -118,8 +132,24 @@ export default function FormDialog({
 				    inteiro (teto acima), sem `sticky` o "Salvar" descia junto e sumia —
 				    medido a 375 × 360, ele ficava fora da tela. Com `sticky bottom-0` o
 				    botão fica sempre à vista, que era a promessa original. */}
-				<DialogFooter className="sticky bottom-0 -mb-2 bg-background pb-2">
-					<Button type="button" variant="outline" onClick={fecharComGuarda} disabled={salvando}>
+				<DialogFooter className={`sticky bottom-0 -mb-2 bg-background pb-2 ${aoAdiar ? "flex-row flex-wrap justify-end [&_button]:min-h-[44px]" : ""}`}>
+					{aoAdiar && (
+						<Button
+							type="button"
+							variant="link"
+							className="px-2 text-text-primary"
+							onClick={() => fecharComGuarda(aoAdiar)}
+							disabled={salvando}
+						>
+							Agora não
+						</Button>
+					)}
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => fecharComGuarda()}
+						disabled={salvando}
+					>
 						Cancelar
 					</Button>
 					<Button type="submit" form={formId} disabled={salvando}>
