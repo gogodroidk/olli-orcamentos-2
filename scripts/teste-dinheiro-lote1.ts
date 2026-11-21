@@ -18,6 +18,7 @@ import {
 import { dicaChavePix, FRASE_PIX_LINK_GRATIS } from '../src/services/pixNoLink.ts';
 import { PARAM_PAGAR, lerIntencaoPlano, podeAbrirPixDaIntencao } from '../webapp/src/olli/plano-intent.ts';
 import { PRECO_PRO, reais } from '../web/src/data/planos.ts';
+import { avisoLimiteEnviosApp } from '../src/services/avisoLimiteEnviosApp.ts';
 
 const ler = (caminho: string) => readFileSync(new URL(caminho, import.meta.url), 'utf8');
 let casos = 0;
@@ -220,6 +221,32 @@ caso('migration nova: CHECK e função aceitam os 2 eventos; arquivo só escrito
   assert.match(sql, /NÃO APLICADA/);
   const store = ler('../webapp/src/store/userStore.ts');
   assert.match(store, /\| "limite_aviso_visto"\s*\| "limite_aviso_pagar_clicado";/);
+});
+
+// ─── 5. Aviso do limite no APP: sem beco sem saída ──────────────────────────────
+caso('app: onde vende, o aviso traz o botão "Ver planos" e a mesma frase da web', () => {
+  const a = avisoLimiteEnviosApp(5, true);
+  assert.equal(a.rotuloBotao, 'Ver planos');
+  assert.match(a.mensagem, /Você usou os 5 envios do Grátis deste mês\. Seu orçamento está salvo\./);
+  assert.match(a.mensagem, /libere o Pro; se preferir esperar, os envios voltam no próximo mês\./);
+});
+
+caso('app: onde NÃO vende (iOS, Android da loja), sem botão e sem apontar para compra', () => {
+  const a = avisoLimiteEnviosApp(5, false);
+  assert.equal(a.rotuloBotao, null);
+  assert.match(a.mensagem, /Os envios voltam no próximo mês\./);
+  assert.doesNotMatch(a.mensagem, /Pro|plano|Pix|Conta|painel|site/i);
+});
+
+caso('app: nenhum texto promete Pix nem manda "para a tela Conta"', () => {
+  for (const venda of [true, false]) {
+    const a = avisoLimiteEnviosApp(5, venda);
+    assert.doesNotMatch(a.mensagem, /Pix|tela Conta/i);
+  }
+  const tela = ler('../src/screens/VisualizarOrcamentoScreen.tsx');
+  assert.doesNotMatch(tela, /veja os planos na tela Conta/);
+  assert.match(tela, /avisoLimiteEnviosApp\(teto, COMPRA_EXTERNA_HABILITADA \|\| ESTADO_PLAY_BILLING === 'ligado'\)/);
+  assert.match(tela, /nav\.navigate\('Planos'\)/);
 });
 
 console.log(`teste-dinheiro-lote1: OK (${casos} casos)`);
